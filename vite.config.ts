@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const raiz = fileURLToPath(new URL(".", import.meta.url));
+const versaoPacote = (JSON.parse(readFileSync(resolve(raiz, "package.json"), "utf8")) as { version: string }).version;
 import { defineConfig, type Plugin } from "vite";
 
 /**
@@ -46,6 +47,8 @@ function offline(): Plugin {
 export default defineConfig(({ command, isPreview }) => ({
   base: command === "build" || isPreview ? process.env.BASE_PATH || "/" : "/",
   plugins: [offline()],
+  // versão mostrada ao lado do WJProMaster: <package.json>.<nº da publicação no GitHub Actions>
+  define: { __VERSAO__: JSON.stringify(`${versaoPacote}.${process.env.GITHUB_RUN_NUMBER ?? "dev"}`) },
   worker: { format: "es" },
   optimizeDeps: { exclude: ["replicad-opencascadejs"] },
   server: { host: true }, // permite abrir no tablet pela rede local durante o desenvolvimento
