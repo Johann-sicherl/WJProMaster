@@ -7,6 +7,7 @@ import type { InfoReferencia, ResultadoRegeneracao } from "./kernel/regenerar";
 import type { PropriedadesMassa } from "./kernel/avaliar";
 import {
   documentoExemplo,
+  documentoImportado,
   documentoVazio,
   ehCota,
   esbocosAbsorvidos,
@@ -358,8 +359,23 @@ function atualizarStatus() {
 }
 
 // ---------- histórico (desfazer/refazer) ----------
+/**
+ * Conteúdo de corpos importados (STEP/STL, vários MB) fica fora das fotografias do desfazer:
+ * cada passo guarda só uma etiqueta e o conteúdo é guardado uma vez.
+ */
+const dadosImportados = new Map<string, string>();
+function fotografar(d: Documento): string {
+  return JSON.stringify(d, function (k, v) {
+    if (k !== "dados" || typeof v !== "string" || v.length < 4096) return v;
+    const id = `@importado:${(this as { id?: string }).id}:${v.length}:${v.slice(-32)}`;
+    dadosImportados.set(id, v);
+    return id;
+  });
+}
+const revelar = (json: string): Documento => JSON.parse(json, (k, v) => (k === "dados" && typeof v === "string" && v.startsWith("@importado:") ? dadosImportados.get(v) ?? v : v));
+
 function registrarPasso() {
-  historico.push(JSON.stringify(doc));
+  historico.push(fotografar(doc));
   if (historico.length > 100) historico.shift();
   refazer.length = 0;
 }
@@ -373,7 +389,7 @@ function alterou(final: boolean) {
 }
 
 function restaurar(json: string) {
-  doc = JSON.parse(json);
+  doc = revelar(json);
   if (selecao?.tipo === "feature" && !doc.features.some((f) => f.id === idSelecionado())) definirSel(null);
   if (comando) fecharComando();
   if (editor) {
@@ -521,7 +537,7 @@ function executarComando(c: Comando, aba: IdAba, botao: HTMLElement) {
 
 // ---------- criação de recursos ----------
 
-const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
+const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco" | "importado">> = {
   extrusao: "extrusao", corte: "extrusao", revolucao: "revolucao", "corte-revolucao": "revolucao",
   filete: "filete", chanfro: "chanfro", casca: "casca", nervura: "nervura", inclinacao: "inclinacao",
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
@@ -2051,7 +2067,7 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   varredura: "varredura", loft: "loft", curva: "helice",
   flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa", dobraEsboco: "dobra", junta: "junta", meiaEsquadria: "meiaEsquadria",
   fecharCanto: "fecharCanto", alivioCanto: "alivioCanto", quebrarCanto: "quebrarCanto",
-  desdobrar: "desdobrar", dobrar: "dobrar", converterChapa: "converterChapa",
+  desdobrar: "desdobrar", dobrar: "dobrar", converterChapa: "converterChapa", importado: "abrir",
 };
 
 function iconeFeature(f: Feature): NomeIcone {
@@ -3484,7 +3500,7 @@ function salvarPeca(): Promise<string> {
 
 const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => void }> = {
   novo: { rotulo: "Novo…", icone: "nova", fazer: abrirDialogoNovo },
-  abrir: { rotulo: "Abrir arquivo do aparelho…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
+  abrir: { rotulo: "Abrir arquivo do aparelho (.wjcad, STEP, STL)…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
   salvar: {
     rotulo: "Salvar (.wjcad)",
     icone: "salvar",
@@ -3651,6 +3667,7 @@ function abrirDocumento(d: Documento) {
   selPeca = [];
   historico.length = 0;
   refazer.length = 0;
+  dadosImportados.clear();
   primeiraRegeneracao = true;
   nomeDoc.value = doc.nome;
   aplicarMaterial();
@@ -3674,6 +3691,7 @@ function fecharDocumento() {
   selPeca = [];
   historico.length = 0;
   refazer.length = 0;
+  dadosImportados.clear();
   atualizarAreaDeTrabalho();
   viewport.mostrarMalha(null);
   limparEsbocos();
@@ -3820,8 +3838,16 @@ function atualizarAreaDeTrabalho() {
 $<HTMLInputElement>("arquivo").onchange = async (ev) => {
   const arq = (ev.target as HTMLInputElement).files?.[0];
   if (!arq) return;
+  (ev.target as HTMLInputElement).value = ""; // o mesmo arquivo pode ser escolhido de novo
   desligar("cad"); // veio do aparelho: ao salvar entra no cofre como arquivo novo
   try {
+    // STEP/STL de qualquer CAD: vira peça nova com o corpo importado (salvar grava .wjcad)
+    if (/\.(step|stp|stl)$/i.test(arq.name)) {
+      if (arq.size > 30e6 && !confirm(`O arquivo tem ${(arq.size / 1e6).toFixed(0)} MB; a importação pode ficar lenta e o .wjcad ficará grande. Continuar?`)) return;
+      const d = documentoImportado(arq.name, new Uint8Array(await arq.arrayBuffer()));
+      if (!aberto || !doc.features.length || confirm("Fechar a peça atual e abrir o arquivo?")) abrirDocumento(d);
+      return;
+    }
     let dados: unknown;
     try {
       dados = JSON.parse(await arq.text());
@@ -3833,7 +3859,6 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
   } catch (e) {
     alert((e as Error).message);
   }
-  (ev.target as HTMLInputElement).value = "";
 };
 
 async function exportar(formato: "step" | "stl") {

@@ -59,7 +59,9 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
 - Visualização: Three.js (`src/viewport.ts`), **Y para cima** (Frontal = XY, Superior = XZ, Lateral = YZ;
   isométrica de (1, 1, 1)), render só quando algo muda. Arquivos até a versão 2 (Z para cima) são
   migrados ao abrir (`validarDocumento`)
-- Modelo: lista de features serializada em JSON (`.wjcad`; abre `.jlscad` e `.cadt` antigos), em `src/model.ts`
+- Modelo: lista de features serializada em JSON (`.wjcad`; abre `.jlscad` e `.cadt` antigos), em `src/model.ts`.
+  **Importar STEP/STL**: abrir um `.step/.stp/.stl` cria peça com o recurso `importado` (arquivo em base64 no
+  `.wjcad`, lido no kernel com `STEPControl_Reader`/`StlAPI_Reader` + costura; fica fora das fotografias do desfazer)
 - **Ambientes do WJCAD**: Peça em `cad/` (`src/main.ts`), **Montagem** em `cad/montagem/` (`src/montagem/`:
   modelo, cena junta, solver de posicionamentos, testados em `scripts/teste-montagem.ts`) e **Desenho** em
   `cad/desenho/` (`src/desenho/`: folha ABNT em SVG, vistas por projeção HLR no kernel em

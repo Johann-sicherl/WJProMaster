@@ -120,6 +120,11 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       ] }] };
     case "converterChapa":
       return converterChapa() as Esquema<Feature>;
+    case "importado":
+      return { titulo: "Corpo importado", caixas: [{ titulo: "Origem", campos: [
+        { t: "info", texto: (x) => `Arquivo: ${(x as { arquivo: string }).arquivo}` },
+        { t: "info", texto: (x) => `Formato: ${(x as { formato: string }).formato.toUpperCase()} (sem a árvore de recursos de origem; modele por cima com cortes, furos, filetes…)` },
+      ] }] };
     case "esboco":
       return { titulo: "Esboço", caixas: [] };
   }
