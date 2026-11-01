@@ -1,3 +1,4 @@
+import { atualizarExternas } from "./esboco/externas";
 import "./style.css";
 import { ABAS, type Comando, type IdAba } from "./comandos";
 import { ICONES, type NomeIcone } from "./icones";
@@ -27,7 +28,7 @@ import {
   type Plano,
   type Referencia,
   type SuporteEsboco,
-  type Vec3,
+  type Vec3, nomeUnico, type AssinaturaFace
 } from "./model";
 import { Viewport, type Entidade, type EstiloExibicao, type IdReferencia, type TipoEntidade, type Vista } from "./viewport";
 import { EditorEsboco, type Ferramenta, type Hospedeiro } from "./esboco/editor";
@@ -232,7 +233,56 @@ function previaAtiva() {
   return !!comando && (comando.f as { mostrarPrevia?: boolean }).mostrarPrevia !== false;
 }
 
+/** Reconstruções seguidas feitas só para os esboços acompanharem a peça (limite contra laço). */
+let passesDeAcompanhar = 0;
+
+/**
+ * Depois de reconstruir: (1) esboços em face guardam o plano novo (a face andou); (2) as
+ * referências do modelo nos esboços (arestas da peça usadas em cotas e relações) passam para a
+ * peça nova e o esboço é resolvido de novo. Se algo mudou, reconstrói mais uma vez — assim um
+ * furo cotado a partir da aresta acompanha a peça que cresceu. Sem passo de desfazer.
+ */
+async function acompanharPeca(r: ResultadoRegeneracao): Promise<boolean> {
+  let mudou = false;
+  for (const [id, s] of Object.entries(r.suportes ?? {})) {
+    const e = doc.features.find((f) => f.id === id);
+    if (e?.tipo === "esboco" && JSON.stringify(e.suporte) !== JSON.stringify(s)) {
+      e.suporte = s;
+      mudou = true;
+    }
+  }
+  if (r.topologia) {
+    const comExternas = ativas().filter((f): f is FeatureEsboco => f.tipo === "esboco" && !f.suprimida && f.geos.some((g) => g.externa) && f.id !== editor?.esb.id);
+    if (comExternas.length) {
+      const s = await obterSolver();
+      for (const e of comExternas) {
+        let ref;
+        try {
+          ref = referencial(e.suporte);
+        } catch {
+          continue;
+        }
+        if (atualizarExternas(e, r.topologia, ref).mudaram) {
+          s.resolver(e);
+          mudou = true;
+        }
+      }
+    }
+  }
+  return mudou;
+}
+
 function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
+  // a peça mudou e os esboços precisaram acompanhar: grava e reconstrói de novo (no máximo 2 vezes)
+  if (passesDeAcompanhar < 2) {
+    void acompanharPeca(r).then((mudou) => {
+      if (mudou) {
+        passesDeAcompanhar++;
+        salvarAutosave();
+        regenerar();
+      } else passesDeAcompanhar = 0;
+    });
+  } else passesDeAcompanhar = 0;
   estadoKernel = "pronto";
   viewport.mostrarMalha(r.malha, r.topologia);
   ultimaMalha = r.malha;
@@ -495,6 +545,7 @@ function ultimoEsbocoLivre(): FeatureEsboco | null {
 }
 
 function inserirFeature(f: Feature) {
+  f.nome = nomeUnico(doc.features.map((x) => x.nome), f.nome);
   const pos = doc.retrocesso ?? doc.features.length;
   doc.features.splice(pos, 0, f);
   if (doc.retrocesso !== undefined) doc.retrocesso++;
@@ -537,7 +588,7 @@ function criarRecurso(id: string) {
       }
       if (id === "corte" || id === "corte-revolucao") {
         f.operacao = "cortar";
-        f.nome = f.tipo === "extrusao" ? `Corte${nomeNovo("extrusao")}` : `CorteRevolução${nomeNovo("revolucao")}`;
+        f.nome = f.tipo === "extrusao" ? "Corte1" : "CorteRevolução1"; // nomeUnico (inserirFeature) numera
         if (f.tipo === "extrusao") {
           f.inverter = true; // corte entra no material: contra a normal do esboço
           if (!perfil) {
@@ -552,7 +603,7 @@ function criarRecurso(id: string) {
     case "varredura": {
       if (id === "corte-varredura") {
         f.operacao = "cortar";
-        f.nome = `CorteVarredura${nomeNovo("varredura")}`;
+        f.nome = "CorteVarredura1";
       }
       // pré-seleção na ordem tocada: 1º esboço fechado = perfil, o próximo = trajetória,
       // os demais = curvas-guia; sem esboço de trajetória, arestas do modelo selecionadas
@@ -576,7 +627,7 @@ function criarRecurso(id: string) {
     case "loft": {
       if (id === "corte-loft") {
         f.operacao = "cortar";
-        f.nome = `CorteLoft${nomeNovo("loft")}`;
+        f.nome = "CorteLoft1";
       }
       // esboços selecionados (Ctrl/Shift, na ordem tocada) viram os perfis
       f.perfis = featsSel.filter((x) => x.tipo === "esboco").map((x) => ({ tipo: "esboco", id: x.id }));
@@ -1235,7 +1286,7 @@ function instalarToqueCurto() {
     if (aguardando) {
       if (refPrioritaria?.tipo === "plano") return void suporteEscolhido(suporteDoPlano(refPrioritaria.id), null);
       const face = viewport.picarFace(e.clientX, e.clientY);
-      if (face) return void suporteEscolhido(faceComoSuporte(face.origem, face.normal), face.origem);
+      if (face) return void suporteEscolhido(faceComoSuporte(face.origem, face.normal, face.indice !== undefined ? viewport.topologia?.faces[face.indice] : undefined), face.origem);
       if (refViewport?.tipo === "plano") return void suporteEscolhido(suporteDoPlano(refViewport.id), null);
       return avisar("Toque uma face plana ou um plano.");
     }
@@ -1380,7 +1431,7 @@ function acoesDoModelo(): AcaoContexto[] {
   if (faces.length === 1 && selPeca.length === 1 && faces[0].ass.geom === "plano" && faces[0].ass.normal) {
     const ass = faces[0].ass;
     out.push(
-      { rotulo: "Esboço", icone: "esboco", acao: () => void suporteEscolhido(faceComoSuporte(ass.centro, ass.normal!), null) },
+      { rotulo: "Esboço", icone: "esboco", acao: () => void suporteEscolhido(faceComoSuporte(ass.centro, ass.normal!, ass), null) },
       { rotulo: "Normal a", icone: "normalA", acao: () => viewport.olharPlano(referencial(faceComoSuporte(ass.centro, ass.normal!))) },
       { rotulo: "Furo", icone: "furo", acao: () => iniciarFuro() },
     );
@@ -2543,7 +2594,7 @@ async function iniciarEsboco(ferramenta?: Ferramenta): Promise<boolean> {
   }
   const face = selPeca.length === 1 && selPeca[0].tipo === "face" && selPeca[0].ass.geom === "plano" ? selPeca[0] : null;
   if (face && face.tipo === "face" && face.ass.normal) {
-    await suporteEscolhido(faceComoSuporte(face.ass.centro, face.ass.normal), null, ferramenta);
+    await suporteEscolhido(faceComoSuporte(face.ass.centro, face.ass.normal, face.ass), null, ferramenta);
     return true;
   }
   aguardando = { para: "esboco", ferramenta };
@@ -2558,9 +2609,9 @@ function suporteDoPlano(id: string): SuporteEsboco {
   return id === "XY" || id === "XZ" || id === "YZ" ? { tipo: "plano", plano: id, deslocamento: 0 } : { tipo: "planoRef", id };
 }
 
-function faceComoSuporte(ponto: Vec3, normal: Vec3): SuporteEsboco {
+function faceComoSuporte(ponto: Vec3, normal: Vec3, face?: AssinaturaFace): SuporteEsboco {
   const d = escalar(ponto, normal);
-  return { tipo: "face", origem: normal.map((v) => v * d) as Vec3, normal, eixoX: eixoXParaNormal(normal) };
+  return { tipo: "face", origem: normal.map((v) => v * d) as Vec3, normal, eixoX: eixoXParaNormal(normal), ...(face ? { face } : {}) };
 }
 
 async function suporteEscolhido(suporte: SuporteEsboco, pontoTocado: Vec3 | null, ferramenta?: Ferramenta) {
@@ -2734,7 +2785,7 @@ function iniciarFuro() {
   const face = selPeca.find((r): r is Extract<Referencia, { tipo: "face" }> => r.tipo === "face" && r.ass.geom === "plano");
   if (face?.ass.normal) {
     limparSelPeca();
-    return criarFuro(faceComoSuporte(face.ass.centro, face.ass.normal), pontoTocado ?? face.ass.centro);
+    return criarFuro(faceComoSuporte(face.ass.centro, face.ass.normal, face.ass), pontoTocado ?? face.ass.centro);
   }
   aguardando = { para: "furo" };
   avisar("Furo: toque a face plana onde ficam os furos.");

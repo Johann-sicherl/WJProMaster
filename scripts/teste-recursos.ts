@@ -5,7 +5,7 @@ import opencascade from "replicad-opencascadejs";
 import { setOC } from "replicad";
 import { createRequire } from "node:module";
 import {
-  documentoExemplo, novaFeature, novoEsboco, validarDocumento, type Feature, type FeatureEsboco, type FeatureExtrusao, type Referencia,
+  documentoExemplo, nomeUnico, novaFeature, novoEsboco, validarDocumento, type Feature, type FeatureEsboco, type FeatureExtrusao, type Referencia,
 } from "../src/model";
 import { exportarDxf, regenerar } from "../src/kernel/regenerar";
 import { medidasFuro } from "../src/kernel/furos";
@@ -822,6 +822,31 @@ const bloco = ext(base, 10);
   const fa = { ...(novaFeature("flangeAresta", 1) as any), arestas: [{ tipo: "aresta", ass: dobras[0] }] };
   verdade("desdobrada: flange de aresta avisa", regenerar([...caixa, conv, des, fa]).erros.some((e) => /desdobrada/.test(e.mensagem)));
 }
+
+// ---------- esboço numa face acompanha a face quando a peça muda (relato do Johann) ----------
+{
+  // base 100 × 50 com 10 de altura (plano Superior); bolso cego Ø20 × 5 esboçado na face de cima
+  const base = retangulo(100, 50, "XZ");
+  const b = ext(base, 10);
+  const r0 = regenerar([base, b]);
+  const topo = r0.topologia!.faces.find((f) => f.geom === "plano" && f.normal && f.normal[1] > 0.99)!;
+  const furo = novoEsboco(3, { tipo: "face", origem: [0, 10, 0], normal: [0, 1, 0], eixoX: [1, 0, 0], face: topo });
+  op.circulo(furo, op.ponto(furo, { x: 20, y: 0 }), 10);
+  const bolso = ext(furo, 5, { operacao: "cortar", inverter: true });
+  const fundo = (r: ReturnType<typeof regenerar>) => r.topologia!.faces.filter((f) => f.geom === "plano" && f.normal && f.normal[1] > 0.99).map((f) => Math.round(f.centro[1] * 1000) / 1000).sort((x, y) => x - y);
+  const r1 = regenerar([base, b, furo, bolso]);
+  confere("bolso na peça de 10: fundo em y = 5", fundo(r1)[0], 5);
+  // a peça engrossa para 25: o esboço vai junto com a face de cima e o bolso continua com 5
+  const b2 = { ...b, profundidade: 25, condicao: { ...b.condicao, profundidade: 25 } } as FeatureExtrusao;
+  const r2 = regenerar([base, b2, furo, bolso]);
+  semErros("peça engrossada", r2);
+  confere("peça de 25: fundo do bolso em y = 20 (acompanhou a face)", fundo(r2)[0], 20);
+  verdade("plano novo do esboço devolvido para a interface", Math.abs((r2.suportes?.[furo.id] as { origem: number[] } | undefined)?.origem[1] ?? 0) === 25);
+  confere("volume = 100 × 50 × 25 − π·10²·5", r2.volume, 100 * 50 * 25 - Math.PI * 100 * 5, 0.5);
+}
+
+// ---------- nomes únicos na árvore ----------
+verdade("nome repetido ganha o próximo número", nomeUnico(["Extrusão1", "Corte3", "Corte4"], "Corte4") === "Corte5" && nomeUnico(["Corte1"], "Corte2") === "Corte2" && nomeUnico(["Esboço 1"], "Esboço 1") === "Esboço2");
 
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);

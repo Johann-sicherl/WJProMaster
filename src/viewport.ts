@@ -64,6 +64,8 @@ const COR_REMOVIDO = 0xd9443a;
 export interface FacePlana {
   origem: Vec3;
   normal: Vec3;
+  /** índice em `topologia.faces` */
+  indice?: number;
 }
 
 /** Comprimento das setas de arrasto na tela (px). */
@@ -516,7 +518,7 @@ export class Viewport {
         if (nk.dot(n0) < 0.9999) return null;
       }
       const n = n0.normalize();
-      return { origem: hit.point.toArray() as Vec3, normal: n.toArray() as Vec3 };
+      return { origem: hit.point.toArray() as Vec3, normal: n.toArray() as Vec3, indice: this.faces[i + 2] };
     }
     return null;
   }

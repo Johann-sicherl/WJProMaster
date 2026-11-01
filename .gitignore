@@ -11,3 +11,4 @@ Thumbs.db
 *.SLDPRT
 *.SLDASM
 *.SLDDRW
+scripts/estresse-*.png

@@ -69,7 +69,8 @@ export type Referencia =
 export type SuporteEsboco =
   | { tipo: "plano"; plano: Plano; deslocamento: number }
   | { tipo: "planoRef"; id: string }
-  | { tipo: "face"; origem: Vec3; normal: Vec3; eixoX: Vec3 };
+  /** face plana da peça: o plano acompanha a face na reconstrução (`face` = assinatura dela) */
+  | { tipo: "face"; origem: Vec3; normal: Vec3; eixoX: Vec3; face?: AssinaturaFace };
 
 export interface PontoEsboco {
   id: string;
@@ -980,4 +981,20 @@ function migrarParaYParaCima(d: Documento) {
     return r;
   };
   d.features = d.features.map((f) => visitar(f) as Feature);
+}
+
+/**
+ * Nome livre na árvore: se já existe, troca o número final pelo maior número da mesma base + 1
+ * ("Corte4" com Corte4 existente → "Corte5"). Evita nomes repetidos depois de excluir recursos.
+ */
+export function nomeUnico(existentes: string[], nome: string): string {
+  if (!existentes.includes(nome)) return nome;
+  const base = nome.replace(/\s*\d+$/, "");
+  const esc = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let max = 0;
+  for (const n of existentes) {
+    const m = n.match(new RegExp(`^${esc}\\s*(\\d+)$`));
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `${base}${max + 1}`;
 }

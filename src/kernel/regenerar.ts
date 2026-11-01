@@ -20,7 +20,7 @@ import {
 } from "replicad";
 import type {
   Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
-  Inclinacao, Perfil, Plano, Referencia, RecursoFino, Vec3,
+  Inclinacao, Perfil, Plano, Referencia, RecursoFino, SuporteEsboco, Vec3,
 } from "../model";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
@@ -75,6 +75,8 @@ export interface ResultadoRegeneracao {
    * depois), para ver cortes, furos, filetes etc. antes de confirmar.
    */
   previaRemovido?: MalhaSimples | null;
+  /** esboços em face cujo plano mudou porque a face andou (a interface grava no documento) */
+  suportes?: Record<string, SuporteEsboco>;
 }
 
 /** Malha só de triângulos (prévia). */
@@ -119,6 +121,8 @@ interface Ctx {
   /** Ferramentas de recursos comuns depois da chapa (reaplicadas quando a chapa muda). */
   opsAposChapa: Ferramenta[];
   refsSaida: InfoReferencia[];
+  /** suportes de esboço que mudaram ao acompanhar a face (a interface guarda no documento) */
+  suportes: Record<string, SuporteEsboco>;
 }
 
 function novoCtx(): Ctx {
@@ -129,7 +133,7 @@ function novoCtx(): Ctx {
     ["Y", { origem: [0, 0, 0], dir: [0, 1, 0] }],
     ["Z", { origem: [0, 0, 0], dir: [0, 0, 1] }],
   ]);
-  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, curvas: new Map(), chapa: null, corpoAntesChapa: null, opsAposChapa: [], refsSaida: [] };
+  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, curvas: new Map(), chapa: null, corpoAntesChapa: null, opsAposChapa: [], suportes: {}, refsSaida: [] };
 }
 
 function exigirPeca(ctx: Ctx, oque = "Este recurso"): Shape3D {
@@ -1916,7 +1920,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
 
   const peca = ctx.peca;
   ultimaPeca = peca;
-  if (!peca) return { malha: null, erros, volume: null, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {} };
+  if (!peca) return { malha: null, erros, volume: null, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes };
 
   const m = peca.mesh({ tolerance: tolerancia, angularTolerance: 15 });
   const a = peca.meshEdges({ tolerance: tolerancia, angularTolerance: 15 });
@@ -1942,6 +1946,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     tempos,
     facesPorRecurso: planificada ? {} : rastreador.atribuir(peca),
     previaRemovido: planificada ? null : previaRemovido,
+    suportes: ctx.suportes,
   };
 }
 
@@ -1979,10 +1984,39 @@ export function exportarDxf(nome: string): { dxf: string; resumo: ResumoPlanific
   return dxfDoPlanificado(desenho, dobras, nome, ultimaChapa.p, ultimaChapa.dobras.length);
 }
 
+/**
+ * Esboço feito numa face plana acompanha a face: reencontra, na peça até este ponto da árvore,
+ * a face plana mais parecida com a guardada (mesma normal; mais perto e de área parecida) e
+ * leva o plano do esboço até ela. As coordenadas no plano ficam (origem = projeção da origem do
+ * modelo), como nos CADs profissionais: o que estava cotado à peça continua no lugar certo.
+ */
+function acompanharFace(f: FeatureEsboco, ctx: Ctx) {
+  const s = f.suporte;
+  if (s.tipo !== "face" || !s.face?.normal || !ctx.peca) return;
+  const ass = s.face;
+  let melhor: (typeof faces)[number] | null = null, nota = Infinity;
+  const faces = topologia(ctx.peca).topo.faces;
+  for (const fc of faces) {
+    if (fc.geom !== "plano" || !fc.normal) continue;
+    if (fc.normal[0] * ass.normal![0] + fc.normal[1] * ass.normal![1] + fc.normal[2] * ass.normal![2] < 0.9999) continue;
+    const d = Math.hypot(fc.centro[0] - ass.centro[0], fc.centro[1] - ass.centro[1], fc.centro[2] - ass.centro[2]);
+    const n = d + Math.abs(fc.area - ass.area) / Math.max(1, Math.sqrt(ass.area));
+    if (n < nota) { nota = n; melhor = fc; }
+  }
+  if (!melhor) return; // a face sumiu: o esboço fica onde estava
+  const nrm = melhor.normal!;
+  const dist = melhor.centro[0] * nrm[0] + melhor.centro[1] * nrm[1] + melhor.centro[2] * nrm[2];
+  const origem: Vec3 = [nrm[0] * dist, nrm[1] * dist, nrm[2] * dist];
+  const mudou = Math.hypot(origem[0] - s.origem[0], origem[1] - s.origem[1], origem[2] - s.origem[2]) > 1e-7;
+  f.suporte = { ...s, origem, face: melhor };
+  if (mudou) ctx.suportes[f.id] = f.suporte;
+}
+
 function regenerarFeature(f: Feature, ctx: Ctx) {
   switch (f.tipo) {
     case "esboco":
       // não gera sólido; fica disponível para as features seguintes
+      acompanharFace(f, ctx);
       referencial(f.suporte, ctx.planos);
       ctx.esbocos.set(f.id, f);
       return;
