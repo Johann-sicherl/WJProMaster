@@ -156,3 +156,10 @@ async function sincronizarTudo(cofre: typeof import("../comum/cofre"), tarefas: 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
 }
+
+// versão publicada (vite.config.ts): confere se o aparelho já pegou a atualização
+declare const __VERSAO__: string;
+{
+  const v = document.getElementById("versao");
+  if (v) v.textContent = `v${__VERSAO__}`;
+}

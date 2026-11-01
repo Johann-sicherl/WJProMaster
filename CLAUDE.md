@@ -219,6 +219,9 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
   e marcar a feature com erro na árvore, sem interromper a regeneração das demais.
 - Manter o kernel fora da thread da UI. Regenerações antigas são descartadas (`seq`).
 - `vite.config.ts`: `base` vem de `BASE_PATH` (padrão `/`, Cloudflare); o workflow do GitHub Pages usa `/<nome do repositório>/`.
+- **Versão** ao lado do WJProMaster na página inicial: `<version do package.json>.<GITHUB_RUN_NUMBER>`
+  (`__VERSAO__` em `vite.config.ts`; em desenvolvimento termina em `.dev`). O último número sobe sozinho a cada
+  publicação; os três primeiros só mudam editando `version` no `package.json` (entregas grandes).
 - Offline: o build gera `precache.json` (todos os arquivos) e carimba a versão do cache no `sw.js`
   (plugin `offline` em `vite.config.ts`). O service worker guarda na instalação só as páginas e os
   arquivos pequenos; o kernel `.wasm` (~23 MB, 7 MB comprimido) é guardado quando o WJCAD termina de
