@@ -628,7 +628,21 @@ export type Feature =
   | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva
   | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco | FeatureJunta | FeatureMeiaEsquadria
-  | FeatureFecharCanto | FeatureAlivioCanto | FeatureQuebrarCanto | FeatureDesdobrar | FeatureDobrar | FeatureConverterChapa;
+  | FeatureFecharCanto | FeatureAlivioCanto | FeatureQuebrarCanto | FeatureDesdobrar | FeatureDobrar | FeatureConverterChapa
+  | FeatureImportado;
+
+/**
+ * Corpo importado de um arquivo neutro (STEP ou STL, de qualquer CAD): o sólido entra na árvore
+ * como recurso, sem a árvore de origem; dá para modelar por cima (cortes, furos, filetes…).
+ * O conteúdo do arquivo fica no próprio .wjcad (base64).
+ */
+export interface FeatureImportado extends FeatureBase {
+  tipo: "importado";
+  formato: "step" | "stl";
+  /** nome do arquivo de origem */
+  arquivo: string;
+  dados: string;
+}
 
 /** Recurso que cria a chapa e guarda os parâmetros globais dela (bitola, espessura, raio, K). */
 export type FeatureBaseChapa = FeatureFlangeBase | FeatureConverterChapa;
@@ -739,7 +753,7 @@ export function novoEsboco(indice: number, suporte: SuporteEsboco): FeatureEsboc
 const COND_PADRAO = (dist: number): Condicao => ({ tipo: "cego", dist });
 const FINO_PADRAO = (): RecursoFino => ({ ativo: false, tipo: "uma", t1: 2, t2: 2, inverter: false });
 
-export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: number): Feature {
+export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco" | "importado">, indice: number): Feature {
   const base = { id: novoId(), suprimida: false };
   switch (tipo) {
     case "extrusao":
@@ -897,6 +911,7 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   desdobrar: "Desdobrar",
   dobrar: "Dobrar",
   converterChapa: "Converter em chapa",
+  importado: "Corpo importado",
 };
 
 /**
@@ -997,4 +1012,27 @@ export function nomeUnico(existentes: string[], nome: string): string {
     if (m) max = Math.max(max, Number(m[1]));
   }
   return `${base}${max + 1}`;
+}
+
+/** Bytes → base64 (em blocos: arquivos de vários MB não estouram a pilha). */
+export function paraBase64(b: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+export function deBase64(t: string): Uint8Array {
+  const s = atob(t);
+  const b = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+  return b;
+}
+
+/** Documento novo com um corpo importado (STEP/STL) como primeiro recurso. */
+export function documentoImportado(nomeArquivo: string, bytes: Uint8Array): Documento {
+  const ext = nomeArquivo.toLowerCase().split(".").pop() ?? "";
+  const formato = ext === "stl" ? "stl" : "step";
+  const d = documentoVazio();
+  d.nome = nomeArquivo.replace(/\.[^.]+$/, "") || "Importado";
+  d.features = [{ id: novoId(), nome: "Importado1", suprimida: false, tipo: "importado", formato, arquivo: nomeArquivo, dados: paraBase64(bytes) }];
+  return d;
 }

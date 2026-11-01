@@ -17,11 +17,15 @@ import {
   type Edge,
   type Face,
   type Shape3D,
+  cast,
+  getOC,
+  makeCompound,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
+  Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureImportado, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, SuporteEsboco, Vec3,
 } from "../model";
+import { deBase64 } from "../model";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
 import { medidasFuro } from "./furos";
@@ -2012,6 +2016,60 @@ function acompanharFace(f: FeatureEsboco, ctx: Ctx) {
   if (mudou) ctx.suportes[f.id] = f.suporte;
 }
 
+/** Sólidos importados já lidos (o arquivo é lido uma vez; cada regeneração usa uma cópia). */
+const importados = new Map<string, Shape3D>();
+
+/** Lê o STEP/STL guardado no recurso (OpenCascade: STEPControl_Reader / StlAPI_Reader). */
+function corpoImportado(f: FeatureImportado): Shape3D {
+  const chave = `${f.id}:${f.formato}:${f.dados.length}:${f.dados.slice(0, 64)}:${f.dados.slice(-64)}`;
+  let s = importados.get(chave);
+  if (!s) {
+    const oc = getOC() as never as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const nome = `/importado-${f.id}.${f.formato}`;
+    oc.FS.writeFile(nome, deBase64(f.dados));
+    try {
+      if (f.formato === "step") {
+        const leitor = new oc.STEPControl_Reader();
+        const ok = leitor.ReadFile(nome);
+        if (ok !== oc.IFSelect_ReturnStatus?.IFSelect_RetDone && ok !== 1) { leitor.delete(); throw new Error(`Não foi possível ler o STEP "${f.arquivo}" (arquivo corrompido ou de outro tipo).`); }
+        leitor.TransferRoots();
+        const forma = cast(leitor.OneShape()) as unknown as Shape3D;
+        leitor.delete();
+        s = forma;
+      } else {
+        // o STL é só uma malha de triângulos soltos: costura em cascas fechadas, um sólido por
+        // casca, e une os triângulos coplanares em faces (fica editável como uma peça comum)
+        const leitor = new oc.StlAPI_Reader();
+        const tris = new oc.TopoDS_Shell();
+        const lido = leitor.Read(tris, nome);
+        leitor.delete();
+        if (!lido) { tris.delete(); throw new Error(`Não foi possível ler o STL "${f.arquivo}".`); }
+        const costura = new oc.BRepBuilderAPI_Sewing(1e-4, true, true, true, false);
+        costura.Add(tris);
+        costura.Perform(new oc.Message_ProgressRange());
+        const costurado = costura.SewedShape();
+        const corpos: Shape3D[] = [];
+        const exp = new oc.TopExp_Explorer(costurado, oc.TopAbs_ShapeEnum.TopAbs_SHELL, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        const fix = new oc.ShapeFix_Solid();
+        for (; exp.More(); exp.Next()) {
+          const unir = new oc.ShapeUpgrade_UnifySameDomain(fix.SolidFromShell(oc.TopoDS.Shell(exp.Current())), true, true, false);
+          unir.Build();
+          corpos.push(cast(unir.Shape()) as unknown as Shape3D);
+          unir.delete();
+        }
+        for (const x of [exp, fix, costura, tris]) x.delete();
+        if (!corpos.length) throw new Error(`O STL "${f.arquivo}" não forma uma superfície fechada (malha aberta).`);
+        s = corpos.length === 1 ? corpos[0] : (makeCompound(corpos) as unknown as Shape3D);
+      }
+    } finally {
+      try { oc.FS.unlink(nome); } catch { /* já apagado */ }
+    }
+    if (!s || !(s as unknown as { faces: unknown[] }).faces?.length) throw new Error(`O arquivo "${f.arquivo}" não tem sólido para importar.`);
+    importados.set(chave, s);
+  }
+  return s.clone() as Shape3D;
+}
+
 function regenerarFeature(f: Feature, ctx: Ctx) {
   switch (f.tipo) {
     case "esboco":
@@ -2243,6 +2301,8 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
     case "corteChapa":
       abaOuCorte(f, ctx);
       return reconstruirChapa(ctx);
+    case "importado":
+      return aplicar(ctx, f.id, [{ tool: corpoImportado(f), op: "adicionar" }]);
     case "curva": {
       const t = curvaRecurso(f, ctx);
       ctx.curvas.set(f.id, t);

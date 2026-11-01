@@ -5,9 +5,9 @@ import opencascade from "replicad-opencascadejs";
 import { setOC } from "replicad";
 import { createRequire } from "node:module";
 import {
-  documentoExemplo, nomeUnico, novaFeature, novoEsboco, validarDocumento, type Feature, type FeatureEsboco, type FeatureExtrusao, type Referencia,
+  documentoExemplo, documentoImportado, nomeUnico, novaFeature, novoEsboco, validarDocumento, type Feature, type FeatureEsboco, type FeatureExtrusao, type Referencia,
 } from "../src/model";
-import { exportarDxf, regenerar } from "../src/kernel/regenerar";
+import { exportar, exportarDxf, regenerar } from "../src/kernel/regenerar";
 import { medidasFuro } from "../src/kernel/furos";
 import { topologia } from "../src/kernel/topologia";
 import * as op from "../src/esboco/operacoes";
@@ -847,6 +847,33 @@ const bloco = ext(base, 10);
 
 // ---------- nomes únicos na árvore ----------
 verdade("nome repetido ganha o próximo número", nomeUnico(["Extrusão1", "Corte3", "Corte4"], "Corte4") === "Corte5" && nomeUnico(["Corte1"], "Corte2") === "Corte2" && nomeUnico(["Esboço 1"], "Esboço 1") === "Esboço2");
+
+// ---------- corpo importado (STEP/STL de outro CAD) ----------
+{
+  // peça 60 × 40 × 20 exportada em STEP e STL; reimportada como recurso e cortada por cima
+  const base = retangulo(60, 40, "XZ");
+  const r0 = regenerar([base, ext(base, 20)]);
+  semErros("peça para exportar", r0);
+  const arquivos = { step: new Uint8Array(await exportar("step").arrayBuffer()), stl: new Uint8Array(await exportar("stl").arrayBuffer()) };
+  for (const formato of ["step", "stl"] as const) {
+    const bytes = arquivos[formato];
+    const d = documentoImportado(`bloco.${formato === "step" ? "STP" : "stl"}`, bytes);
+    verdade(`${formato}: documento novo com o corpo importado`, d.nome === "bloco" && d.features.length === 1 && d.features[0].tipo === "importado");
+    const doc2 = validarDocumento(JSON.parse(JSON.stringify(d)));
+    const imp = doc2.features[0];
+    const r1 = regenerar([imp]);
+    semErros(`${formato}: importado`, r1);
+    confere(`${formato}: volume importado = 60 × 40 × 20`, r1.volume, 48000, 1e-3);
+    // furo passante Ø10 por cima, esboçado no plano Superior
+    const furo = novoEsboco(9, { tipo: "plano", plano: "XZ", deslocamento: 0 });
+    op.circulo(furo, op.ponto(furo, { x: 0, y: 0 }), 5);
+    const corte = ext(furo, 10, { operacao: "cortar", condicao: { tipo: "passanteAmbos", dist: 10 } } as Partial<FeatureExtrusao>);
+    const r2 = regenerar([imp, furo, corte]);
+    semErros(`${formato}: corte no importado`, r2);
+    confere(`${formato}: volume com furo Ø10`, r2.volume, 48000 - Math.PI * 25 * 20, 1e-3);
+    if (formato === "stl") verdade("stl: faces planas unidas (6 faces + furo)", (r1.topologia?.faces.length ?? 0) === 6);
+  }
+}
 
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);

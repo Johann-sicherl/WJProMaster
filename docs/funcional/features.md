@@ -478,4 +478,4 @@ centro** do loft (também nos cortes). Esboços usados ficam aninhados na curva.
 | Aparência | cor por peça/recurso/face | F3 |
 | Propriedades personalizadas | código, descrição, material, massa | ⏸ |
 | Erros de reconstrução | ✕ vermelho / ⚠ amarelo na árvore, "O que está errado" | 🟡 |
-| Importar / exportar | STEP ✅, STL ✅; importar STEP, 3MF, DXF de face ⏸ | 🟡 |
+| Importar / exportar | exportar STEP ✅, STL ✅. **Importar STEP (.step/.stp) e STL** ✅ (01/11/2026): Arquivo → Abrir arquivo do aparelho; vira peça nova com o recurso **Corpo importado** (sólido sem a árvore de origem; o arquivo fica dentro do .wjcad) e dá para modelar por cima (cortes, furos, filetes…). STL é malha: os triângulos são costurados num sólido e os coplanares viram uma face só (curvas ficam facetadas). Arquivo de CAD comercial: exportar STEP AP214 no CAD de origem. Importar montagem STEP, 3MF, DXF de face ⏸ | 🟡 |
