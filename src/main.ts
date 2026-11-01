@@ -1,4 +1,6 @@
 import { atualizarExternas } from "./esboco/externas";
+import { deixarArquivo } from "./comum/transferir";
+import { pecasDoStep } from "./montagem/step";
 import "./style.css";
 import { ABAS, type Comando, type IdAba } from "./comandos";
 import { ICONES, type NomeIcone } from "./icones";
@@ -8,6 +10,8 @@ import type { PropriedadesMassa } from "./kernel/avaliar";
 import {
   documentoExemplo,
   documentoImportado,
+  fotografiaLeve,
+  revelarFotografia,
   documentoVazio,
   ehCota,
   esbocosAbsorvidos,
@@ -359,20 +363,10 @@ function atualizarStatus() {
 }
 
 // ---------- histórico (desfazer/refazer) ----------
-/**
- * Conteúdo de corpos importados (STEP/STL, vários MB) fica fora das fotografias do desfazer:
- * cada passo guarda só uma etiqueta e o conteúdo é guardado uma vez.
- */
+/** Conteúdo dos corpos importados (STEP/STL) guardado uma vez para todas as fotografias do desfazer. */
 const dadosImportados = new Map<string, string>();
-function fotografar(d: Documento): string {
-  return JSON.stringify(d, function (k, v) {
-    if (k !== "dados" || typeof v !== "string" || v.length < 4096) return v;
-    const id = `@importado:${(this as { id?: string }).id}:${v.length}:${v.slice(-32)}`;
-    dadosImportados.set(id, v);
-    return id;
-  });
-}
-const revelar = (json: string): Documento => JSON.parse(json, (k, v) => (k === "dados" && typeof v === "string" && v.startsWith("@importado:") ? dadosImportados.get(v) ?? v : v));
+const fotografar = (d: Documento) => fotografiaLeve(d, dadosImportados);
+const revelar = (json: string): Documento => revelarFotografia(json, dadosImportados);
 
 function registrarPasso() {
   historico.push(fotografar(doc));
@@ -3844,7 +3838,18 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
     // STEP/STL de qualquer CAD: vira peça nova com o corpo importado (salvar grava .wjcad)
     if (/\.(step|stp|stl)$/i.test(arq.name)) {
       if (arq.size > 30e6 && !confirm(`O arquivo tem ${(arq.size / 1e6).toFixed(0)} MB; a importação pode ficar lenta e o .wjcad ficará grande. Continuar?`)) return;
-      const d = documentoImportado(arq.name, new Uint8Array(await arq.arrayBuffer()));
+      const bytes = new Uint8Array(await arq.arrayBuffer());
+      // STEP de montagem (árvore de produtos): oferece abrir no ambiente Montagem, peça por peça
+      if (!/\.stl$/i.test(arq.name)) {
+        const pecas = pecasDoStep(new TextDecoder().decode(bytes));
+        const n = pecas.reduce((s, x) => s + x.n, 0);
+        if (n && confirm(`Este STEP é uma montagem (${pecas.length} peças, ${n} componentes). Abrir no ambiente Montagem, com cada peça separada?\n\nCancelar: abre tudo como um corpo só nesta peça.`)) {
+          await deixarArquivo(arq.name, bytes);
+          location.href = new URL(`${import.meta.env.BASE_URL}cad/montagem/#importar-step`, location.href).href;
+          return;
+        }
+      }
+      const d = documentoImportado(arq.name, bytes);
       if (!aberto || !doc.features.length || confirm("Fechar a peça atual e abrir o arquivo?")) abrirDocumento(d);
       return;
     }
@@ -3986,9 +3991,19 @@ function gravarJSON(chave: string, valor: unknown) {
   try {
     localStorage.setItem(chave, JSON.stringify(valor));
   } catch {
-    /* armazenamento indisponível: segue sem salvar */
+    // sem espaço (peça com STEP grande): a cópia velha sai para não voltar no lugar desta
+    try {
+      localStorage.removeItem(chave);
+    } catch {
+      /* armazenamento indisponível */
+    }
+    if (chave === CHAVE_AUTOSAVE && !avisouAutosave) {
+      avisouAutosave = true;
+      setTimeout(() => avisar("Peça grande demais para o salvamento automático do navegador: salve no cofre (💾) para não perder."), 0);
+    }
   }
 }
+let avisouAutosave = false;
 
 // ---------- testes automatizados (só em desenvolvimento) ----------
 if (import.meta.env.DEV) {

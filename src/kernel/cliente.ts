@@ -1,6 +1,7 @@
 // Ponte entre a interface e o Web Worker do kernel.
 // Só a regeneração mais recente importa: pedidos antigos que chegarem atrasados são descartados.
 
+import type { LeituraMontagem } from "./importar";
 import type { Feature, Referencia } from "../model";
 import type { PedidoKernel, RespostaKernel } from "./worker";
 import type { ResultadoRegeneracao } from "./regenerar";
@@ -102,7 +103,13 @@ export class ClienteKernel {
     return this.pedir<ResultadoComponente>({ tipo: "componente", chave, features, ...(planificar ? { planificar } : {}) });
   }
 
+  /** Montagem STEP: corpos (STEP de cada peça) e instâncias posicionadas. Os bytes vão transferidos. */
+  montagemStep(bytes: Uint8Array) {
+    return this.pedir<LeituraMontagem>({ tipo: "montagemStep", bytes });
+  }
+
   private enviar(p: PedidoKernel) {
+    if (p.tipo === "montagemStep") return this.worker.postMessage(p, [p.bytes.buffer]);
     // cópia limpa: objetos da UI não vão para o worker
     this.worker.postMessage(JSON.parse(JSON.stringify(p)));
   }
