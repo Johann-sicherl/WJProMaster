@@ -91,6 +91,16 @@ igual("entidade da cena → componente local", [localDaEntidade(cena.mapa, "face
 igual("faces do componente", facesDoComponente(cena.mapa, "B"), [1]);
 igual("local → cena", globalDaEntidade(cena.mapa, "aresta", "B", 0), 1);
 igual("centro do componente B", r3(centroDoComponente(cena, "B")!), [10.5, 0, 0]);
+{
+  // peça só de malha (STL grande, sem topologia B-Rep): entra na cena e tem centro pelos pontos
+  const soMalha = { ...malha(), faces: new Uint32Array(), gruposArestas: new Uint32Array(), arestas: new Float32Array() };
+  const c2 = juntar([
+    { comp: "A", malha: malha(), topo: topo(), t: IDENTIDADE() },
+    { comp: "M", malha: soMalha, topo: { faces: [], arestas: [], vertices: [], arestasDaFace: [] }, t: { pos: [0, 20, 0], rot: [0, 0, 0, 1] } },
+  ]);
+  igual("corpo de malha na cena: triângulos dos dois, faces só do sólido", [c2.malha.triangulos.length / 3, c2.malha.faces.length / 3], [4, 1]);
+  igual("centro do corpo de malha pelos pontos", r3(centroDoComponente(c2, "M")!), [0.5, 20.5, 0]);
+}
 
 // ---------- solver dos posicionamentos ----------
 {

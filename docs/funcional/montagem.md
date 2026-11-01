@@ -193,6 +193,8 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
 - Todos os componentes entram **fixos** e sem posicionamentos (o STEP não traz as relações):
   flutue o que quiser mover e posicione. Teste: `scripts/teste-importar.ts`.
 - STEP/STL com o **Inserir componentes** aberto entra como uma peça só.
+- Peça só com **corpo de malha** (STL grande, ex.: escaneamento 3D) entra na montagem para ser vista
+  e movida (centro pela caixa dos pontos); sem faces/arestas para posicionar nem medir (01/11/2026).
 
 ### 2.14 Nova peça na montagem (Insert New Part) — ⏸
 

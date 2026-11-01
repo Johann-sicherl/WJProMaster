@@ -22,6 +22,8 @@ export interface MapaCena {
   faces: number[]; // início de cada componente (a lista termina com o total)
   arestas: number[];
   vertices: number[];
+  /** início de cada componente em `malha.vertices` (posições), para peças só de malha */
+  pontos: number[];
 }
 
 export interface Cena {
@@ -59,7 +61,7 @@ export function juntar(itens: ItemCena[]): Cena {
   const vertices = new Float32Array(nV), normais = new Float32Array(nV), triangulos = new Uint32Array(nT);
   const arestas = new Float32Array(nA), gruposArestas = new Uint32Array(nG), faces = new Uint32Array(nF);
   const topo: Topologia = { faces: [], arestas: [], vertices: [], arestasDaFace: [] };
-  const mapa: MapaCena = { comps: [], faces: [], arestas: [], vertices: [] };
+  const mapa: MapaCena = { comps: [], faces: [], arestas: [], vertices: [], pontos: [] };
   let oV = 0, oT = 0, oA = 0, oG = 0, oF = 0;
   for (const it of itens) {
     const m = it.malha, t = it.t;
@@ -101,6 +103,7 @@ export function juntar(itens: ItemCena[]): Cena {
     mapa.faces.push(topo.faces.length);
     mapa.arestas.push(topo.arestas.length);
     mapa.vertices.push(topo.vertices.length);
+    mapa.pontos.push(oV);
     const nArestasAntes = topo.arestas.length;
     for (const f of it.topo.faces) topo.faces.push(transfFace(t, f));
     for (const a of it.topo.arestas) topo.arestas.push(transfAresta(t, a));
@@ -115,6 +118,7 @@ export function juntar(itens: ItemCena[]): Cena {
   mapa.faces.push(topo.faces.length);
   mapa.arestas.push(topo.arestas.length);
   mapa.vertices.push(topo.vertices.length);
+  mapa.pontos.push(oV);
   return { malha: { vertices, normais, triangulos, arestas, faces, gruposArestas }, topo, mapa };
 }
 
@@ -149,9 +153,23 @@ export function centroDoComponente(c: Cena, comp: string): Vec3 | null {
   const k = c.mapa.comps.indexOf(comp);
   if (k < 0) return null;
   const vs = c.topo.vertices.slice(c.mapa.vertices[k], c.mapa.vertices[k + 1]);
+  // corpo de malha (STL grande): sem vértices B-Rep, usa os pontos da malha
+  if (!vs.length && c.mapa.pontos) return centroDaCaixa(c.malha.vertices.subarray(c.mapa.pontos[k], c.mapa.pontos[k + 1]));
   if (!vs.length) return null;
   const mn: Vec3 = [Infinity, Infinity, Infinity], mx: Vec3 = [-Infinity, -Infinity, -Infinity];
   for (const v of vs) for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], v[i]); mx[i] = Math.max(mx[i], v[i]); }
+  return [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2];
+}
+
+/** Centro da caixa de uma lista de posições (x, y, z, x, y, z…). */
+export function centroDaCaixa(p: ArrayLike<number>): Vec3 | null {
+  if (p.length < 3) return null;
+  const mn: Vec3 = [Infinity, Infinity, Infinity], mx: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < p.length; i += 3)
+    for (let k = 0; k < 3; k++) {
+      if (p[i + k] < mn[k]) mn[k] = p[i + k];
+      if (p[i + k] > mx[k]) mx[k] = p[i + k];
+    }
   return [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2];
 }
 
