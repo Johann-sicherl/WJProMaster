@@ -15,7 +15,8 @@ import {
   quatEixoAngulo, rotuloComponente, validarMontagem, type ComponenteMontagem, type DocumentoMontagem, type PecaEmbutida, type Posicionamento,
   type PadraoComponentes, type RefMontagem, type TipoPosicionamento, type Transformacao,
 } from "./modelo";
-import { centroDoComponente, facesDoComponente, globalDaEntidade, indiceLocal, juntar, localDaEntidade, type Cena } from "./cena";
+import { centroDaCaixa, centroDoComponente, facesDoComponente, globalDaEntidade, indiceLocal, juntar, localDaEntidade, type Cena } from "./cena";
+import type { Topologia } from "../kernel/topologia";
 import { compRel, NOME_TIPO, primitivaLocal, resolverMontagem, tiposPossiveis, transformar, type ResultadoSolver } from "./solver";
 import {
   abrirArquivoNoApp, abrirCopias, abrirDoCofre, desligar, documentosDoCofre, instalarPainelCofre, lerDoCofre, salvarNoCofre,
@@ -117,6 +118,8 @@ function malhaDa(p: PecaEmbutida): Promise<ResultadoComponente> {
   return pd;
 }
 
+const TOPO_VAZIA: Topologia = { faces: [], arestas: [], vertices: [], arestasDaFace: [] };
+
 /** Monta a cena com as malhas já calculadas (síncrono: usado a cada movimento do arraste). */
 function montarCena() {
   if (!doc) {
@@ -128,7 +131,8 @@ function montarCena() {
   const poses = mostrarExplodida && doc.explosao?.length ? posesExplodidas(doc) : null;
   const itens = doc.componentes.filter(visivel).flatMap((c) => {
     const r = malhas.get(chaveDe(pecaDe(c)));
-    return r?.malha && r.topologia ? [{ comp: c.id, malha: r.malha, topo: r.topologia, t: poses?.get(c.id) ?? c.t }] : [];
+    // peça só de malha (STL grande) não tem topologia B-Rep: entra só para ser vista
+    return r?.malha ? [{ comp: c.id, malha: r.malha, topo: r.topologia ?? TOPO_VAZIA, t: poses?.get(c.id) ?? c.t }] : [];
   });
   cena = itens.length ? juntar(itens) : null;
   viewport.mostrarMalha(cena?.malha ?? null, cena?.topo ?? null);
@@ -156,8 +160,13 @@ async function atualizarCena(enquadrar = false) {
 function centrosLocais(): Map<string, Vec3> {
   const m = new Map<string, Vec3>();
   for (const p of doc?.pecas ?? []) {
-    const vs = malhas.get(chaveDe(p))?.topologia?.vertices;
-    if (!vs?.length) continue;
+    const r = malhas.get(chaveDe(p));
+    const vs = r?.topologia?.vertices;
+    if (!vs?.length) {
+      const c = r?.malha ? centroDaCaixa(r.malha.vertices) : null; // corpo de malha
+      if (c) m.set(p.id, c);
+      continue;
+    }
     const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
     for (const v of vs) for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], v[i]); mx[i] = Math.max(mx[i], v[i]); }
     m.set(p.id, [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2]);
