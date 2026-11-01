@@ -5,6 +5,10 @@ import { fileURLToPath } from "node:url";
 
 const raiz = fileURLToPath(new URL(".", import.meta.url));
 const versaoPacote = (JSON.parse(readFileSync(resolve(raiz, "package.json"), "utf8")) as { version: string }).version;
+/** Versão mostrada no início e em cada app: <package.json>.<nº da publicação no GitHub Actions>. */
+const VERSAO = `${versaoPacote}.${process.env.GITHUB_RUN_NUMBER ?? "dev"}`;
+/** Nas páginas HTML, %WJ_VERSAO% vira o número da versão. */
+const versaoNoHtml = (): Plugin => ({ name: "wj-versao", transformIndexHtml: (html) => html.replaceAll("%WJ_VERSAO%", VERSAO) });
 import { defineConfig, type Plugin } from "vite";
 
 /**
@@ -46,9 +50,8 @@ function offline(): Plugin {
 // Duas páginas: index.html = início do WJProMaster (leve); cad/index.html = WJCAD.
 export default defineConfig(({ command, isPreview }) => ({
   base: command === "build" || isPreview ? process.env.BASE_PATH || "/" : "/",
-  plugins: [offline()],
-  // versão mostrada ao lado do WJProMaster: <package.json>.<nº da publicação no GitHub Actions>
-  define: { __VERSAO__: JSON.stringify(`${versaoPacote}.${process.env.GITHUB_RUN_NUMBER ?? "dev"}`) },
+  plugins: [offline(), versaoNoHtml()],
+  define: { __VERSAO__: JSON.stringify(VERSAO) },
   worker: { format: "es" },
   optimizeDeps: { exclude: ["replicad-opencascadejs"] },
   server: { host: true }, // permite abrir no tablet pela rede local durante o desenvolvimento

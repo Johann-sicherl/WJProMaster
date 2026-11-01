@@ -90,7 +90,7 @@ export class Casca {
     aplicarDispositivo();
     const topo = el("header", { class: "wj-topo" });
     topo.innerHTML = `
-      <a class="wj-marca" href="../" title="Voltar ao WJProMaster"><img src="${import.meta.env.BASE_URL}wjpromaster.svg" alt="" /><span>${o.app}</span></a>
+      <a class="wj-marca" href="../" title="Voltar ao WJProMaster"><img src="${import.meta.env.BASE_URL}wjpromaster.svg" alt="" /><span>${o.app} <small class="versao-app">v${__VERSAO__}</small></span></a>
       <button class="wj-ic" data-a="novo" title="Novo (Ctrl+N)">${IC.novo}</button>
       <button class="wj-ic" data-a="abrir" title="Abrir (Ctrl+O)">${IC.abrir}</button>
       <button class="wj-ic" data-a="salvar" title="Salvar no cofre (Ctrl+S): no dispositivo, em GO-OUT; o GO-IN publica">${IC.salvar}</button>

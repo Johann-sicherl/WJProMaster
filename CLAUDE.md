@@ -219,7 +219,7 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
   e marcar a feature com erro na árvore, sem interromper a regeneração das demais.
 - Manter o kernel fora da thread da UI. Regenerações antigas são descartadas (`seq`).
 - `vite.config.ts`: `base` vem de `BASE_PATH` (padrão `/`, Cloudflare); o workflow do GitHub Pages usa `/<nome do repositório>/`.
-- **Versão** ao lado do WJProMaster na página inicial: `<version do package.json>.<GITHUB_RUN_NUMBER>`
+- **Versão** ao lado do WJProMaster na página inicial e do nome de cada app (`%WJ_VERSAO%` no HTML, `__VERSAO__` no código): `<version do package.json>.<GITHUB_RUN_NUMBER>`
   (`__VERSAO__` em `vite.config.ts`; em desenvolvimento termina em `.dev`). O último número sobe sozinho a cada
   publicação; os três primeiros só mudam editando `version` no `package.json` (entregas grandes).
 - Offline: o build gera `precache.json` (todos os arquivos) e carimba a versão do cache no `sw.js`
