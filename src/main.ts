@@ -1,5 +1,6 @@
 import { atualizarExternas } from "./esboco/externas";
 import { deixarArquivo } from "./comum/transferir";
+import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO } from "./kernel/stl";
 import { pecasDoStep } from "./montagem/step";
 import "./style.css";
 import { ABAS, type Comando, type IdAba } from "./comandos";
@@ -3849,7 +3850,17 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
           return;
         }
       }
-      const d = documentoImportado(arq.name, bytes);
+      avisar(`Lendo ${arq.name}…`);
+      const base64 = await new Promise<string>((ok, erro) => {
+        const r = new FileReader();
+        r.onload = () => ok(String(r.result).replace(/^data:[^,]*,/, ""));
+        r.onerror = () => erro(r.error);
+        r.readAsDataURL(arq);
+      });
+      const d = documentoImportado(arq.name, bytes, base64);
+      const imp = d.features[0];
+      if (imp.tipo === "importado" && imp.malha)
+        avisar(`STL com ${contarTriangulosStl(bytes).toLocaleString("pt-BR")} triângulos: entra como corpo de malha (só exibição e volume; acima de ${LIMITE_TRIANGULOS_SOLIDO.toLocaleString("pt-BR")} triângulos não vira sólido).`);
       if (!aberto || !doc.features.length || confirm("Fechar a peça atual e abrir o arquivo?")) abrirDocumento(d);
       return;
     }

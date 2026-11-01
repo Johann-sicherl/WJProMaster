@@ -5,6 +5,8 @@ import opencascade from "replicad-opencascadejs";
 import { getOC, makeBox, makeCylinder, setOC } from "replicad";
 import { createRequire } from "node:module";
 import { lerMontagemStep } from "../src/kernel/importar";
+import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO, malhaDoStl } from "../src/kernel/stl";
+import { documentoImportado } from "../src/model";
 import { regenerar } from "../src/kernel/regenerar";
 import { montagemDoStep, nomesDosCorpos, pecasDoStep, textoStep } from "../src/montagem/step";
 import { aplicarPonto, quantidades, validarMontagem } from "../src/montagem/modelo";
@@ -86,6 +88,34 @@ igual("bases no lugar", bases.sort(), [[100, 10, 60], [100, 110, 60]].sort());
 for (const p of m.pecas) {
   const res = regenerar(p.doc.features);
   igual(`peça "${p.nome}" regenera`, [res.erros.length, Math.round(res.volume ?? 0)], [0, p.nome === "Base" ? 60000 : Math.round(Math.PI * 25 * 30)]);
+}
+
+// ---------- STL grande: corpo de malha (sem virar sólido) ----------
+{
+  // cubo de 10 mm em STL ASCII (12 triângulos) e o mesmo sem um triângulo (aberto)
+  const v = [[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0], [0, 0, 10], [10, 0, 10], [10, 10, 10], [0, 10, 10]];
+  const f = [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]];
+  const ascii = (fs: number[][]) => new TextEncoder().encode(`solid cubo\n${fs.map((t) => `facet normal 0 0 0\nouter loop\n${t.map((i) => `vertex ${v[i].join(" ")}`).join("\n")}\nendloop\nendfacet`).join("\n")}\nendsolid cubo\n`);
+  const m = malhaDoStl(ascii(f));
+  igual("cubo ASCII: 8 vértices soldados, 12 triângulos, volume 1000, área 600", [m.vertices.length / 3, m.triangulos.length / 3, Math.round(m.volume ?? -1), Math.round(m.area)], [8, 12, 1000, 600]);
+  igual("malha aberta: sem volume", malhaDoStl(ascii(f.slice(1))).volume, null);
+  igual("contagem de triângulos (ASCII)", contarTriangulosStl(ascii(f)), 12);
+  // binário com mais triângulos que o limite: o documento marca como corpo de malha
+  const n = LIMITE_TRIANGULOS_SOLIDO + 1;
+  const bin = new Uint8Array(84 + 50 * n);
+  new DataView(bin.buffer).setUint32(80, n, true);
+  const dv = new DataView(bin.buffer);
+  for (let i = 0; i < n; i++) for (let k = 0; k < 9; k++) dv.setFloat32(84 + i * 50 + 12 + k * 4, [i, 0, 0, i, 1, 0, i, 0, 1][k], true);
+  igual("contagem de triângulos (binário)", contarTriangulosStl(bin), n);
+  const dGrande = documentoImportado("scan.stl", bin), dPequeno = documentoImportado("cubo.stl", ascii(f));
+  igual("STL acima do limite vira corpo de malha; pequeno continua sólido", [dGrande.features[0].nome, (dGrande.features[0] as { malha?: boolean }).malha, (dPequeno.features[0] as { malha?: boolean }).malha], ["Malha1", true, undefined]);
+  // regenerar: corpo de malha exibido (sem faces selecionáveis) e volume da malha fechada
+  const cuboMalha = { ...dPequeno.features[0], malha: true } as typeof dPequeno.features[0];
+  const r1 = regenerar([cuboMalha]);
+  igual("corpo de malha regenera: 12 triângulos, sem faces, volume 1000", [r1.erros.length, r1.malha!.triangulos.length / 3, r1.malha!.faces.length, Math.round(r1.volume ?? 0), r1.topologia], [0, 12, 0, 1000, null]);
+  // com um sólido depois: os dois aparecem; as faces do sólido continuam selecionáveis
+  const r2 = regenerar([cuboMalha, ...documentoImportado("cubo.stl", ascii(f)).features]);
+  igual("malha + sólido: faces só do sólido, triângulos dos dois", [r2.erros.length, r2.malha!.faces.length / 3, r2.topologia?.faces.length, r2.malha!.triangulos.length / 3 > 12], [0, 6, 6, true]);
 }
 
 console.log(falhas ? `\nimportar: ${falhas} falha(s)` : "\nimportar: tudo certo");

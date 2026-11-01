@@ -8,6 +8,7 @@ export type Plano = "XY" | "XZ" | "YZ";
 /** Y para cima (como nos CADs profissionais): Frontal = XY, Superior = XZ, Lateral = YZ. */
 export const NOME_PLANO: Record<Plano, string> = { XY: "Frontal", XZ: "Superior", YZ: "Lateral" };
 
+import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO } from "./kernel/stl";
 import type { Configuracao } from "./configuracoes";
 
 export type Vec3 = [number, number, number];
@@ -642,6 +643,11 @@ export interface FeatureImportado extends FeatureBase {
   /** nome do arquivo de origem */
   arquivo: string;
   dados: string;
+  /**
+   * Corpo de malha: STL grande (escaneamento 3D) que não vira sólido — só é exibido (com volume
+   * se a malha for fechada); recursos sólidos não atuam nele.
+   */
+  malha?: boolean;
 }
 
 /** Recurso que cria a chapa e guarda os parâmetros globais dela (bitola, espessura, raio, K). */
@@ -1028,12 +1034,14 @@ export function deBase64(t: string): Uint8Array {
 }
 
 /** Documento novo com um corpo importado (STEP/STL) como primeiro recurso. */
-export function documentoImportado(nomeArquivo: string, bytes: Uint8Array): Documento {
+/** `base64`: o conteúdo já codificado (no navegador, o FileReader faz isso sem travar a tela). */
+export function documentoImportado(nomeArquivo: string, bytes: Uint8Array, base64?: string): Documento {
   const ext = nomeArquivo.toLowerCase().split(".").pop() ?? "";
   const formato = ext === "stl" ? "stl" : "step";
   const d = documentoVazio();
   d.nome = nomeArquivo.replace(/\.[^.]+$/, "") || "Importado";
-  d.features = [{ id: novoId(), nome: "Importado1", suprimida: false, tipo: "importado", formato, arquivo: nomeArquivo, dados: paraBase64(bytes) }];
+  const malha = formato === "stl" && contarTriangulosStl(bytes) > LIMITE_TRIANGULOS_SOLIDO;
+  d.features = [{ id: novoId(), nome: malha ? "Malha1" : "Importado1", suprimida: false, tipo: "importado", formato, arquivo: nomeArquivo, dados: base64 ?? paraBase64(bytes), ...(malha ? { malha } : {}) }];
   return d;
 }
 

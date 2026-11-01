@@ -123,7 +123,9 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
     case "importado":
       return { titulo: "Corpo importado", caixas: [{ titulo: "Origem", campos: [
         { t: "info", texto: (x) => `Arquivo: ${(x as { arquivo: string }).arquivo}` },
-        { t: "info", texto: (x) => `Formato: ${(x as { formato: string }).formato.toUpperCase()} (sem a árvore de recursos de origem; modele por cima com cortes, furos, filetes…)` },
+        { t: "info", texto: (x) => (x as { malha?: boolean }).malha
+          ? "Corpo de malha (STL grande, ex.: escaneamento 3D): só exibição, com volume se a malha for fechada. Não aceita cortes, filetes nem seleção de faces."
+          : `Formato: ${(x as { formato: string }).formato.toUpperCase()} (sem a árvore de recursos de origem; modele por cima com cortes, furos, filetes…)` },
       ] }] };
     case "esboco":
       return { titulo: "Esboço", caixas: [] };
