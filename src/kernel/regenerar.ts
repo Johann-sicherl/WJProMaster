@@ -26,6 +26,7 @@ import type {
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, SuporteEsboco, Vec3,
 } from "../model";
 import { deBase64 } from "../model";
+import { malhaDoStl, type MalhaStl } from "./stl";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
 import { medidasFuro } from "./furos";
@@ -112,6 +113,8 @@ interface Ferramenta {
 
 interface Ctx {
   peca: Shape3D | null;
+  /** corpos de malha (só exibidos) */
+  malhas: MalhaStl[];
   esbocos: Map<string, FeatureEsboco>;
   ferramentas: Map<string, Ferramenta[]>;
   planos: Map<string, Referencial>;
@@ -137,7 +140,7 @@ function novoCtx(): Ctx {
     ["Y", { origem: [0, 0, 0], dir: [0, 1, 0] }],
     ["Z", { origem: [0, 0, 0], dir: [0, 0, 1] }],
   ]);
-  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, curvas: new Map(), chapa: null, corpoAntesChapa: null, opsAposChapa: [], suportes: {}, refsSaida: [] };
+  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, curvas: new Map(), chapa: null, corpoAntesChapa: null, opsAposChapa: [], suportes: {}, refsSaida: [], malhas: [] };
 }
 
 function exigirPeca(ctx: Ctx, oque = "Este recurso"): Shape3D {
@@ -1874,6 +1877,30 @@ export async function regenerarComRecuperacao(
   throw new Error("O kernel falhou várias vezes seguidas: recarregue a página.");
 }
 
+/**
+ * Malha do sólido + corpos de malha. Os triângulos dos corpos de malha ficam depois dos grupos de
+ * faces: são desenhados, mas não são faces selecionáveis.
+ */
+function juntarMalhas(solido: MalhaPeca | null, malhas: MalhaStl[]): MalhaPeca {
+  const partes = [...(solido ? [solido] : []), ...malhas];
+  const nV = partes.reduce((s, x) => s + x.vertices.length, 0), nT = partes.reduce((s, x) => s + x.triangulos.length, 0);
+  const vertices = new Float32Array(nV), normais = new Float32Array(nV), triangulos = new Uint32Array(nT);
+  let ov = 0, ot = 0;
+  for (const x of partes) {
+    vertices.set(x.vertices, ov);
+    normais.set(x.normais, ov);
+    for (let i = 0; i < x.triangulos.length; i++) triangulos[ot + i] = x.triangulos[i] + ov / 3;
+    ov += x.vertices.length;
+    ot += x.triangulos.length;
+  }
+  return {
+    vertices, normais, triangulos,
+    arestas: solido?.arestas ?? new Float32Array(),
+    faces: solido?.faces ?? new Uint32Array(),
+    gruposArestas: solido?.gruposArestas ?? new Uint32Array(),
+  };
+}
+
 function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { planificar?: boolean; previa?: string }): ResultadoRegeneracao {
   const erros: ErroFeature[] = [];
   const tempos: { id: string; ms: number }[] = [];
@@ -1924,7 +1951,12 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
 
   const peca = ctx.peca;
   ultimaPeca = peca;
-  if (!peca) return { malha: null, erros, volume: null, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes };
+  if (!peca) {
+    // só corpos de malha: exibidos sem faces/arestas selecionáveis
+    const malha = ctx.malhas.length ? juntarMalhas(null, ctx.malhas) : null;
+    const volume = ctx.malhas.length && ctx.malhas.every((m) => m.volume !== null) ? ctx.malhas.reduce((s, m) => s + m.volume!, 0) : null;
+    return { malha, erros, volume, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes };
+  }
 
   const m = peca.mesh({ tolerance: tolerancia, angularTolerance: 15 });
   const a = peca.meshEdges({ tolerance: tolerancia, angularTolerance: 15 });
@@ -1934,15 +1966,16 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
   } catch {
     volume = null;
   }
+  const malhaSolido: MalhaPeca = {
+    vertices: Float32Array.from(m.vertices),
+    normais: Float32Array.from(m.normals),
+    triangulos: Uint32Array.from(m.triangles),
+    arestas: Float32Array.from(a.lines),
+    faces: Uint32Array.from(m.faceGroups.flatMap((g) => [g.start, g.count, g.faceId >>> 0])),
+    gruposArestas: Uint32Array.from(a.edgeGroups.flatMap((g) => [g.start, g.count])),
+  };
   return {
-    malha: {
-      vertices: Float32Array.from(m.vertices),
-      normais: Float32Array.from(m.normals),
-      triangulos: Uint32Array.from(m.triangles),
-      arestas: Float32Array.from(a.lines),
-      faces: Uint32Array.from(m.faceGroups.flatMap((g) => [g.start, g.count, g.faceId >>> 0])),
-      gruposArestas: Uint32Array.from(a.edgeGroups.flatMap((g) => [g.start, g.count])),
-    },
+    malha: ctx.malhas.length ? juntarMalhas(malhaSolido, ctx.malhas) : malhaSolido,
     erros,
     volume,
     topologia: topologia(peca).topo,
@@ -2014,6 +2047,19 @@ function acompanharFace(f: FeatureEsboco, ctx: Ctx) {
   const mudou = Math.hypot(origem[0] - s.origem[0], origem[1] - s.origem[1], origem[2] - s.origem[2]) > 1e-7;
   f.suporte = { ...s, origem, face: melhor };
   if (mudou) ctx.suportes[f.id] = f.suporte;
+}
+
+/** Malhas (STL grande) já lidas: a leitura é só uma vez por arquivo. */
+const malhasLidas = new Map<string, MalhaStl>();
+function malhaImportada(f: FeatureImportado): MalhaStl {
+  const chave = `${f.id}:${f.dados.length}:${f.dados.slice(0, 64)}:${f.dados.slice(-64)}`;
+  let m = malhasLidas.get(chave);
+  if (!m) {
+    m = malhaDoStl(deBase64(f.dados));
+    malhasLidas.clear(); // uma de cada vez na memória (são grandes)
+    malhasLidas.set(chave, m);
+  }
+  return m;
 }
 
 /** Sólidos importados já lidos (o arquivo é lido uma vez; cada regeneração usa uma cópia). */
@@ -2302,6 +2348,7 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       abaOuCorte(f, ctx);
       return reconstruirChapa(ctx);
     case "importado":
+      if (f.malha) return void ctx.malhas.push(malhaImportada(f));
       return aplicar(ctx, f.id, [{ tool: corpoImportado(f), op: "adicionar" }]);
     case "curva": {
       const t = curvaRecurso(f, ctx);
