@@ -6,8 +6,10 @@
 import "../style.css";
 import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
+import { montagemDoStep } from "./step";
+import { pegarArquivo } from "../comum/transferir";
 import { Viewport, type Entidade, type TipoEntidade, type Vista } from "../viewport";
-import { MATERIAIS, validarDocumento, type Documento, type Referencia, type Vec3 } from "../model";
+import { documentoImportado, fotografiaLeve, revelarFotografia, MATERIAIS, validarDocumento, type Documento, type Referencia, type Vec3 } from "../model";
 import {
   aplicarPadroes, embutirPeca, excluirComponentes, excluirPadrao, explosaoAutomatica, girarEmTorno, massaDaMontagem, posesExplodidas, IDENTIDADE, inserirComponente, marcaDe, montagemVazia, novoIdM, quantidades, quatDeEuler,
   quatEixoAngulo, rotuloComponente, validarMontagem, type ComponenteMontagem, type DocumentoMontagem, type PecaEmbutida, type Posicionamento,
@@ -31,6 +33,8 @@ const RAIZ = import.meta.env.BASE_URL;
 // ---------- estado ----------
 let doc: DocumentoMontagem | null = null;
 const historico: string[] = [];
+/** conteúdo dos corpos importados, guardado uma vez para todas as fotografias */
+const dadosImportados = new Map<string, string>();
 const refazer: string[] = [];
 let cena: Cena | null = null;
 /** Componentes selecionados (árvore ou modelo). */
@@ -204,7 +208,7 @@ function prefixo(c: ComponenteMontagem): string {
 
 function registrarPasso() {
   if (!doc) return;
-  historico.push(JSON.stringify(doc));
+  historico.push(fotografiaLeve(doc, dadosImportados));
   if (historico.length > 80) historico.shift();
   refazer.length = 0;
 }
@@ -213,9 +217,18 @@ function salvarAutosave() {
   try {
     localStorage.setItem(CHAVE, JSON.stringify(doc));
   } catch {
-    /* sem espaço: segue sem o salvamento automático */
+    // grande demais para o navegador (STEP importado): tira a cópia velha para ela não voltar no
+    // lugar desta, e avisa uma vez que o cofre é que guarda
+    try {
+      localStorage.removeItem(CHAVE);
+    } catch {
+      /* armazenamento indisponível */
+    }
+    if (!avisouAutosave) avisar("Montagem grande demais para o salvamento automático: salve no cofre (💾) para não perder.");
+    avisouAutosave = true;
   }
 }
+let avisouAutosave = false;
 /** Mudança confirmada: passo de desfazer, salvamento automático e tela. */
 function alterou(cenaToda = false) {
   registrarPasso();
@@ -226,7 +239,7 @@ function alterou(cenaToda = false) {
   atualizarStatus();
 }
 function restaurar(json: string) {
-  doc = validarMontagem(JSON.parse(json));
+  doc = validarMontagem(revelarFotografia(json, dadosImportados));
   selComps = selComps.filter((id) => compDe(id));
   if (selMate && !doc.posicionamentos.some((m) => m.id === selMate)) selMate = null;
   $<HTMLInputElement>("nome-doc").value = doc.nome;
@@ -997,11 +1010,33 @@ function colocarInserido(x: number, y: number) {
   else avisar("Colocado. Escolha outra peça ou ✓.");
 }
 
+/** Montagem STEP (de qualquer CAD) → montagem WJCAD: uma peça por corpo, componentes fixos no lugar. */
+async function importarMontagemStep(nome: string, bytes: Uint8Array) {
+  if (doc?.componentes.length && !confirm("Fechar a montagem atual e abrir o arquivo?")) return;
+  const texto = new TextDecoder().decode(bytes); // antes: os bytes vão transferidos para o kernel
+  avisar(`Lendo ${nome}…`);
+  await kernel.pronto;
+  const leitura = await kernel.montagemStep(bytes);
+  desligar("asm");
+  const d = montagemDoStep(nome, texto, leitura);
+  abrirMontagem(d);
+  avisar(`${d.pecas.length} peça(s) e ${d.componentes.length} componente(s) importados, todos fixos. Salve no cofre para guardar.`);
+}
+
 $<HTMLInputElement>("arquivo").onchange = async (ev) => {
   const arq = (ev.target as HTMLInputElement).files?.[0];
   (ev.target as HTMLInputElement).value = "";
   if (!arq) return;
   try {
+    if (/\.(step|stp|stl)$/i.test(arq.name)) {
+      const bytes = new Uint8Array(await arq.arrayBuffer());
+      // com o Inserir aberto: entra como uma peça (corpo importado); senão, abre como montagem
+      if (comando?.tipo === "inserir" || /\.stl$/i.test(arq.name)) {
+        if (!doc) novaMontagem(false);
+        await inserirDoc(documentoImportado(arq.name, bytes), { nome: arq.name });
+      } else await importarMontagemStep(arq.name, bytes);
+      return;
+    }
     const dados = JSON.parse(await arq.text());
     if (dados?.formato === "wjasm") {
       if (!doc || confirm("Fechar a montagem atual e abrir o arquivo?")) {
@@ -1909,6 +1944,7 @@ function abrirMontagem(d: DocumentoMontagem) {
   isolados = null;
   historico.length = 0;
   refazer.length = 0;
+  dadosImportados.clear();
   $<HTMLInputElement>("nome-doc").value = d.nome;
   atualizarAreaDeTrabalho();
   registrarPasso();
@@ -1982,7 +2018,7 @@ function fecharMontagem() {
 const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => void; doc?: boolean }> = {
   novo: { rotulo: "Novo…", icone: "nova", fazer: abrirNovo },
   abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("asm") },
-  abrir: { rotulo: "Abrir arquivo do aparelho (.wjasm)…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
+  abrir: { rotulo: "Abrir arquivo do aparelho (.wjasm, montagem STEP)…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
   salvar: { rotulo: "Salvar (.wjasm)", icone: "salvar", fazer: () => void salvar(), doc: true },
   fechar: { rotulo: "Fechar montagem", icone: "fechar", fazer: fecharMontagem, doc: true },
   desenho: { rotulo: "Criar desenho desta montagem", icone: "desenho", fazer: () => {
@@ -2187,6 +2223,8 @@ void sincronizarAoAbrir(kernel.pronto)?.catch(() => {});
   if (hash) history.replaceState(null, "", location.pathname + location.search);
   if (hash === "#novo") novaMontagem();
   else if (hash === "#abrir-autosave" && inicial) abrirMontagem(inicial);
+  else if (hash === "#importar-step")
+    void pegarArquivo().then((a) => (a ? importarMontagemStep(a.nome, a.bytes) : atualizarAreaDeTrabalho())).catch((e) => avisar((e as Error).message));
   else if (inicial && vinculo("asm")) abrirMontagem(inicial); // volta da peça: continua a montagem
   else atualizarAreaDeTrabalho();
 

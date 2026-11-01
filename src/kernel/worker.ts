@@ -9,6 +9,7 @@ import { posicionar, projetar, type Corte } from "./projecao";
 import type { Camera, Orientacao } from "../desenho/modelo";
 import { ehFatal, exportar, exportarDxf, pecaAtual, regenerar, regenerarComRecuperacao } from "./regenerar";
 import { massa, medir, verificar } from "./avaliar";
+import { lerMontagemStep } from "./importar";
 
 export type PedidoKernel =
   | { tipo: "regenerar"; seq: number; features: Feature[]; planificar?: boolean; previa?: string }
@@ -26,6 +27,8 @@ export type PedidoKernel =
   | { tipo: "massaPecas"; seq: number; chaves: string[] }
   /** Medir na montagem: entidades em coordenadas da montagem nos componentes posicionados. */
   | { tipo: "medirMontagem"; seq: number; itens: { chave: string; t: { pos: Vec3; rot: [number, number, number, number] } }[]; refs: Referencia[] }
+  /** Montagem STEP: separa os sólidos (peças e instâncias posicionadas). */
+  | { tipo: "montagemStep"; seq: number; bytes: Uint8Array }
   | { tipo: "projetar"; seq: number; itens: { chave: string; t: { pos: Vec3; rot: [number, number, number, number] } }[]; orientacao: Orientacao | Camera; tol: number; corte?: Corte };
 
 export type RespostaKernel =
@@ -166,6 +169,11 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
           x.f.delete();
         }
         enviar({ tipo: "resposta", seq: p.seq, dados: achadas });
+        break;
+      }
+      case "montagemStep": {
+        const l = await lerMontagemStep(p.bytes);
+        enviar({ tipo: "resposta", seq: p.seq, dados: l }, l.corpos.map((c) => c.step.buffer as ArrayBuffer));
         break;
       }
       case "massaPecas": {

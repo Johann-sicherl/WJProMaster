@@ -61,7 +61,9 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
   migrados ao abrir (`validarDocumento`)
 - Modelo: lista de features serializada em JSON (`.wjcad`; abre `.jlscad` e `.cadt` antigos), em `src/model.ts`.
   **Importar STEP/STL**: abrir um `.step/.stp/.stl` cria peça com o recurso `importado` (arquivo em base64 no
-  `.wjcad`, lido no kernel com `STEPControl_Reader`/`StlAPI_Reader` + costura; fica fora das fotografias do desfazer)
+  `.wjcad`, lido no kernel com `STEPControl_Reader`/`StlAPI_Reader` + costura; fica fora das fotografias do desfazer).
+  **Montagem STEP** → `.wjasm` (`src/kernel/importar.ts` separa sólidos/instâncias; nomes pelo texto em
+  `src/montagem/step.ts`; teste `scripts/teste-importar.ts`); a Peça repassa o arquivo à Montagem (`#importar-step`)
 - **Ambientes do WJCAD**: Peça em `cad/` (`src/main.ts`), **Montagem** em `cad/montagem/` (`src/montagem/`:
   modelo, cena junta, solver de posicionamentos, testados em `scripts/teste-montagem.ts`) e **Desenho** em
   `cad/desenho/` (`src/desenho/`: folha ABNT em SVG, vistas por projeção HLR no kernel em

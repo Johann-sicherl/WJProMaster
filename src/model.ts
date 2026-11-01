@@ -1036,3 +1036,19 @@ export function documentoImportado(nomeArquivo: string, bytes: Uint8Array): Docu
   d.features = [{ id: novoId(), nome: "Importado1", suprimida: false, tipo: "importado", formato, arquivo: nomeArquivo, dados: paraBase64(bytes) }];
   return d;
 }
+
+/**
+ * Fotografia do documento (desfazer) sem repetir o conteúdo de corpos importados (vários MB):
+ * cada `dados` grande vira uma etiqueta e o conteúdo fica uma vez só em `guardados`.
+ */
+export function fotografiaLeve(d: unknown, guardados: Map<string, string>): string {
+  return JSON.stringify(d, function (k, v) {
+    if (k !== "dados" || typeof v !== "string" || v.length < 4096) return v;
+    const id = `@importado:${(this as { id?: string }).id}:${v.length}:${v.slice(-32)}`;
+    guardados.set(id, v);
+    return id;
+  });
+}
+export function revelarFotografia<T>(json: string, guardados: Map<string, string>): T {
+  return JSON.parse(json, (k, v) => (k === "dados" && typeof v === "string" && v.startsWith("@importado:") ? guardados.get(v) ?? v : v));
+}

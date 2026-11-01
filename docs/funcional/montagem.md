@@ -179,9 +179,24 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
 - **Abrir peça** abre o componente no ambiente de Peça (mesma janela; ao salvar volta para a
   montagem, que se atualiza). **Editar no contexto** (com a montagem visível) ⏸.
 
-### 2.13 Nova peça na montagem (Insert New Part) — ⏸
+### 2.13 Importar montagem STEP — ✅ (01/11/2026)
+- **Abrir arquivo do aparelho** na Montagem aceita `.step/.stp` de qualquer CAD (do CAD comercial:
+  exportar STEP AP214). Abrir um STEP de montagem na **Peça** pergunta se vai para a Montagem
+  (o arquivo segue pelo IndexedDB, `src/comum/transferir.ts`).
+- Kernel (`src/kernel/importar.ts`): cada sólido vira um componente na posição do arquivo;
+  instâncias da mesma peça (geometria compartilhada no STEP) viram **a mesma peça** (Pino<1>,
+  Pino<2>…); instância espelhada ou com escala vira peça própria. Submontagens são achatadas
+  (todos os componentes no nível de cima). Cada peça embutida tem o recurso **Corpo importado**.
+- Nomes das peças e do conjunto vêm do texto do STEP (`src/montagem/step.ts`: árvore
+  NEXT_ASSEMBLY_USAGE_OCCURRENCE, escapes `\X2\`). Só são usados se a quantidade de cada peça
+  confere com o que o kernel achou; senão ficam Peça1, Peça2… (nunca um nome trocado).
+- Todos os componentes entram **fixos** e sem posicionamentos (o STEP não traz as relações):
+  flutue o que quiser mover e posicione. Teste: `scripts/teste-importar.ts`.
+- STEP/STL com o **Inserir componentes** aberto entra como uma peça só.
 
-### 2.14 Submontagens — M-D
+### 2.14 Nova peça na montagem (Insert New Part) — ⏸
+
+### 2.15 Submontagens — M-D
 - Inserir uma montagem como componente; **dissolver** e **formar submontagem** ⏸.
 
 ## 3. Aba Avaliar (na montagem)
