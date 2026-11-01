@@ -21,6 +21,15 @@ const require = createRequire(import.meta.url);
 const carregarKernel = async () => setOC(await (opencascade as any)({ locateFile: () => require.resolve("replicad-opencascadejs/wasm") }));
 await carregarKernel();
 let reinicios = 0;
+// depois de um reinício, o coletor de lixo do módulo antigo do OpenCascade (já quebrado) pode
+// disparar um erro ao liberar objetos dele: anota e segue (no worker do app isso é silenciado)
+process.on("uncaughtException", (e) => {
+  if (e.name === "RuntimeError" && /cleanupSome|FinalizationRegistry/.test(e.stack ?? "")) {
+    achar(`FINALIZADOR do kernel antigo depois de reinício: ${e.message}`);
+    return;
+  }
+  throw e;
+});
 const reiniciar = async () => {
   reinicios++;
   await carregarKernel();

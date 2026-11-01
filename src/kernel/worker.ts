@@ -50,6 +50,13 @@ async function carregarKernel() {
 
 const inicializado = carregarKernel();
 
+// Depois de um reinício (pane do OpenCascade), o coletor de lixo do módulo antigo ainda libera
+// objetos dele e o módulo quebrado reclama ("table index is out of bounds"): é lixo do kernel
+// descartado, não afeta o novo; não vira erro na tela.
+self.addEventListener("error", (e) => {
+  if (/RuntimeError|out of bounds|unreachable|signature mismatch/.test(e.message ?? "")) e.preventDefault();
+});
+
 /** Plano da chapa planificada: normal da maior face plana e a direção da aresta reta mais longa dela. */
 function planoDaChapa(s: Shape3D): { olho: Vec3; direita: Vec3 } {
   let melhor: { area: number; olho: Vec3; direita: Vec3 } | null = null;

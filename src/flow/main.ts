@@ -688,7 +688,7 @@ const casca: Casca = new Casca({
     {
       id: "resultados", rotulo: "Resultados", grupos: [
         [
-          { id: "copiar", rotulo: "Copiar resultados", icone: "copiar", acao: () => void navigator.clipboard.writeText(textoResultados()).then(() => casca.avisar("Resultados copiados.")) },
+          { id: "copiar", rotulo: "Copiar resultados", icone: "copiar", acao: () => void navigator.clipboard.writeText(textoResultados()).then(() => casca.avisar("Resultados copiados."), () => casca.avisar("O navegador não deixou copiar: use Exportar ou selecione o texto.")) },
           { id: "csv", rotulo: "Histórico (CSV)", icone: "exportar", dica: "Forças e coeficientes ao longo do cálculo", acao: () => (sim && preparo ? baixar(sim.hist.csv(preparo), estudo.nome, "csv", "text/csv") : casca.avisar("Calcule o estudo primeiro.")) },
         ],
       ],

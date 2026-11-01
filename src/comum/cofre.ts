@@ -768,6 +768,8 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
     const meu = atual?.checkout?.usuario === usuario;
     const onde = (x: Arquivo) => caminhoDaPasta(ps, x.pasta) || "(raiz)";
     const appDe = (x: Arquivo) => APPS[extensao(x.nome)]?.app ?? extensao(x.nome).toUpperCase();
+    // o painel pode ter sido fechado enquanto o banco respondia
+    if (!gaveta) return;
     const corpo = gaveta.querySelector<HTMLElement>(".wjc-painel")!;
     corpo.innerHTML = `
       <header><span>Cofre — ${NOME_APP[app]}</span><button data-b="fechar" title="Fechar">✕</button></header>

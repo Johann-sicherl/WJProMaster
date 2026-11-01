@@ -1281,7 +1281,8 @@ function barraRapida(tipos: TipoPosicionamento[], xy: { x: number; y: number }) 
 function definirTipo(t: TipoPosicionamento) {
   if (comando?.tipo !== "posicionar") return;
   comando.m.tipo = t;
-  if (t === "distancia" || t === "angulo") comando.m.valor = valorAtual(t, primitivaDe(comando.sel[0]), primitivaDe(comando.sel[1]));
+  // tipo escolhido antes das duas entidades: o valor vem quando a 2ª for tocada
+  if ((t === "distancia" || t === "angulo") && comando.sel.length === 2) comando.m.valor = valorAtual(t, primitivaDe(comando.sel[0]), primitivaDe(comando.sel[1]));
   previaPosicionamento();
   renderizarPosicionar();
 }

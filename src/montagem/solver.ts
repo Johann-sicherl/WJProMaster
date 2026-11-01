@@ -424,6 +424,11 @@ export function resolverMontagem(d: DocumentoMontagem, o: OpcoesSolver = {}): Re
   for (const b of blocos) b.comps.forEach((c) => ligados.add(c));
   if (arraste) ligados.add(o.arrastado!.comp);
   const maxIter = o.maxIter ?? 60;
+  // ponto de partida: com posicionamentos em conflito o mínimo é local e resolver de novo poderia
+  // levar a outro um pouco pior — os componentes "andariam" a cada ação. Nunca piora o que está.
+  const custoDe = () => blocos.reduce((s, b) => s + b.f().reduce((t, x) => t + x * x, 0), 0);
+  const inicio = new Map(poses);
+  const custo0 = o.arrastado ? Infinity : custoDe();
 
   // 1) em etapas: componente cujos posicionamentos só envolvem o que já está resolvido
   const resolvidos = new Set<string>();
@@ -443,7 +448,14 @@ export function resolverMontagem(d: DocumentoMontagem, o: OpcoesSolver = {}): Re
   }
   // 2) todos juntos (o que sobrou acoplado + acabamento)
   const moveis = [...ligados];
-  const custo = ajustar(moveis, arraste ? [...blocos, arraste] : blocos, poses, centros, L, maxIter, o.preferido);
+  let custo = ajustar(moveis, arraste ? [...blocos, arraste] : blocos, poses, centros, L, maxIter, o.preferido);
+  if (!o.arrastado) {
+    custo = custoDe();
+    if (custo > custo0 * (1 + 1e-9) + 1e-12) {
+      for (const [id, t] of inicio) poses.set(id, t);
+      custo = custo0;
+    }
+  }
 
   // posicionamentos não satisfeitos
   for (const b of blocos) {

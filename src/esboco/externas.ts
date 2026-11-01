@@ -68,25 +68,40 @@ export function pontoNaProjecao(proj: ProjecaoExterna, q: P2): P2 {
   return { x: proj.c.x + ((q.x - proj.c.x) / d) * proj.r, y: proj.c.y + ((q.y - proj.c.y) / d) * proj.r };
 }
 
-/** Entidade da peça atual mais parecida com a referência guardada (null se sumiu). */
+/**
+ * Entidade da peça atual mais parecida com a referência guardada (null se sumiu). A peça pode ter
+ * mudado de tamanho (a aresta anda junto com a cota que mudou): a tolerância acompanha o tamanho
+ * da peça, e uma aresta reta só casa com outra paralela a ela (um círculo, com outro de mesmo eixo).
+ */
 export function acharNaTopologia(ref: Referencia, topo: TopologiaLeve): Referencia | null {
+  // tamanho da peça (diagonal da caixa dos vértices)
+  const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+  for (const v of topo.vertices) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], v[k]); mx[k] = Math.max(mx[k], v[k]); }
+  const tam = topo.vertices.length ? Math.hypot(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]) : 0;
   if (ref.tipo === "vertice") {
     let melhor: Vec3 | null = null, dm = Infinity;
     for (const v of topo.vertices) {
       const d = dist3(v, ref.p);
       if (d < dm) { dm = d; melhor = v; }
     }
-    return melhor && dm < 2 ? { tipo: "vertice", p: melhor } : null;
+    return melhor && dm <= Math.max(2, 0.25 * tam) ? { tipo: "vertice", p: melhor } : null;
   }
   if (ref.tipo !== "aresta") return null;
   const s = ref.ass;
+  const dirDe = (x: AssinaturaAresta): Vec3 => {
+    const d = sub3(x.b, x.a), n = Math.hypot(d[0], d[1], d[2]) || 1;
+    return [d[0] / n, d[1] / n, d[2] / n];
+  };
+  const ds = s.geom === "linha" ? dirDe(s) : null;
   let melhor: AssinaturaAresta | null = null, nota = Infinity;
   for (const a of topo.arestas) {
     if (a.geom !== s.geom) continue;
+    if (ds && Math.abs(esc3(dirDe(a), ds)) < 0.999) continue;
+    if (s.geom === "circulo" && s.eixo && a.eixo && Math.abs(esc3(a.eixo, s.eixo)) < 0.999) continue;
     const n = dist3(a.meio, s.meio) + Math.abs(a.comprimento - s.comprimento) * 0.5;
     if (n < nota) { nota = n; melhor = a; }
   }
-  return melhor && nota <= Math.max(1, 0.3 * s.comprimento) ? { tipo: "aresta", ass: melhor } : null;
+  return melhor && nota <= Math.max(2, 0.3 * s.comprimento, 0.25 * tam) ? { tipo: "aresta", ass: melhor } : null;
 }
 
 const iguais = (a: P2, b: P2) => dist(a, b) < 1e-6;
