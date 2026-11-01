@@ -73,7 +73,7 @@ aplicarDispositivo();
 document.body.classList.add("wj-app", "tp-app");
 const topo = el("header", { class: "wj-topo" });
 topo.innerHTML = `
-  <a class="wj-marca" href="../" title="Voltar ao WJProMaster"><img src="${import.meta.env.BASE_URL}wjpromaster.svg" alt="" /><span>WJTaskPlan</span></a>
+  <a class="wj-marca" href="../" title="Voltar ao WJProMaster"><img src="${import.meta.env.BASE_URL}wjpromaster.svg" alt="" /><span>WJTaskPlan <small class="versao-app">v${__VERSAO__}</small></span></a>
   <button class="wj-ic tp-so-gaveta" data-a="gaveta" title="Pastas">${IC.pasta}</button>
   <div class="tp-vistas" role="tablist">
     <button data-v="lista" role="tab">${IC.lista}<span>Tarefas</span></button>
