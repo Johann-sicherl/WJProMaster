@@ -70,7 +70,9 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
   `src/montagem/step.ts`; teste `scripts/teste-importar.ts`); a Peça repassa o arquivo à Montagem (`#importar-step`).
   **Montagem → Editar peça / cotas** (`docs/funcional/montagem.md` §2.12): cotas dos componentes editáveis na
   montagem (`src/montagem/cotas.ts`), Peça em contexto com a montagem transparente (`src/montagem/contexto.ts`,
-  `cad/#editar-contexto`) e referências a outros componentes (`ctx` nas `Referencia`, marca "->" na árvore)
+  `cad/#editar-contexto`) e referências a outros componentes (`ctx` nas `Referencia`, marca "->" na árvore).
+  **Edição direta** (Features → Edição direta ▾: Mover / Excluir / Substituir face, `src/kernel/edicaoDireta.ts`,
+  `docs/funcional/features.md` §18): edita corpos sem árvore (STEP/STL); sem defeaturing no build, só casos garantidos
 - **Ambientes do WJCAD**: Peça em `cad/` (`src/main.ts`), **Montagem** em `cad/montagem/` (`src/montagem/`:
   modelo, cena junta, solver de posicionamentos, testados em `scripts/teste-montagem.ts`) e **Desenho** em
   `cad/desenho/` (`src/desenho/`: folha ABNT em SVG, vistas por projeção HLR no kernel em

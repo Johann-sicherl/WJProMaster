@@ -60,6 +60,14 @@ export const ABAS: Aba[] = [
       { id: "nervura", rotulo: "Nervura", icone: "nervura", dica: "Nervura a partir de um esboço aberto", grupo: 2 },
       { id: "inclinacao", rotulo: "Inclinação", icone: "inclinacaoRecurso", dica: "Inclina faces a partir de um plano neutro", grupo: 2 },
       { id: "casca", rotulo: "Casca", icone: "casca", dica: "Esvazia o sólido com espessura constante", grupo: 2 },
+      {
+        id: "grupo-direta", rotulo: "Edição direta", icone: "moverFace", dica: "Editar faces de corpos sem árvore (STEP/STL importados)", grupo: 2,
+        itens: [
+          { id: "mover-face", rotulo: "Mover face", icone: "moverFace", dica: "Desloca faces planas, ou muda o raio de furos e pinos", grupo: 2 },
+          { id: "excluir-face", rotulo: "Excluir face", icone: "excluirFace", dica: "Fecha furos, tira pinos, apaga filetes", grupo: 2 },
+          { id: "substituir-face", rotulo: "Substituir face", icone: "substituirFace", dica: "Leva faces planas até outra face paralela", grupo: 2 },
+        ],
+      },
       { id: "espelhar", rotulo: "Espelhar", icone: "espelhar", dica: "Espelha recursos ou a peça em relação a um plano", grupo: 2 },
       {
         id: "grupo-referencia", rotulo: "Geometria de referência", icone: "plano", dica: "Planos e eixos de referência", grupo: 3,

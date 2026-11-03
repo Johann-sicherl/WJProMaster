@@ -550,6 +550,7 @@ function executarComando(c: Comando, aba: IdAba, botao: HTMLElement) {
 const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco" | "importado">> = {
   extrusao: "extrusao", corte: "extrusao", revolucao: "revolucao", "corte-revolucao": "revolucao",
   filete: "filete", chanfro: "chanfro", casca: "casca", nervura: "nervura", inclinacao: "inclinacao",
+  "mover-face": "moverFace", "excluir-face": "excluirFace", "substituir-face": "substituirFace",
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
   plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
@@ -664,7 +665,14 @@ function criarRecurso(id: string) {
       f.itens = itens;
       break;
     case "casca":
+    case "moverFace":
+    case "excluirFace":
       f.faces = faces;
+      break;
+    case "substituirFace":
+      // duas ou mais faces tocadas: a última é a substituta
+      f.faces = faces.length > 1 ? faces.slice(0, -1) : faces;
+      if (faces.length > 1) f.alvo = faces[faces.length - 1];
       break;
     case "inclinacao":
       // plano neutro: plano escolhido na árvore; faces: as tocadas no modelo

@@ -5,7 +5,7 @@ import opencascade from "replicad-opencascadejs";
 import { setOC } from "replicad";
 import { createRequire } from "node:module";
 import {
-  documentoExemplo, documentoImportado, nomeUnico, novaFeature, novoEsboco, validarDocumento, type Feature, type FeatureEsboco, type FeatureExtrusao, type Referencia,
+  documentoExemplo, documentoImportado, nomeUnico, novaFeature, novoEsboco, validarDocumento, type Feature, type FeatureEsboco, type FeatureExcluirFace, type FeatureExtrusao, type FeatureFilete, type FeatureMoverFace, type FeatureSubstituirFace, type Referencia,
 } from "../src/model";
 import { exportar, exportarDxf, regenerar } from "../src/kernel/regenerar";
 import { medidasFuro } from "../src/kernel/furos";
@@ -872,6 +872,13 @@ verdade("nome repetido ganha o próximo número", nomeUnico(["Extrusão1", "Cort
     semErros(`${formato}: corte no importado`, r2);
     confere(`${formato}: volume com furo Ø10`, r2.volume, 48000 - Math.PI * 25 * 20, 1e-3);
     if (formato === "stl") verdade("stl: faces planas unidas (6 faces + furo)", (r1.topologia?.faces.length ?? 0) === 6);
+    // edição direta no corpo importado: o topo (y = 20) sobe 5 e o furo é preenchido
+    const topoImp = r2.topologia!.faces.find((x) => x.normal && x.normal[1] > 0.99)!;
+    const moverImp = { ...(novaFeature("moverFace", 3) as FeatureMoverFace), faces: [{ tipo: "face", ass: topoImp }], distancia: 5 } as FeatureMoverFace;
+    // a face do furo é escolhida no modelo como ele está depois de mover o topo (como na interface)
+    const cilImp = regenerar([imp, furo, corte, moverImp]).topologia!.faces.find((x) => x.geom === "cilindro")!;
+    const excluirImp = { ...(novaFeature("excluirFace", 3) as FeatureExcluirFace), faces: [{ tipo: "face", ass: cilImp }] } as FeatureExcluirFace;
+    confere(`${formato}: editar o importado (topo +5 e furo preenchido)`, regenerar([imp, furo, corte, moverImp, excluirImp]).volume, 60 * 40 * 25, 1e-3);
   }
 }
 
@@ -895,6 +902,78 @@ verdade("nome repetido ganha o próximo número", nomeUnico(["Extrusão1", "Cort
   verdade("plano do esboço ficou em y = 70 (não pulou para uma face da peça)", !r2.suportes?.[e2.id]);
   const ys = r2.topologia!.vertices.map((v) => v[1]);
   confere("cilindro vai de 70 a 80", Math.max(...ys), 80);
+}
+
+// ---------- edição direta de faces (§18): mover, excluir, substituir ----------
+{
+  // bloco 100 (x) × 50 (z) × 20 (y): esboço no Superior, extrudado em +Y
+  const b0 = retangulo(100, 50, "XZ");
+  const b = ext(b0, 20);
+  const pecaBase = [b0, b] as Feature[];
+  const V = 100 * 50 * 20;
+  const faceCil = (feats: Feature[], raio: number, perto?: [number, number, number]): Referencia => {
+    const r = regenerar(feats);
+    const fs = r.topologia!.faces.filter((f) => f.geom === "cilindro" && f.raio !== undefined && Math.abs(f.raio - raio) < 1e-6);
+    if (perto) fs.sort((x, y) => Math.hypot(...x.centro.map((v, i) => v - perto[i])) - Math.hypot(...y.centro.map((v, i) => v - perto[i])));
+    return { tipo: "face", ass: fs[0] };
+  };
+  const topo = face(pecaBase, [0, 1, 0], [0, 20, 0]);
+  const mover = (feats: Feature[], faces: Referencia[], d: number, inverter = false) => ({ ...(novaFeature("moverFace", 1) as FeatureMoverFace), faces, distancia: d, inverter });
+  confere("mover face de cima +5 (põe material)", regenerar([...pecaBase, mover(pecaBase, [topo], 5)]).volume, 100 * 50 * 25);
+  confere("mover face de cima 5 invertido (tira material)", regenerar([...pecaBase, mover(pecaBase, [topo], 5, true)]).volume, 100 * 50 * 15);
+  // furo passante Ø10 no centro
+  const fc = circulo(5, 0, 0, "XZ");
+  const furo = ext(fc, 10, { operacao: "cortar", condicao: { tipo: "passanteAmbos", dist: 10 } } as Partial<FeatureExtrusao>);
+  const comFuro = [...pecaBase, fc, furo] as Feature[];
+  confere("bloco com furo Ø10", regenerar(comFuro).volume, V - Math.PI * 25 * 20);
+  const fFuro = faceCil(comFuro, 5);
+  confere("furo: mover +2 (fecha: raio 3)", regenerar([...comFuro, mover(comFuro, [fFuro], 2)]).volume, V - Math.PI * 9 * 20);
+  confere("furo: mover 2 invertido (abre: raio 7)", regenerar([...comFuro, mover(comFuro, [fFuro], 2, true)]).volume, V - Math.PI * 49 * 20);
+  const excluir = (faces: Referencia[]) => ({ ...(novaFeature("excluirFace", 1) as FeatureExcluirFace), faces });
+  confere("excluir face do furo: preenche", regenerar([...comFuro, excluir([fFuro])]).volume, V);
+  // dois furos iguais e paralelos: os dois mudam (não é o mesmo cilindro)
+  const fc2 = circulo(5, 30, 0, "XZ");
+  const furo2 = ext(fc2, 10, { operacao: "cortar", condicao: { tipo: "passanteAmbos", dist: 10 } } as Partial<FeatureExtrusao>);
+  const doisFuros = [...comFuro, fc2, furo2] as Feature[];
+  const fa = faceCil(doisFuros, 5, [0, 10, 0]), fb = faceCil(doisFuros, 5, [30, 10, 0]);
+  confere("dois furos Ø10 paralelos: excluir os dois", regenerar([...doisFuros, excluir([fa, fb])]).volume, V);
+  // pino Ø10 × 10 em cima
+  const pc = novoEsboco(7, { tipo: "plano", plano: "XZ", deslocamento: 20 });
+  op.circulo(pc, op.ponto(pc, { x: 0, y: 0 }), 5);
+  const pino = ext(pc, 10);
+  const comPino = [...pecaBase, pc, pino] as Feature[];
+  confere("bloco com pino", regenerar(comPino).volume, V + Math.PI * 25 * 10);
+  const fPino = faceCil(comPino, 5);
+  confere("pino: mover +1 (raio 6)", regenerar([...comPino, mover(comPino, [fPino], 1)]).volume, V + Math.PI * 36 * 10);
+  confere("excluir face do pino: sai", regenerar([...comPino, excluir([fPino])]).volume, V);
+  // filete r5 numa aresta vertical (quina externa) e excluir o filete
+  const vertical = arestasRetas(pecaBase, (x) => Math.abs(x.a[1] - x.b[1]) > 10 && x.a[0] > 40 && x.a[2] > 20);
+  const fil = { ...(novaFeature("filete", 1) as FeatureFilete), raio: 5, itens: vertical.slice(0, 1) };
+  const comFilete = [...pecaBase, fil] as Feature[];
+  confere("bloco com filete r5 na quina", regenerar(comFilete).volume, V - (25 - Math.PI * 25 / 4) * 20);
+  const fFil = faceCil(comFilete, 5);
+  confere("excluir face do filete: a quina volta", regenerar([...comFilete, excluir([fFil])]).volume, V);
+  // filete côncavo (quina interna de um L): degrau de 50 × 50 × 20 em cima da metade direita
+  const d0 = retangulo(50, 50, "XZ", 25, 0);
+  const degrau = ext(d0, 40);
+  const L = [...pecaBase, d0, degrau] as Feature[];
+  const VL = V + 50 * 50 * 20;
+  const interna = arestasRetas(L, (x) => Math.abs(x.a[0]) < 1e-6 && Math.abs(x.b[0]) < 1e-6 && Math.abs(x.a[1] - 20) < 1e-6 && Math.abs(x.b[1] - 20) < 1e-6);
+  const filL = { ...(novaFeature("filete", 2) as FeatureFilete), raio: 4, itens: interna.slice(0, 1) };
+  const comFilL = [...L, filL] as Feature[];
+  confere("L com filete côncavo r4", regenerar(comFilL).volume, VL + (16 - Math.PI * 16 / 4) * 50);
+  confere("excluir filete côncavo: quina viva", regenerar([...comFilL, excluir([faceCil(comFilL, 4)])]).volume, VL);
+  // substituir: o topo da esquerda (y = 20) vai até o topo do degrau (y = 40)
+  const topoEsq = face(L, [0, 1, 0], [-25, 20, 0]), topoDir = face(L, [0, 1, 0], [25, 40, 0]);
+  const subst = { ...(novaFeature("substituirFace", 1) as FeatureSubstituirFace), faces: [topoEsq], alvo: topoDir };
+  confere("substituir: topo da esquerda sobe até o do degrau", regenerar([...L, subst]).volume, 100 * 50 * 40);
+  // vizinha inclinada (chanfro na aresta de cima): mover a face de cima é recusado com mensagem
+  const arestaTopo = arestasRetas(pecaBase, (x) => Math.abs(x.a[1] - 20) < 1e-6 && Math.abs(x.b[1] - 20) < 1e-6 && Math.abs(x.a[2] - 25) < 1e-6 && Math.abs(x.b[2] - 25) < 1e-6);
+  const ch = { ...(novaFeature("chanfro", 1) as never as Record<string, unknown>), distancia: 3, itens: arestaTopo };
+  const comChanfro = [...pecaBase, ch] as unknown as Feature[];
+  const r = regenerar([...comChanfro, mover(comChanfro, [face(comChanfro, [0, 1, 0], [0, 20, 0])], 5)]);
+  verdade("vizinha inclinada: recusa com mensagem clara (sem geometria errada)", r.erros.length === 1 && /perpendicular/.test(r.erros[0].mensagem));
+  verdade("excluir face plana: recusa e aponta Mover face", /Mover face/.test(regenerar([...pecaBase, excluir([topo])]).erros[0]?.mensagem ?? ""));
 }
 
 if (falhas) {
