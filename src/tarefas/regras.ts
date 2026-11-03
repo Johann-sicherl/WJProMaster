@@ -39,8 +39,17 @@ export interface Tarefa {
   historico: Mudanca[];
   /** prazo de conclusão (AAAA-MM-DD); null = sem prazo */
   prazo: string | null;
+  /** sub-tarefas (etapas para concluir a tarefa), em ordem; opcional (tarefas antigas não têm) */
+  etapas?: Etapa[];
   ordem: number;
   atualizado: string;
+}
+
+export interface Etapa {
+  id: string;
+  titulo: string;
+  /** data e hora em que foi marcada como feita; null = pendente */
+  feita: string | null;
 }
 
 export interface Config {
@@ -95,7 +104,11 @@ export function validarBase(x: unknown): Base {
     versao: 1,
     estados: Array.isArray(b.estados) && b.estados.length ? b.estados : n.estados,
     pastas: Array.isArray(b.pastas) ? b.pastas : [],
-    tarefas: (Array.isArray(b.tarefas) ? b.tarefas : []).map((t) => ({ ...t, prazo: t.prazo || null, historico: Array.isArray(t.historico) ? t.historico : [] })),
+    tarefas: (Array.isArray(b.tarefas) ? b.tarefas : []).map((t) => {
+      const x: Tarefa = { ...t, prazo: t.prazo || null, historico: Array.isArray(t.historico) ? t.historico : [] };
+      if (x.etapas !== undefined && !Array.isArray(x.etapas)) delete x.etapas;
+      return x;
+    }),
     config: { ...n.config, ...(b.config ?? {}) },
     exclusoes: Array.isArray(b.exclusoes) ? b.exclusoes : [],
   };
@@ -182,6 +195,43 @@ export function mudarEstado(t: Tarefa, estado: string, agora: string) {
   t.historico.push({ estado, quando: agora });
   t.atualizado = agora;
 }
+
+// ---------- etapas (sub-tarefas) ----------
+// Ficam dentro da tarefa: qualquer mudança nelas atualiza a tarefa (a sincronia leva a lista inteira).
+
+export function adicionarEtapa(t: Tarefa, titulo: string, agora: string): Etapa | null {
+  const tt = titulo.trim();
+  if (!tt) return null;
+  const e: Etapa = { id: uid(), titulo: tt, feita: null };
+  (t.etapas ??= []).push(e);
+  t.atualizado = agora;
+  return e;
+}
+
+export function marcarEtapa(t: Tarefa, id: string, feita: boolean, agora: string) {
+  const e = t.etapas?.find((x) => x.id === id);
+  if (!e || !!e.feita === feita) return;
+  e.feita = feita ? agora : null;
+  t.atualizado = agora;
+}
+
+export function excluirEtapa(t: Tarefa, id: string, agora: string) {
+  if (!t.etapas?.some((x) => x.id === id)) return;
+  t.etapas = t.etapas.filter((x) => x.id !== id);
+  t.atualizado = agora;
+}
+
+/** Sobe (-1) ou desce (+1) a etapa na lista. */
+export function moverEtapa(t: Tarefa, id: string, passo: number, agora: string) {
+  const l = t.etapas ?? [];
+  const k = l.findIndex((x) => x.id === id), j = k + passo;
+  if (k < 0 || j < 0 || j >= l.length) return;
+  [l[k], l[j]] = [l[j], l[k]];
+  t.atualizado = agora;
+}
+
+/** Etapas feitas / total (0/0 = tarefa sem etapas). */
+export const progresso = (t: Tarefa) => ({ feitas: t.etapas?.filter((e) => e.feita).length ?? 0, total: t.etapas?.length ?? 0 });
 
 export function excluirTarefa(b: Base, id: string, agora: string) {
   b.tarefas = b.tarefas.filter((t) => t.id !== id);
@@ -310,14 +360,20 @@ export function duracao(ms: number): string {
 
 // ---------- tabela legível (CSV) ----------
 
+/** "2/3: Cortar ✓ | Dobrar ✓ | Soldar" (vazio sem etapas). */
+function etapasCSV(t: Tarefa): string {
+  const { feitas, total } = progresso(t);
+  return total ? `${feitas}/${total}: ${t.etapas!.map((e) => `${e.titulo}${e.feita ? " ✓" : ""}`).join(" | ")}` : "";
+}
+
 /** Tabela das tarefas em CSV (separador ";", abre no WJPlan e em planilhas). */
 export function tabelaCSV(b: Base): string {
   const c = (v: string) => (/[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   const dh = (s: string | null) => (s ? s.slice(0, 16).replace("T", " ") : "");
-  const linhas = [["Pasta", "Tarefa", "Estado", "Criada", "Prazo", "Concluída", "Tempo de atendimento"].join(";")];
+  const linhas = [["Pasta", "Tarefa", "Estado", "Criada", "Prazo", "Concluída", "Tempo de atendimento", "Etapas"].join(";")];
   for (const t of b.tarefas) {
     const fim = concluidaEm(b, t);
-    linhas.push([caminhoPasta(b, t.pasta), t.titulo, estadoDe(b, t.estado)?.nome ?? t.estado, dh(t.criada), t.prazo ?? "", dh(fim), fim ? duracao(Date.parse(fim) - Date.parse(t.criada)) : ""].map(c).join(";"));
+    linhas.push([caminhoPasta(b, t.pasta), t.titulo, estadoDe(b, t.estado)?.nome ?? t.estado, dh(t.criada), t.prazo ?? "", dh(fim), fim ? duracao(Date.parse(fim) - Date.parse(t.criada)) : "", etapasCSV(t)].map(c).join(";"));
   }
   return `﻿${linhas.join("\r\n")}\r\n`;
 }
