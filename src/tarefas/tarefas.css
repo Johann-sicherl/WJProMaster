@@ -148,3 +148,5 @@ tr[data-ir] { cursor: pointer; }
 tr[data-ir]:hover td { background: var(--painel-2); }
 .tp-sub { margin: 12px 0 6px; font-size: 14px; color: var(--texto-2); }
 @media (max-width: 760px) { .tp-etapas li { flex-wrap: wrap; } .tp-etapas li input[type="date"] { width: 132px; } }
+.tp-nova-etapa input[type="date"] { flex: none; width: 150px; min-height: 36px; padding: 2px 6px; border: 1px solid var(--linha); border-radius: 6px; font-size: 13px; background: var(--painel); }
+@media (max-width: 760px) { .tp-nova-etapa { flex-wrap: wrap; } .tp-nova-etapa input[data-etapa-nova], .tp-nova-etapa input[data-nova-etapa] { flex-basis: 100%; } }

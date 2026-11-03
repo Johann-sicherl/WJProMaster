@@ -201,10 +201,12 @@ export function mudarEstado(t: Tarefa, estado: string, agora: string) {
 // ---------- etapas (sub-tarefas) ----------
 // Ficam dentro da tarefa: qualquer mudança nelas atualiza a tarefa (a sincronia leva a lista inteira).
 
-export function adicionarEtapa(t: Tarefa, titulo: string, agora: string): Etapa | null {
+/** Nova etapa no fim da lista; `prazo` (AAAA-MM-DD) opcional já na criação. */
+export function adicionarEtapa(t: Tarefa, titulo: string, agora: string, prazo?: string | null): Etapa | null {
   const tt = titulo.trim();
   if (!tt) return null;
   const e: Etapa = { id: uid(), titulo: tt, feita: null };
+  if (prazo) e.prazo = prazo;
   (t.etapas ??= []).push(e);
   t.atualizado = agora;
   return e;
