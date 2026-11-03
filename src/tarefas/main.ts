@@ -13,7 +13,7 @@ import { lerLocal, gravarLocal, sincronizarTarefas } from "./copias";
 import { areaEscrita, permitirOnline, reconhecedor } from "./escrita";
 import {
   alertas, caminhoPasta, concluidaEm, criarPasta, criarTarefa, descendentes, diaLocal, diasEntre, duracao, estadoDe, estadosOrdenados, excluirEstado,
-  excluirPasta, excluirTarefa, filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, uid, type Base, type Estado, type Tarefa, type TipoEstado,
+  excluirPasta, adicionarEtapa, excluirEtapa, excluirTarefa, marcarEtapa, moverEtapa, progresso, filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, uid, type Base, type Etapa, type Estado, type Tarefa, type TipoEstado,
 } from "./regras";
 
 // ---------- estado da página ----------
@@ -30,6 +30,8 @@ let filtroEstado = "";
 let busca = "";
 const fechadas = new Set<string>(JSON.parse(pref("fechadas", "[]")) as string[]);
 let textoSincronia = "";
+/** tarefas com a lista de etapas aberta na lista */
+const etapasAbertas = new Set<string>(JSON.parse(pref("etapas-abertas", "[]")) as string[]);
 permitirOnline(pref("online", "1") === "1");
 
 const agoraISO = () => new Date().toISOString();
@@ -367,6 +369,33 @@ function seloPrazo(t: Tarefa): string {
   return `<span class="wj-selo${cls}">${txt}</span>`;
 }
 
+/** Botão com o progresso das etapas (abre/fecha a lista); nada para tarefa sem etapas. */
+function seloEtapas(t: Tarefa): string {
+  const { feitas, total } = progresso(t);
+  if (!total) return "";
+  return `<button class="tp-etapas-selo${feitas === total ? " tp-completo" : ""}" data-etapas aria-expanded="${etapasAbertas.has(t.id)}" title="Etapas: ${feitas} de ${total} feitas">
+    <span>☑ ${feitas}/${total}</span><i style="--p:${Math.round((feitas / total) * 100)}%"></i></button>`;
+}
+
+/** Etapas da tarefa na lista: marcar feita, subir, excluir e adicionar (teclado, S Pen ou caneta). */
+function listaEtapas(t: Tarefa): string {
+  return `<div class="tp-etapas">
+    <ul>${(t.etapas ?? []).map((e, k) => `<li data-etapa="${e.id}" class="${e.feita ? "tp-etapa-feita" : ""}">
+      <label class="tp-chk"><input type="checkbox" data-etapa-feita ${e.feita ? "checked" : ""}/><span>${escapar(e.titulo)}</span></label>
+      ${e.feita ? `<small>${dataHora(e.feita)}</small>` : ""}
+      <button data-etapa-sobe ${k ? "" : "disabled"} title="Subir">↑</button><button data-etapa-tira title="Excluir etapa">✕</button></li>`).join("")}</ul>
+    <div class="tp-linha tp-nova-etapa"><input data-etapa-nova placeholder="Nova etapa (Enter adiciona)" autocomplete="off" />
+      <button data-etapa-add title="Adicionar etapa">${IC.mais}</button>
+      <button data-etapa-caneta title="Escrever a etapa com a caneta">${IC.caneta}</button></div>
+  </div>`;
+}
+
+function abrirEtapas(id: string, abrir: boolean) {
+  if (abrir) etapasAbertas.add(id);
+  else etapasAbertas.delete(id);
+  guardarPref("etapas-abertas", JSON.stringify([...etapasAbertas]));
+}
+
 function seletorEstado(t: Tarefa): string {
   const e = estadoDe(base, t.estado);
   return `<select class="tp-estado" data-estado="${t.id}" style="--cor:${e?.cor ?? "#8a96a3"}" aria-label="Estado">${estadosOrdenados(base).map((x) => `<option value="${x.id}"${x.id === t.estado ? " selected" : ""}>${escapar(x.nome)}</option>`).join("")}</select>`;
@@ -402,7 +431,9 @@ function renderizarLista() {
           <span class="tp-titulo">${escapar(t.titulo)}</span>
           <span class="tp-meta">criada ${dataHora(t.criada)}${mostrarPasta ? ` · ${escapar(caminhoPasta(base, t.pasta))}` : ""} ${seloPrazo(t)}</span>
         </div>
+        ${seloEtapas(t)}
         <button class="tp-mais" data-menu title="Opções da tarefa">⋯</button>
+        ${etapasAbertas.has(t.id) ? listaEtapas(t) : ""}
       </li>`).join("")}</ul>`
     : `<div class="wj-vazio">${escopo.length ? "Nenhuma tarefa com este filtro." : `Nenhuma tarefa aqui.<br/><button class="destaque" data-nova>${IC.caneta} Nova tarefa</button>`}</div>`}`;
   conteudo.querySelector<HTMLInputElement>("[data-sub]")?.addEventListener("change", (e) => {
@@ -423,6 +454,13 @@ function renderizarLista() {
 }
 
 conteudo.addEventListener("change", (e) => {
+  const alvo = e.target as HTMLInputElement;
+  if (alvo.matches("[data-etapa-feita]")) {
+    const t = base.tarefas.find((x) => x.id === alvo.closest<HTMLElement>(".tp-tarefa")?.dataset.id);
+    const id = alvo.closest<HTMLElement>("[data-etapa]")?.dataset.etapa;
+    if (t && id) alterar(() => marcarEtapa(t, id, alvo.checked, agoraISO()));
+    return;
+  }
   const s = (e.target as HTMLElement).closest<HTMLSelectElement>("[data-estado]");
   if (!s) return;
   const t = base.tarefas.find((x) => x.id === s.dataset.estado);
@@ -433,11 +471,33 @@ conteudo.addEventListener("click", (e) => {
   const id = alvo.closest<HTMLElement>(".tp-tarefa")?.dataset.id;
   const t = id && base.tarefas.find((x) => x.id === id);
   if (!t) return;
+  const etapa = alvo.closest<HTMLElement>("[data-etapa]")?.dataset.etapa;
   if (alvo.closest("[data-menu]")) {
     const r = alvo.getBoundingClientRect();
     menuTarefa(t, r.left, r.bottom);
-  } else if (alvo.closest("[data-editar]")) editarTarefa(t);
+  } else if (alvo.closest("[data-etapas]")) {
+    abrirEtapas(t.id, !etapasAbertas.has(t.id));
+    renderizarLista();
+  } else if (etapa && alvo.closest("[data-etapa-sobe]")) alterar(() => moverEtapa(t, etapa, -1, agoraISO()));
+  else if (etapa && alvo.closest("[data-etapa-tira]")) alterar(() => excluirEtapa(t, etapa, agoraISO()));
+  else if (alvo.closest("[data-etapa-add]")) novaEtapa(t, alvo.closest<HTMLElement>(".tp-tarefa")!.querySelector<HTMLInputElement>("[data-etapa-nova]")!.value);
+  else if (alvo.closest("[data-etapa-caneta]")) void escreverTexto(`Nova etapa — ${t.titulo}`).then((x) => x && novaEtapa(t, x));
+  else if (alvo.closest("[data-editar]")) editarTarefa(t);
 });
+conteudo.addEventListener("keydown", (e) => {
+  const alvo = e.target as HTMLInputElement;
+  if (e.key !== "Enter" || !alvo.matches("[data-etapa-nova]")) return;
+  e.preventDefault();
+  const t = base.tarefas.find((x) => x.id === alvo.closest<HTMLElement>(".tp-tarefa")?.dataset.id);
+  if (t) novaEtapa(t, alvo.value);
+});
+
+/** Adiciona a etapa e devolve o foco ao campo de nova etapa (para seguir digitando). */
+function novaEtapa(t: Tarefa, texto: string) {
+  if (!texto.trim()) return;
+  alterar(() => adicionarEtapa(t, texto, agoraISO()));
+  conteudo.querySelector<HTMLInputElement>(`.tp-tarefa[data-id="${t.id}"] [data-etapa-nova]`)?.focus();
+}
 conteudo.addEventListener("contextmenu", (e) => {
   const id = (e.target as HTMLElement).closest<HTMLElement>(".tp-tarefa")?.dataset.id;
   const t = id && base.tarefas.find((x) => x.id === id);
@@ -449,6 +509,7 @@ conteudo.addEventListener("contextmenu", (e) => {
 function menuTarefa(t: Tarefa, x: number, y: number) {
   menu(x, y, [
     { rotulo: "Editar", icone: "editar", acao: () => editarTarefa(t) },
+    { rotulo: etapasAbertas.has(t.id) ? "Fechar etapas" : progresso(t).total ? "Ver etapas" : "Adicionar etapas", icone: "lista", acao: () => (abrirEtapas(t.id, !etapasAbertas.has(t.id)), renderizarLista()) },
     { rotulo: "Mover para outra pasta…", icone: "movimento", acao: () => moverTarefa(t) },
     { rotulo: "Histórico de estados", icone: "historico", acao: () => historico(t) },
     "-",
@@ -480,12 +541,9 @@ function historico(t: Tarefa) {
 
 // ---------- nova tarefa / editar (escrita à mão) ----------
 
-function editarTarefa(t: Tarefa | null, pasta?: string) {
-  const pastaPadrao = t?.pasta ?? pasta ?? (base.pastas.some((p) => p.id === pastaSel) ? pastaSel : filhas(base, null)[0]?.id ?? "");
-  const amanha = diaLocal(new Date(Date.now() + 86400000));
-  const { corpo, fechar } = janela(t ? "Editar tarefa" : "Nova tarefa", `
-    <div class="tp-escrita">
-      <textarea class="tp-transcrito" data-titulo rows="1" placeholder="Escreva abaixo com a caneta (ou digite aqui)" autocomplete="off" spellcheck="true">${escapar(t?.titulo ?? "")}</textarea>
+/** Campo + área de escrita à mão (caneta/dedo) com transcrição, usados na tarefa e nas etapas. */
+const htmlEscrita = (valor: string) => `
+      <textarea class="tp-transcrito" data-titulo rows="1" placeholder="Escreva abaixo com a caneta (ou digite aqui)" autocomplete="off" spellcheck="true">${escapar(valor)}</textarea>
       <div class="tp-alts" data-alts></div>
       <canvas class="tp-tela" data-tela></canvas>
       <div class="tp-barra-escrita">
@@ -493,24 +551,19 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
         <button data-limpa class="tp-so-tinta" title="Guarda o texto e limpa a área para continuar escrevendo">Continuar escrevendo</button>
         <button data-modo title="Alterna entre a área de escrita do app (transcrição online) e a escrita do próprio tablet no campo (sem internet)">Escrita do tablet</button>
         <span class="tp-sit" data-sit></span>
-      </div>
-      <div class="tp-linha">
-        <label class="tp-chk"><input type="checkbox" data-tem-prazo ${t?.prazo ? "checked" : ""}/> Prazo de conclusão</label>
-        <input type="date" data-prazo value="${t?.prazo ?? amanha}" ${t?.prazo ? "" : "disabled"} />
-      </div>
-      <div class="tp-linha"><label for="tp-pasta-sel">Pasta</label><select id="tp-pasta-sel" data-pasta>${opcoesPastas(pastaPadrao)}</select></div>
-    </div>`, [
-    { rotulo: "Cancelar" },
-    { rotulo: "OK", destaque: true, acao: () => (void ok(), false) },
-  ], true);
+      </div>`;
+
+/** Liga o campo e a área de escrita de `htmlEscrita` dentro de uma janela; Enter no campo chama `aoEnter`. */
+function ligarEscrita(corpo: HTMLElement, aoEnter: () => void) {
   const campo = $<HTMLTextAreaElement>("[data-titulo]", corpo);
   // com teclado físico (ou no computador), o campo já abre pronto para digitar; só com o teclado
   // da tela o foco fica fora, para ele não cobrir a área de escrita
   if (temTecladoFisico()) campo.focus();
   else (document.activeElement as HTMLElement | null)?.blur();
-  // tecla digitada com o foco fora do campo (teclado físico): vai para o campo
+  // tecla digitada com o foco fora de qualquer campo (teclado físico): vai para o campo
   const tecla = (e: KeyboardEvent) => {
     if (!corpo.isConnected) return document.removeEventListener("keydown", tecla);
+    if ([...document.querySelectorAll(".wj-fundo")].pop() !== corpo.closest(".wj-fundo")) return; // outra janela por cima
     if (e.target === campo || (e.target as HTMLElement).closest("input, select, textarea") || e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
     e.preventDefault();
     campo.focus();
@@ -536,13 +589,10 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
   };
   $("[data-desf]", corpo).onclick = () => area.desfazer();
   $("[data-limpa]", corpo).onclick = () => area.limpar();
-  const temPrazo = $<HTMLInputElement>("[data-tem-prazo]", corpo);
-  const prazo = $<HTMLInputElement>("[data-prazo]", corpo);
-  temPrazo.onchange = () => (prazo.disabled = !temPrazo.checked);
   campo.onkeydown = (e) => {
     if (e.key !== "Enter" || e.shiftKey) return;
     e.preventDefault();
-    void ok();
+    aoEnter();
   };
   // modo "escrita do tablet": sem a área do app, o campo fica grande para escrever nele com a
   // S Pen (o próprio tablet transcreve, sem internet) ou digitar
@@ -565,6 +615,116 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
     if (semRec || pref("modo-escrita", "app") === "tablet") return modoTablet(true, false);
     sit.textContent = `Escrita: ${r.nome}.`;
   });
+  return { campo, area, sit };
+}
+
+/** Janela só de escrita (caneta, teclado ou S Pen): devolve o texto ou null. */
+function escreverTexto(titulo: string, valor = ""): Promise<string | null> {
+  return new Promise((resolver) => {
+    let feito = false;
+    const { corpo, fechar } = janela(titulo, `<div class="tp-escrita">${htmlEscrita(valor)}</div>`, [
+      { rotulo: "Cancelar" },
+      { rotulo: "OK", destaque: true, acao: () => (void ok(), false) },
+    ], true);
+    const { campo, area } = ligarEscrita(corpo, () => void ok());
+    async function ok() {
+      await area.concluir();
+      feito = true;
+      resolver(campo.value.trim() || null);
+      fechar();
+    }
+    new MutationObserver((_, o) => {
+      if (corpo.isConnected) return;
+      o.disconnect();
+      if (!feito) resolver(null);
+    }).observe(document.body, { childList: true });
+  });
+}
+
+/** Lista editável de etapas (rascunho) dentro da janela da tarefa. */
+function editorEtapas(raiz: HTMLElement, etapas: Etapa[]) {
+  const lista = $("[data-etapas]", raiz);
+  const nova = $<HTMLInputElement>("[data-nova-etapa]", raiz);
+  const desenhar = () => {
+    lista.innerHTML = etapas.map((e, k) => `<li data-k="${k}">
+      <input type="checkbox" data-feita ${e.feita ? "checked" : ""} aria-label="Etapa feita" />
+      <input data-texto value="${escapar(e.titulo)}" aria-label="Etapa ${k + 1}" />
+      <button data-sobe ${k ? "" : "disabled"} title="Subir">↑</button><button data-tira title="Excluir etapa">✕</button></li>`).join("");
+  };
+  const adicionar = (texto: string) => {
+    const t = texto.trim();
+    if (!t) return;
+    etapas.push({ id: uid(), titulo: t, feita: null });
+    desenhar();
+  };
+  nova.onkeydown = (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    adicionar(nova.value);
+    nova.value = "";
+  };
+  $("[data-add-etapa]", raiz).onclick = () => {
+    adicionar(nova.value);
+    nova.value = "";
+  };
+  $("[data-caneta-etapa]", raiz).onclick = async () => {
+    const t = await escreverTexto("Nova etapa");
+    if (t) adicionar(t);
+  };
+  lista.addEventListener("change", (ev) => {
+    const alvo = ev.target as HTMLInputElement;
+    const e = etapas[Number(alvo.closest<HTMLElement>("li")?.dataset.k)];
+    if (!e) return;
+    if (alvo.matches("[data-feita]")) e.feita = alvo.checked ? agoraISO() : null;
+    else if (alvo.matches("[data-texto]")) e.titulo = alvo.value.trim() || e.titulo;
+  });
+  lista.addEventListener("click", (ev) => {
+    const alvo = ev.target as HTMLElement;
+    const k = Number(alvo.closest<HTMLElement>("li")?.dataset.k);
+    if (alvo.closest("[data-tira]")) etapas.splice(k, 1);
+    else if (alvo.closest("[data-sobe]") && k > 0) [etapas[k - 1], etapas[k]] = [etapas[k], etapas[k - 1]];
+    else return;
+    desenhar();
+  });
+  desenhar();
+  /** etapa digitada e ainda não adicionada também entra */
+  return () => {
+    adicionar(nova.value);
+    nova.value = "";
+  };
+}
+
+const htmlEditorEtapas = () => `
+  <div class="tp-etapas-ed">
+    <span class="tp-rotulo">Etapas <small>(opcional: sub-tarefas para concluir a tarefa)</small></span>
+    <ul data-etapas></ul>
+    <div class="tp-linha tp-nova-etapa"><input data-nova-etapa placeholder="Nova etapa (Enter adiciona)" autocomplete="off" />
+      <button data-add-etapa title="Adicionar etapa">${IC.mais}</button>
+      <button data-caneta-etapa title="Escrever a etapa com a caneta">${IC.caneta}</button></div>
+  </div>`;
+
+function editarTarefa(t: Tarefa | null, pasta?: string) {
+  const pastaPadrao = t?.pasta ?? pasta ?? (base.pastas.some((p) => p.id === pastaSel) ? pastaSel : filhas(base, null)[0]?.id ?? "");
+  const amanha = diaLocal(new Date(Date.now() + 86400000));
+  const { corpo, fechar } = janela(t ? "Editar tarefa" : "Nova tarefa", `
+    <div class="tp-escrita">
+      ${htmlEscrita(t?.titulo ?? "")}
+      ${htmlEditorEtapas()}
+      <div class="tp-linha">
+        <label class="tp-chk"><input type="checkbox" data-tem-prazo ${t?.prazo ? "checked" : ""}/> Prazo de conclusão</label>
+        <input type="date" data-prazo value="${t?.prazo ?? amanha}" ${t?.prazo ? "" : "disabled"} />
+      </div>
+      <div class="tp-linha"><label for="tp-pasta-sel">Pasta</label><select id="tp-pasta-sel" data-pasta>${opcoesPastas(pastaPadrao)}</select></div>
+    </div>`, [
+    { rotulo: "Cancelar" },
+    { rotulo: "OK", destaque: true, acao: () => (void ok(), false) },
+  ], true);
+  const { campo, area, sit } = ligarEscrita(corpo, () => void ok());
+  const etapas: Etapa[] = structuredClone(t?.etapas ?? []);
+  const fecharEtapas = editorEtapas(corpo, etapas);
+  const temPrazo = $<HTMLInputElement>("[data-tem-prazo]", corpo);
+  const prazo = $<HTMLInputElement>("[data-prazo]", corpo);
+  temPrazo.onchange = () => (prazo.disabled = !temPrazo.checked);
 
   async function ok() {
     await area.concluir();
@@ -578,12 +738,17 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
       sit.textContent = "Crie uma pasta antes (botão + em Pastas).";
       return;
     }
+    fecharEtapas();
     const dataPrazo = temPrazo.checked && prazo.value ? prazo.value : null;
     fechar();
     alterar((b) => {
       const agora = agoraISO();
-      if (!t) return void criarTarefa(b, p, titulo, dataPrazo, agora);
-      if (t.titulo !== titulo || t.prazo !== dataPrazo || t.pasta !== p) Object.assign(t, { titulo, prazo: dataPrazo, pasta: p, atualizado: agora });
+      const nova = t ?? criarTarefa(b, p, titulo, dataPrazo, agora);
+      // tarefa sem etapas continua sem o campo (nada muda nas tarefas antigas)
+      const antes = JSON.stringify(nova.etapas ?? []);
+      if (JSON.stringify(etapas) !== antes) (etapas.length ? (nova.etapas = etapas) : delete nova.etapas), (nova.atualizado = agora);
+      if (t && (t.titulo !== titulo || t.prazo !== dataPrazo || t.pasta !== p)) Object.assign(t, { titulo, prazo: dataPrazo, pasta: p, atualizado: agora });
+      if (etapas.length) etapasAbertas.add(nova.id);
     });
   }
 }

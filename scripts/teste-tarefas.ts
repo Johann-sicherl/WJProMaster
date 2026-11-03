@@ -3,6 +3,7 @@
 import {
   alertas, baseNova, caminhoPasta, concluidaEm, criarPasta, criarTarefa, descendentes, diasEntre, duracao, excluirEstado, excluirPasta, excluirTarefa,
   filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, validarBase, type Base,
+  adicionarEtapa, excluirEtapa, marcarEtapa, moverEtapa, progresso,
 } from "../src/tarefas/regras";
 
 let falhas = 0;
@@ -119,6 +120,38 @@ const semCiclo = m.pastas.every((p) => {
 });
 igual("sem ciclo após movimentos cruzados", semCiclo, true);
 igual("mescla não altera as entradas", e1.pastas.find((p) => p.id === pa.id)!.pai, pb.id);
+// --- etapas (sub-tarefas) ---
+const tb = baseNova();
+const tt = criarTarefa(tb, "geral", "Fabricar suporte", null, T(1));
+igual("tarefa nova sem etapas", tt.etapas === undefined, true);
+igual("progresso sem etapas", JSON.stringify(progresso(tt)), '{"feitas":0,"total":0}');
+igual("etapa vazia recusada", adicionarEtapa(tt, "   ", T(2)), null);
+const et1 = adicionarEtapa(tt, " Cortar chapa ", T(2))!, et2 = adicionarEtapa(tt, "Dobrar", T(2))!, et3 = adicionarEtapa(tt, "Soldar", T(2))!;
+igual("etapas na ordem", tt.etapas!.map((e) => e.titulo).join(), "Cortar chapa,Dobrar,Soldar");
+marcarEtapa(tt, et1.id, true, T(3));
+igual("etapa feita guarda a data", et1.feita, T(3));
+igual("tarefa atualizada com a etapa", tt.atualizado, T(3));
+marcarEtapa(tt, et1.id, true, T(4));
+igual("marcar de novo não muda a data", et1.feita, T(3));
+igual("progresso 1/3", JSON.stringify(progresso(tt)), '{"feitas":1,"total":3}');
+moverEtapa(tt, et3.id, -1, T(5));
+igual("subir etapa", tt.etapas!.map((e) => e.titulo).join(), "Cortar chapa,Soldar,Dobrar");
+moverEtapa(tt, et1.id, -1, T(5));
+igual("primeira não sobe", tt.etapas![0].id, et1.id);
+excluirEtapa(tt, et2.id, T(6));
+igual("excluir etapa", tt.etapas!.length, 2);
+marcarEtapa(tt, et1.id, false, T(7));
+igual("desmarcar", et1.feita, null);
+igual("csv com etapas", tabelaCSV(tb).includes("0/2: Cortar chapa | Soldar"), true);
+// arquivo antigo (sem etapas) continua igual; etapas inválidas são descartadas
+const antiga = validarBase(JSON.parse(JSON.stringify({ ...baseNova(), tarefas: [{ ...tt, etapas: undefined }, { ...tt, id: "x", etapas: "lixo" }] })));
+igual("tarefa antiga sem campo de etapas", "etapas" in antiga.tarefas[0], false);
+igual("etapas inválidas descartadas", antiga.tarefas[1].etapas, undefined);
+// sincronia: a alteração mais recente da tarefa leva a lista de etapas inteira
+const outra = validarBase(JSON.parse(JSON.stringify(tb)));
+adicionarEtapa(outra.tarefas[0], "Pintar", T(9));
+igual("mescla leva a etapa nova", mesclar([tb, outra], T(10)).tarefas[0].etapas!.map((e) => e.titulo).join(), "Cortar chapa,Soldar,Pintar");
+
 let erro = "";
 try {
   validarBase({ formato: "outro" });

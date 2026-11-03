@@ -108,3 +108,32 @@ body.disp-celular .tp-vistas button span, body.disp-celular .tp-nova span { disp
   .tp-vistas button span { display: none; }
   .tp-estado { width: 112px; }
 }
+
+/* etapas (sub-tarefas) */
+.tp-tarefa { flex-wrap: wrap; }
+.tp-etapas-selo { flex: none; display: grid; gap: 3px; min-height: 36px; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--texto-2); }
+.tp-etapas-selo i { display: block; height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--ok) var(--p), var(--linha) var(--p)); }
+.tp-etapas-selo[aria-expanded="true"] { background: var(--acento-suave); border-color: var(--acento); color: var(--acento); }
+.tp-etapas-selo.tp-completo span { color: var(--ok); font-weight: 600; }
+.tp-etapas { flex-basis: 100%; margin: 2px 0 2px 150px; padding: 6px 0 0; border-top: 1px dashed var(--linha); }
+.tp-etapas ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.tp-etapas li { display: flex; align-items: center; gap: 6px; min-height: 36px; }
+.tp-etapas li .tp-chk { flex: 1; min-width: 0; }
+.tp-etapas li .tp-chk span { overflow-wrap: anywhere; }
+.tp-etapas li small { color: var(--texto-2); font-size: 11px; white-space: nowrap; }
+.tp-etapas li button { min-height: 32px; min-width: 34px; padding: 0 6px; border: 0; background: transparent; color: var(--texto-2); }
+.tp-etapa-feita .tp-chk span { text-decoration: line-through; color: var(--texto-2); }
+.tp-nova-etapa { margin: 4px 0 2px; flex-wrap: nowrap; gap: 6px; }
+.tp-nova-etapa input { flex: 1; min-width: 0; }
+.tp-nova-etapa button { display: grid; place-items: center; min-width: 40px; padding: 0 8px; }
+.tp-nova-etapa button svg { width: 20px; height: 20px; }
+.tp-etapas-ed { display: grid; gap: 4px; padding: 8px 0 2px; border-top: 1px solid var(--linha); }
+.tp-rotulo { font-size: 13px; color: var(--texto-2); }
+.tp-etapas-ed ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.tp-etapas-ed li { display: flex; align-items: center; gap: 6px; }
+.tp-etapas-ed li input[data-texto] { flex: 1; min-width: 0; }
+.tp-etapas-ed li input[type="checkbox"] { width: 18px; height: 18px; flex: none; }
+.tp-etapas-ed li button { min-width: 36px; padding: 0 8px; }
+body.disp-tablet .tp-etapas li { min-height: 44px; }
+body.disp-tablet .tp-etapas li button, body.disp-tablet .tp-nova-etapa button { min-height: 44px; min-width: 44px; }
+@media (max-width: 760px) { .tp-etapas { margin-left: 0; } }
