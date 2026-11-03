@@ -64,7 +64,10 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
   `.wjcad`, lido no kernel com `STEPControl_Reader`/`StlAPI_Reader` + costura; fica fora das fotografias do desfazer;
   STL acima de 10 000 triângulos = **corpo de malha** só exibido, `malha: true`, lido em `src/kernel/stl.ts`).
   **Montagem STEP** → `.wjasm` (`src/kernel/importar.ts` separa sólidos/instâncias; nomes pelo texto em
-  `src/montagem/step.ts`; teste `scripts/teste-importar.ts`); a Peça repassa o arquivo à Montagem (`#importar-step`)
+  `src/montagem/step.ts`; teste `scripts/teste-importar.ts`); a Peça repassa o arquivo à Montagem (`#importar-step`).
+  **Montagem → Editar peça / cotas** (`docs/funcional/montagem.md` §2.12): cotas dos componentes editáveis na
+  montagem (`src/montagem/cotas.ts`), Peça em contexto com a montagem transparente (`src/montagem/contexto.ts`,
+  `cad/#editar-contexto`) e referências a outros componentes (`ctx` nas `Referencia`, marca "->" na árvore)
 - **Ambientes do WJCAD**: Peça em `cad/` (`src/main.ts`), **Montagem** em `cad/montagem/` (`src/montagem/`:
   modelo, cena junta, solver de posicionamentos, testados em `scripts/teste-montagem.ts`) e **Desenho** em
   `cad/desenho/` (`src/desenho/`: folha ABNT em SVG, vistas por projeção HLR no kernel em

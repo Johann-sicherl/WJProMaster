@@ -1,12 +1,14 @@
 // Teste da montagem (src/montagem): transformações, peças embutidas e instâncias, exclusão,
 // quantidades, cena junta (malhas e topologia de vários componentes) e mapa de entidades.
-import { documentoExemplo, type Documento } from "../src/model";
+import { documentoExemplo, novoEsboco, temReferenciaDeContexto, type Documento } from "../src/model";
 import {
   aplicarDirecao, aplicarPonto, compor, embutirPeca, excluirComponentes, girarEmTorno, IDENTIDADE, inserirComponente, inverter, marcaDe, matriz,
   marcaDaPeca, montagemVazia, quantidades, quatDeEuler, aplicarPadroes, excluirPadrao, posesExplodidas, explosaoAutomatica, massaDaMontagem, copiasDoPadrao, quatEixoAngulo, rotuloComponente, validarMontagem, type Transformacao,
 } from "../src/montagem/modelo";
 import { recursoDaFace, referencialNaMontagem } from "../src/montagem/cotas";
-import { devolverPeca, itensDoContexto } from "../src/montagem/contexto";
+import { atualizarRefsDeContexto, devolverPeca, itensDoContexto } from "../src/montagem/contexto";
+import { atualizarExternas } from "../src/esboco/externas";
+import * as op from "../src/esboco/operacoes";
 import { centroDoComponente, facesDoComponente, globalDaEntidade, juntar, localDaEntidade } from "../src/montagem/cena";
 import { resolverMontagem, tiposPossiveis, primitivaLocal, transformar, compRel } from "../src/montagem/solver";
 import type { Referencia, Vec3 } from "../src/model";
@@ -109,6 +111,45 @@ igual("marca muda com o conteúdo", marcaDe("a") !== marcaDe("b"), true);
   const marcaAntes = pA.marca;
   igual("devolver com alteração: troca a peça, marca nova, alterada", [devolverPeca(m, ca.id, reaberto), pA.doc.features[0].nome, pA.marca !== marcaAntes, pA.modificada], [true, "Base renomeada", true, true]);
   igual("a outra peça não muda", m.pecas.find((p) => p.id === ib)!.modificada ?? false, false);
+}
+
+// ---------- referências a outros componentes: atualização na edição em contexto ----------
+{
+  const doc = documentoExemplo();
+  // recurso com "até a superfície" de outro componente (face y = 50) e esboço numa face dele (y = 30)
+  const fx = doc.features[1] as unknown as Record<string, unknown>;
+  fx.condicao = { tipo: "superficie", dist: 0, ref: { tipo: "face", ass: { geom: "plano", centro: [0, 50, 0], area: 100, normal: [0, -1, 0] }, ctx: "V" } };
+  const esb = novoEsboco(9, { tipo: "face", origem: [0, 30, 0], normal: [0, 1, 0], eixoX: [1, 0, 0], face: { geom: "plano", centro: [0, 30, 0], area: 100, normal: [0, 1, 0] }, ctx: "V" });
+  // geometria convertida: aresta do vizinho de (0,30,-5) a (10,30,-5), e uma aresta da própria peça
+  const pa = op.ponto(esb, { x: 0, y: 5 }), pb = op.ponto(esb, { x: 10, y: 5 });
+  const lv = op.linha(esb, pa, pb);
+  lv.externa = { tipo: "aresta", ass: { geom: "linha", meio: [5, 30, -5], a: [0, 30, -5], b: [10, 30, -5], comprimento: 10 }, ctx: "V" };
+  const pc = op.ponto(esb, { x: 0, y: 0 }), pd = op.ponto(esb, { x: 3, y: 0 });
+  const lp = op.linha(esb, pc, pd);
+  lp.externa = { tipo: "aresta", ass: { geom: "linha", meio: [1.5, 30, 0], a: [0, 30, 0], b: [3, 30, 0], comprimento: 3 } };
+  doc.features.push(esb);
+  // o vizinho, como estava: nada muda (nem por arredondamento)
+  const topoIgual = (dy: number) => ({
+    faces: [{ geom: "plano" as const, centro: [0, 50 + dy, 0] as Vec3, area: 100, normal: [0, -1, 0] as Vec3 }, { geom: "plano" as const, centro: [0, 30 + dy + 1e-12, 0] as Vec3, area: 100, normal: [0, 1, 0] as Vec3 }],
+    arestas: [{ geom: "linha" as const, meio: [5, 30 + dy, -5] as Vec3, a: [0, 30 + dy, -5] as Vec3, b: [10, 30 + dy, -5] as Vec3, comprimento: 10 }],
+    vertices: [[0, 30 + dy, -5], [10, 30 + dy, -5]] as Vec3[],
+  });
+  igual("contexto sem mudança: nada a atualizar", atualizarRefsDeContexto(doc, (c) => (c === "V" ? topoIgual(0) : null)).mudou, false);
+  igual("componente fora da montagem: fica a última geometria", atualizarRefsDeContexto(doc, () => null).mudou, false);
+  // o vizinho subiu 10: face de parada em 60, plano do esboço em 40; a linha convertida acompanha
+  const r = atualizarRefsDeContexto(doc, (c) => (c === "V" ? topoIgual(10) : null));
+  const cond = (doc.features[1] as unknown as { condicao: { ref: { ass: { centro: Vec3 }; ctx: string } } }).condicao.ref;
+  igual("vizinho subiu 10: atualizou e marcou o esboço para resolver", [r.mudou, r.esbocos], [true, [esb.id]]);
+  igual("face de parada em y = 60 (com ctx)", [r3(cond.ass.centro), cond.ctx], [[0, 60, 0], "V"]);
+  igual("plano do esboço em y = 40 (com ctx)", [r3((esb.suporte as { origem: Vec3 }).origem), (esb.suporte as { ctx?: string }).ctx], [[0, 40, 0], "V"]);
+  igual("referência da própria peça no esboço não foi tocada", (lp.externa as { ass: { meio: Vec3 } }).ass.meio, [1.5, 30, 0]);
+  igual("referência convertida do vizinho continua com ctx", (lv.externa as { ctx?: string }).ctx, "V");
+  // atualizar pela própria peça (sem comp) não mexe nas referências do vizinho
+  const topoPeca = { arestas: [{ geom: "linha" as const, meio: [5, 0, -5] as Vec3, a: [0, 0, -5] as Vec3, b: [10, 0, -5] as Vec3, comprimento: 10 }], vertices: [] as Vec3[] };
+  const antes = JSON.stringify(lv.externa);
+  atualizarExternas(esb, topoPeca, { origem: [0, 40, 0], x: [1, 0, 0], y: [0, 0, -1], normal: [0, 1, 0] });
+  igual("atualizar pela própria peça não mexe na referência do vizinho", JSON.stringify(lv.externa) === antes, true);
+  igual("marca -> no recurso", [temReferenciaDeContexto(doc.features[1]), temReferenciaDeContexto(doc.features[0])], [true, false]);
 }
 
 // ---------- cena junta ----------

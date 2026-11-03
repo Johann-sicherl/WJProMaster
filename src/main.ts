@@ -1,7 +1,9 @@
 import { atualizarExternas } from "./esboco/externas";
 import { deixar, deixarArquivo, esquecer, pegar } from "./comum/transferir";
-import { devolverPeca, itensDoContexto, type PedidoContexto, type VoltaContexto } from "./montagem/contexto";
-import { matriz, validarMontagem, type DocumentoMontagem } from "./montagem/modelo";
+import { atualizarRefsDeContexto, devolverPeca, itensDoContexto, type PedidoContexto, type VoltaContexto } from "./montagem/contexto";
+import { juntar, localDaEntidade, type Cena } from "./montagem/cena";
+import type { Topologia } from "./kernel/topologia";
+import { rotuloComponente, validarMontagem, type DocumentoMontagem } from "./montagem/modelo";
 import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO } from "./kernel/stl";
 import { pecasDoStep } from "./montagem/step";
 import "./style.css";
@@ -14,6 +16,7 @@ import type { PropriedadesMassa } from "./kernel/avaliar";
 import {
   documentoExemplo,
   documentoImportado,
+  temReferenciaDeContexto,
   fotografiaLeve,
   revelarFotografia,
   documentoVazio,
@@ -299,6 +302,10 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   if (enquadrarContexto && contexto && r.malha) {
     enquadrarContexto = false;
     viewport.enquadrar(false); // peça e montagem em volta
+  }
+  if (atualizarRefsPendente && contexto) {
+    atualizarRefsPendente = false;
+    void atualizarReferenciasDoContexto();
   }
   viewport.mostrarPrevia(previaAtiva() ? r.previaRemovido : null);
   if (primeiraRegeneracao && r.malha) {
@@ -1111,6 +1118,16 @@ function rotuloReferencia(id: IdReferencia) {
 }
 
 function rotuloRef(r: Referencia, i: number): string {
+  // geometria de outro componente: "Face<1>@Placa<1>" (ou "@?" fora da montagem dela)
+  const ctx = "ctx" in r ? r.ctx : undefined;
+  if (ctx) {
+    const c = contexto?.montagem.componentes.find((x) => x.id === ctx);
+    return `${rotuloRefBase(r, i)}@${c && contexto ? rotuloComponente(contexto.montagem, c) : "?"}`;
+  }
+  return rotuloRefBase(r, i);
+}
+
+function rotuloRefBase(r: Referencia, i: number): string {
   switch (r.tipo) {
     case "face": return `Face<${i + 1}>`;
     case "aresta": return `Aresta<${i + 1}>`;
@@ -1304,6 +1321,14 @@ function instalarToqueCurto() {
     const refPrioritaria = refViewport && (refViewport.borda || !["XY", "XZ", "YZ"].includes(refViewport.id)) ? refViewport : null;
     if (aguardando) {
       if (refPrioritaria?.tipo === "plano") return void suporteEscolhido(suporteDoPlano(refPrioritaria.id), null);
+      // face de outro componente na frente da peça (edição em contexto): plano do esboço "->"
+      const faceCtx = contexto ? viewport.picarFaceContexto(e.clientX, e.clientY) : null;
+      if (faceCtx) {
+        if (aguardando.para === "furo") return avisar("O furo vai numa face da própria peça.");
+        const r = faceCtx.indice !== undefined ? refDoContexto({ tipo: "face", indice: faceCtx.indice }) : null;
+        if (r?.tipo === "face") return void suporteEscolhido(faceComoSuporte(faceCtx.origem, faceCtx.normal, r.ass, r.ctx), faceCtx.origem);
+        if (faceCtx.indice !== undefined) return;
+      }
       const face = viewport.picarFace(e.clientX, e.clientY);
       if (face) return void suporteEscolhido(faceComoSuporte(face.origem, face.normal, face.indice !== undefined ? viewport.topologia?.faces[face.indice] : undefined), face.origem);
       if (refViewport?.tipo === "plano") return void suporteEscolhido(suporteDoPlano(refViewport.id), null);
@@ -1314,7 +1339,21 @@ function instalarToqueCurto() {
       if (!c) return avisar("Toque um campo de seleção (rosa) no painel para escolher geometria.");
       const refAceita = refViewport && c.aceita.includes(refViewport.tipo) ? refViewport : null;
       if (refAceita && refAceita === refPrioritaria) return adicionarAoCampo({ tipo: refAceita.tipo, id: refAceita.id });
-      const ent = viewport.picarEntidade(e.clientX, e.clientY, filtrar(filtroEntidades(c.aceita)), tol);
+      const filtroCampo = filtrar(filtroEntidades(c.aceita));
+      // condição final / início "De": também face ou vértice de outro componente (contexto)
+      if (contexto && CAMPOS_COM_CONTEXTO.test(c.cam)) {
+        const entCtx = viewport.picarNoContexto(e.clientX, e.clientY, filtroCampo, tol);
+        const entPeca = viewport.picarEntidade(e.clientX, e.clientY, filtroCampo, tol);
+        // face do outro componente na frente da peça ganha; aresta/vértice: a peça primeiro
+        if (entCtx && (entCtx.tipo === "face" || !entPeca)) {
+          const r = refDoContexto(entCtx);
+          if (!r) return;
+          if (c.aceita.includes("plano") && (r.tipo !== "face" || r.ass.geom !== "plano")) return avisar("Escolha uma face plana.");
+          adicionarAoCampo(r);
+          return;
+        }
+      }
+      const ent = viewport.picarEntidade(e.clientX, e.clientY, filtroCampo, tol);
       if (!ent) {
         // planos e eixos de referência clicados no viewport
         if (refViewport && c.aceita.includes(refViewport.tipo)) adicionarAoCampo({ tipo: refViewport.tipo, id: refViewport.id });
@@ -2152,7 +2191,8 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
       <span class="item-ic">${ICONES[iconeFeature(f)]}</span>
       <span class="item-texto"><strong></strong><small></small></span>
       ${mini || filho ? "" : `<span class="item-mover"><button data-mover="-1" aria-label="Subir">▲</button><button data-mover="1" aria-label="Descer">▼</button></span>`}`;
-    li.querySelector("strong")!.textContent = f.nome;
+    // "->": usa geometria de outro componente da montagem; "->?": fora do contexto (peça aberta sozinha)
+    li.querySelector("strong")!.textContent = temReferenciaDeContexto(f) ? `${f.nome} ${contexto ? "->" : "->?"}` : f.nome;
     const opr = "operacao" in f && f.operacao === "cortar" ? " · corte" : "";
     const ms = tempos.find((t) => t.id === f.id)?.ms;
     li.querySelector("small")!.textContent = `${ROTULO_TIPO[f.tipo]}${opr}${f.id === editor?.esb.id ? " · editando" : ""}${ms && ms > 300 ? ` · ${(ms / 1000).toFixed(1)} s` : ""}`;
@@ -2609,9 +2649,10 @@ function suporteDoPlano(id: string): SuporteEsboco {
   return id === "XY" || id === "XZ" || id === "YZ" ? { tipo: "plano", plano: id, deslocamento: 0 } : { tipo: "planoRef", id };
 }
 
-function faceComoSuporte(ponto: Vec3, normal: Vec3, face?: AssinaturaFace): SuporteEsboco {
+/** `ctx`: a face é de outro componente da montagem (edição em contexto). */
+function faceComoSuporte(ponto: Vec3, normal: Vec3, face?: AssinaturaFace, ctx?: string): SuporteEsboco {
   const d = escalar(ponto, normal);
-  return { tipo: "face", origem: normal.map((v) => v * d) as Vec3, normal, eixoX: eixoXParaNormal(normal), ...(face ? { face } : {}) };
+  return { tipo: "face", origem: normal.map((v) => v * d) as Vec3, normal, eixoX: eixoXParaNormal(normal), ...(face ? { face } : {}), ...(ctx ? { ctx } : {}) };
 }
 
 async function suporteEscolhido(suporte: SuporteEsboco, pontoTocado: Vec3 | null, ferramenta?: Ferramenta) {
@@ -2662,6 +2703,22 @@ async function editarEsboco(esb: FeatureEsboco, ferramenta?: Ferramenta) {
       atualizarStatus();
     },
     avisar,
+    // edição em contexto: arestas, vértices e faces dos outros componentes (converter entidades)
+    ...(contexto ? {
+      refDoContexto: (x: number, y: number, filtro: TipoEntidade[], tolPx: number) => {
+        const en = viewport.picarNoContexto(x, y, new Set(filtro), tolPx);
+        return en ? refDoContexto(en) : null;
+      },
+      arestasDaFaceContexto: (x: number, y: number, tolPx: number) => {
+        const en = viewport.picarNoContexto(x, y, new Set<TipoEntidade>(["face"]), tolPx);
+        const t = viewport.topologiaContexto;
+        if (!en || !t?.arestasDaFace) return null;
+        const r = refDoContexto(en);
+        if (!r) return [];
+        const ctx = (r as { ctx?: string }).ctx;
+        return (t.arestasDaFace[en.indice] ?? []).map((i) => ({ tipo: "aresta", ass: t.arestas[i], ctx }) as Referencia);
+      },
+    } : {}),
   };
   editor = new EditorEsboco(host, esb);
   // a seleção acima redesenha os esboços da peça (ainda sem editor): tira essas cópias fixas,
@@ -4034,18 +4091,81 @@ if (!prefs.dispositivo) escolherDispositivo(true);
 /** Peça editada com a montagem em volta: a montagem (cópia) e o componente cuja peça é esta. */
 let contexto: { montagem: DocumentoMontagem; comp: string; nomeMontagem: string } | null = null;
 let entrandoNoContexto = false;
-/** malhas das outras peças da montagem (cada peça uma vez) */
-const malhasContexto = new Map<string, NonNullable<ResultadoRegeneracao["malha"]>>();
+/** malha e topologia das outras peças da montagem (cada peça uma vez) */
+const malhasContexto = new Map<string, { malha: NonNullable<ResultadoRegeneracao["malha"]>; topo: Topologia }>();
+/** o contexto como a cena da montagem (malha + topologia juntas, no sistema da peça) */
+let cenaContexto: Cena | null = null;
 let contextoVisivel = true;
 let enquadrarContexto = false;
+/** ao chegar a primeira reconstrução em contexto: atualizar as referências a outros componentes */
+let atualizarRefsPendente = false;
+const TOPO_VAZIA_CTX: Topologia = { faces: [], arestas: [], vertices: [], arestasDaFace: [] };
 
 function desenharContexto() {
+  cenaContexto = null;
   const info = contexto && contextoVisivel ? itensDoContexto(contexto.montagem, contexto.comp) : null;
   if (!info) return viewport.mostrarContexto(null);
-  viewport.mostrarContexto(info.itens.flatMap((it) => {
-    const malha = it.mesmaPeca ? ultimaMalha : malhasContexto.get(it.peca.id);
-    return malha ? [{ malha, matriz: matriz(it.t) }] : [];
-  }));
+  const itens = info.itens.flatMap((it) => {
+    const r = it.mesmaPeca ? (ultimaMalha ? { malha: ultimaMalha, topo: viewport.topologia ?? TOPO_VAZIA_CTX } : null) : malhasContexto.get(it.peca.id);
+    return r ? [{ comp: it.comp, malha: r.malha, topo: r.topo, t: it.t }] : [];
+  });
+  cenaContexto = itens.length ? juntar(itens) : null;
+  viewport.mostrarContexto(cenaContexto);
+}
+
+/** Topologia de um componente do contexto, no sistema da peça (null: não está na montagem). */
+function topoDoComponente(comp: string): Topologia | null {
+  const c = cenaContexto;
+  const k = c ? c.mapa.comps.indexOf(comp) : -1;
+  if (!c || k < 0) return null;
+  return {
+    faces: c.topo.faces.slice(c.mapa.faces[k], c.mapa.faces[k + 1]),
+    arestas: c.topo.arestas.slice(c.mapa.arestas[k], c.mapa.arestas[k + 1]),
+    vertices: c.topo.vertices.slice(c.mapa.vertices[k], c.mapa.vertices[k + 1]),
+  };
+}
+
+/**
+ * Entidade de outro componente → referência com a geometria dele (no sistema da peça) e o
+ * componente de onde veio. Outra instância da própria peça não pode ser referência (laço).
+ */
+function refDoContexto(e: Entidade): Referencia | null {
+  if (!cenaContexto || !contexto) return null;
+  const l = localDaEntidade(cenaContexto.mapa, e.tipo, e.indice);
+  if (!l) return null;
+  const editado = contexto.montagem.componentes.find((x) => x.id === contexto!.comp);
+  const c = contexto.montagem.componentes.find((x) => x.id === l.comp);
+  if (!c || !editado || c.peca === editado.peca) {
+    avisar("Outra instância da própria peça não pode ser referência (ela depende desta).");
+    return null;
+  }
+  const t = cenaContexto.topo;
+  if (e.tipo === "face") return { tipo: "face", ass: t.faces[e.indice], ctx: l.comp };
+  if (e.tipo === "aresta") return { tipo: "aresta", ass: t.arestas[e.indice], ctx: l.comp };
+  return { tipo: "vertice", p: t.vertices[e.indice], ctx: l.comp };
+}
+
+/** Campos de comando que aceitam geometria de outro componente (o kernel usa a geometria guardada). */
+const CAMPOS_COM_CONTEXTO = /^(condicao|direcao2\.condicao|de)\.ref$/;
+
+/**
+ * Primeira reconstrução em contexto: referências a outros componentes passam a usar a geometria
+ * atual deles (e a peça é reconstruída de novo se algo mudou).
+ */
+async function atualizarReferenciasDoContexto() {
+  const res = atualizarRefsDeContexto(doc, topoDoComponente);
+  if (!res.mudou) return;
+  if (res.esbocos.length) {
+    const s = await obterSolver();
+    for (const id of res.esbocos) {
+      const e = doc.features.find((f) => f.id === id);
+      if (e?.tipo === "esboco") s.resolver(e);
+    }
+  }
+  salvarAutosave();
+  regenerar();
+  renderizarArvore();
+  avisar("Referências a outros componentes (->) atualizadas com a montagem.");
 }
 
 /**
@@ -4074,7 +4194,7 @@ async function entrarNoContexto(retomar: boolean): Promise<boolean> {
   for (const p of outras.values()) {
     try {
       const r = await kernel.componente(`contexto:${p.id}:${p.marca ?? ""}`, p.doc.features.slice(0, p.doc.retrocesso ?? p.doc.features.length));
-      if (r.malha) malhasContexto.set(p.id, r.malha);
+      if (r.malha) malhasContexto.set(p.id, { malha: r.malha, topo: r.topologia ?? TOPO_VAZIA_CTX });
     } catch {
       /* peça vizinha que não reconstrói: fica de fora do contexto */
     }
@@ -4082,6 +4202,7 @@ async function entrarNoContexto(retomar: boolean): Promise<boolean> {
   // o kernel guarda a última peça calculada (medir, exportar): reconstrói a editada por último;
   // ao chegar, desenha a montagem em volta e enquadra tudo
   enquadrarContexto = true;
+  atualizarRefsPendente = true;
   regenerar();
   return true;
 }
@@ -4111,6 +4232,7 @@ function instalarBarraContexto() {
 /** Sai do contexto sem voltar (outro documento aberto): tira a montagem e os botões. */
 function sairDoContexto() {
   contexto = null;
+  cenaContexto = null;
   malhasContexto.clear();
   sessionStorage.removeItem("wjcad:emContexto");
   void esquecer("contexto");

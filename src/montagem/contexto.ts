@@ -2,7 +2,10 @@
 // montagem em volta (transparente), no sistema de coordenadas da peça. Puro: testado em
 // scripts/teste-montagem.ts. A Peça (src/main.ts) mostra e devolve; a Montagem abre e recebe.
 
-import { validarDocumento, type Documento } from "../model";
+import { validarDocumento, type AssinaturaFace, type Documento, type Referencia, type SuporteEsboco } from "../model";
+import type { Topologia } from "../kernel/topologia";
+import { acharNaTopologia, atualizarExternas } from "../esboco/externas";
+import { eixoXParaNormal, referencial } from "../esboco/referencial";
 import { capturarAtiva } from "../configuracoes";
 import { compor, inverter, marcaDaPeca, type DocumentoMontagem, type PecaEmbutida, type Transformacao } from "./modelo";
 
@@ -70,4 +73,100 @@ export function devolverPeca(m: DocumentoMontagem, compId: string, editado: Docu
   p.marca = marcaDaPeca(novo);
   p.modificada = true;
   return true;
+}
+
+/** Face da topologia mais parecida com a guardada (mesmo sentido da normal; perto e de área parecida). */
+export function acharFaceParecida(ass: AssinaturaFace, topo: Topologia): AssinaturaFace | null {
+  let melhor: AssinaturaFace | null = null, nota = Infinity;
+  for (const f of topo.faces) {
+    if (f.geom !== ass.geom) continue;
+    if (ass.normal && (!f.normal || f.normal[0] * ass.normal[0] + f.normal[1] * ass.normal[1] + f.normal[2] * ass.normal[2] < 0.9999)) continue;
+    const d = Math.hypot(f.centro[0] - ass.centro[0], f.centro[1] - ass.centro[1], f.centro[2] - ass.centro[2]);
+    const n = d + Math.abs(f.area - ass.area) / Math.max(1, Math.sqrt(ass.area));
+    if (n < nota) { nota = n; melhor = f; }
+  }
+  return melhor;
+}
+
+/**
+ * Edição em contexto: as referências a outros componentes (plano de esboço numa face deles,
+ * condições "até a superfície/vértice", início "De", geometria convertida no esboço) passam a
+ * usar a geometria atual deles. `topoDe(comp)` = topologia do componente no sistema da peça
+ * (null: componente não está nesta montagem → a referência fica com a última geometria).
+ * Devolve se algo mudou e os esboços cujos pontos mudaram (resolver antes de reconstruir).
+ */
+export function atualizarRefsDeContexto(doc: Documento, topoDe: (comp: string) => Topologia | null): { mudou: boolean; esbocos: string[] } {
+  let mudou = false;
+  const esbocos = new Set<string>();
+  // igualdade com tolerância (1e-6 mm): arredondamentos não contam como mudança
+  const aprox = (x: unknown) => JSON.stringify(x, (_k, v) => (typeof v === "number" ? Math.round(v * 1e6) / 1e6 + 0 : v));
+  const trocar = (alvo: Record<string, unknown>, novo: Record<string, unknown>) => {
+    if (aprox(alvo) === aprox(novo)) return false;
+    for (const k of Object.keys(alvo)) delete alvo[k];
+    Object.assign(alvo, novo);
+    return true;
+  };
+  // referências soltas nos recursos (condições, "De"...)
+  const visitar = (o: unknown) => {
+    if (!o || typeof o !== "object") return;
+    if (Array.isArray(o)) return o.forEach(visitar);
+    const r = o as Record<string, unknown>;
+    const ctx = typeof r.ctx === "string" ? r.ctx : null;
+    if (ctx && (r.tipo === "face" || r.tipo === "aresta" || r.tipo === "vertice")) {
+      const topo = topoDe(ctx);
+      if (!topo) return;
+      const ref = r as unknown as Referencia;
+      let nova: Referencia | null = null;
+      if (ref.tipo === "face") {
+        const f = acharFaceParecida(ref.ass, topo);
+        nova = f ? { tipo: "face", ass: f, ctx } : null;
+      } else {
+        const a = acharNaTopologia(ref, topo);
+        nova = a ? ({ ...a, ctx } as Referencia) : null;
+      }
+      if (nova && trocar(r, nova as unknown as Record<string, unknown>)) mudou = true;
+      return;
+    }
+    for (const v of Object.values(r)) visitar(v);
+  };
+  for (const f of doc.features) {
+    if (f.tipo !== "esboco") {
+      visitar(f);
+      continue;
+    }
+    // plano do esboço numa face de outro componente
+    const s = f.suporte;
+    if (s.tipo === "face" && s.ctx && s.face) {
+      const topo = topoDe(s.ctx);
+      const face = topo && acharFaceParecida(s.face, topo);
+      if (face?.normal) {
+        const n = face.normal;
+        const d = face.centro[0] * n[0] + face.centro[1] * n[1] + face.centro[2] * n[2];
+        const perp = Math.abs(s.eixoX[0] * n[0] + s.eixoX[1] * n[1] + s.eixoX[2] * n[2]) < 1e-6;
+        const novo: SuporteEsboco = { tipo: "face", origem: [n[0] * d, n[1] * d, n[2] * d], normal: n, eixoX: perp ? s.eixoX : eixoXParaNormal(n), face, ctx: s.ctx };
+        if (aprox(novo) !== aprox(s)) {
+          f.suporte = novo;
+          mudou = true;
+          esbocos.add(f.id);
+        }
+      }
+    }
+    // geometria convertida de outros componentes (no plano atual do esboço)
+    const comps = new Set(f.geos.flatMap((g) => (g.externa && "ctx" in g.externa && g.externa.ctx ? [g.externa.ctx] : [])));
+    for (const comp of comps) {
+      const topo = topoDe(comp);
+      if (!topo) continue;
+      let ref;
+      try {
+        ref = referencial(f.suporte);
+      } catch {
+        continue;
+      }
+      if (atualizarExternas(f, topo, ref, comp).mudaram) {
+        mudou = true;
+        esbocos.add(f.id);
+      }
+    }
+  }
+  return { mudou, esbocos: [...esbocos] };
 }

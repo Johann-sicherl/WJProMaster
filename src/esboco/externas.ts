@@ -158,11 +158,18 @@ function fixarExterna(esb: FeatureEsboco, g: GeoEsboco) {
  * Atualiza as referências do modelo com a peça atual. Devolve quantas mudaram e quantas
  * não foram encontradas (ficam onde estavam).
  */
-export function atualizarExternas(esb: FeatureEsboco, topo: TopologiaLeve, r: Referencial): { mudaram: number; perdidas: number } {
+/**
+ * `comp`: a topologia é de outro componente (edição em contexto): só as referências dele. Sem
+ * `comp` (a própria peça), as referências a outros componentes ficam como estão.
+ */
+export function atualizarExternas(esb: FeatureEsboco, topo: TopologiaLeve, r: Referencial, comp?: string): { mudaram: number; perdidas: number } {
   let mudaram = 0, perdidas = 0;
   for (const g of esb.geos) {
     if (!g.externa) continue;
-    const nova = acharNaTopologia(g.externa, topo);
+    const ctx = "ctx" in g.externa ? g.externa.ctx : undefined;
+    if (ctx !== comp) continue;
+    const achada = acharNaTopologia(g.externa, topo);
+    const nova = achada && ctx ? ({ ...achada, ctx } as Referencia) : achada;
     const proj = nova && projetar(nova, r);
     if (!nova || !proj || (proj.tipo !== g.tipo && !(proj.tipo === "ponto" && g.tipo === "ponto"))) {
       perdidas++;

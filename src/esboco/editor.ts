@@ -120,6 +120,13 @@ export interface Hospedeiro {
   /** Redesenhar painel, barra de status e faixa de comandos. */
   atualizarInterface(): void;
   avisar(texto: string): void;
+  /**
+   * Edição em contexto: aresta/vértice de outro componente sob o toque, como referência (com a
+   * geometria dele no sistema da peça e o componente de onde veio). Ausente fora do contexto.
+   */
+  refDoContexto?(x: number, y: number, filtro: TipoEntidade[], tolPx: number): Referencia | null;
+  /** Edição em contexto: arestas da face de outro componente sob o toque (null: nenhuma face). */
+  arestasDaFaceContexto?(x: number, y: number, tolPx: number): Referencia[] | null;
 }
 
 /** Resultado de um encaixe: posição e com o que ela coincide. */
@@ -459,13 +466,20 @@ export class EditorEsboco {
   private acharModelo(x: number, y: number, tipo: string, filtro: TipoEntidade[]): AlvoModelo | null {
     const vp = this.h.viewport;
     const topo = vp.topologia;
-    if (!topo) return null;
-    const e = vp.picarEntidade(x, y, new Set(filtro), tipo === "touch" ? 22 : 10);
-    if (!e || e.tipo === "face") return null;
-    const ref: Referencia = e.tipo === "vertice" ? { tipo: "vertice", p: topo.vertices[e.indice] } : { tipo: "aresta", ass: topo.arestas[e.indice] };
-    const proj = projetar(ref, this.ref);
-    if (!proj) return null;
-    return { ref, proj, rotulo: e.tipo === "vertice" ? "Vértice do modelo" : "Aresta do modelo" };
+    const tol = tipo === "touch" ? 22 : 10;
+    const e = topo ? vp.picarEntidade(x, y, new Set(filtro), tol) : null;
+    if (topo && e && e.tipo !== "face") {
+      const ref: Referencia = e.tipo === "vertice" ? { tipo: "vertice", p: topo.vertices[e.indice] } : { tipo: "aresta", ass: topo.arestas[e.indice] };
+      const proj = projetar(ref, this.ref);
+      if (!proj) return null;
+      return { ref, proj, rotulo: e.tipo === "vertice" ? "Vértice do modelo" : "Aresta do modelo" };
+    }
+    // edição em contexto: aresta/vértice de outro componente (só se a peça não tem nada ali)
+    if (e || !this.h.refDoContexto) return null;
+    const ref = this.h.refDoContexto(x, y, filtro.filter((f) => f !== "face"), tol);
+    const proj = ref && projetar(ref, this.ref);
+    if (!ref || !proj) return null;
+    return { ref, proj, rotulo: ref.tipo === "vertice" ? "Vértice de outro componente (->)" : "Aresta de outro componente (->)" };
   }
 
   /** Converter entidades: a aresta/vértice da peça vira geometria do esboço (fixa, não construção). */
@@ -482,12 +496,18 @@ export class EditorEsboco {
   private converterFace(x: number, y: number, tipo: string): boolean {
     const vp = this.h.viewport;
     const topo = vp.topologia;
-    if (!topo?.arestasDaFace) return false;
-    const e = vp.picarEntidade(x, y, new Set<TipoEntidade>(["face"]), tipo === "touch" ? 22 : 10);
-    if (!e || e.tipo !== "face") return false;
+    const tol = tipo === "touch" ? 22 : 10;
+    const e = topo?.arestasDaFace ? vp.picarEntidade(x, y, new Set<TipoEntidade>(["face"]), tol) : null;
+    let refs: Referencia[];
+    if (e && e.tipo === "face" && topo?.arestasDaFace) refs = (topo.arestasDaFace[e.indice] ?? []).map((i) => ({ tipo: "aresta", ass: topo.arestas[i] }));
+    else {
+      // edição em contexto: face de outro componente
+      const doCtx = this.h.arestasDaFaceContexto?.(x, y, tol);
+      if (!doCtx) return false;
+      refs = doCtx;
+    }
     let n = 0;
-    for (const i of topo.arestasDaFace[e.indice] ?? []) {
-      const ref: Referencia = { tipo: "aresta", ass: topo.arestas[i] };
+    for (const ref of refs) {
       const proj = projetar(ref, this.ref);
       // aresta perpendicular ao plano vira um ponto (ou curva que não fica plana): não entra no contorno
       if (!proj || proj.tipo === "ponto") continue;

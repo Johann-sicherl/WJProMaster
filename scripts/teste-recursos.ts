@@ -875,6 +875,28 @@ verdade("nome repetido ganha o próximo número", nomeUnico(["Extrusão1", "Cort
   }
 }
 
+// ---------- referências a outros componentes (edição em contexto, "->") ----------
+{
+  // bloco 40 × 20 no plano Superior, extrudado "até a superfície" de OUTRO componente: a face
+  // plana dele em y = 50 (normal −Y) vem com ctx e a geometria guardada; a peça reconstrói sozinha
+  const base = retangulo(40, 20, "XZ");
+  const faceVizinha: Referencia = { tipo: "face", ass: { geom: "plano", centro: [0, 50, 0], area: 900, normal: [0, -1, 0] }, ctx: "comp-vizinho" };
+  const x = ext(base, 10, { condicao: { tipo: "superficie", dist: 0, ref: faceVizinha } } as Partial<FeatureExtrusao>);
+  const r1 = regenerar([base, x]);
+  semErros("até a superfície de outro componente", r1);
+  confere("vai até y = 50: volume 40 × 20 × 50", r1.volume, 40 * 20 * 50, 1e-3);
+  // esboço numa face de outro componente (plano y = 70, normal +Y): não segue faces da própria peça
+  const sup = { tipo: "face" as const, origem: [0, 70, 0] as [number, number, number], normal: [0, 1, 0] as [number, number, number], eixoX: [1, 0, 0] as [number, number, number], face: { geom: "plano" as const, centro: [0, 70, 0] as [number, number, number], area: 400, normal: [0, 1, 0] as [number, number, number] }, ctx: "comp-vizinho" };
+  const e2 = novoEsboco(3, sup);
+  op.circulo(e2, op.ponto(e2, { x: 0, y: 0 }), 5);
+  const x2 = ext(e2, 10);
+  const r2 = regenerar([base, x, e2, x2]);
+  semErros("esboço na face de outro componente", r2);
+  verdade("plano do esboço ficou em y = 70 (não pulou para uma face da peça)", !r2.suportes?.[e2.id]);
+  const ys = r2.topologia!.vertices.map((v) => v[1]);
+  confere("cilindro vai de 70 a 80", Math.max(...ys), 80);
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);

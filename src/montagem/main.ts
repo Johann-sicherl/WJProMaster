@@ -459,7 +459,10 @@ function itensDaPeca(c: ComponenteMontagem): HTMLLIElement[] {
   }
   const item = (f: Feature, nivel: number) => {
     const i = pd.features.indexOf(f);
-    const e = li("item filho", iconeFeature(f), f.nome, ROTULO_TIPO[f.tipo] + ("operacao" in f && f.operacao === "cortar" ? " · corte" : ""), nivel);
+    // "->": usa geometria de outro componente (feita em Editar peça); "->?": componente não está nesta montagem
+    const ctxs = [...JSON.stringify(f).matchAll(/"ctx":"([^"]+)"/g)].map((x) => x[1]);
+    const marca = ctxs.length ? (ctxs.every((id) => doc!.componentes.some((x) => x.id === id)) ? " ->" : " ->?") : "";
+    const e = li("item filho", iconeFeature(f), f.nome + marca, ROTULO_TIPO[f.tipo] + ("operacao" in f && f.operacao === "cortar" ? " · corte" : ""), nivel);
     e.classList.toggle("suprimida", f.suprimida);
     e.classList.toggle("retrocedida", i >= fim);
     e.classList.toggle("com-erro", comErro.has(f.id));

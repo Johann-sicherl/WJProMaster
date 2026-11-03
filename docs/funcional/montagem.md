@@ -199,8 +199,22 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
   contexto volta e salva a montagem (com a pergunta das peças alteradas). Recarregar a página
   continua em contexto, com a edição. Abrir outro documento pergunta antes de sair do contexto.
   A montagem passa pelo IndexedDB (`src/comum/transferir.ts`: "contexto" / "contexto-volta").
-- **Referências a outros componentes** (esboço na face de outra peça, converter arestas dela,
-  até a superfície dela, marca "->"): próxima etapa.
+- **Referências a outros componentes** ✅ (03/11/2026) — em **Editar peça**, os componentes em volta
+  podem ser tocados (a peça na frente tem prioridade):
+  - **plano do esboço** numa face plana de outro componente;
+  - **Converter entidades** de arestas, vértices ou de uma face inteira de outro componente;
+  - **Condição final** "Até a superfície / Deslocamento da superfície / Até o vértice" e **Início
+    (De)** com face plana ou vértice de outro componente (o rótulo mostra `Face<1>@Placa<1>`).
+  - A referência guarda a geometria (no sistema da peça) e de qual componente veio (`ctx`): o
+    kernel usa essa geometria e **nunca** a procura na própria peça (`planoDeRef`/`eixoDeRef`/
+    `pontoDeRef`; o plano do esboço não "acompanha" faces da peça). **Ao entrar em contexto** as
+    referências se atualizam com a posição/forma atual do componente (`atualizarRefsDeContexto`;
+    mudança = peça "alterada"); **peça aberta sozinha** usa a última geometria guardada.
+  - Árvore: **"->"** no recurso que usa outro componente; **"->?"** fora do contexto (Peça aberta
+    sozinha, ou componente que não está na montagem). Outra instância da própria peça não pode ser
+    referência (laço). Furo assistido só em face da própria peça.
+  - Não aceitam outro componente (por enquanto): filete/chanfro, casca, faces/arestas de chapa e
+    a pré-seleção no modelo — esses recursos precisam da geometria da própria peça.
 
 ### 2.13 Importar montagem STEP — ✅ (01/11/2026)
 - **Abrir arquivo do aparelho** na Montagem aceita `.step/.stp` de qualquer CAD (do CAD comercial:
