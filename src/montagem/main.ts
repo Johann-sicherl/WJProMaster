@@ -8,6 +8,13 @@ import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
 import { montagemDoStep } from "./step";
 import { pegarArquivo } from "../comum/transferir";
+import { acompanharPecaEmbutida, CotasDaMontagem, prepararPecaAlterada, recursoDaFace } from "./cotas";
+import { SolverEsboco } from "../esboco/solver";
+import wasmPlaneGcs from "@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url";
+import type { Referencial } from "../esboco/referencial";
+import { esbocosAbsorvidos, ROTULO_TIPO, type Feature } from "../model";
+import { iconeFeature } from "../ui/iconeRecurso";
+import { capturarAtiva, limparConfiguracoes } from "../configuracoes";
 import { Viewport, type Entidade, type TipoEntidade, type Vista } from "../viewport";
 import { documentoImportado, fotografiaLeve, revelarFotografia, MATERIAIS, validarDocumento, type Documento, type Referencia, type Vec3 } from "../model";
 import {
@@ -137,6 +144,89 @@ function montarCena() {
   cena = itens.length ? juntar(itens) : null;
   viewport.mostrarMalha(cena?.malha ?? null, cena?.topo ?? null);
   destacar();
+  reexibirCotas();
+}
+
+// ---------- cotas dos componentes (duplo clique numa face, ou num recurso na árvore) ----------
+
+let solverP: Promise<SolverEsboco> | null = null;
+const obterSolver = () => (solverP ??= SolverEsboco.criar(() => wasmPlaneGcs));
+const camadaCotas = Object.assign(document.createElement("div"), { className: "camada-cotas-modelo" });
+$("viewport").parentElement!.appendChild(camadaCotas);
+/** Edições de cota em sequência (uma reconstrução por vez, na ordem em que foram feitas). */
+let filaEdicao: Promise<void> = Promise.resolve();
+const cotasMont = new CotasDaMontagem(viewport, camadaCotas, obterSolver, () => {
+  const at = cotasMont.atual;
+  if (at) filaEdicao = filaEdicao.then(() => aposEditarPeca(at.comp)).catch((e) => avisar(`Não foi possível reconstruir a peça: ${(e as Error).message}`));
+});
+
+/** Planos de referência da peça (esboços neles), do último resultado do kernel. */
+function planosDa(r: ResultadoComponente | undefined): Map<string, Referencial> {
+  return new Map((r?.planos ?? []).map((x) => [x.id, x.ref] as [string, Referencial]));
+}
+
+/** Pose mostrada do componente (explodida, se a vista explodida estiver ligada). */
+function poseMostrada(c: ComponenteMontagem): Transformacao {
+  return (mostrarExplodida && doc?.explosao?.length ? posesExplodidas(doc).get(c.id) : undefined) ?? c.t;
+}
+
+function alvoCotas(c: ComponenteMontagem) {
+  const r = malhas.get(chaveDe(pecaDe(c)));
+  return {
+    doc: pecaDe(c).doc,
+    t: poseMostrada(c),
+    planos: planosDa(r),
+    centroDoRecurso: (f: Feature) => {
+      if (!cena) return null;
+      const globais = (r?.facesPorRecurso?.[f.id] ?? []).map((i) => globalDaEntidade(cena!.mapa, "face", c.id, i)).filter((g): g is number => g !== null);
+      return globais.length ? viewport.centroFaces(globais) : null;
+    },
+  };
+}
+
+/** Mostra as cotas do recurso da peça sobre o componente. */
+function mostrarCotasDoRecurso(c: ComponenteMontagem, f: Feature) {
+  if (comando) return avisar("Conclua o comando atual (✓) antes.");
+  const n = cotasMont.mostrar(c.id, f, alvoCotas(c));
+  if (!n) return avisar(`${f.nome} (${rotuloComponente(doc!, c)}): sem cotas para mostrar.`);
+  avisar(`${f.nome} de ${pecaDe(c).nome}: toque numa cota para editar (muda a peça em todas as instâncias). Toque no vazio para esconder.`, 5000);
+}
+
+/** Depois de reconstruir/mover: as cotas abertas seguem o componente (ou somem se o recurso sumiu). */
+function reexibirCotas() {
+  const at = cotasMont.atual;
+  if (!at || cotasMont.editando) return;
+  const c = compDe(at.comp);
+  const f = c && pecaDe(c).doc.features.find((x) => x.id === at.recurso);
+  if (!c || !f || !visivel(c) || comando) return cotasMont.fechar();
+  cotasMont.mostrar(c.id, f, alvoCotas(c));
+}
+
+/**
+ * Cota editada: a peça embutida muda (todas as instâncias). Equações e configuração ativa da
+ * peça, reconstrução no kernel, esboços que acompanham a peça (até duas passadas, como na Peça),
+ * posicionamentos de novo e um passo de desfazer. A peça fica "modificada" até ser salva.
+ */
+async function aposEditarPeca(compId: string) {
+  const c = compDe(compId);
+  if (!doc || !c) return;
+  const p = pecaDe(c);
+  await prepararPecaAlterada(p, obterSolver);
+  atualizarStatus("Reconstruindo a peça…");
+  await atualizarCena();
+  for (let i = 0; i < 2; i++) {
+    const r = malhas.get(chaveDe(p));
+    if (!r || !(await acompanharPecaEmbutida(p, r, planosDa(r), obterSolver))) break;
+    await atualizarCena();
+  }
+  resolver();
+  montarCena();
+  registrarPasso();
+  salvarAutosave();
+  renderizarArvore();
+  atualizarStatus();
+  const erro = errosPeca.get(p.id);
+  if (erro) avisar(`${p.nome}: ${erro}. Desfaça (Ctrl+Z) se o valor não serve.`, 6000);
 }
 
 let seqCena = 0;
@@ -248,6 +338,7 @@ function alterou(cenaToda = false) {
   atualizarStatus();
 }
 function restaurar(json: string) {
+  cotasMont.fechar();
   doc = validarMontagem(revelarFotografia(json, dadosImportados));
   selComps = selComps.filter((id) => compDe(id));
   if (selMate && !doc.posicionamentos.some((m) => m.id === selMate)) selMate = null;
@@ -349,6 +440,49 @@ function li(cls: string, icone: NomeIcone, titulo: string, sub = "", nivel = 0):
   return e;
 }
 
+/** Componentes com a árvore de recursos da peça aberta (▾). */
+const arvoresAbertas = new Set<string>();
+
+/** Recursos da peça do componente, com os esboços que cada um usa aninhados (como na Peça). */
+function itensDaPeca(c: ComponenteMontagem): HTMLLIElement[] {
+  const p = pecaDe(c), pd = p.doc;
+  const fim = pd.retrocesso ?? pd.features.length;
+  const comErro = new Set((malhas.get(chaveDe(p))?.erros ?? []).map((x) => x.id));
+  const usados = new Map<string, string[]>();
+  const absorvidos = new Set<string>();
+  for (const f of pd.features) {
+    if (f.tipo === "esboco") continue;
+    const ids = esbocosAbsorvidos(f).filter((id) => pd.features.some((x) => x.id === id && x.tipo === "esboco"));
+    usados.set(f.id, ids);
+    for (const id of ids) absorvidos.add(id);
+  }
+  const item = (f: Feature, nivel: number) => {
+    const i = pd.features.indexOf(f);
+    const e = li("item filho", iconeFeature(f), f.nome, ROTULO_TIPO[f.tipo] + ("operacao" in f && f.operacao === "cortar" ? " · corte" : ""), nivel);
+    e.classList.toggle("suprimida", f.suprimida);
+    e.classList.toggle("retrocedida", i >= fim);
+    e.classList.toggle("com-erro", comErro.has(f.id));
+    e.title = "Duplo clique (ou toque longo): cotas deste recurso no modelo";
+    e.onclick = (ev) => tocarComponente(c.id, ev.ctrlKey || ev.shiftKey || ev.metaKey, e);
+    e.ondblclick = () => mostrarCotasDoRecurso(c, f);
+    e.oncontextmenu = (ev) => {
+      ev.preventDefault();
+      mostrarBarra([{ rotulo: "Mostrar cotas", icone: "cota", acao: () => mostrarCotasDoRecurso(c, f) }], ev.clientX, ev.clientY);
+    };
+    return e;
+  };
+  const out: HTMLLIElement[] = [];
+  for (const f of pd.features) {
+    if (absorvidos.has(f.id)) continue;
+    out.push(item(f, 1));
+    for (const id of usados.get(f.id) ?? []) {
+      const s = pd.features.find((x) => x.id === id);
+      if (s) out.push(item(s, 2));
+    }
+  }
+  return out;
+}
+
 function renderizarArvore() {
   const lista = $("arvore");
   lista.innerHTML = "";
@@ -392,7 +526,21 @@ function renderizarArvore() {
     const p = pecaDe(c);
     const g = solucao?.graus.get(c.id);
     const sub = c.suprimido ? "suprimido" : c.fixo ? "fixo" : g === 0 ? "totalmente definido" : `${g ?? 6} grau(s) livre(s)`;
-    const e = li("item", "componente", `${prefixo(c)}${rotuloComponente(doc, c)}`, `${sub}${errosPeca.has(p.id) ? ` · ${errosPeca.get(p.id)}` : ""}${p.arquivo ? "" : " · fora do cofre"}`);
+    const e = li("item", "componente", `${prefixo(c)}${rotuloComponente(doc, c)}`, `${sub}${errosPeca.has(p.id) ? ` · ${errosPeca.get(p.id)}` : ""}${p.modificada ? " · peça alterada (salve)" : ""}${p.arquivo ? "" : " · fora do cofre"}`);
+    // seta: mostra a árvore de recursos da peça (duplo clique num recurso = cotas dele)
+    const seta = document.createElement("button");
+    seta.className = "item-seta";
+    const aberto = arvoresAbertas.has(c.id);
+    seta.setAttribute("aria-expanded", String(aberto));
+    seta.setAttribute("aria-label", aberto ? "Recolher" : "Mostrar os recursos da peça");
+    seta.textContent = aberto ? "▾" : "▸";
+    seta.onclick = (ev) => {
+      ev.stopPropagation();
+      if (aberto) arvoresAbertas.delete(c.id);
+      else arvoresAbertas.add(c.id);
+      renderizarArvore();
+    };
+    e.prepend(seta);
     e.classList.toggle("ativo", selComps.includes(c.id));
     e.classList.toggle("suprimida", !!c.suprimido);
     e.classList.toggle("oculta", !!c.oculto);
@@ -416,6 +564,7 @@ function renderizarArvore() {
       mostrarBarra(acoesDoComponente(), r.right, r.top + 40);
     };
     lista.append(e);
+    if (aberto) for (const item of itensDaPeca(c)) lista.append(item);
   }
 
   // padrões e espelhamentos
@@ -685,6 +834,13 @@ function excluirSelecao() {
 /** Abre a peça do componente no ambiente de Peça (do cofre, ou a cópia embutida). */
 async function abrirPeca(c: ComponenteMontagem) {
   const p = pecaDe(c);
+  // alterações feitas na montagem: gravar antes no arquivo da peça (senão abriria a versão antiga)
+  if (p.modificada && p.arquivo) {
+    if (!confirm(`${p.nome} foi alterada nesta montagem e ainda não foi salva. Salvar a peça agora e abrir?`)) return;
+    const m = await salvarPecaModificada(p);
+    if (p.modificada) return avisar(m, 7000);
+    renderizarArvore();
+  }
   salvarAutosave();
   if (p.arquivo) {
     const r = await lerDoCofre(p.arquivo);
@@ -760,6 +916,7 @@ function picarNoToque(e: PointerEvent): Entidade | null {
 
 viewport.aoToqueCurto = (e) => {
   if (!doc) return;
+  if (!comando && cotasMont.atual) cotasMont.fechar();
   const tol = e.pointerType === "touch" ? 22 : 10;
   if (comando?.tipo === "posicionar") {
     // dedo em cima de uma face: a face ganha; aresta/vértice só bem perto (senão o dedo, largo,
@@ -797,6 +954,27 @@ viewport.aoToqueCurto = (e) => {
   }
 };
 
+viewport.aoToqueDuplo = (e) => {
+  if (!doc) return;
+  if (comando) return viewport.enquadrar();
+  // duplo clique numa face: cotas do recurso da peça que criou a face (como na Peça)
+  const ent = viewport.picarEntidade(e.clientX, e.clientY, new Set<TipoEntidade>(["face"]), e.pointerType === "touch" ? 22 : 9);
+  const l = ent && cena ? localDaEntidade(cena.mapa, "face", ent.indice) : null;
+  const c = l ? compDe(l.comp) : undefined;
+  const f = c && l ? recursoDaFace(pecaDe(c).doc, malhas.get(chaveDe(pecaDe(c)))?.facesPorRecurso, l.indice) : null;
+  if (!c || !f) {
+    cotasMont.fechar();
+    viewport.enquadrar();
+    return;
+  }
+  esconderBarra();
+  selComps = [c.id];
+  selMate = null;
+  destacar();
+  renderizarArvore();
+  mostrarCotasDoRecurso(c, f);
+};
+
 viewport.aoMenuContexto = (e) => {
   if (!doc) return;
   if (comando) {
@@ -823,6 +1001,7 @@ viewport.aoMenuContexto = (e) => {
 // ---------- painel de comando (no lugar da árvore) ----------
 
 function mostrarPainel(emComando: boolean) {
+  if (emComando) cotasMont.fechar();
   $("arvore").hidden = emComando;
   $("painel-comando").hidden = !emComando;
   $("canto-confirmacao").hidden = !emComando;
@@ -1929,9 +2108,46 @@ $("janela-fechar").onclick = fecharJanela;
 // ---------- arquivo ----------
 
 /** Salva no cofre (GO-OUT no dispositivo) com as referências da montagem (tabela do WJPDM). */
-function salvar(): Promise<string> {
-  if (!doc) return Promise.resolve("Nada a salvar.");
+/**
+ * Grava a peça alterada na montagem no arquivo dela no cofre (GO-OUT automático; travada por outra
+ * pessoa: não grava e diz por quê). Peça só embutida (fora do cofre) vai junto com a montagem.
+ */
+async function salvarPecaModificada(p: PecaEmbutida): Promise<string> {
+  if (!p.arquivo) {
+    p.modificada = false;
+    return `${p.nome}: fica dentro da montagem (não está no cofre).`;
+  }
+  const copia = JSON.parse(JSON.stringify(p.doc)) as Documento;
+  capturarAtiva(copia);
+  limparConfiguracoes(copia);
+  const dados = new Blob([JSON.stringify(copia, null, 2)], { type: "application/octet-stream" });
+  const m = await salvarNoCofre("cad", `${p.nome}.wjcad`, dados, undefined, { arquivo: p.arquivo });
+  if (!/não salvo/.test(m)) p.modificada = false;
+  return m;
+}
+
+/** Peças alteradas na montagem: pergunta se grava também cada uma no arquivo dela. */
+async function salvarPecasModificadas(): Promise<string[]> {
+  const mods = doc?.pecas.filter((p) => p.modificada) ?? [];
+  if (!mods.length) return [];
+  const nomes = mods.map((p) => `• ${p.nome}${p.arquivo ? "" : " (fora do cofre)"}`).join("\n");
+  if (!confirm(`Salvar também as peças alteradas na montagem?\n\n${nomes}\n\nOK: grava cada peça no arquivo dela no cofre.\nCancelar: salva só a montagem (as alterações ficam guardadas nela, marcadas como não salvas).`)) return [];
+  const msgs: string[] = [];
+  for (const p of mods) {
+    try {
+      msgs.push(await salvarPecaModificada(p));
+    } catch (e) {
+      msgs.push(`${p.nome}: não salvo (${(e as Error).message})`);
+    }
+  }
+  return msgs;
+}
+
+async function salvar(): Promise<string> {
+  if (!doc) return "Nada a salvar.";
   const d = doc;
+  const msgsPecas = await salvarPecasModificadas();
+  if (msgsPecas.length) renderizarArvore();
   const dados = new Blob([JSON.stringify(d)], { type: "application/octet-stream" });
   const referencias = quantidades(d).filter((x) => x.peca.arquivo).map((x) => ({ filho: x.peca.arquivo!, tipo: "componente" as const, quantidade: x.qtd }));
   avisar("Salvando no cofre…");
@@ -1941,8 +2157,16 @@ function salvar(): Promise<string> {
     salvarAutosave();
     renderizarArvore();
   }, { referencias, modelo: { tipo: "montagem" } });
-  p.then((m) => avisar(m, 6000), (e) => avisar(`Não foi possível salvar: ${(e as Error).message}`));
-  return p;
+  try {
+    const m = await p;
+    const tudo = [...msgsPecas, m].join(" ");
+    avisar(tudo, msgsPecas.length ? 9000 : 6000);
+    salvarAutosave();
+    return tudo;
+  } catch (e) {
+    avisar(`Não foi possível salvar: ${(e as Error).message}`);
+    throw e;
+  }
 }
 
 function abrirMontagem(d: DocumentoMontagem) {
@@ -1975,7 +2199,8 @@ async function atualizarDoCofre() {
   if (!doc) return;
   const mudaram: string[] = [];
   for (const p of [...doc.pecas]) {
-    if (!p.arquivo) continue;
+    // alterada na montagem e ainda não salva: a cópia embutida vale (não volta à do cofre)
+    if (!p.arquivo || p.modificada) continue;
     const r = await lerDoCofre(p.arquivo).catch(() => null);
     if (!r) continue;
     try {

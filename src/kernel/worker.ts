@@ -209,7 +209,7 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
         // planificado: linhas de dobra e o plano da chapa (a vista olha de cima da maior face plana)
         const extra = p.planificar && peca ? { dobras: (r.referencias.find((x) => x.id === "__dobras") as { linhas?: Vec3[][] } | undefined)?.linhas ?? [], plano: planoDaChapa(peca) } : {};
         enviar(
-          { tipo: "resposta", seq: p.seq, dados: { malha: m, topologia: r.topologia, volume: r.volume, erros: r.erros, ...extra } },
+          { tipo: "resposta", seq: p.seq, dados: { malha: m, topologia: r.topologia, volume: r.volume, erros: r.erros, facesPorRecurso: r.facesPorRecurso, suportes: r.suportes, planos: r.referencias.filter((x) => x.tipo === "plano"), ...extra } },
           m ? [m.vertices.buffer, m.normais.buffer, m.triangulos.buffer, m.arestas.buffer, m.faces.buffer, m.gruposArestas.buffer] : [],
         );
         break;

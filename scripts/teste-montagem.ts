@@ -3,8 +3,9 @@
 import { documentoExemplo, type Documento } from "../src/model";
 import {
   aplicarDirecao, aplicarPonto, compor, embutirPeca, excluirComponentes, girarEmTorno, IDENTIDADE, inserirComponente, inverter, marcaDe, matriz,
-  montagemVazia, quantidades, quatDeEuler, aplicarPadroes, excluirPadrao, posesExplodidas, explosaoAutomatica, massaDaMontagem, copiasDoPadrao, quatEixoAngulo, rotuloComponente, validarMontagem, type Transformacao,
+  marcaDaPeca, montagemVazia, quantidades, quatDeEuler, aplicarPadroes, excluirPadrao, posesExplodidas, explosaoAutomatica, massaDaMontagem, copiasDoPadrao, quatEixoAngulo, rotuloComponente, validarMontagem, type Transformacao,
 } from "../src/montagem/modelo";
+import { recursoDaFace, referencialNaMontagem } from "../src/montagem/cotas";
 import { centroDoComponente, facesDoComponente, globalDaEntidade, juntar, localDaEntidade } from "../src/montagem/cena";
 import { resolverMontagem, tiposPossiveis, primitivaLocal, transformar, compRel } from "../src/montagem/solver";
 import type { Referencia, Vec3 } from "../src/model";
@@ -60,6 +61,27 @@ const c4 = inserirComponente(d, p1);
 igual("instância nova continua a numeração (não reaproveita)", rotuloComponente(d, c4), "Suporte<2>");
 igual("validar: peça ausente tira o componente", validarMontagem(JSON.parse(JSON.stringify({ ...d, pecas: [] }))).componentes.length, 0);
 igual("marca muda com o conteúdo", marcaDe("a") !== marcaDe("b"), true);
+
+// ---------- peça alterada na montagem (cotas / Editar peça) ----------
+{
+  const m = montagemVazia("M");
+  const pd = documentoExemplo();
+  const id = embutirPeca(m, pd, { arquivo: "arq-1", versao: 1 });
+  const p = m.pecas.find((x) => x.id === id)!;
+  p.modificada = true;
+  const doCofre = JSON.parse(JSON.stringify(pd)) as Documento;
+  doCofre.material = "aco";
+  igual("peça modificada: inserir de novo do cofre não apaga a alteração", [embutirPeca(m, doCofre, { arquivo: "arq-1", versao: 2 }), p.doc.material ?? null, p.versao], [id, pd.material ?? null, 1]);
+  p.modificada = false;
+  embutirPeca(m, doCofre, { arquivo: "arq-1", versao: 2 });
+  igual("sem alteração pendente: o cofre atualiza a cópia", [p.doc.material, p.versao, p.marca === marcaDaPeca(doCofre)], ["aco", 2, true]);
+  // recurso que criou a face e referencial levado para a montagem
+  const f1 = pd.features[1];
+  igual("recurso da face: o mais recente que tem a face", recursoDaFace(pd, { [pd.features[0].id]: [0], [f1.id]: [0, 3] }, 3)?.id, f1.id);
+  igual("face de nenhum recurso", recursoDaFace(pd, {}, 9), null);
+  const rm = referencialNaMontagem({ origem: [1, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] }, { pos: [10, 0, 0], rot: quatEixoAngulo([0, 0, 1], 90) });
+  igual("referencial do esboço na posição do componente", [r3(rm.origem), r3(rm.x), r3(rm.normal)], [[10, 1, 0], [0, 1, 0], [0, 0, 1]]);
+}
 
 // ---------- cena junta ----------
 // cubo de 1 face/2 triângulos simplificado: 4 vértices, 2 triângulos, 1 face, 1 aresta (2 pontos)

@@ -105,6 +105,11 @@ export interface PecaEmbutida {
   versao?: number;
   /** marca do conteúdo embutido (compara com o cofre sem guardar outra cópia) */
   marca?: string;
+  /**
+   * Alterada dentro da montagem (cotas, Editar peça) e ainda não gravada no arquivo dela: a cópia
+   * embutida vale mais que a do cofre (não é sobrescrita ao abrir) até salvar a peça.
+   */
+  modificada?: boolean;
   doc: Documento;
 }
 
@@ -237,8 +242,9 @@ export function embutirPeca(d: DocumentoMontagem, doc: Documento, origem: { arqu
   const marca = marcaDe(`${texto}|${doc.material ?? ""}`);
   const igual = d.pecas.find((p) => (origem.arquivo ? p.arquivo === origem.arquivo : !p.arquivo && p.marca === marca));
   if (igual) {
-    // mesmo arquivo do cofre com conteúdo novo: atualiza a cópia embutida (todas as instâncias)
-    if (igual.marca !== marca) Object.assign(igual, { doc, marca, versao: origem.versao ?? igual.versao });
+    // mesmo arquivo do cofre com conteúdo novo: atualiza a cópia embutida (todas as instâncias),
+    // a não ser que ela tenha alterações feitas na montagem e ainda não salvas
+    if (igual.marca !== marca && !igual.modificada) Object.assign(igual, { doc, marca, versao: origem.versao ?? igual.versao });
     return igual.id;
   }
   const nomeBase = (origem.nome ?? doc.nome).replace(/\.(wjcad|jlscad|cadt)$/i, "") || "Peça";
@@ -417,3 +423,6 @@ export function massaDaMontagem(itens: { m: MassaPeca; t: Transformacao }[]): { 
   }
   return { massa, volume, area, centro: massa > 0 ? [cm[0] / massa, cm[1] / massa, cm[2] / massa] : [0, 0, 0] };
 }
+
+/** Marca do conteúdo da peça (o mesmo cálculo de embutirPeca e da atualização pelo cofre). */
+export const marcaDaPeca = (doc: Documento) => marcaDe(`${JSON.stringify(doc.features)}|${doc.material ?? ""}`);
