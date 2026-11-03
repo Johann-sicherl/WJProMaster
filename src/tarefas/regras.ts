@@ -41,6 +41,8 @@ export interface Tarefa {
   prazo: string | null;
   /** sub-tarefas (etapas para concluir a tarefa), em ordem; opcional (tarefas antigas não têm) */
   etapas?: Etapa[];
+  /** observação (nota/lembrete) da tarefa; opcional */
+  nota?: string;
   ordem: number;
   atualizado: string;
 }
@@ -52,6 +54,8 @@ export interface Etapa {
   feita: string | null;
   /** prazo de entrega da etapa (AAAA-MM-DD); opcional */
   prazo?: string | null;
+  /** observação (nota/lembrete) da etapa; opcional */
+  nota?: string;
 }
 
 export interface Config {
@@ -274,6 +278,25 @@ export function estadoPelasEtapas(b: Base, t: Tarefa, agora: string): boolean {
   return false;
 }
 
+/** Observação da tarefa (texto vazio apaga o campo). */
+export function definirNota(t: Tarefa, texto: string, agora: string) {
+  const n = texto.trim();
+  if ((t.nota ?? "") === n) return;
+  if (n) t.nota = n;
+  else delete t.nota;
+  t.atualizado = agora;
+}
+
+/** Observação de uma etapa (texto vazio apaga o campo). */
+export function definirNotaEtapa(t: Tarefa, id: string, texto: string, agora: string) {
+  const e = t.etapas?.find((x) => x.id === id);
+  const n = texto.trim();
+  if (!e || (e.nota ?? "") === n) return;
+  if (n) e.nota = n;
+  else delete e.nota;
+  t.atualizado = agora;
+}
+
 /** Etapas feitas / total (0/0 = tarefa sem etapas). */
 export const progresso = (t: Tarefa) => ({ feitas: t.etapas?.filter((e) => e.feita).length ?? 0, total: t.etapas?.length ?? 0 });
 
@@ -486,17 +509,17 @@ export function duracao(ms: number): string {
 /** "2/3: Cortar ✓ | Dobrar ✓ | Soldar" (vazio sem etapas). */
 function etapasCSV(t: Tarefa): string {
   const { feitas, total } = progresso(t);
-  return total ? `${feitas}/${total}: ${t.etapas!.map((e) => `${e.titulo}${e.feita ? " ✓" : ""}${e.prazo ? ` (prazo ${e.prazo})` : ""}`).join(" | ")}` : "";
+  return total ? `${feitas}/${total}: ${t.etapas!.map((e) => `${e.titulo}${e.feita ? " ✓" : ""}${e.prazo ? ` (prazo ${e.prazo})` : ""}${e.nota ? ` [obs: ${e.nota}]` : ""}`).join(" | ")}` : "";
 }
 
 /** Tabela das tarefas em CSV (separador ";", abre no WJPlan e em planilhas). */
 export function tabelaCSV(b: Base): string {
   const c = (v: string) => (/[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   const dh = (s: string | null) => (s ? s.slice(0, 16).replace("T", " ") : "");
-  const linhas = [["Pasta", "Tarefa", "Estado", "Criada", "Prazo", "Concluída", "Tempo de atendimento", "Etapas"].join(";")];
+  const linhas = [["Pasta", "Tarefa", "Estado", "Criada", "Prazo", "Concluída", "Tempo de atendimento", "Etapas", "Observação"].join(";")];
   for (const t of b.tarefas) {
     const fim = concluidaEm(b, t);
-    linhas.push([caminhoPasta(b, t.pasta), t.titulo, estadoDe(b, t.estado)?.nome ?? t.estado, dh(t.criada), t.prazo ?? "", dh(fim), fim ? duracao(Date.parse(fim) - Date.parse(t.criada)) : "", etapasCSV(t)].map(c).join(";"));
+    linhas.push([caminhoPasta(b, t.pasta), t.titulo, estadoDe(b, t.estado)?.nome ?? t.estado, dh(t.criada), t.prazo ?? "", dh(fim), fim ? duracao(Date.parse(fim) - Date.parse(t.criada)) : "", etapasCSV(t), t.nota ?? ""].map(c).join(";"));
   }
   return `﻿${linhas.join("\r\n")}\r\n`;
 }
