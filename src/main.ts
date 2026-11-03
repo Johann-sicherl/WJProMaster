@@ -4,7 +4,7 @@ import { atualizarRefsDeContexto, devolverPeca, itensDoContexto, type PedidoCont
 import { juntar, localDaEntidade, type Cena } from "./montagem/cena";
 import type { Topologia } from "./kernel/topologia";
 import { rotuloComponente, validarMontagem, type DocumentoMontagem } from "./montagem/modelo";
-import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO } from "./kernel/stl";
+import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO, triangulosVaziosStl } from "./kernel/stl";
 import { pecasDoStep } from "./montagem/step";
 import "./style.css";
 import { ABAS, type Comando, type IdAba } from "./comandos";
@@ -3127,7 +3127,12 @@ function mostrarLegendaAnalise() {
  * STL grande ao abrir: simplificar para quantos triângulos (0 = abrir como está; null = desistir).
  * Até o limite do sólido o STL vira sólido editável; acima, corpo de malha (ver e medir).
  */
-function escolherSimplificacao(nome: string, n: number, tamanho: number): Promise<number | null> {
+/** STL com triângulos vazios (0, 0, 0): o arquivo veio incompleto do programa que o exportou. */
+function textoVazios(vazios: number, n: number): string {
+  return `Atenção: ${vazios.toLocaleString("pt-BR")} dos ${n.toLocaleString("pt-BR")} triângulos (${Math.round((vazios / n) * 100)}%) deste STL estão vazios (todos os vértices em 0, 0, 0). O arquivo veio incompleto do programa que o exportou, e a peça mostra falhas onde esses triângulos deveriam estar. Exporte de novo (de preferência em STEP).`;
+}
+
+function escolherSimplificacao(nome: string, n: number, tamanho: number, vazios = 0): Promise<number | null> {
   const fmt = (x: number) => x.toLocaleString("pt-BR");
   const todas: [number, string][] = [
     [5000, "sólido editável, mais rápido de editar"],
@@ -3144,6 +3149,7 @@ function escolherSimplificacao(nome: string, n: number, tamanho: number): Promis
       <header><strong id="simp-titulo">STL grande</strong></header>
       <div class="dialogo-corpo">
         <p><strong>${escapar(nome)}</strong>: ${fmt(n)} triângulos (${(tamanho / 1e6).toFixed(0)} MB).</p>
+        ${vazios ? `<p class="aviso-stl">${textoVazios(vazios, n)}</p>` : ""}
         <p class="dica">Até ${fmt(LIMITE_TRIANGULOS_SOLIDO)} triângulos o STL vira <strong>sólido editável</strong>
           (cortes, furos, filetes, mover/deslocar faces). Acima disso fica como corpo de malha: só ver e medir.
           Simplificar junta vértices próximos e mantém a forma (o volume muda pouco).</p>
@@ -3567,12 +3573,12 @@ document.addEventListener("pointerdown", (e) => {
 
 // ---------- aviso flutuante ----------
 let tempoAviso: number | undefined;
-function avisar(texto: string) {
+function avisar(texto: string, ms = 3200) {
   const el = $("aviso");
   el.textContent = texto;
   el.hidden = false;
   clearTimeout(tempoAviso);
-  tempoAviso = window.setTimeout(() => (el.hidden = true), 3200);
+  tempoAviso = window.setTimeout(() => (el.hidden = true), ms);
 }
 
 // ---------- arquivo ----------
@@ -3975,8 +3981,9 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
       // STL acima do limite do sólido: simplificar antes de abrir (ou abrir como está)
       let simplificado: { de: number; para: number } | null = null;
       const nTri = ehStl ? contarTriangulosStl(bytes) : 0;
+      const vazios = ehStl ? triangulosVaziosStl(bytes) : 0;
       if (nTri > LIMITE_TRIANGULOS_SOLIDO) {
-        const alvo = await escolherSimplificacao(arq.name, nTri, arq.size);
+        const alvo = await escolherSimplificacao(arq.name, nTri, arq.size, vazios);
         if (alvo === null) return;
         if (alvo > 0) {
           avisar(`Simplificando ${nTri.toLocaleString("pt-BR")} → ${alvo.toLocaleString("pt-BR")} triângulos…`);
@@ -4001,7 +4008,10 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
         avisar(`Simplificado: ${simplificado.de.toLocaleString("pt-BR")} → ${simplificado.para.toLocaleString("pt-BR")} triângulos — ${imp.tipo === "importado" && imp.malha ? "corpo de malha (ver e medir)" : "sólido editável (cortes, furos, filetes, edição de faces)"}.`);
       else if (imp.tipo === "importado" && imp.malha)
         avisar(`STL com ${contarTriangulosStl(bytes).toLocaleString("pt-BR")} triângulos: entra como corpo de malha (só exibição e volume; acima de ${LIMITE_TRIANGULOS_SOLIDO.toLocaleString("pt-BR")} triângulos não vira sólido).`);
-      if (!aberto || !doc.features.length || confirm("Fechar a peça atual e abrir o arquivo?")) abrirDocumento(d);
+      if (!aberto || !doc.features.length || confirm("Fechar a peça atual e abrir o arquivo?")) {
+        abrirDocumento(d);
+        if (vazios) avisar(textoVazios(vazios, nTri), 15000);
+      }
       return;
     }
     let dados: unknown;

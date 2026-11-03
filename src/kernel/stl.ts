@@ -15,17 +15,40 @@ export function contarTriangulosStl(b: Uint8Array): number {
   return (t.match(/\bfacet\s+normal\b/gi) ?? []).length;
 }
 
-/** Posições dos vértices de cada triângulo (9 números por triângulo). */
+/** Registro binário com os três vértices em (0, 0, 0): espaço reservado que o exportador não preencheu. */
+const vazio = (dv: DataView, i: number) => {
+  const o = 84 + i * 50 + 12;
+  for (let k = 0; k < 9; k++) if (dv.getFloat32(o + k * 4, true) !== 0) return false;
+  return true;
+};
+
+/**
+ * Triângulos vazios do STL binário (vértices todos em 0, 0, 0). Alguns exportadores reservam o
+ * número de triângulos e deixam parte deles zerada: a peça abre com falhas onde eles deveriam estar.
+ */
+export function triangulosVaziosStl(b: Uint8Array): number {
+  if (!ehBinario(b)) return 0;
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const n = dv.getUint32(80, true);
+  let z = 0;
+  for (let i = 0; i < n; i++) if (vazio(dv, i)) z++;
+  return z;
+}
+
+/** Posições dos vértices de cada triângulo (9 números por triângulo); triângulos vazios ficam de fora. */
 function triangulosDoStl(b: Uint8Array): Float32Array {
   if (ehBinario(b)) {
     const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
     const n = dv.getUint32(80, true);
     const p = new Float32Array(n * 9);
+    let m = 0;
     for (let i = 0; i < n; i++) {
+      if (vazio(dv, i)) continue; // não puxa a caixa da peça para a origem
       const o = 84 + i * 50 + 12;
-      for (let k = 0; k < 9; k++) p[i * 9 + k] = dv.getFloat32(o + k * 4, true);
+      for (let k = 0; k < 9; k++) p[m * 9 + k] = dv.getFloat32(o + k * 4, true);
+      m++;
     }
-    return p;
+    return m === n ? p : p.subarray(0, m * 9);
   }
   const t = new TextDecoder().decode(b);
   const nums: number[] = [];
