@@ -50,6 +50,8 @@ export interface Etapa {
   titulo: string;
   /** data e hora em que foi marcada como feita; null = pendente */
   feita: string | null;
+  /** prazo de entrega da etapa (AAAA-MM-DD); opcional */
+  prazo?: string | null;
 }
 
 export interface Config {
@@ -230,6 +232,39 @@ export function moverEtapa(t: Tarefa, id: string, passo: number, agora: string) 
   t.atualizado = agora;
 }
 
+/** Prazo de entrega da etapa (null ou "" tira o prazo). */
+export function prazoEtapa(t: Tarefa, id: string, prazo: string | null, agora: string) {
+  const e = t.etapas?.find((x) => x.id === id);
+  const p = prazo || null;
+  if (!e || (e.prazo ?? null) === p) return;
+  if (p) e.prazo = p;
+  else delete e.prazo;
+  t.atualizado = agora;
+}
+
+/**
+ * Estado da tarefa pelas etapas: todas feitas → primeiro estado de Concluído; uma etapa desmarcada
+ * numa tarefa concluída → volta para o primeiro estado Em andamento (ou o inicial). Devolve true se mudou.
+ */
+export function estadoPelasEtapas(b: Base, t: Tarefa, agora: string): boolean {
+  const { feitas, total } = progresso(t);
+  if (!total) return false;
+  const tipo = estadoDe(b, t.estado)?.tipo;
+  const l = estadosOrdenados(b);
+  if (feitas === total && tipo !== "fim") {
+    const fim = l.find((e) => e.tipo === "fim");
+    if (!fim) return false;
+    mudarEstado(t, fim.id, agora);
+    return true;
+  }
+  if (feitas < total && tipo === "fim") {
+    const volta = l.find((e) => e.tipo === "andamento") ?? estadoInicial(b);
+    mudarEstado(t, volta.id, agora);
+    return true;
+  }
+  return false;
+}
+
 /** Etapas feitas / total (0/0 = tarefa sem etapas). */
 export const progresso = (t: Tarefa) => ({ feitas: t.etapas?.filter((e) => e.feita).length ?? 0, total: t.etapas?.length ?? 0 });
 
@@ -348,6 +383,85 @@ export function painel(b: Base, tarefas: Tarefa[], agora: Date): Painel {
   return { total: tarefas.length, porEstado, porTipo, atrasadas, vencendo, atendimento: estatistica(atend), execucao: estatistica(exec), concluidas7: c7, concluidas30: c30 };
 }
 
+export interface EtapaAtrasada {
+  tarefa: Tarefa;
+  etapa: Etapa;
+  /** dias até o prazo (negativo = atrasada) */
+  dias: number;
+}
+
+export interface PainelEtapas {
+  total: number;
+  feitas: number;
+  pendentes: number;
+  /** tarefas que têm etapas */
+  tarefas: number;
+  comPrazo: number;
+  /** feitas com prazo: até o dia do prazo / depois */
+  noPrazo: number;
+  comAtraso: number;
+  /** atraso médio (dias) das feitas depois do prazo */
+  atrasoMedio: number | null;
+  /** folga média (dias) das feitas antes do prazo */
+  folgaMedia: number | null;
+  /** % das feitas com prazo que foram entregues no prazo (null sem base) */
+  pctNoPrazo: number | null;
+  /** pendentes já vencidas e pendentes que vencem dentro da antecedência do alerta */
+  pendentesAtrasadas: number;
+  vencendo: number;
+  /** pendentes com prazo vencido ou próximo (mais urgentes primeiro) */
+  urgentes: EtapaAtrasada[];
+}
+
+/** Etapas das tarefas: andamento e cumprimento dos prazos estimados (prazo × data em que foi feita). */
+export function painelEtapas(b: Base, tarefas: Tarefa[], agora: Date): PainelEtapas {
+  const hoje = diaLocal(agora);
+  const r: PainelEtapas = { total: 0, feitas: 0, pendentes: 0, tarefas: 0, comPrazo: 0, noPrazo: 0, comAtraso: 0, atrasoMedio: null, folgaMedia: null, pctNoPrazo: null, pendentesAtrasadas: 0, vencendo: 0, urgentes: [] };
+  const atrasos: number[] = [], folgas: number[] = [];
+  for (const t of tarefas) {
+    if (!t.etapas?.length) continue;
+    r.tarefas++;
+    for (const e of t.etapas) {
+      r.total++;
+      if (e.prazo) r.comPrazo++;
+      if (e.feita) {
+        r.feitas++;
+        if (!e.prazo) continue;
+        const d = diasEntre(e.prazo, diaLocal(new Date(e.feita)));
+        if (d > 0) (r.comAtraso++, atrasos.push(d));
+        else (r.noPrazo++, folgas.push(-d));
+      } else {
+        r.pendentes++;
+        if (!e.prazo) continue;
+        const d = diasEntre(hoje, e.prazo);
+        if (d < 0) r.pendentesAtrasadas++;
+        else if (d <= b.config.diasAlerta) r.vencendo++;
+        if (d <= b.config.diasAlerta) r.urgentes.push({ tarefa: t, etapa: e, dias: d });
+      }
+    }
+  }
+  const media = (v: number[]) => (v.length ? v.reduce((a, x) => a + x, 0) / v.length : null);
+  r.atrasoMedio = media(atrasos);
+  r.folgaMedia = media(folgas);
+  r.pctNoPrazo = r.noPrazo + r.comAtraso ? (100 * r.noPrazo) / (r.noPrazo + r.comAtraso) : null;
+  r.urgentes.sort((x, y) => x.dias - y.dias);
+  return r;
+}
+
+/** Etapas pendentes com prazo vencido ou a até `diasAlerta` dias, de tarefas não concluídas. */
+export function alertasEtapas(b: Base, hoje: string, diasAlerta = b.config.diasAlerta): EtapaAtrasada[] {
+  const r: EtapaAtrasada[] = [];
+  for (const t of b.tarefas) {
+    if (ehFim(b, t.estado)) continue;
+    for (const e of t.etapas ?? []) {
+      if (e.feita || !e.prazo) continue;
+      const d = diasEntre(hoje, e.prazo);
+      if (d <= diasAlerta) r.push({ tarefa: t, etapa: e, dias: d });
+    }
+  }
+  return r.sort((x, y) => x.dias - y.dias);
+}
+
 /** "3 d 4 h", "5 h 10 min", "12 min". */
 export function duracao(ms: number): string {
   const min = Math.round(ms / 60000);
@@ -363,7 +477,7 @@ export function duracao(ms: number): string {
 /** "2/3: Cortar ✓ | Dobrar ✓ | Soldar" (vazio sem etapas). */
 function etapasCSV(t: Tarefa): string {
   const { feitas, total } = progresso(t);
-  return total ? `${feitas}/${total}: ${t.etapas!.map((e) => `${e.titulo}${e.feita ? " ✓" : ""}`).join(" | ")}` : "";
+  return total ? `${feitas}/${total}: ${t.etapas!.map((e) => `${e.titulo}${e.feita ? " ✓" : ""}${e.prazo ? ` (prazo ${e.prazo})` : ""}`).join(" | ")}` : "";
 }
 
 /** Tabela das tarefas em CSV (separador ";", abre no WJPlan e em planilhas). */

@@ -3,7 +3,7 @@
 import {
   alertas, baseNova, caminhoPasta, concluidaEm, criarPasta, criarTarefa, descendentes, diasEntre, duracao, excluirEstado, excluirPasta, excluirTarefa,
   filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, validarBase, type Base,
-  adicionarEtapa, excluirEtapa, marcarEtapa, moverEtapa, progresso,
+  adicionarEtapa, excluirEtapa, marcarEtapa, moverEtapa, progresso, estadoPelasEtapas, prazoEtapa, painelEtapas, alertasEtapas,
 } from "../src/tarefas/regras";
 
 let falhas = 0;
@@ -151,6 +151,48 @@ igual("etapas inválidas descartadas", antiga.tarefas[1].etapas, undefined);
 const outra = validarBase(JSON.parse(JSON.stringify(tb)));
 adicionarEtapa(outra.tarefas[0], "Pintar", T(9));
 igual("mescla leva a etapa nova", mesclar([tb, outra], T(10)).tarefas[0].etapas!.map((e) => e.titulo).join(), "Cortar chapa,Soldar,Pintar");
+
+// --- conclusão automática pelas etapas ---
+const ab = baseNova();
+const ta = criarTarefa(ab, "geral", "Montar painel", null, T(1));
+const a1 = adicionarEtapa(ta, "Furar", T(1))!, a2 = adicionarEtapa(ta, "Fixar", T(1))!;
+marcarEtapa(ta, a1.id, true, T(2));
+igual("uma etapa feita não conclui", estadoPelasEtapas(ab, ta, T(2)), false);
+marcarEtapa(ta, a2.id, true, T(3));
+igual("todas feitas concluem", estadoPelasEtapas(ab, ta, T(3)) && ta.estado, "concluido");
+igual("data da conclusão = última etapa", concluidaEm(ab, ta), T(3));
+marcarEtapa(ta, a2.id, false, T(4));
+igual("desmarcar reabre em execução", estadoPelasEtapas(ab, ta, T(4)) && ta.estado, "execucao");
+igual("tarefa sem etapas não muda", estadoPelasEtapas(ab, criarTarefa(ab, "geral", "Sem", null, T(1)), T(5)), false);
+
+// --- prazos das etapas e análise ---
+const qpb = baseNova();
+const tp = criarTarefa(qpb, "geral", "Projeto", null, T(1));
+const qp1 = adicionarEtapa(tp, "Esboço", T(1))!, qp2 = adicionarEtapa(tp, "Detalhar", T(1))!, qp3 = adicionarEtapa(tp, "Revisar", T(1))!, qp4 = adicionarEtapa(tp, "Liberar", T(1))!;
+adicionarEtapa(tp, "Sem prazo", T(1));
+prazoEtapa(tp, qp1.id, "2026-10-05", T(1));
+prazoEtapa(tp, qp2.id, "2026-10-05", T(1));
+prazoEtapa(tp, qp3.id, "2026-10-08", T(1));
+prazoEtapa(tp, qp4.id, "2026-10-20", T(1));
+igual("prazo gravado", qp3.prazo, "2026-10-08");
+prazoEtapa(tp, qp4.id, "", T(1));
+igual("prazo vazio tira o campo", "prazo" in qp4, false);
+prazoEtapa(tp, qp4.id, "2026-10-20", T(1));
+marcarEtapa(tp, qp1.id, true, T(3, 10)); // 2 dias antes
+marcarEtapa(tp, qp2.id, true, T(8, 10)); // 3 dias depois
+const pe = painelEtapas(qpb, qpb.tarefas, new Date(T(10, 12)));
+igual("etapas total/feitas", `${pe.total}/${pe.feitas}/${pe.pendentes}`, "5/2/3");
+igual("com prazo", pe.comPrazo, 4);
+igual("no prazo / atraso", `${pe.noPrazo}/${pe.comAtraso}`, "1/1");
+igual("% no prazo", pe.pctNoPrazo, 50);
+igual("atraso médio", pe.atrasoMedio, 3);
+igual("folga média", pe.folgaMedia, 2);
+igual("pendentes atrasadas (Revisar)", pe.pendentesAtrasadas, 1);
+igual("urgentes", pe.urgentes.map((u) => `${u.etapa.titulo}:${u.dias}`).join(), "Revisar:-2");
+igual("alertas de etapa com 10 dias", alertasEtapas(qpb, "2026-10-10", 10).map((u) => u.etapa.titulo).join(), "Revisar,Liberar");
+mudarEstado(tp, "concluido", T(11));
+igual("tarefa concluída não alerta etapas", alertasEtapas(qpb, "2026-10-10", 10).length, 0);
+igual("csv com prazo da etapa", tabelaCSV(qpb).includes("Revisar (prazo 2026-10-08)"), true);
 
 let erro = "";
 try {
