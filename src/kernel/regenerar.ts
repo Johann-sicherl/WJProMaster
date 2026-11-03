@@ -173,8 +173,8 @@ function planoDeRef(ref: Referencia | undefined, ctx: Ctx): Referencial {
     return r;
   }
   if (ref.tipo === "face") {
-    const f = acharFace(exigirPeca(ctx), ref.ass);
-    const a = assinaturaFace(f);
+    // face de outro componente (edição em contexto): a geometria guardada vale
+    const a = ref.ctx ? ref.ass : assinaturaFace(acharFace(exigirPeca(ctx), ref.ass));
     if (a.geom !== "plano" || !a.normal) throw new Error("A face escolhida não é plana.");
     const x = eixoXParaNormal(a.normal);
     return { origem: a.centro, normal: a.normal, x, y: cruz(a.normal, x) };
@@ -191,12 +191,12 @@ function eixoDeRef(ref: Referencia | undefined, ctx: Ctx): { origem: Vec3; dir: 
       return e;
     }
     case "aresta": {
-      const a = assinaturaAresta(acharAresta(exigirPeca(ctx), ref.ass));
+      const a = ref.ctx ? ref.ass : assinaturaAresta(acharAresta(exigirPeca(ctx), ref.ass));
       if (a.geom === "circulo" && a.centro && a.eixo) return { origem: a.centro, dir: a.eixo };
       return { origem: a.a, dir: normalizar(sub3(a.b, a.a)) };
     }
     case "face": {
-      const a = assinaturaFace(acharFace(exigirPeca(ctx), ref.ass));
+      const a = ref.ctx ? ref.ass : assinaturaFace(acharFace(exigirPeca(ctx), ref.ass));
       if (a.eixo && a.pontoEixo) return { origem: a.pontoEixo, dir: a.eixo };
       if (a.normal) return { origem: a.centro, dir: a.normal };
       throw new Error("Essa face não define um eixo.");
@@ -224,7 +224,7 @@ function pontoDeRef(ref: Referencia | undefined, ctx: Ctx): Vec3 {
   if (!ref) throw new Error("Escolha um vértice.");
   if (ref.tipo === "vertice") return ref.p;
   if (ref.tipo === "aresta") {
-    const a = assinaturaAresta(acharAresta(exigirPeca(ctx), ref.ass));
+    const a = ref.ctx ? ref.ass : assinaturaAresta(acharAresta(exigirPeca(ctx), ref.ass));
     return a.centro ?? a.meio;
   }
   throw new Error("A referência escolhida não é um vértice.");
@@ -2029,7 +2029,8 @@ export function exportarDxf(nome: string): { dxf: string; resumo: ResumoPlanific
  */
 function acompanharFace(f: FeatureEsboco, ctx: Ctx) {
   const s = f.suporte;
-  if (s.tipo !== "face" || !s.face?.normal || !ctx.peca) return;
+  // face de outro componente (edição em contexto): o plano guardado vale, não segue a própria peça
+  if (s.tipo !== "face" || s.ctx || !s.face?.normal || !ctx.peca) return;
   const ass = s.face;
   let melhor: (typeof faces)[number] | null = null, nota = Infinity;
   const faces = topologia(ctx.peca).topo.faces;

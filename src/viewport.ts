@@ -52,6 +52,15 @@ export interface Entidade {
   indice: number;
 }
 
+/** Onde procurar entidades: a peça, ou o contexto da montagem em volta (mesma estrutura). */
+interface FontePicar {
+  topo: Topologia;
+  solido: THREE.Mesh | null;
+  faces: Uint32Array;
+  grupos: Uint32Array;
+  pos: Float32Array;
+}
+
 const COR_SELECAO = 0x1f78d1;
 const COR_REALCE = 0x7fb8ef;
 /** Faces do recurso selecionado na árvore: outro tom, para ver onde ele está na peça. */
@@ -506,14 +515,27 @@ export class Viewport {
   picarFace(clientX: number, clientY: number): FacePlana | null {
     const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
     if (!solido || !solido.visible) return null;
-    const hit = this.raio(clientX, clientY).intersectObject(solido)[0];
+    return this.picarFaceEm(solido, this.faces, clientX, clientY, null);
+  }
+
+  /** Face plana de um componente em volta (edição em contexto); a peça na frente esconde. */
+  picarFaceContexto(clientX: number, clientY: number): FacePlana | null {
+    if (!this.fonteContexto?.solido) return null;
+    return this.picarFaceEm(this.fonteContexto.solido, this.fonteContexto.faces, clientX, clientY, this.solido());
+  }
+
+  private picarFaceEm(solido: THREE.Mesh, faces: Uint32Array, clientX: number, clientY: number, oclusor: THREE.Mesh | null): FacePlana | null {
+    const ray = this.raio(clientX, clientY);
+    const hit = ray.intersectObject(solido)[0];
     if (!hit || hit.faceIndex == null) return null;
+    const frente = oclusor ? ray.intersectObject(oclusor)[0] : undefined;
+    if (frente && frente.distance < hit.distance - 1e-6) return null;
     const idx = hit.faceIndex * 3;
     const geo = solido.geometry;
     const normais = geo.getAttribute("normal") as THREE.BufferAttribute;
     const indices = geo.getIndex()!;
-    for (let i = 0; i < this.faces.length; i += 3) {
-      const ini = this.faces[i], qtd = this.faces[i + 1];
+    for (let i = 0; i < faces.length; i += 3) {
+      const ini = faces[i], qtd = faces[i + 1];
       if (idx < ini || idx >= ini + qtd) continue;
       // face plana: todas as normais iguais
       const n0 = new THREE.Vector3().fromBufferAttribute(normais, indices.getX(ini));
@@ -522,7 +544,8 @@ export class Viewport {
         if (nk.dot(n0) < 0.9999) return null;
       }
       const n = n0.normalize();
-      return { origem: hit.point.toArray() as Vec3, normal: n.toArray() as Vec3, indice: this.faces[i + 2] };
+      // índice da face na topologia = posição do grupo (o 3º número do grupo é um código do kernel)
+      return { origem: hit.point.toArray() as Vec3, normal: n.toArray() as Vec3, indice: i / 3 };
     }
     return null;
   }
@@ -613,39 +636,32 @@ export class Viewport {
   }
 
   /**
-   * Componentes da montagem em volta da peça editada em contexto (malha no sistema do componente e
-   * a matriz que o leva ao sistema da peça). null/[] tira tudo.
+   * Componentes da montagem em volta da peça editada em contexto: uma malha só (já no sistema da
+   * peça, com faces e arestas agrupadas como a da peça) e a topologia dela, para tocar e
+   * referenciar. null tira tudo.
    */
-  mostrarContexto(itens: { malha: { vertices: Float32Array; normais: Float32Array; triangulos: Uint32Array; arestas: Float32Array }; matriz: number[] }[] | null) {
+  mostrarContexto(c: { malha: MalhaPeca; topo: Topologia } | null) {
     this.grupoContexto.children.forEach((o) => (o as THREE.Mesh).geometry?.dispose());
     this.grupoContexto.clear();
-    // geometria compartilhada entre instâncias da mesma malha
-    const geos = new Map<object, { g: THREE.BufferGeometry; a: THREE.BufferGeometry }>();
-    for (const it of itens ?? []) {
-      let par = geos.get(it.malha);
-      if (!par) {
-        const g = new THREE.BufferGeometry();
-        g.setAttribute("position", new THREE.BufferAttribute(it.malha.vertices, 3));
-        g.setAttribute("normal", new THREE.BufferAttribute(it.malha.normais, 3));
-        g.setIndex(new THREE.BufferAttribute(it.malha.triangulos, 1));
-        const a = new THREE.BufferGeometry();
-        a.setAttribute("position", new THREE.BufferAttribute(it.malha.arestas, 3));
-        par = { g, a };
-        geos.set(it.malha, par);
-      }
-      const m = new THREE.Matrix4().fromArray(it.matriz);
-      const solido = new THREE.Mesh(par.g, this.materialContexto);
-      const arestas = new THREE.LineSegments(par.a, this.materialContextoArestas);
-      for (const o of [solido, arestas]) {
-        o.matrixAutoUpdate = false;
-        o.matrix.copy(m);
-        o.renderOrder = 2; // transparente depois do sólido
-        this.grupoContexto.add(o);
-      }
+    this.fonteContexto = null;
+    if (c) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(c.malha.vertices, 3));
+      g.setAttribute("normal", new THREE.BufferAttribute(c.malha.normais, 3));
+      g.setIndex(new THREE.BufferAttribute(c.malha.triangulos, 1));
+      const solido = new THREE.Mesh(g, this.materialContexto);
+      solido.renderOrder = 2; // transparente depois do sólido
+      const a = new THREE.BufferGeometry();
+      a.setAttribute("position", new THREE.BufferAttribute(c.malha.arestas, 3));
+      const arestas = new THREE.LineSegments(a, this.materialContextoArestas);
+      arestas.renderOrder = 2;
+      this.grupoContexto.add(solido, arestas);
+      this.fonteContexto = { topo: c.topo, solido, faces: c.malha.faces, grupos: c.malha.gruposArestas, pos: c.malha.arestas };
     }
-    this.grupoContexto.updateMatrixWorld(true);
     this.precisaRender = true;
   }
+
+  private fonteContexto: FontePicar | null = null;
 
   get temContexto() {
     return this.grupoContexto.children.length > 0;
@@ -688,15 +704,35 @@ export class Viewport {
    * (como nos CADs). `tolPx` maior para o dedo.
    */
   picarEntidade(clientX: number, clientY: number, filtro: Set<TipoEntidade>, tolPx = 10): Entidade | null {
-    const topo = this.topologia;
-    if (!topo) return null;
+    if (!this.topologia) return null;
+    return this.picarEm({ topo: this.topologia, solido: this.solido(), faces: this.faces, grupos: this.gruposArestas, pos: this.posArestas }, clientX, clientY, filtro, tolPx, null);
+  }
+
+  /**
+   * Entidade de um componente em volta (edição em contexto), com índices da topologia do contexto.
+   * A peça editada na frente esconde o que está atrás dela.
+   */
+  picarNoContexto(clientX: number, clientY: number, filtro: Set<TipoEntidade>, tolPx = 10): Entidade | null {
+    if (!this.fonteContexto) return null;
+    return this.picarEm(this.fonteContexto, clientX, clientY, filtro, tolPx, this.solido());
+  }
+
+  get topologiaContexto(): Topologia | null {
+    return this.fonteContexto?.topo ?? null;
+  }
+
+  private picarEm(fonte: FontePicar, clientX: number, clientY: number, filtro: Set<TipoEntidade>, tolPx: number, oclusor: THREE.Mesh | null): Entidade | null {
+    const topo = fonte.topo;
     const r = this.renderer.domElement.getBoundingClientRect();
     const mx = clientX - r.left, my = clientY - r.top;
     const ray = this.raio(clientX, clientY);
-    const solido = this.solido();
+    const solido = fonte.solido;
     const hit = solido ? ray.intersectObject(solido)[0] : undefined;
+    // o que fica na frente (a peça editada, ao procurar no contexto) também esconde
+    const frente = oclusor ? ray.intersectObject(oclusor)[0] : undefined;
+    const prox = Math.min(hit?.distance ?? Infinity, frente?.distance ?? Infinity);
     // ortográfica: a origem do raio fica no plano da câmera, então hit.distance é a profundidade
-    const limite = hit ? hit.distance + this.raioCena * 0.004 + 1e-3 : Infinity;
+    const limite = Number.isFinite(prox) ? prox + this.raioCena * 0.004 + 1e-3 : Infinity;
     const visivel = (p: THREE.Vector3) => this.estilo === "arestas" || this.profundidade(p) <= limite;
     const v = new THREE.Vector3();
 
@@ -713,11 +749,11 @@ export class Viewport {
     if (filtro.has("aresta")) {
       let melhor = -1, dm = tolPx;
       const a = new THREE.Vector3(), b = new THREE.Vector3();
-      for (let g = 0; g < this.gruposArestas.length / 2; g++) {
-        const ini = this.gruposArestas[g * 2], qtd = this.gruposArestas[g * 2 + 1];
+      for (let g = 0; g < fonte.grupos.length / 2; g++) {
+        const ini = fonte.grupos[g * 2], qtd = fonte.grupos[g * 2 + 1];
         for (let k = ini; k + 1 < ini + qtd; k += 2) {
-          a.fromArray(this.posArestas, k * 3);
-          b.fromArray(this.posArestas, (k + 1) * 3);
+          a.fromArray(fonte.pos, k * 3);
+          b.fromArray(fonte.pos, (k + 1) * 3);
           const ta = this.paraTela(a), tb = this.paraTela(b);
           const dx = tb.x - ta.x, dy = tb.y - ta.y;
           const l2 = dx * dx + dy * dy;
@@ -732,10 +768,10 @@ export class Viewport {
       }
       if (melhor >= 0) return { tipo: "aresta", indice: melhor };
     }
-    if (filtro.has("face") && hit && hit.faceIndex != null) {
+    if (filtro.has("face") && hit && hit.faceIndex != null && !(frente && frente.distance < hit.distance - 1e-6)) {
       const idx = hit.faceIndex * 3;
-      for (let i = 0; i < this.faces.length; i += 3) {
-        if (idx >= this.faces[i] && idx < this.faces[i] + this.faces[i + 1]) return { tipo: "face", indice: i / 3 };
+      for (let i = 0; i < fonte.faces.length; i += 3) {
+        if (idx >= fonte.faces[i] && idx < fonte.faces[i] + fonte.faces[i + 1]) return { tipo: "face", indice: i / 3 };
       }
     }
     return null;

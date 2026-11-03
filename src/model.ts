@@ -49,10 +49,15 @@ export interface AssinaturaAresta {
   raio?: number;
 }
 
+/**
+ * Referências a geometria. `ctx` = a entidade é de OUTRO componente da montagem (escolhida ao
+ * editar a peça em contexto): a assinatura guarda a geometria já no sistema da peça; o kernel usa
+ * essa geometria (não procura na própria peça) e ela só se atualiza na edição em contexto.
+ */
 export type Referencia =
-  | { tipo: "face"; ass: AssinaturaFace }
-  | { tipo: "aresta"; ass: AssinaturaAresta }
-  | { tipo: "vertice"; p: Vec3 }
+  | { tipo: "face"; ass: AssinaturaFace; ctx?: string }
+  | { tipo: "aresta"; ass: AssinaturaAresta; ctx?: string }
+  | { tipo: "vertice"; p: Vec3; ctx?: string }
   /** Plano principal (XY/XZ/YZ) ou recurso de plano de referência (id). */
   | { tipo: "plano"; id: string }
   /** Eixo principal (X/Y/Z) ou recurso de eixo de referência (id). */
@@ -71,7 +76,8 @@ export type SuporteEsboco =
   | { tipo: "plano"; plano: Plano; deslocamento: number }
   | { tipo: "planoRef"; id: string }
   /** face plana da peça: o plano acompanha a face na reconstrução (`face` = assinatura dela) */
-  | { tipo: "face"; origem: Vec3; normal: Vec3; eixoX: Vec3; face?: AssinaturaFace };
+  /** `ctx`: face de outro componente (edição em contexto): o plano não acompanha a própria peça */
+  | { tipo: "face"; origem: Vec3; normal: Vec3; eixoX: Vec3; face?: AssinaturaFace; ctx?: string };
 
 export interface PontoEsboco {
   id: string;
@@ -1059,4 +1065,9 @@ export function fotografiaLeve(d: unknown, guardados: Map<string, string>): stri
 }
 export function revelarFotografia<T>(json: string, guardados: Map<string, string>): T {
   return JSON.parse(json, (k, v) => (k === "dados" && typeof v === "string" && v.startsWith("@importado:") ? guardados.get(v) ?? v : v));
+}
+
+/** O recurso usa geometria de outro componente da montagem (marca "->" na árvore). */
+export function temReferenciaDeContexto(f: Feature): boolean {
+  return JSON.stringify(f).includes('"ctx":');
 }
