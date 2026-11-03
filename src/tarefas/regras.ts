@@ -243,8 +243,9 @@ export function prazoEtapa(t: Tarefa, id: string, prazo: string | null, agora: s
 }
 
 /**
- * Estado da tarefa pelas etapas: todas feitas → primeiro estado de Concluído; uma etapa desmarcada
- * numa tarefa concluída → volta para o primeiro estado Em andamento (ou o inicial). Devolve true se mudou.
+ * Estado da tarefa pelas etapas: a primeira etapa feita numa tarefa de Início → primeiro estado Em
+ * andamento; todas feitas → primeiro estado de Concluído; uma etapa desmarcada numa tarefa concluída →
+ * volta para o primeiro estado Em andamento (ou o inicial). Devolve true se mudou.
  */
 export function estadoPelasEtapas(b: Base, t: Tarefa, agora: string): boolean {
   const { feitas, total } = progresso(t);
@@ -255,6 +256,12 @@ export function estadoPelasEtapas(b: Base, t: Tarefa, agora: string): boolean {
     const fim = l.find((e) => e.tipo === "fim");
     if (!fim) return false;
     mudarEstado(t, fim.id, agora);
+    return true;
+  }
+  if (feitas > 0 && feitas < total && tipo === "inicio") {
+    const andamento = l.find((e) => e.tipo === "andamento");
+    if (!andamento) return false;
+    mudarEstado(t, andamento.id, agora);
     return true;
   }
   if (feitas < total && tipo === "fim") {
