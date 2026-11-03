@@ -6,6 +6,7 @@ import { botaoDiagnostico } from "./diagnostico";
 import { abrirCopias, abrirDoCofre, APPS, desligar, instalarPainelCofre, salvarNoCofre, sincronizarAoAbrir, type ChaveApp } from "./cofre";
 import "./comum.css";
 import { IC, type NomeIc } from "./icones";
+import { registrarComAtualizacao } from "./atualizacao";
 
 export interface Comando {
   id: string;
@@ -389,5 +390,5 @@ export const autosave = {
 
 /** Service worker do WJProMaster (cache offline compartilhado com o WJCAD). */
 export function registrarOffline() {
-  if ("serviceWorker" in navigator && import.meta.env.PROD) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+  registrarComAtualizacao();
 }

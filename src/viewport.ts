@@ -601,6 +601,15 @@ export class Viewport {
       geo.setAttribute("position", new THREE.BufferAttribute(m.vertices, 3));
       geo.setAttribute("normal", new THREE.BufferAttribute(m.normais, 3));
       geo.setIndex(new THREE.BufferAttribute(m.triangulos, 1));
+      // corpos de malha (STL) ficam depois das faces do sólido: desenhados dos dois lados, para que
+      // triângulos gravados ao contrário ou malha aberta não virem furos na tela
+      let cobertos = 0;
+      for (let i = 1; i < m.faces.length; i += 3) cobertos += m.faces[i];
+      const lado = cobertos < m.triangulos.length ? THREE.DoubleSide : THREE.FrontSide;
+      if (this.materialSolido.side !== lado) {
+        this.materialSolido.side = lado;
+        this.materialSolido.needsUpdate = true;
+      }
       const solido = new THREE.Mesh(geo, this.materialSolido);
       solido.name = "solido";
       this.grupoPeca.add(solido);

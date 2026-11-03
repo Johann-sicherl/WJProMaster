@@ -3,6 +3,7 @@
 // Especificação: docs/funcional/montagem.md. Modelo puro em ./modelo.ts, cena em ./cena.ts,
 // solver em ./solver.ts (testados em scripts/teste-montagem.ts).
 
+import { registrarComAtualizacao } from "../comum/atualizacao";
 import "../style.css";
 import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
@@ -2499,3 +2500,5 @@ void sincronizarAoAbrir(kernel.pronto)?.catch(() => {});
 }
 
 if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__asm = { doc: () => doc, viewport, cena: () => cena, abrir: (d: unknown) => abrirMontagem(validarMontagem(d)), solucao: () => solucao };
+
+registrarComAtualizacao();

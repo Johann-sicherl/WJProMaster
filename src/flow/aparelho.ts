@@ -8,6 +8,7 @@ import "./aparelho.css";
 import { LbmCpu, Q, SAIDA, bytesPorCelula, tunelEsfera, type Precisao } from "./lbm";
 import { LbmGpu, abrirGpu, cabe } from "./gpu";
 import { botaoDiagnostico, registrarMetrica } from "../comum/diagnostico";
+import { registrarComAtualizacao } from "../comum/atualizacao";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const saida = $<HTMLPreElement>("af-saida");
@@ -337,4 +338,4 @@ void mostrarAparelho();
     registrarMetrica("Túnel ao vivo", () => (vivo ? estado.textContent : "parado"));
   }
 }
-if ("serviceWorker" in navigator && import.meta.env.PROD) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+registrarComAtualizacao();

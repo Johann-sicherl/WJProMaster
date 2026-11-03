@@ -234,4 +234,5 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
   (plugin `offline` em `vite.config.ts`). O service worker guarda na instalação só as páginas e os
   arquivos pequenos; o kernel `.wasm` (~23 MB, 7 MB comprimido) é guardado quando o WJCAD termina de
   carregá-lo (mensagem `guardar`, reaproveitando o cache HTTP: nada é baixado duas vezes). Não editar
-  a versão do cache à mão.
+  a versão do cache à mão. Versão nova publicada com o app aberto: faixa "Versão nova do WJProMaster disponível → Atualizar"
+  (`src/comum/atualizacao.ts`, `registrarComAtualizacao` em todas as páginas; confere ao voltar para o app e a cada 30 min).

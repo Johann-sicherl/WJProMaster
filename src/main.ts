@@ -67,6 +67,7 @@ import { ler, renderizarFormulario, type ContextoFormulario, type Esquema, type 
 import { aplicarEquacoes, avaliarExpressao, resolverVariaveis } from "./equacoes";
 import type { Analise } from "./analises";
 import { absorvidosDe, excluirRecursos, filhosDe } from "./dependencias";
+import { registrarComAtualizacao } from "./comum/atualizacao";
 
 const CHAVE_AUTOSAVE = "jlscad:documento";
 const CHAVE_PREFS = "jlscad:interface";
@@ -4398,7 +4399,7 @@ void sincronizarAoAbrir(kernel.pronto)?.catch(() => {});
 }
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
-  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+  registrarComAtualizacao();
   // service worker guardou o kernel pela primeira vez: avisa que já funciona sem internet
   navigator.serviceWorker.addEventListener("message", (e) => {
     if (e.data?.tipo === "offline-pronto") avisar("WJCAD pronto para usar sem internet neste aparelho.");
