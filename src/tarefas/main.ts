@@ -407,7 +407,10 @@ function situacaoEtapa(e: Etapa): string {
 function conferirConclusao(t: Tarefa) {
   const antes = estadoDe(base, t.estado)?.tipo;
   if (!estadoPelasEtapas(base, t, agoraISO())) return;
-  aviso(antes !== "fim" ? `Todas as etapas feitas: "${t.titulo}" foi concluída.` : `Etapa reaberta: "${t.titulo}" voltou para ${estadoDe(base, t.estado)?.nome ?? "andamento"}.`);
+  const agora = estadoDe(base, t.estado);
+  aviso(agora?.tipo === "fim" ? `Todas as etapas feitas: "${t.titulo}" foi concluída.`
+    : antes === "fim" ? `Etapa reaberta: "${t.titulo}" voltou para ${agora?.nome ?? "andamento"}.`
+    : `Primeira etapa feita: "${t.titulo}" passou para ${agora?.nome ?? "andamento"}.`);
 }
 
 function abrirEtapas(id: string, abrir: boolean) {
