@@ -25,7 +25,7 @@ import type {
   Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureImportado, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, SuporteEsboco, Vec3,
 } from "../model";
-import { deBase64 } from "../model";
+import { assinaturaDados, deBase64, PREFIXO_ENVIADO } from "../model";
 import { malhaDoStl, type MalhaStl } from "./stl";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
@@ -41,7 +41,7 @@ import { cruzarEsbocos, curvaPorPontos, lerPontosXYZ, pontosHelice, polilinhasDe
 import { lofting } from "./loft";
 import {
   acharAresta, acharFace, arestasDosItens, assinaturaAresta, assinaturaFace, ErroReferencia,
-  propagarTangente, topologia, type Topologia,
+  listarTopo, propagarTangente, topologia, type Topologia,
 } from "./topologia";
 
 export interface ErroFeature {
@@ -2053,10 +2053,10 @@ function acompanharFace(f: FeatureEsboco, ctx: Ctx) {
 /** Malhas (STL grande) já lidas: a leitura é só uma vez por arquivo. */
 const malhasLidas = new Map<string, MalhaStl>();
 function malhaImportada(f: FeatureImportado): MalhaStl {
-  const chave = `${f.id}:${f.dados.length}:${f.dados.slice(0, 64)}:${f.dados.slice(-64)}`;
+  const chave = assinaturaDados(f.id, f.dados);
   let m = malhasLidas.get(chave);
   if (!m) {
-    m = malhaDoStl(deBase64(f.dados));
+    m = malhaDoStl(bytesDoImportado(f));
     malhasLidas.clear(); // uma de cada vez na memória (são grandes)
     malhasLidas.set(chave, m);
   }
@@ -2066,14 +2066,46 @@ function malhaImportada(f: FeatureImportado): MalhaStl {
 /** Sólidos importados já lidos (o arquivo é lido uma vez; cada regeneração usa uma cópia). */
 const importados = new Map<string, Shape3D>();
 
+/**
+ * Bytes dos arquivos importados, pela assinatura: a interface manda o conteúdo uma vez e, nas
+ * reconstruções seguintes, só a assinatura (arquivos de dezenas de MB). No máximo 4 guardados.
+ */
+const bytesRecebidos = new Map<string, Uint8Array>();
+export class FaltamDados extends Error {
+  constructor() {
+    super("__REENVIAR_DADOS__");
+  }
+}
+function bytesDoImportado(f: FeatureImportado): Uint8Array {
+  const sig = assinaturaDados(f.id, f.dados);
+  let b = bytesRecebidos.get(sig);
+  if (!b) {
+    if (f.dados.startsWith(PREFIXO_ENVIADO)) throw new FaltamDados();
+    b = deBase64(f.dados);
+    bytesRecebidos.set(sig, b);
+    while (bytesRecebidos.size > 4) bytesRecebidos.delete(bytesRecebidos.keys().next().value!);
+  }
+  return b;
+}
+
+/** Os conteúdos que a interface mandou só pela assinatura estão todos aqui? */
+export function temDadosDe(features: Feature[]): boolean {
+  return features.every((f) => f.tipo !== "importado" || !f.dados.startsWith(PREFIXO_ENVIADO) || bytesRecebidos.has(assinaturaDados(f.id, f.dados)) || importados.has(`${f.formato}:${assinaturaDados(f.id, f.dados)}`) || malhasLidas.has(assinaturaDados(f.id, f.dados)));
+}
+
+/** Kernel recarregado (pane do OpenCascade): os sólidos guardados eram do OpenCascade antigo. */
+export function esquecerSolidosImportados() {
+  importados.clear();
+}
+
 /** Lê o STEP/STL guardado no recurso (OpenCascade: STEPControl_Reader / StlAPI_Reader). */
 function corpoImportado(f: FeatureImportado): Shape3D {
-  const chave = `${f.id}:${f.formato}:${f.dados.length}:${f.dados.slice(0, 64)}:${f.dados.slice(-64)}`;
+  const chave = `${f.formato}:${assinaturaDados(f.id, f.dados)}`;
   let s = importados.get(chave);
   if (!s) {
     const oc = getOC() as never as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
     const nome = `/importado-${f.id}.${f.formato}`;
-    oc.FS.writeFile(nome, deBase64(f.dados));
+    oc.FS.writeFile(nome, bytesDoImportado(f));
     try {
       if (f.formato === "step") {
         const leitor = new oc.STEPControl_Reader();
@@ -2111,7 +2143,7 @@ function corpoImportado(f: FeatureImportado): Shape3D {
     } finally {
       try { oc.FS.unlink(nome); } catch { /* já apagado */ }
     }
-    if (!s || !(s as unknown as { faces: unknown[] }).faces?.length) throw new Error(`O arquivo "${f.arquivo}" não tem sólido para importar.`);
+    if (!s || !listarTopo(s, "face").length) throw new Error(`O arquivo "${f.arquivo}" não tem sólido para importar.`);
     importados.set(chave, s);
   }
   return s.clone() as Shape3D;

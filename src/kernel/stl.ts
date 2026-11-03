@@ -46,7 +46,11 @@ export interface MalhaStl {
   area: number;
 }
 
-/** Lê o STL, solda vértices iguais (tolerância relativa ao tamanho) e calcula normais suaves. */
+/**
+ * Lê o STL, solda vértices iguais (tolerância relativa ao tamanho) e calcula normais suaves.
+ * Só vetores numéricos (tabela de hash e ordenação nativa): um STL de 1,5 milhão de triângulos
+ * cabe na memória de um tablet (o kernel roda num worker com pouca memória).
+ */
 export function malhaDoStl(b: Uint8Array): MalhaStl {
   const p = triangulosDoStl(b);
   const nt = p.length / 9;
@@ -59,43 +63,50 @@ export function malhaDoStl(b: Uint8Array): MalhaStl {
     }
   const diag = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) || 1;
   const q = 1 / (diag * 1e-6); // solda vértices a menos de um milionésimo do tamanho
-  const mapa = new Map<string, number>();
-  const pos: number[] = [];
-  const tri = new Uint32Array(nt * 3);
-  for (let i = 0; i < nt * 3; i++) {
+  const nc = nt * 3;
+  // tabela de hash (endereçamento aberto) com o índice do vértice único; a chave é recalculada
+  // a partir da posição guardada
+  let cap = 1;
+  while (cap < nc * 1.5) cap <<= 1;
+  const tabela = new Int32Array(cap).fill(-1);
+  const pos = new Float32Array(nc * 3); // posições únicas (o excesso é cortado no fim)
+  // chave quantizada recalculada da posição guardada (o STL já é float32: dá o mesmo valor)
+  const chave = (v: number, k: number) => Math.round((pos[v * 3 + k] - min[k]) * q);
+  let nv = 0;
+  const tri = new Uint32Array(nc);
+  for (let i = 0; i < nc; i++) {
     const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2];
-    const k = `${Math.round(x * q)},${Math.round(y * q)},${Math.round(z * q)}`;
-    let v = mapa.get(k);
-    if (v === undefined) {
-      v = pos.length / 3;
-      mapa.set(k, v);
-      pos.push(x, y, z);
+    const ix = Math.round((x - min[0]) * q), iy = Math.round((y - min[1]) * q), iz = Math.round((z - min[2]) * q);
+    let h = (Math.imul(ix, 73856093) ^ Math.imul(iy, 19349663) ^ Math.imul(iz, 83492791)) & (cap - 1);
+    let v = -1;
+    for (;;) {
+      const t = tabela[h];
+      if (t < 0) break;
+      if (chave(t, 0) === ix && chave(t, 1) === iy && chave(t, 2) === iz) {
+        v = t;
+        break;
+      }
+      h = (h + 1) & (cap - 1);
+    }
+    if (v < 0) {
+      v = nv++;
+      tabela[h] = v;
+      pos[v * 3] = x; pos[v * 3 + 1] = y; pos[v * 3 + 2] = z;
     }
     tri[i] = v;
   }
-  const vertices = Float32Array.from(pos);
+  const vertices = pos.slice(0, nv * 3);
   const normais = new Float32Array(vertices.length);
   let vol = 0, area = 0;
-  const arestas = new Map<number, number>(); // aresta orientada → contagem (fechada: cada uma com a oposta)
-  const nv = vertices.length / 3;
-  let fechada = true;
   for (let t = 0; t < nt; t++) {
     const a = tri[t * 3], b2 = tri[t * 3 + 1], c = tri[t * 3 + 2];
     const ax = vertices[a * 3], ay = vertices[a * 3 + 1], az = vertices[a * 3 + 2];
     const ux = vertices[b2 * 3] - ax, uy = vertices[b2 * 3 + 1] - ay, uz = vertices[b2 * 3 + 2] - az;
     const vx = vertices[c * 3] - ax, vy = vertices[c * 3 + 1] - ay, vz = vertices[c * 3 + 2] - az;
     const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; // 2 × área, ponderada
-    for (const v of [a, b2, c]) (normais[v * 3] += nx), (normais[v * 3 + 1] += ny), (normais[v * 3 + 2] += nz);
+    for (const w of [a, b2, c]) (normais[w * 3] += nx), (normais[w * 3 + 1] += ny), (normais[w * 3 + 2] += nz);
     area += Math.hypot(nx, ny, nz) / 2;
     vol += (ax * nx + ay * ny + az * nz) / 6; // tetraedro com a origem
-    if (fechada)
-      for (const [i, j] of [[a, b2], [b2, c], [c, a]]) {
-        const ida = i * nv + j, volta = j * nv + i;
-        const r = arestas.get(volta);
-        if (r) r === 1 ? arestas.delete(volta) : arestas.set(volta, r - 1);
-        else arestas.set(ida, (arestas.get(ida) ?? 0) + 1);
-        if (arestas.size > 4e6) fechada = false; // malha enorme e aberta: desiste de conferir
-      }
   }
   for (let i = 0; i < normais.length; i += 3) {
     const n = Math.hypot(normais[i], normais[i + 1], normais[i + 2]) || 1;
@@ -103,6 +114,179 @@ export function malhaDoStl(b: Uint8Array): MalhaStl {
     normais[i + 1] /= n;
     normais[i + 2] /= n;
   }
-  fechada &&= arestas.size === 0;
-  return { vertices, normais, triangulos: tri, min, max, volume: fechada ? Math.abs(vol) : null, area };
+  return { vertices, normais, triangulos: tri, min, max, volume: fechada(tri, nv) ? Math.abs(vol) : null, area };
+}
+
+/**
+ * Malha fechada para o volume: cada aresta orientada (a→b) tem a oposta (b→a) em outro triângulo,
+ * contando repetições (vale também para arestas com 4 triângulos, comuns em escaneamentos).
+ */
+function fechada(tri: Uint32Array, nv: number): boolean {
+  const ida = new Float64Array(tri.length), volta = new Float64Array(tri.length);
+  for (let t = 0; t < tri.length; t += 3)
+    for (let e = 0; e < 3; e++) {
+      const a = tri[t + e], b = tri[t + ((e + 1) % 3)];
+      ida[t + e] = a * nv + b;
+      volta[t + e] = b * nv + a;
+    }
+  ida.sort();
+  volta.sort();
+  for (let i = 0; i < ida.length; i++) if (ida[i] !== volta[i]) return false;
+  return true;
+}
+
+// ---------- simplificar (reduzir triângulos) ----------
+
+/**
+ * Uma passada de agrupamento: os vértices de cada célula da grade (lado `lado`) viram um só,
+ * posto onde o erro quadrático aos planos dos triângulos em volta é mínimo (preserva quinas e
+ * bordas melhor que a média), preso dentro da célula. Triângulos que degeneram saem; triângulos
+ * repetidos (ou o mesmo nos dois sentidos, lâminas internas) também.
+ */
+function agrupar(m: MalhaStl, lado: number): { pos: Float32Array; tri: Uint32Array } {
+  const v = m.vertices, nv = v.length / 3, t = m.triangulos;
+  const nx = Math.max(1, Math.ceil((m.max[0] - m.min[0]) / lado) + 1), ny = Math.max(1, Math.ceil((m.max[1] - m.min[1]) / lado) + 1);
+  // célula de cada vértice → índice compacto do grupo
+  let cap = 1;
+  while (cap < nv * 1.5) cap <<= 1;
+  const chaves = new Float64Array(cap).fill(-1), idGrupo = new Int32Array(cap);
+  const grupoDe = new Int32Array(nv);
+  let ng = 0;
+  for (let i = 0; i < nv; i++) {
+    const cx = Math.floor((v[i * 3] - m.min[0]) / lado), cy = Math.floor((v[i * 3 + 1] - m.min[1]) / lado), cz = Math.floor((v[i * 3 + 2] - m.min[2]) / lado);
+    const k = (cz * ny + cy) * nx + cx;
+    let h = (Math.imul(cx, 73856093) ^ Math.imul(cy, 19349663) ^ Math.imul(cz, 83492791)) & (cap - 1);
+    while (chaves[h] !== -1 && chaves[h] !== k) h = (h + 1) & (cap - 1);
+    if (chaves[h] === -1) {
+      chaves[h] = k;
+      idGrupo[h] = ng++;
+    }
+    grupoDe[i] = idGrupo[h];
+  }
+  // quádricas (10 termos) e soma das posições de cada grupo
+  const Q = new Float64Array(ng * 10), soma = new Float64Array(ng * 3), cont = new Uint32Array(ng);
+  for (let i = 0; i < nv; i++) {
+    const g = grupoDe[i];
+    soma[g * 3] += v[i * 3]; soma[g * 3 + 1] += v[i * 3 + 1]; soma[g * 3 + 2] += v[i * 3 + 2];
+    cont[g]++;
+  }
+  for (let k = 0; k < t.length; k += 3) {
+    const a = t[k] * 3, b = t[k + 1] * 3, c = t[k + 2] * 3;
+    const ux = v[b] - v[a], uy = v[b + 1] - v[a + 1], uz = v[b + 2] - v[a + 2];
+    const wx = v[c] - v[a], wy = v[c + 1] - v[a + 1], wz = v[c + 2] - v[a + 2];
+    let px = uy * wz - uz * wy, py = uz * wx - ux * wz, pz = ux * wy - uy * wx;
+    const ar = Math.hypot(px, py, pz);
+    if (ar < 1e-20) continue;
+    px /= ar; py /= ar; pz /= ar;
+    const d = -(px * v[a] + py * v[a + 1] + pz * v[a + 2]);
+    const peso = ar; // planos de triângulos maiores pesam mais
+    const q = [px * px, px * py, px * pz, px * d, py * py, py * d, pz * pz, pz * d, d * d, pz * py];
+    for (const g of [grupoDe[t[k]], grupoDe[t[k + 1]], grupoDe[t[k + 2]]]) for (let j = 0; j < 10; j++) Q[g * 10 + j] += q[j] * peso;
+  }
+  const pos = new Float32Array(ng * 3);
+  for (let g = 0; g < ng; g++) {
+    const mx = soma[g * 3] / cont[g], my = soma[g * 3 + 1] / cont[g], mz = soma[g * 3 + 2] / cont[g];
+    // A·x = −b, com A = [[xx xy xz][xy yy yz][xz yz zz]], b = [xd yd zd]
+    const o = g * 10;
+    const a11 = Q[o], a12 = Q[o + 1], a13 = Q[o + 2], a22 = Q[o + 4], a23 = Q[o + 9], a33 = Q[o + 6];
+    const b1 = -Q[o + 3], b2 = -Q[o + 5], b3 = -Q[o + 7];
+    const det = a11 * (a22 * a33 - a23 * a23) - a12 * (a12 * a33 - a23 * a13) + a13 * (a12 * a23 - a22 * a13);
+    const escala = (a11 + a22 + a33) ** 3;
+    let x = mx, y = my, z = mz;
+    if (escala > 0 && Math.abs(det) > 1e-6 * escala) {
+      x = (b1 * (a22 * a33 - a23 * a23) - a12 * (b2 * a33 - a23 * b3) + a13 * (b2 * a23 - a22 * b3)) / det;
+      y = (a11 * (b2 * a33 - b3 * a23) - b1 * (a12 * a33 - a23 * a13) + a13 * (a12 * b3 - b2 * a13)) / det;
+      z = (a11 * (a22 * b3 - a23 * b2) - a12 * (a12 * b3 - b2 * a13) + b1 * (a12 * a23 - a22 * a13)) / det;
+      // longe demais do grupo (plano quase paralelo): fica a média
+      if (!(Math.abs(x - mx) <= lado && Math.abs(y - my) <= lado && Math.abs(z - mz) <= lado)) { x = mx; y = my; z = mz; }
+    }
+    pos[g * 3] = x; pos[g * 3 + 1] = y; pos[g * 3 + 2] = z;
+  }
+  // triângulos que sobram, sem repetição (tabela de hash pelo trio ordenado de grupos)
+  const nt = t.length / 3;
+  const ord = new Int32Array(nt * 3); // trio ordenado de cada triângulo de saída
+  const saida = new Int32Array(nt * 3);
+  const vivo = new Uint8Array(nt);
+  const sentido = new Int8Array(nt); // paridade do trio (a, b, c) em relação ao ordenado
+  const paridade = (a: number, b: number, c: number) => ((a < b ? 1 : 0) + (b < c ? 1 : 0) + (c < a ? 1 : 0)) === 2 ? 1 : -1;
+  let ns = 0;
+  let capT = 1;
+  while (capT < nt * 1.5) capT <<= 1;
+  const tab = new Int32Array(capT).fill(-1);
+  for (let k = 0; k < t.length; k += 3) {
+    const a = grupoDe[t[k]], b = grupoDe[t[k + 1]], c = grupoDe[t[k + 2]];
+    if (a === b || b === c || a === c) continue;
+    const x = Math.min(a, b, c), z = Math.max(a, b, c), y = a + b + c - x - z;
+    let h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791)) & (capT - 1);
+    let ja = -1;
+    for (;;) {
+      const e = tab[h];
+      if (e < 0) break;
+      if (ord[e * 3] === x && ord[e * 3 + 1] === y && ord[e * 3 + 2] === z) {
+        ja = e;
+        break;
+      }
+      h = (h + 1) & (capT - 1);
+    }
+    if (ja < 0) {
+      tab[h] = ns;
+      ord[ns * 3] = x; ord[ns * 3 + 1] = y; ord[ns * 3 + 2] = z;
+      saida[ns * 3] = a; saida[ns * 3 + 1] = b; saida[ns * 3 + 2] = c;
+      vivo[ns] = 1;
+      sentido[ns] = paridade(a, b, c);
+      ns++;
+    } else if (vivo[ja] && sentido[ja] !== paridade(a, b, c)) {
+      vivo[ja] = 0; // o mesmo triângulo no sentido contrário: lâmina interna, os dois saem
+    } else {
+      // já cancelado por um par, ou repetido no mesmo sentido: entra como triângulo próprio (tirar
+      // desequilibraria as arestas opostas, abrindo a malha)
+      if (ns >= nt) continue;
+      saida[ns * 3] = a; saida[ns * 3 + 1] = b; saida[ns * 3 + 2] = c;
+      ord[ns * 3] = -1; // não volta a ser achado na tabela
+      vivo[ns] = 1;
+      sentido[ns] = paridade(a, b, c);
+      ns++;
+    }
+  }
+  let nvivos = 0;
+  for (let k = 0; k < ns; k++) nvivos += vivo[k];
+  const tri = new Uint32Array(nvivos * 3);
+  for (let k = 0, o = 0; k < ns; k++) if (vivo[k]) { tri[o++] = saida[k * 3]; tri[o++] = saida[k * 3 + 1]; tri[o++] = saida[k * 3 + 2]; }
+  return { pos, tri };
+}
+
+/**
+ * Reduz a malha para no máximo `alvo` triângulos (o mais perto possível por baixo) e devolve o
+ * STL binário resultante. Busca o tamanho da grade por bisseção (cada passada é linear).
+ */
+export function simplificarStl(b: Uint8Array, alvo: number): { bytes: Uint8Array; triangulos: number; original: number } {
+  const m = malhaDoStl(b);
+  const original = m.triangulos.length / 3;
+  if (original <= alvo) return { bytes: b, triangulos: original, original };
+  const diag = Math.hypot(m.max[0] - m.min[0], m.max[1] - m.min[1], m.max[2] - m.min[2]) || 1;
+  // lado da célula: entre um detalhe minúsculo e a peça inteira
+  let lo = diag * 1e-5, hi = diag / 2;
+  let melhor = agrupar(m, hi);
+  for (let i = 0; i < 18; i++) {
+    const lado = Math.sqrt(lo * hi);
+    const r = agrupar(m, lado);
+    const n = r.tri.length / 3;
+    if (n > alvo) lo = lado;
+    else {
+      hi = lado;
+      melhor = r;
+      if (n > alvo * 0.95) break; // perto o bastante do pedido
+    }
+  }
+  const nt = melhor.tri.length / 3;
+  const out = new Uint8Array(84 + 50 * nt);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(80, nt, true);
+  for (let k = 0; k < nt; k++) {
+    for (let j = 0; j < 3; j++) {
+      const vi = melhor.tri[k * 3 + j];
+      for (let e = 0; e < 3; e++) dv.setFloat32(84 + k * 50 + 12 + (j * 3 + e) * 4, melhor.pos[vi * 3 + e], true);
+    }
+  }
+  return { bytes: out, triangulos: nt, original };
 }

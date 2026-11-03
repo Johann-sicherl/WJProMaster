@@ -7,9 +7,13 @@ import { makeCompound, measureArea, measureShapeVolumeProperties, setOC, type Sh
 import type { Feature, Referencia, Vec3 } from "../model";
 import { posicionar, projetar, type Corte } from "./projecao";
 import type { Camera, Orientacao } from "../desenho/modelo";
-import { ehFatal, exportar, exportarDxf, pecaAtual, regenerar, regenerarComRecuperacao } from "./regenerar";
+import { ehFatal, esquecerSolidosImportados, exportar, exportarDxf, pecaAtual, regenerar, regenerarComRecuperacao, temDadosDe } from "./regenerar";
+
+/** Resposta do kernel: "mande o conteúdo importado de novo" (a interface reenvia sozinha). */
+export const REENVIAR = "__REENVIAR_DADOS__";
 import { massa, medir, verificar } from "./avaliar";
 import { lerMontagemStep } from "./importar";
+import { simplificarStl } from "./stl";
 
 export type PedidoKernel =
   | { tipo: "regenerar"; seq: number; features: Feature[]; planificar?: boolean; previa?: string }
@@ -27,6 +31,8 @@ export type PedidoKernel =
   | { tipo: "massaPecas"; seq: number; chaves: string[] }
   /** Medir na montagem: entidades em coordenadas da montagem nos componentes posicionados. */
   | { tipo: "medirMontagem"; seq: number; itens: { chave: string; t: { pos: Vec3; rot: [number, number, number, number] } }[]; refs: Referencia[] }
+  /** STL grande: reduz para no máximo `alvo` triângulos (devolve o STL binário novo). */
+  | { tipo: "simplificarStl"; seq: number; bytes: Uint8Array; alvo: number }
   /** Montagem STEP: separa os sólidos (peças e instâncias posicionadas). */
   | { tipo: "montagemStep"; seq: number; bytes: Uint8Array }
   | { tipo: "projetar"; seq: number; itens: { chave: string; t: { pos: Vec3; rot: [number, number, number, number] } }[]; orientacao: Orientacao | Camera; tol: number; corte?: Corte };
@@ -49,6 +55,7 @@ async function carregarKernel() {
   setOC(OC as never);
   // kernel recarregado: os sólidos guardados eram do OpenCascade antigo
   solidosComponentes.clear();
+  esquecerSolidosImportados();
 }
 
 const inicializado = carregarKernel();
@@ -97,6 +104,11 @@ inicializado
 self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
   await inicializado;
   const p = ev.data;
+  // conteúdo importado mandado só pela assinatura e que o kernel não tem mais: pede de novo
+  if ((p.tipo === "regenerar" || p.tipo === "componente") && !temDadosDe(p.features)) {
+    enviar({ tipo: "erro", seq: p.seq, mensagem: REENVIAR });
+    return;
+  }
   try {
     switch (p.tipo) {
       case "regenerar": {
@@ -169,6 +181,11 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
           x.f.delete();
         }
         enviar({ tipo: "resposta", seq: p.seq, dados: achadas });
+        break;
+      }
+      case "simplificarStl": {
+        const r = simplificarStl(p.bytes, p.alvo);
+        enviar({ tipo: "resposta", seq: p.seq, dados: r }, [r.bytes.buffer as ArrayBuffer]);
         break;
       }
       case "montagemStep": {

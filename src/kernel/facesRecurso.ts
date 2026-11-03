@@ -6,6 +6,7 @@
 
 import { DistanceQuery, makeVertex, type Face, type Shape3D } from "replicad";
 import type { Vec3 } from "../model";
+import { listarTopo } from "./topologia";
 
 const TOL = 1e-4;
 
@@ -13,7 +14,8 @@ type Caixa = { min: Vec3; max: Vec3 };
 
 interface FacesProprias {
   id: string;
-  faces: { face: Face; caixa: Caixa | null; consulta: DistanceQuery | null }[];
+  /** caixa: undefined = ainda não calculada (só quando um teste geométrico precisa) */
+  faces: { face: Face; caixa?: Caixa | null; consulta: DistanceQuery | null }[];
 }
 
 function caixaDe(f: Face): Caixa | null {
@@ -34,6 +36,21 @@ function distancia(consulta: DistanceQuery, p: Vec3): number {
     return consulta.distanceTo(v);
   } finally {
     v.delete();
+  }
+}
+
+/** Plano da face (normal unitária e distância à origem), se ela for plana. */
+function planoDe(f: Face): { n: Vec3; d: number } | null {
+  try {
+    if (f.geomType !== "PLANE") return null;
+    const c = f.center, v = f.normalAt(c);
+    const n: Vec3 = [v.x, v.y, v.z];
+    const d = n[0] * c.x + n[1] * c.y + n[2] * c.z;
+    c.delete();
+    v.delete();
+    return { n, d };
+  } catch {
+    return null;
   }
 }
 
@@ -61,56 +78,110 @@ export class RastreadorFaces {
   registrar(id: string, antes: Shape3D | null, depois: Shape3D | null) {
     if (!depois || depois === antes) return;
     try {
-      const velhas = antes ? antes.faces : [];
+      const velhas = antes ? listarTopo(antes, "face") : [];
       const porHash = new Map<number, Face[]>();
       for (const f of velhas) {
         const h = f.hashCode;
         porHash.set(h, [...(porHash.get(h) ?? []), f]);
       }
-      const consultaAntes = antes ? new DistanceQuery(antes) : null;
-      const faces: FacesProprias["faces"] = [];
-      for (const f of depois.faces) {
-        if (porHash.get(f.hashCode)?.some((g) => g.isSame(f))) continue; // face intacta: não é deste recurso
-        if (consultaAntes) {
-          const p = pontoNaFace(f);
-          // face nova mas sobre a superfície antiga: só foi recortada
-          if (p && distancia(consultaAntes, p) < TOL) continue;
+      // a consulta à peça anterior inteira é cara em peças com milhares de faces (sólido vindo de
+      // STL): só é criada se uma face nova NÃO plana precisar dela
+      let consultaAntes: DistanceQuery | null = null;
+      type PlanoAntigo = { n: Vec3; d: number; face: Face; caixa?: Caixa | null; q?: DistanceQuery };
+      let planosAntes: PlanoAntigo[] | null = null;
+      const sobreAntiga = (f: Face, p: Vec3): boolean => {
+        const plano = planoDe(f);
+        if (plano) {
+          // face plana nova está sobre a peça anterior ⇔ está sobre uma face plana antiga do mesmo plano
+          planosAntes ??= velhas.flatMap((g) => {
+            const pl = planoDe(g);
+            return pl ? [{ ...pl, face: g }] : [];
+          });
+          for (const g of planosAntes) {
+            if (g.n[0] * plano.n[0] + g.n[1] * plano.n[1] + g.n[2] * plano.n[2] < 0.9999 && g.n[0] * plano.n[0] + g.n[1] * plano.n[1] + g.n[2] * plano.n[2] > -0.9999) continue;
+            if (Math.abs(g.n[0] * p[0] + g.n[1] * p[1] + g.n[2] * p[2] - g.d) > TOL) continue;
+            if (g.caixa === undefined) g.caixa = caixaDe(g.face);
+            if (!dentro(p, g.caixa, 1e-3)) continue;
+            g.q ??= new DistanceQuery(g.face);
+            if (distancia(g.q, p) < TOL) return true;
+          }
+          return false;
         }
-        faces.push({ face: f, caixa: caixaDe(f), consulta: null });
+        consultaAntes ??= new DistanceQuery(antes!);
+        return distancia(consultaAntes, p) < TOL;
+      };
+      const faces: FacesProprias["faces"] = [];
+      try {
+        for (const f of listarTopo(depois, "face")) {
+          if (porHash.get(f.hashCode)?.some((g) => g.isSame(f))) continue; // face intacta: não é deste recurso
+          if (antes) {
+            const p = pontoNaFace(f);
+            // face nova mas sobre a superfície antiga: só foi recortada
+            if (p && sobreAntiga(f, p)) continue;
+          }
+          faces.push({ face: f, consulta: null });
+        }
+      } finally {
+        (consultaAntes as DistanceQuery | null)?.delete();
+        for (const g of (planosAntes as PlanoAntigo[] | null) ?? []) g.q?.delete();
       }
-      consultaAntes?.delete();
       if (faces.length) this.proprias.push({ id, faces });
     } catch {
       /* peça anterior já liberada pelo kernel: sem destaque para este recurso */
     }
   }
 
-  /** Índices (na ordem de `peca.faces`) das faces da peça final de cada recurso. */
+  /**
+   * Índices (na ordem de `peca.faces`) das faces da peça final de cada recurso. Cada face vai para
+   * o primeiro recurso (na ordem da árvore) que a tem: a mesma face (pelo hash, rápido) ou uma face
+   * que a contém (teste geométrico, só nos recursos antes do que tem a face idêntica).
+   */
   atribuir(peca: Shape3D): Record<string, number[]> {
     const out: Record<string, number[]> = {};
     try {
-      peca.faces.forEach((f, i) => {
+      // face idêntica, pelo hash: posição do recurso em `proprias`
+      const porHash = new Map<number, { r: number; face: Face }[]>();
+      this.proprias.forEach((r, k) => {
+        for (const pr of r.faces) {
+          const h = pr.face.hashCode;
+          const l = porHash.get(h);
+          if (l) l.push({ r: k, face: pr.face });
+          else porHash.set(h, [{ r: k, face: pr.face }]);
+        }
+      });
+      listarTopo(peca, "face").forEach((f, i) => {
+        let igual = this.proprias.length;
+        for (const c of porHash.get(f.hashCode) ?? []) {
+          let mesma = false;
+          try {
+            mesma = c.face.isSame(f);
+          } catch {
+            mesma = false;
+          }
+          if (mesma && c.r < igual) igual = c.r;
+        }
+        // antes do recurso da face idêntica, algum recurso tem uma face que contém esta?
         let p: Vec3 | null | undefined;
-        for (const r of this.proprias) {
-          for (const pr of r.faces) {
-            let pertence = false;
-            try {
-              pertence = pr.face.isSame(f);
-            } catch {
-              pertence = false;
-            }
-            if (!pertence) {
-              if (p === undefined) p = pontoNaFace(f);
-              if (!p || !dentro(p, pr.caixa, 1e-3)) continue;
-              pr.consulta ??= new DistanceQuery(pr.face);
-              pertence = distancia(pr.consulta, p) < TOL;
-            }
-            if (pertence) {
-              (out[r.id] ??= []).push(i);
+        let dono = igual < this.proprias.length ? igual : -1;
+        for (let k = 0; k < igual; k++) {
+          let achou = false;
+          for (const pr of this.proprias[k].faces) {
+            if (p === undefined) p = pontoNaFace(f);
+            if (!p) break;
+            if (pr.caixa === undefined) pr.caixa = caixaDe(pr.face);
+            if (!dentro(p, pr.caixa, 1e-3)) continue;
+            pr.consulta ??= new DistanceQuery(pr.face);
+            if (distancia(pr.consulta, p) < TOL) {
+              achou = true;
               break;
             }
           }
+          if (achou) {
+            dono = k;
+            break;
+          }
         }
+        if (dono >= 0) (out[this.proprias[dono].id] ??= []).push(i);
       });
     } finally {
       for (const r of this.proprias) for (const pr of r.faces) pr.consulta?.delete();

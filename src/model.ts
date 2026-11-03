@@ -1071,3 +1071,13 @@ export function revelarFotografia<T>(json: string, guardados: Map<string, string
 export function temReferenciaDeContexto(f: Feature): boolean {
   return JSON.stringify(f).includes('"ctx":');
 }
+
+/** Prefixo do conteúdo importado já enviado ao kernel (vai só a assinatura). */
+export const PREFIXO_ENVIADO = "@enviado:";
+/** Conteúdo importado grande (base64) que vai ao kernel uma vez só. */
+export const LIMITE_DADOS_UMA_VEZ = 1_000_000;
+
+/** Assinatura do conteúdo de um corpo importado (igual na interface e no kernel). */
+export function assinaturaDados(id: string, dados: string): string {
+  return dados.startsWith(PREFIXO_ENVIADO) ? dados.slice(PREFIXO_ENVIADO.length) : `${id}:${dados.length}:${dados.slice(0, 64)}:${dados.slice(-64)}`;
+}
