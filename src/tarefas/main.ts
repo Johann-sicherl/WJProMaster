@@ -31,7 +31,9 @@ let busca = "";
 const fechadas = new Set<string>(JSON.parse(pref("fechadas", "[]")) as string[]);
 let textoSincronia = "";
 /** tarefas com a lista de etapas aberta na lista */
-const etapasAbertas = new Set<string>(JSON.parse(pref("etapas-abertas", "[]")) as string[]);
+// começam todas recolhidas a cada abertura; a seta ▸/▾ da tarefa expande ou recolhe
+const etapasAbertas = new Set<string>();
+localStorage.removeItem("wjtask:etapas-abertas"); // preferência antiga (as abertas ficavam guardadas)
 permitirOnline(pref("online", "1") === "1");
 
 const agoraISO = () => new Date().toISOString();
@@ -369,6 +371,13 @@ function seloPrazo(t: Tarefa): string {
   return `<span class="wj-selo${cls}">${txt}</span>`;
 }
 
+/** Seta ▸/▾ que expande ou recolhe as etapas (espaço vazio na tarefa sem etapas, para alinhar). */
+function setaEtapas(t: Tarefa): string {
+  if (!progresso(t).total && !etapasAbertas.has(t.id)) return `<span class="tp-seta-etapas" aria-hidden="true"></span>`;
+  const aberta = etapasAbertas.has(t.id);
+  return `<button class="tp-seta-etapas" data-etapas aria-expanded="${aberta}" title="${aberta ? "Recolher" : "Expandir"} as etapas">${aberta ? "▾" : "▸"}</button>`;
+}
+
 /** Botão com o progresso das etapas (abre/fecha a lista); nada para tarefa sem etapas. */
 function seloEtapas(t: Tarefa): string {
   const { feitas, total } = progresso(t);
@@ -417,7 +426,6 @@ function conferirConclusao(t: Tarefa) {
 function abrirEtapas(id: string, abrir: boolean) {
   if (abrir) etapasAbertas.add(id);
   else etapasAbertas.delete(id);
-  guardarPref("etapas-abertas", JSON.stringify([...etapasAbertas]));
 }
 
 function seletorEstado(t: Tarefa): string {
@@ -451,6 +459,7 @@ function renderizarLista() {
     ${lista.length ? `<ul class="tp-lista">${lista.map((t) => `
       <li class="tp-tarefa${estadoDe(base, t.estado)?.tipo === "fim" ? " tp-feita" : ""}" data-id="${t.id}">
         ${seletorEstado(t)}
+        ${setaEtapas(t)}
         <div class="tp-texto" data-editar>
           <span class="tp-titulo">${escapar(t.titulo)}</span>
           <span class="tp-meta">criada ${dataHora(t.criada)}${mostrarPasta ? ` · ${escapar(caminhoPasta(base, t.pasta))}` : ""} ${seloPrazo(t)}</span>
@@ -789,7 +798,6 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
       if (JSON.stringify(etapas) !== antes) (etapas.length ? (nova.etapas = etapas) : delete nova.etapas), (nova.atualizado = agora);
       if (t && (t.titulo !== titulo || t.prazo !== dataPrazo || t.pasta !== p)) Object.assign(t, { titulo, prazo: dataPrazo, pasta: p, atualizado: agora });
       conferirConclusao(nova);
-      if (etapas.length) etapasAbertas.add(nova.id);
     });
   }
 }
