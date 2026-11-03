@@ -152,6 +152,9 @@ const outra = validarBase(JSON.parse(JSON.stringify(tb)));
 adicionarEtapa(outra.tarefas[0], "Pintar", T(9));
 igual("mescla leva a etapa nova", mesclar([tb, outra], T(10)).tarefas[0].etapas!.map((e) => e.titulo).join(), "Cortar chapa,Soldar,Pintar");
 
+igual("etapa criada já com prazo", adicionarEtapa(tt, "Pintar", T(8), "2026-10-30")!.prazo, "2026-10-30");
+igual("etapa criada sem prazo não tem o campo", "prazo" in adicionarEtapa(tt, "Embalar", T(8), null)!, false);
+
 // --- conclusão automática pelas etapas ---
 const ab = baseNova();
 const ta = criarTarefa(ab, "geral", "Montar painel", null, T(1));

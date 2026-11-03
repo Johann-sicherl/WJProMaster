@@ -386,6 +386,7 @@ function listaEtapas(t: Tarefa): string {
       <input type="date" data-etapa-prazo value="${e.prazo ?? ""}" title="Prazo de entrega da etapa (opcional)" aria-label="Prazo da etapa" />
       <button data-etapa-sobe ${k ? "" : "disabled"} title="Subir">↑</button><button data-etapa-tira title="Excluir etapa">✕</button></li>`).join("")}</ul>
     <div class="tp-linha tp-nova-etapa"><input data-etapa-nova placeholder="Nova etapa (Enter adiciona)" autocomplete="off" />
+      <input type="date" data-etapa-nova-prazo title="Prazo de entrega da nova etapa (opcional)" aria-label="Prazo da nova etapa" />
       <button data-etapa-add title="Adicionar etapa">${IC.mais}</button>
       <button data-etapa-caneta title="Escrever a etapa com a caneta">${IC.caneta}</button></div>
   </div>`;
@@ -524,7 +525,9 @@ conteudo.addEventListener("keydown", (e) => {
 /** Adiciona a etapa e devolve o foco ao campo de nova etapa (para seguir digitando). */
 function novaEtapa(t: Tarefa, texto: string) {
   if (!texto.trim()) return;
-  alterar(() => (adicionarEtapa(t, texto, agoraISO()), conferirConclusao(t)));
+  // prazo escolhido junto com o texto da nova etapa (opcional)
+  const prazo = conteudo.querySelector<HTMLInputElement>(`.tp-tarefa[data-id="${t.id}"] [data-etapa-nova-prazo]`)?.value || null;
+  alterar(() => (adicionarEtapa(t, texto, agoraISO(), prazo), conferirConclusao(t)));
   conteudo.querySelector<HTMLInputElement>(`.tp-tarefa[data-id="${t.id}"] [data-etapa-nova]`)?.focus();
 }
 conteudo.addEventListener("contextmenu", (e) => {
@@ -674,6 +677,7 @@ function escreverTexto(titulo: string, valor = ""): Promise<string | null> {
 function editorEtapas(raiz: HTMLElement, etapas: Etapa[]) {
   const lista = $("[data-etapas]", raiz);
   const nova = $<HTMLInputElement>("[data-nova-etapa]", raiz);
+  const prazoNova = $<HTMLInputElement>("[data-prazo-nova]", raiz);
   const desenhar = () => {
     lista.innerHTML = etapas.map((e, k) => `<li data-k="${k}">
       <input type="checkbox" data-feita ${e.feita ? "checked" : ""} aria-label="Etapa feita" />
@@ -684,7 +688,8 @@ function editorEtapas(raiz: HTMLElement, etapas: Etapa[]) {
   const adicionar = (texto: string) => {
     const t = texto.trim();
     if (!t) return;
-    etapas.push({ id: uid(), titulo: t, feita: null });
+    etapas.push({ id: uid(), titulo: t, feita: null, ...(prazoNova.value ? { prazo: prazoNova.value } : {}) });
+    prazoNova.value = "";
     desenhar();
   };
   nova.onkeydown = (e) => {
@@ -733,6 +738,7 @@ const htmlEditorEtapas = () => `
     <span class="tp-rotulo">Etapas <small>(opcional: sub-tarefas com prazo opcional; todas feitas = tarefa concluída)</small></span>
     <ul data-etapas></ul>
     <div class="tp-linha tp-nova-etapa"><input data-nova-etapa placeholder="Nova etapa (Enter adiciona)" autocomplete="off" />
+      <input type="date" data-prazo-nova title="Prazo de entrega da nova etapa (opcional)" aria-label="Prazo da nova etapa" />
       <button data-add-etapa title="Adicionar etapa">${IC.mais}</button>
       <button data-caneta-etapa title="Escrever a etapa com a caneta">${IC.caneta}</button></div>
   </div>`;
