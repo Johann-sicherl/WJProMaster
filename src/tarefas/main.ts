@@ -445,12 +445,16 @@ function renderizarLista() {
       if (fa) return (concluidaEm(base, b) ?? "").localeCompare(concluidaEm(base, a) ?? "");
       return (a.prazo ?? "9999").localeCompare(b.prazo ?? "9999") || (ordem.get(b.estado)! - ordem.get(a.estado)!) || b.criada.localeCompare(a.criada);
     });
+  // expandir/recolher todas: vale para as tarefas com etapas que estão na lista
+  const comEtapas = lista.filter((t) => progresso(t).total);
+  const algumaAberta = comEtapas.some((t) => etapasAbertas.has(t.id));
   const mostrarPasta = !pastaSel || (comSub && base.pastas.some((p) => p.pai === pastaSel));
   const titulo = pastaSel ? caminhoPasta(base, pastaSel) : "Todas as tarefas";
   conteudo.innerHTML = `
     <div class="tp-cabeca">
       <h2>${escapar(titulo)}</h2>
       <div class="tp-filtros">
+        ${comEtapas.length ? `<button class="tp-todas-etapas" data-todas-etapas title="${algumaAberta ? "Recolher" : "Expandir"} as etapas de todas as tarefas da lista">${algumaAberta ? "▴ Recolher todas" : "▾ Expandir todas"}</button>` : ""}
         ${pastaSel && base.pastas.some((p) => p.pai === pastaSel) ? `<label class="tp-chk"><input type="checkbox" data-sub ${comSub ? "checked" : ""}/> Incluir subpastas</label>` : ""}
         <select data-filtro aria-label="Filtrar por estado"><option value="">Todos os estados</option>${estadosOrdenados(base).map((e) => `<option value="${e.id}"${e.id === filtroEstado ? " selected" : ""}>${escapar(e.nome)} (${escopo.filter((t) => t.estado === e.id).length})</option>`).join("")}</select>
         <input type="search" data-busca placeholder="Procurar" value="${escapar(busca)}" />
@@ -484,6 +488,10 @@ function renderizarLista() {
     n.setSelectionRange(n.value.length, n.value.length);
   };
   conteudo.querySelector<HTMLElement>("[data-nova]")?.addEventListener("click", () => editarTarefa(null));
+  conteudo.querySelector<HTMLElement>("[data-todas-etapas]")?.addEventListener("click", () => {
+    for (const t of comEtapas) abrirEtapas(t.id, !algumaAberta);
+    renderizarLista();
+  });
 }
 
 conteudo.addEventListener("change", (e) => {
