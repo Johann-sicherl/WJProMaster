@@ -6,8 +6,8 @@ import { getOC, makeBox, makeCylinder, setOC } from "replicad";
 import { createRequire } from "node:module";
 import { lerMontagemStep } from "../src/kernel/importar";
 import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO, malhaDoStl } from "../src/kernel/stl";
-import { documentoImportado } from "../src/model";
-import { regenerar } from "../src/kernel/regenerar";
+import { assinaturaDados, documentoImportado, LIMITE_DADOS_UMA_VEZ, PREFIXO_ENVIADO } from "../src/model";
+import { regenerar, temDadosDe } from "../src/kernel/regenerar";
 import { montagemDoStep, nomesDosCorpos, pecasDoStep, textoStep } from "../src/montagem/step";
 import { aplicarPonto, quantidades, validarMontagem } from "../src/montagem/modelo";
 
@@ -19,6 +19,10 @@ function igual(nome: string, obtido: unknown, esperado: unknown) {
   const ok = JSON.stringify(obtido) === JSON.stringify(esperado);
   if (!ok) falhas++;
   console.log(`${ok ? "ok  " : "FALHA"} ${nome}: ${JSON.stringify(obtido)}${ok ? "" : ` (esperado ${JSON.stringify(esperado)})`}`);
+}
+function verdade(nome: string, v: boolean) {
+  if (!v) falhas++;
+  console.log(`${v ? "ok  " : "FALHA"} ${nome}`);
 }
 const r = (v: number[]) => v.map((x) => Math.round(x * 1000) / 1000 + 0);
 
@@ -116,6 +120,25 @@ for (const p of m.pecas) {
   // com um sólido depois: os dois aparecem; as faces do sólido continuam selecionáveis
   const r2 = regenerar([cuboMalha, ...documentoImportado("cubo.stl", ascii(f)).features]);
   igual("malha + sólido: faces só do sólido, triângulos dos dois", [r2.erros.length, r2.malha!.faces.length / 3, r2.topologia?.faces.length, r2.malha!.triangulos.length / 3 > 12], [0, 6, 6, true]);
+}
+
+// ---------- conteúdo importado grande: vai ao kernel uma vez, depois só a assinatura ----------
+{
+  const n = LIMITE_TRIANGULOS_SOLIDO + 30000; // corpo de malha com base64 > 1 MB
+  const bin = new Uint8Array(84 + 50 * n);
+  const dv = new DataView(bin.buffer);
+  dv.setUint32(80, n, true);
+  for (let i = 0; i < n; i++) for (let k = 0; k < 9; k++) dv.setFloat32(84 + i * 50 + 12 + k * 4, [i, 0, 0, i, 1, 0, i, 0, 1][k], true);
+  const d = documentoImportado("grande.stl", bin);
+  const f = d.features[0] as { id: string; dados: string };
+  verdade("conteúdo maior que o limite de envio único", f.dados.length > LIMITE_DADOS_UMA_VEZ);
+  const r1 = regenerar(d.features);
+  const sig = assinaturaDados(f.id, f.dados);
+  const soAssinatura = [{ ...d.features[0], dados: PREFIXO_ENVIADO + sig }] as typeof d.features;
+  verdade("kernel já tem o conteúdo: a assinatura basta", temDadosDe(soAssinatura));
+  const r2 = regenerar(soAssinatura);
+  igual("reconstrói só com a assinatura (mesma malha)", [r2.erros.length, r2.malha!.triangulos.length], [0, r1.malha!.triangulos.length]);
+  verdade("assinatura desconhecida: o kernel pede o conteúdo de novo", !temDadosDe([{ ...d.features[0], dados: PREFIXO_ENVIADO + "outro:1:a:b" }] as typeof d.features));
 }
 
 console.log(falhas ? `\nimportar: ${falhas} falha(s)` : "\nimportar: tudo certo");

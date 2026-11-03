@@ -2,7 +2,7 @@
 // Cada face/aresta ganha uma "assinatura" geométrica (tipo, centro, normal/eixo, área/comprimento).
 // O recurso guarda a assinatura; na regeneração, a entidade mais parecida da peça nova é usada.
 
-import { measureArea, type Edge, type Face, type Shape3D } from "replicad";
+import { cast, downcast, getOC, HASH_CODE_MAX, measureArea, type Edge, type Face, type Shape3D } from "replicad";
 import type { AssinaturaAresta, AssinaturaFace, Referencia, Vec3 } from "../model";
 
 const tupla = (v: { x: number; y: number; z: number }): Vec3 => [v.x, v.y, v.z];
@@ -71,14 +71,55 @@ export interface Topologia {
 
 const cache = new WeakMap<Shape3D, { faces: Face[]; arestas: Edge[]; topo: Topologia }>();
 
+/**
+ * Faces (ou arestas) da forma, sem repetição, na mesma ordem de `forma.faces`/`forma.edges` do
+ * replicad (primeira ocorrência no explorador), em tempo linear: o replicad compara cada item com
+ * todos os já vistos (quadrático: 7 s para 4 mil arestas num sólido vindo de STL). Aqui só se
+ * compara dentro do mesmo código de hash.
+ */
+export function listarTopo(forma: { wrapped: unknown }, tipo: "face"): Face[];
+export function listarTopo(forma: { wrapped: unknown }, tipo: "aresta"): Edge[];
+export function listarTopo(forma: { wrapped: unknown }, tipo: "face" | "aresta"): (Face | Edge)[] {
+  const oc = getOC() as never as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const exp = new oc.TopExp_Explorer(forma.wrapped, oc.TopAbs_ShapeEnum[tipo === "face" ? "TopAbs_FACE" : "TopAbs_EDGE"], oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  const vistos = new Map<number, { IsSame(x: unknown): boolean }[]>();
+  const out: (Face | Edge)[] = [];
+  try {
+    for (; exp.More(); exp.Next()) {
+      const item = exp.Current();
+      const h = oc.ReplicadShapeHasher.HashCode(item, HASH_CODE_MAX) as number;
+      const l = vistos.get(h);
+      if (l?.some((x) => x.IsSame(item))) continue;
+      if (l) l.push(item);
+      else vistos.set(h, [item]);
+      out.push(cast(downcast(item)) as unknown as Face | Edge);
+    }
+  } finally {
+    exp.delete();
+  }
+  return out;
+}
+
 export function topologia(peca: Shape3D) {
   let t = cache.get(peca);
   if (t) return t;
-  const faces = peca.faces;
-  const arestas = peca.edges;
+  const faces = listarTopo(peca, "face");
+  const arestas = listarTopo(peca, "aresta");
+  // vértices sem repetição (grade de 1e-6: só compara com os da mesma célula e das vizinhas)
   const vs: Vec3[] = [];
+  const grade = new Map<string, number[]>();
+  const cel = (x: number) => Math.round(x / 1e-6);
   const add = (p: Vec3) => {
-    if (!vs.some((q) => dist3(p, q) < 1e-6)) vs.push(p);
+    const c = p.map(cel);
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dz = -1; dz <= 1; dz++)
+          for (const k of grade.get(`${c[0] + dx},${c[1] + dy},${c[2] + dz}`) ?? []) if (dist3(p, vs[k]) < 1e-6) return;
+    const chave = `${c[0]},${c[1]},${c[2]}`;
+    const l = grade.get(chave);
+    if (l) l.push(vs.length);
+    else grade.set(chave, [vs.length]);
+    vs.push(p);
   };
   const assA = arestas.map(assinaturaAresta);
   for (const a of assA) {

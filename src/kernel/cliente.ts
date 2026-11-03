@@ -2,7 +2,7 @@
 // Só a regeneração mais recente importa: pedidos antigos que chegarem atrasados são descartados.
 
 import type { LeituraMontagem } from "./importar";
-import type { Feature, Referencia } from "../model";
+import { assinaturaDados, LIMITE_DADOS_UMA_VEZ, PREFIXO_ENVIADO, type Feature, type Referencia } from "../model";
 import type { PedidoKernel, RespostaKernel } from "./worker";
 import type { InfoReferencia, ResultadoRegeneracao } from "./regenerar";
 import type { Corte, Projecao } from "./projecao";
@@ -25,7 +25,10 @@ export class ClienteKernel {
   private worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   private seq = 0;
   private ultimaRegeneracao = 0;
-  private pendentes = new Map<number, { ok: (v: unknown) => void; falha: (e: Error) => void }>();
+  private pendentes = new Map<number, { ok: (v: unknown) => void; falha: (e: Error) => void; pedido: PedidoKernel }>();
+  /** conteúdos importados grandes que o kernel já recebeu (vão só pela assinatura) */
+  private enviados = new Set<string>();
+  private ultimoRegenerar: PedidoKernel | null = null;
 
   readonly pronto: Promise<void>;
 
@@ -48,6 +51,13 @@ export class ClienteKernel {
             this.pendentes.delete(r.seq);
             break;
           case "erro":
+            // o kernel não tem mais o conteúdo importado: manda de novo, completo
+            if (r.mensagem === "__REENVIAR_DADOS__") {
+              this.enviados.clear();
+              const pd = this.pendentes.get(r.seq)?.pedido ?? (r.seq === this.ultimaRegeneracao ? this.ultimoRegenerar : null);
+              if (pd) this.enviar(pd);
+              break;
+            }
             this.pendentes.get(r.seq)?.falha(new Error(r.mensagem));
             this.pendentes.delete(r.seq);
             break;
@@ -59,7 +69,8 @@ export class ClienteKernel {
   /** `previa`: id do recurso em edição (o kernel devolve o material que ele tira). */
   regenerar(features: Feature[], planificar = false, previa?: string) {
     this.ultimaRegeneracao = ++this.seq;
-    this.enviar({ tipo: "regenerar", seq: this.seq, features, planificar, previa });
+    this.ultimoRegenerar = { tipo: "regenerar", seq: this.seq, features, planificar, previa };
+    this.enviar(this.ultimoRegenerar);
   }
 
   /** DXF do planificado (da última regeneração) e o resumo da lista de corte. */
@@ -70,8 +81,9 @@ export class ClienteKernel {
   private pedir<T>(p: SemSeq<PedidoKernel>): Promise<T> {
     const seq = ++this.seq;
     return new Promise<T>((ok, falha) => {
-      this.pendentes.set(seq, { ok: ok as (v: unknown) => void, falha });
-      this.enviar({ ...p, seq } as PedidoKernel);
+      const pedido = { ...p, seq } as PedidoKernel;
+      this.pendentes.set(seq, { ok: ok as (v: unknown) => void, falha, pedido });
+      this.enviar(pedido);
     });
   }
 
@@ -110,9 +122,22 @@ export class ClienteKernel {
     return this.pedir<LeituraMontagem>({ tipo: "montagemStep", bytes });
   }
 
+  /** STL grande → no máximo `alvo` triângulos (no worker: a tela não trava). Os bytes vão transferidos. */
+  simplificarStl(bytes: Uint8Array, alvo: number) {
+    return this.pedir<{ bytes: Uint8Array; triangulos: number; original: number }>({ tipo: "simplificarStl", bytes, alvo });
+  }
+
   private enviar(p: PedidoKernel) {
-    if (p.tipo === "montagemStep") return this.worker.postMessage(p, [p.bytes.buffer]);
-    // cópia limpa: objetos da UI não vão para o worker
-    this.worker.postMessage(JSON.parse(JSON.stringify(p)));
+    if (p.tipo === "montagemStep" || p.tipo === "simplificarStl") return this.worker.postMessage(p, [p.bytes.buffer]);
+    // cópia limpa: objetos da UI não vão para o worker. Conteúdo importado grande (STEP/STL de
+    // dezenas de MB) vai uma vez; depois, só a assinatura
+    const enviados = this.enviados;
+    this.worker.postMessage(JSON.parse(JSON.stringify(p, function (this: { id?: string }, k, v) {
+      if (k !== "dados" || typeof v !== "string" || v.length < LIMITE_DADOS_UMA_VEZ || !this?.id) return v;
+      const sig = assinaturaDados(this.id, v);
+      if (enviados.has(sig)) return PREFIXO_ENVIADO + sig;
+      enviados.add(sig);
+      return v;
+    })));
   }
 }

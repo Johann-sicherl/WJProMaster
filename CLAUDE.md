@@ -62,7 +62,10 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
 - Modelo: lista de features serializada em JSON (`.wjcad`; abre `.jlscad` e `.cadt` antigos), em `src/model.ts`.
   **Importar STEP/STL**: abrir um `.step/.stp/.stl` cria peça com o recurso `importado` (arquivo em base64 no
   `.wjcad`, lido no kernel com `STEPControl_Reader`/`StlAPI_Reader` + costura; fica fora das fotografias do desfazer;
-  STL acima de 10 000 triângulos = **corpo de malha** só exibido, `malha: true`, lido em `src/kernel/stl.ts`).
+  STL acima de 10 000 triângulos = **corpo de malha** só exibido, `malha: true`, lido em `src/kernel/stl.ts`; ao abrir STL
+  grande a janela "STL grande" oferece **simplificar** (`simplificarStl`, no worker) para virar sólido editável. Conteúdo importado
+  > 1 MB vai ao kernel **uma vez** (depois só a assinatura, `PREFIXO_ENVIADO`; o kernel pede de novo se descartou).
+  Listar faces/arestas de sólidos grandes: `listarTopo` (linear), não `forma.faces/edges` do replicad (quadrático)).
   **Montagem STEP** → `.wjasm` (`src/kernel/importar.ts` separa sólidos/instâncias; nomes pelo texto em
   `src/montagem/step.ts`; teste `scripts/teste-importar.ts`); a Peça repassa o arquivo à Montagem (`#importar-step`).
   **Montagem → Editar peça / cotas** (`docs/funcional/montagem.md` §2.12): cotas dos componentes editáveis na

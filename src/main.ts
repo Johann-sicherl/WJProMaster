@@ -3114,6 +3114,58 @@ function mostrarLegendaAnalise() {
   if (el) el.textContent = viewport.infoAnalise;
 }
 
+/**
+ * STL grande ao abrir: simplificar para quantos triângulos (0 = abrir como está; null = desistir).
+ * Até o limite do sólido o STL vira sólido editável; acima, corpo de malha (ver e medir).
+ */
+function escolherSimplificacao(nome: string, n: number, tamanho: number): Promise<number | null> {
+  const fmt = (x: number) => x.toLocaleString("pt-BR");
+  const todas: [number, string][] = [
+    [5000, "sólido editável, mais rápido de editar"],
+    [LIMITE_TRIANGULOS_SOLIDO, "sólido editável, mais detalhe"],
+    [50000, "corpo de malha leve (ver e medir)"],
+    [200000, "corpo de malha detalhado (ver e medir)"],
+  ];
+  const opcoes = todas.filter(([x]) => x < n);
+  // diálogo próprio sobre a página inteira: funciona também na tela inicial (sem documento aberto)
+  const fundo = document.createElement("div");
+  fundo.className = "fundo-dialogo";
+  fundo.innerHTML = `
+    <div class="dialogo dialogo-stl" role="dialog" aria-modal="true" aria-labelledby="simp-titulo">
+      <header><strong id="simp-titulo">STL grande</strong></header>
+      <div class="dialogo-corpo">
+        <p><strong>${escapar(nome)}</strong>: ${fmt(n)} triângulos (${(tamanho / 1e6).toFixed(0)} MB).</p>
+        <p class="dica">Até ${fmt(LIMITE_TRIANGULOS_SOLIDO)} triângulos o STL vira <strong>sólido editável</strong>
+          (cortes, furos, filetes, mover/deslocar faces). Acima disso fica como corpo de malha: só ver e medir.
+          Simplificar junta vértices próximos e mantém a forma (o volume muda pouco).</p>
+        <div class="lista-simplificar">
+          ${opcoes.map(([x, d]) => `<button data-alvo="${x}">Simplificar para ${fmt(x)} — ${d}</button>`).join("")}
+          <label class="campo">Outro número de triângulos <input id="simp-outro" type="number" min="100" step="1000" value="20000" inputmode="numeric"></label>
+          <button data-alvo="outro">Simplificar para o número acima</button>
+          <button data-alvo="0">Abrir como está (${fmt(n)} triângulos, corpo de malha)</button>
+        </div>
+      </div>
+      <footer><button data-alvo="cancelar">Cancelar</button></footer>
+    </div>`;
+  document.body.append(fundo);
+  return new Promise((ok) => {
+    const fim = (v: number | null) => {
+      fundo.remove();
+      ok(v);
+    };
+    fundo.querySelectorAll<HTMLButtonElement>("[data-alvo]").forEach((b) => {
+      b.onclick = () => {
+        const a = b.dataset.alvo;
+        if (a === "cancelar") return fim(null);
+        if (a !== "outro") return fim(Number(a));
+        const v = Math.round(Number(fundo.querySelector<HTMLInputElement>("#simp-outro")!.value));
+        if (!Number.isFinite(v) || v < 100) return avisar("Escolha pelo menos 100 triângulos.");
+        fim(v >= n ? 0 : v);
+      };
+    });
+  });
+}
+
 function abrirJanela(titulo: string, html: string) {
   $("janela").classList.remove("larga");
   $("janela-titulo").textContent = titulo;
@@ -3897,8 +3949,10 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
   try {
     // STEP/STL de qualquer CAD: vira peça nova com o corpo importado (salvar grava .wjcad)
     if (/\.(step|stp|stl)$/i.test(arq.name)) {
-      if (arq.size > 30e6 && !confirm(`O arquivo tem ${(arq.size / 1e6).toFixed(0)} MB; a importação pode ficar lenta e o .wjcad ficará grande. Continuar?`)) return;
-      const bytes = new Uint8Array(await arq.arrayBuffer());
+      const ehStl = /\.stl$/i.test(arq.name);
+      // STL grande: a janela de simplificação já mostra o tamanho e as opções
+      if (!ehStl && arq.size > 30e6 && !confirm(`O arquivo tem ${(arq.size / 1e6).toFixed(0)} MB; a importação pode ficar lenta e o .wjcad ficará grande. Continuar?`)) return;
+      let bytes: Uint8Array = new Uint8Array(await arq.arrayBuffer());
       // STEP de montagem (árvore de produtos): oferece abrir no ambiente Montagem, peça por peça
       if (!/\.stl$/i.test(arq.name)) {
         const pecas = pecasDoStep(new TextDecoder().decode(bytes));
@@ -3909,16 +3963,34 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
           return;
         }
       }
+      // STL acima do limite do sólido: simplificar antes de abrir (ou abrir como está)
+      let simplificado: { de: number; para: number } | null = null;
+      const nTri = ehStl ? contarTriangulosStl(bytes) : 0;
+      if (nTri > LIMITE_TRIANGULOS_SOLIDO) {
+        const alvo = await escolherSimplificacao(arq.name, nTri, arq.size);
+        if (alvo === null) return;
+        if (alvo > 0) {
+          avisar(`Simplificando ${nTri.toLocaleString("pt-BR")} → ${alvo.toLocaleString("pt-BR")} triângulos…`);
+          await kernel.pronto;
+          const r = await kernel.simplificarStl(bytes, alvo); // os bytes vão transferidos ao kernel
+          bytes = r.bytes;
+          simplificado = { de: r.original, para: r.triangulos };
+        }
+      }
       avisar(`Lendo ${arq.name}…`);
-      const base64 = await new Promise<string>((ok, erro) => {
+      // conteúdo original grande: base64 pelo leitor do navegador (não trava a tela)
+      const base64 = simplificado ? undefined : await new Promise<string>((ok, erro) => {
         const r = new FileReader();
         r.onload = () => ok(String(r.result).replace(/^data:[^,]*,/, ""));
         r.onerror = () => erro(r.error);
         r.readAsDataURL(arq);
       });
-      const d = documentoImportado(arq.name, bytes, base64);
+      const d = documentoImportado(simplificado ? arq.name.replace(/\.stl$/i, ` (simplificado ${simplificado.para}).stl`) : arq.name, bytes, base64);
+      if (simplificado) d.nome = arq.name.replace(/\.[^.]+$/, "");
       const imp = d.features[0];
-      if (imp.tipo === "importado" && imp.malha)
+      if (simplificado)
+        avisar(`Simplificado: ${simplificado.de.toLocaleString("pt-BR")} → ${simplificado.para.toLocaleString("pt-BR")} triângulos — ${imp.tipo === "importado" && imp.malha ? "corpo de malha (ver e medir)" : "sólido editável (cortes, furos, filetes, edição de faces)"}.`);
+      else if (imp.tipo === "importado" && imp.malha)
         avisar(`STL com ${contarTriangulosStl(bytes).toLocaleString("pt-BR")} triângulos: entra como corpo de malha (só exibição e volume; acima de ${LIMITE_TRIANGULOS_SOLIDO.toLocaleString("pt-BR")} triângulos não vira sólido).`);
       if (!aberto || !doc.features.length || confirm("Fechar a peça atual e abrir o arquivo?")) abrirDocumento(d);
       return;
