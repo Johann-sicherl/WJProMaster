@@ -191,8 +191,16 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
     uma no arquivo dela no cofre (GO-OUT automático, nome mantido, sem trocar o vínculo da página
     da Peça; travada por outra pessoa: não grava e avisa); Cancelar salva só a montagem (as
     alterações ficam nela, ainda marcadas).
-- **Editar peça em contexto** (Peça com a montagem transparente em volta) e **referências a
-  outros componentes** (->): próximas etapas.
+- **Editar peça** (em contexto) ✅ (03/11/2026, `src/montagem/contexto.ts`): menu do componente →
+  **Editar peça** abre a peça no ambiente de Peça com o **resto da montagem em volta,
+  transparente**, na posição certa (sistema da peça = posição do componente; as outras instâncias
+  da mesma peça acompanham a edição ao vivo). Botões no topo: **Voltar à montagem** (leva a peça:
+  todas as instâncias, peça "alterada") e **Montagem** (mostrar/ocultar o contexto). **💾** em
+  contexto volta e salva a montagem (com a pergunta das peças alteradas). Recarregar a página
+  continua em contexto, com a edição. Abrir outro documento pergunta antes de sair do contexto.
+  A montagem passa pelo IndexedDB (`src/comum/transferir.ts`: "contexto" / "contexto-volta").
+- **Referências a outros componentes** (esboço na face de outra peça, converter arestas dela,
+  até a superfície dela, marca "->"): próxima etapa.
 
 ### 2.13 Importar montagem STEP — ✅ (01/11/2026)
 - **Abrir arquivo do aparelho** na Montagem aceita `.step/.stp` de qualquer CAD (do CAD comercial:

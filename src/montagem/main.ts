@@ -7,7 +7,8 @@ import "../style.css";
 import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
 import { montagemDoStep } from "./step";
-import { pegarArquivo } from "../comum/transferir";
+import { deixar, pegar, pegarArquivo } from "../comum/transferir";
+import type { PedidoContexto, VoltaContexto } from "./contexto";
 import { acompanharPecaEmbutida, CotasDaMontagem, prepararPecaAlterada, recursoDaFace } from "./cotas";
 import { SolverEsboco } from "../esboco/solver";
 import wasmPlaneGcs from "@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url";
@@ -761,6 +762,7 @@ function acoesDoComponente(): AcaoContexto[] {
     { rotulo: "Isolar", icone: "isolar", acao: () => alternarIsolar() },
     { rotulo: cs.every((c) => c.suprimido) ? "Reativar" : "Suprimir", icone: "olhoFechado", acao: () => suprimir(cs) },
   ];
+  if (um) out.push({ rotulo: "Editar peça", icone: "esboco", acao: () => void editarPecaEmContexto(um) });
   if (um) out.push({ rotulo: "Abrir peça", icone: "peca", acao: () => void abrirPeca(um) });
   out.push({ rotulo: "Excluir", icone: "fechar", acao: () => excluirSelecao() });
   return out;
@@ -829,6 +831,21 @@ function excluirSelecao() {
   selComps = [];
   resolver();
   alterou();
+}
+
+/**
+ * Editar peça (em contexto): a peça do componente abre no ambiente de Peça com o resto da montagem
+ * em volta, transparente, no sistema da peça. "Voltar à montagem" traz a peça alterada (todas as
+ * instâncias), que fica "alterada" até o 💾 da montagem gravá-la no arquivo dela.
+ */
+async function editarPecaEmContexto(c: ComponenteMontagem) {
+  if (!doc) return;
+  if (comando) return avisar("Conclua o comando atual (✓) antes.");
+  cotasMont.fechar();
+  salvarAutosave();
+  const pedido: PedidoContexto = { montagem: doc, comp: c.id };
+  await deixar("contexto", pedido);
+  location.href = new URL(`${RAIZ}cad/#editar-contexto`, location.href).href;
 }
 
 /** Abre a peça do componente no ambiente de Peça (do cofre, ou a cópia embutida). */
@@ -2457,6 +2474,20 @@ void sincronizarAoAbrir(kernel.pronto)?.catch(() => {});
   if (hash) history.replaceState(null, "", location.pathname + location.search);
   if (hash === "#novo") novaMontagem();
   else if (hash === "#abrir-autosave" && inicial) abrirMontagem(inicial);
+  else if (hash === "#voltar-contexto")
+    // volta da Peça editada em contexto: a montagem (com a peça alterada) vem pelo IndexedDB
+    void pegar<VoltaContexto>("contexto-volta").then((v) => {
+      if (!v) {
+        if (inicial) abrirMontagem(inicial);
+        else atualizarAreaDeTrabalho();
+        return;
+      }
+      abrirMontagem(validarMontagem(v.montagem));
+      selComps = compDe(v.comp) ? [v.comp] : [];
+      renderizarArvore();
+      avisar(v.alterada ? "Peça alterada aplicada a todas as instâncias. Salve a montagem (💾) para gravar a peça no arquivo dela." : "Voltou à montagem: a peça não mudou.", 6000);
+      if (v.salvar) void salvar().catch(() => {});
+    }).catch((e) => avisar((e as Error).message));
   else if (hash === "#importar-step")
     void pegarArquivo().then((a) => (a ? importarMontagemStep(a.nome, a.bytes) : atualizarAreaDeTrabalho())).catch((e) => avisar((e as Error).message));
   else if (inicial && vinculo("asm")) abrirMontagem(inicial); // volta da peça: continua a montagem
