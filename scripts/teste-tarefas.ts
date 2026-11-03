@@ -3,7 +3,7 @@
 import {
   alertas, baseNova, caminhoPasta, concluidaEm, criarPasta, criarTarefa, descendentes, diasEntre, duracao, excluirEstado, excluirPasta, excluirTarefa,
   filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, validarBase, type Base,
-  adicionarEtapa, excluirEtapa, marcarEtapa, moverEtapa, progresso, estadoPelasEtapas, prazoEtapa, painelEtapas, alertasEtapas,
+  definirNota, definirNotaEtapa, adicionarEtapa, excluirEtapa, marcarEtapa, moverEtapa, progresso, estadoPelasEtapas, prazoEtapa, painelEtapas, alertasEtapas,
 } from "../src/tarefas/regras";
 
 let falhas = 0;
@@ -154,6 +154,24 @@ igual("mescla leva a etapa nova", mesclar([tb, outra], T(10)).tarefas[0].etapas!
 
 igual("etapa criada já com prazo", adicionarEtapa(tt, "Pintar", T(8), "2026-10-30")!.prazo, "2026-10-30");
 igual("etapa criada sem prazo não tem o campo", "prazo" in adicionarEtapa(tt, "Embalar", T(8), null)!, false);
+
+// --- observações (notas) ---
+const nb = baseNova();
+const tn = criarTarefa(nb, "geral", "Com nota", null, T(1));
+definirNota(tn, "  Ligar para o fornecedor\nPedir NF  ", T(2));
+igual("nota da tarefa aparada", JSON.stringify(tn.nota), JSON.stringify("Ligar para o fornecedor\nPedir NF"));
+igual("nota atualiza a tarefa", tn.atualizado, T(2));
+definirNota(tn, "Ligar para o fornecedor\nPedir NF", T(3));
+igual("mesma nota não muda a data", tn.atualizado, T(2));
+const en = adicionarEtapa(tn, "Cotar", T(4))!;
+definirNotaEtapa(tn, en.id, "3 orçamentos", T(5));
+igual("nota da etapa", en.nota, "3 orçamentos");
+igual("csv com observação", tabelaCSV(nb).includes("[obs: 3 orçamentos]") && tabelaCSV(nb).includes("Pedir NF"), true);
+definirNota(tn, "  ", T(6));
+definirNotaEtapa(tn, en.id, "", T(6));
+igual("nota vazia apaga os campos", "nota" in tn || "nota" in en, false);
+const sem = criarTarefa(nb, "geral", "Sem nota", null, T(1));
+igual("tarefa sem nota não tem o campo", "nota" in sem, false);
 
 // --- conclusão automática pelas etapas ---
 const ab = baseNova();

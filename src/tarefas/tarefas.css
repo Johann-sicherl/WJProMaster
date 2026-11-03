@@ -160,3 +160,16 @@ body.disp-tablet .tp-etapas { margin-left: 204px; }
 @media (max-width: 760px) { .tp-etapas, body.disp-tablet .tp-etapas { margin-left: 0; } }
 .tp-todas-etapas { white-space: nowrap; color: var(--texto-2); }
 body.disp-tablet .tp-todas-etapas { min-height: 44px; }
+
+/* observação (nota/lembrete) de tarefa e etapa */
+.tp-nota-bt { flex: none; display: grid; place-items: center; width: 36px; min-height: 34px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--linha-forte); }
+.tp-nota-bt svg { width: 20px; height: 20px; }
+.tp-nota-bt:hover { color: var(--acento); background: var(--painel-2); }
+.tp-nota-bt.tp-com-nota { color: #c98a12; }
+.tp-obs { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; margin-top: 2px; padding: 3px 8px; border-left: 3px solid #e0b44a; background: #fff8e6; border-radius: 0 6px 6px 0; font-size: 13px; color: #4a3d1a; cursor: pointer; }
+.tp-etapas .tp-obs { display: block; font-size: 12px; margin-top: 3px; -webkit-line-clamp: 2; }
+.tp-etapas .tp-nota-bt { width: 32px; min-height: 30px; }
+.tp-etapas .tp-nota-bt svg { width: 17px; height: 17px; }
+.tp-etapas li .tp-chk span { display: grid; }
+.tp-escrita-nota .tp-transcrito { font-size: 17px !important; }
+body.disp-tablet .tp-nota-bt { width: 44px; min-height: 44px; }

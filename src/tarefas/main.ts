@@ -13,7 +13,7 @@ import { lerLocal, gravarLocal, sincronizarTarefas } from "./copias";
 import { areaEscrita, permitirOnline, reconhecedor } from "./escrita";
 import {
   alertas, alertasEtapas, estadoPelasEtapas, painelEtapas, prazoEtapa, type EtapaAtrasada, caminhoPasta, concluidaEm, criarPasta, criarTarefa, descendentes, diaLocal, diasEntre, duracao, estadoDe, estadosOrdenados, excluirEstado,
-  excluirPasta, adicionarEtapa, excluirEtapa, excluirTarefa, marcarEtapa, moverEtapa, progresso, filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, uid, type Base, type Etapa, type Estado, type Tarefa, type TipoEstado,
+  excluirPasta, adicionarEtapa, definirNota, definirNotaEtapa, excluirEtapa, excluirTarefa, marcarEtapa, moverEtapa, progresso, filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, uid, type Base, type Etapa, type Estado, type Tarefa, type TipoEstado,
 } from "./regras";
 
 // ---------- estado da página ----------
@@ -390,8 +390,9 @@ function seloEtapas(t: Tarefa): string {
 function listaEtapas(t: Tarefa): string {
   return `<div class="tp-etapas">
     <ul>${(t.etapas ?? []).map((e, k) => `<li data-etapa="${e.id}" class="${e.feita ? "tp-etapa-feita" : ""}">
-      <label class="tp-chk"><input type="checkbox" data-etapa-feita ${e.feita ? "checked" : ""}/><span>${escapar(e.titulo)}</span></label>
+      <label class="tp-chk"><input type="checkbox" data-etapa-feita ${e.feita ? "checked" : ""}/><span>${escapar(e.titulo)}${e.nota ? `<small class="tp-obs" data-etapa-nota title="Editar a observação">${escapar(e.nota)}</small>` : ""}</span></label>
       ${situacaoEtapa(e)}
+      <button class="tp-nota-bt${e.nota ? " tp-com-nota" : ""}" data-etapa-nota title="${e.nota ? "Editar a observação" : "Observação (nota/lembrete)"} da etapa">${IC.nota}</button>
       <input type="date" data-etapa-prazo value="${e.prazo ?? ""}" title="Prazo de entrega da etapa (opcional)" aria-label="Prazo da etapa" />
       <button data-etapa-sobe ${k ? "" : "disabled"} title="Subir">↑</button><button data-etapa-tira title="Excluir etapa">✕</button></li>`).join("")}</ul>
     <div class="tp-linha tp-nova-etapa"><input data-etapa-nova placeholder="Nova etapa (Enter adiciona)" autocomplete="off" />
@@ -438,7 +439,7 @@ function renderizarLista() {
   const ordem = new Map(estadosOrdenados(base).map((e, k) => [e.id, k]));
   const q = busca.trim().toLowerCase();
   const lista = escopo
-    .filter((t) => (!filtroEstado || t.estado === filtroEstado) && (!q || t.titulo.toLowerCase().includes(q)))
+    .filter((t) => (!filtroEstado || t.estado === filtroEstado) && (!q || [t.titulo, t.nota ?? "", ...(t.etapas ?? []).flatMap((e) => [e.titulo, e.nota ?? ""])].some((x) => x.toLowerCase().includes(q))))
     .sort((a, b) => {
       const fa = estadoDe(base, a.estado)?.tipo === "fim", fb = estadoDe(base, b.estado)?.tipo === "fim";
       if (fa !== fb) return fa ? 1 : -1;
@@ -467,8 +468,10 @@ function renderizarLista() {
         <div class="tp-texto" data-editar>
           <span class="tp-titulo">${escapar(t.titulo)}</span>
           <span class="tp-meta">criada ${dataHora(t.criada)}${mostrarPasta ? ` · ${escapar(caminhoPasta(base, t.pasta))}` : ""} ${seloPrazo(t)}</span>
+          ${t.nota ? `<span class="tp-obs" data-nota title="Editar a observação">${escapar(t.nota)}</span>` : ""}
         </div>
         ${seloEtapas(t)}
+        <button class="tp-nota-bt${t.nota ? " tp-com-nota" : ""}" data-nota title="${t.nota ? "Editar a observação" : "Observação (nota/lembrete)"} da tarefa">${IC.nota}</button>
         <button class="tp-mais" data-menu title="Opções da tarefa">⋯</button>
         ${etapasAbertas.has(t.id) ? listaEtapas(t) : ""}
       </li>`).join("")}</ul>`
@@ -525,6 +528,12 @@ conteudo.addEventListener("click", (e) => {
   } else if (alvo.closest("[data-etapas]")) {
     abrirEtapas(t.id, !etapasAbertas.has(t.id));
     renderizarLista();
+  } else if (etapa && alvo.closest("[data-etapa-nota]")) {
+    e.preventDefault(); // o texto da nota fica dentro do rótulo da caixa de marcar
+    const et = t.etapas?.find((x) => x.id === etapa);
+    if (et) void escreverNota(`Observação da etapa — ${et.titulo}`, et.nota).then((x) => x !== null && alterar(() => definirNotaEtapa(t, etapa, x, agoraISO())));
+  } else if (alvo.closest("[data-nota]")) {
+    void escreverNota(`Observação — ${t.titulo}`, t.nota).then((x) => x !== null && alterar(() => definirNota(t, x, agoraISO())));
   } else if (etapa && alvo.closest("[data-etapa-sobe]")) alterar(() => moverEtapa(t, etapa, -1, agoraISO()));
   else if (etapa && alvo.closest("[data-etapa-tira]")) alterar(() => (excluirEtapa(t, etapa, agoraISO()), conferirConclusao(t)));
   else if (alvo.closest("[data-etapa-add]")) novaEtapa(t, alvo.closest<HTMLElement>(".tp-tarefa")!.querySelector<HTMLInputElement>("[data-etapa-nova]")!.value);
@@ -560,6 +569,7 @@ function menuTarefa(t: Tarefa, x: number, y: number) {
     { rotulo: "Editar", icone: "editar", acao: () => editarTarefa(t) },
     { rotulo: etapasAbertas.has(t.id) ? "Fechar etapas" : progresso(t).total ? "Ver etapas" : "Adicionar etapas", icone: "lista", acao: () => (abrirEtapas(t.id, !etapasAbertas.has(t.id)), renderizarLista()) },
     { rotulo: "Mover para outra pasta…", icone: "movimento", acao: () => moverTarefa(t) },
+    { rotulo: t.nota ? "Editar observação" : "Observação…", icone: "nota", acao: () => void escreverNota(`Observação — ${t.titulo}`, t.nota).then((x) => x !== null && alterar(() => definirNota(t, x, agoraISO()))) },
     { rotulo: "Histórico de estados", icone: "historico", acao: () => historico(t) },
     "-",
     { rotulo: "Excluir tarefa", icone: "apagar", acao: async () => (await confirmar("Excluir tarefa", `Excluir <b>${escapar(t.titulo)}</b>?`)) && alterar((b) => excluirTarefa(b, t.id, agoraISO())) },
@@ -603,7 +613,7 @@ const htmlEscrita = (valor: string) => `
       </div>`;
 
 /** Liga o campo e a área de escrita de `htmlEscrita` dentro de uma janela; Enter no campo chama `aoEnter`. */
-function ligarEscrita(corpo: HTMLElement, aoEnter: () => void) {
+function ligarEscrita(corpo: HTMLElement, aoEnter?: () => void) {
   const campo = $<HTMLTextAreaElement>("[data-titulo]", corpo);
   // com teclado físico (ou no computador), o campo já abre pronto para digitar; só com o teclado
   // da tela o foco fica fora, para ele não cobrir a área de escrita
@@ -639,7 +649,7 @@ function ligarEscrita(corpo: HTMLElement, aoEnter: () => void) {
   $("[data-desf]", corpo).onclick = () => area.desfazer();
   $("[data-limpa]", corpo).onclick = () => area.limpar();
   campo.onkeydown = (e) => {
-    if (e.key !== "Enter" || e.shiftKey) return;
+    if (!aoEnter || e.key !== "Enter" || e.shiftKey) return; // sem aoEnter (nota): Enter quebra a linha
     e.preventDefault();
     aoEnter();
   };
@@ -680,6 +690,34 @@ function escreverTexto(titulo: string, valor = ""): Promise<string | null> {
       await area.concluir();
       feito = true;
       resolver(campo.value.trim() || null);
+      fechar();
+    }
+    new MutationObserver((_, o) => {
+      if (corpo.isConnected) return;
+      o.disconnect();
+      if (!feito) resolver(null);
+    }).observe(document.body, { childList: true });
+  });
+}
+
+/**
+ * Observação (nota/lembrete) de tarefa ou etapa: digitar, caneta com transcrição ou S Pen; várias
+ * linhas (Enter quebra a linha). Devolve o texto ("" apaga) ou null se cancelou.
+ */
+function escreverNota(titulo: string, valor = ""): Promise<string | null> {
+  return new Promise((resolver) => {
+    let feito = false;
+    const terminar = (v: string | null) => ((feito = true), resolver(v));
+    const { corpo, fechar } = janela(titulo, `<div class="tp-escrita tp-escrita-nota">${htmlEscrita(valor)}</div>`, [
+      ...(valor ? [{ rotulo: "Apagar observação", acao: () => terminar("") }] : []),
+      { rotulo: "Cancelar" },
+      { rotulo: "OK", destaque: true, acao: () => (void ok(), false) },
+    ], true);
+    const { campo, area } = ligarEscrita(corpo);
+    campo.placeholder = "Escreva a observação abaixo com a caneta (ou digite aqui)";
+    async function ok() {
+      await area.concluir();
+      terminar(campo.value.trim());
       fechar();
     }
     new MutationObserver((_, o) => {
