@@ -5,7 +5,7 @@ import opencascade from "replicad-opencascadejs";
 import { getOC, makeBox, makeCylinder, setOC } from "replicad";
 import { createRequire } from "node:module";
 import { lerMontagemStep } from "../src/kernel/importar";
-import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO, malhaDoStl } from "../src/kernel/stl";
+import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO, malhaDoStl, triangulosVaziosStl } from "../src/kernel/stl";
 import { assinaturaDados, documentoImportado, LIMITE_DADOS_UMA_VEZ, PREFIXO_ENVIADO } from "../src/model";
 import { regenerar, temDadosDe } from "../src/kernel/regenerar";
 import { montagemDoStep, nomesDosCorpos, pecasDoStep, textoStep } from "../src/montagem/step";
@@ -134,6 +134,15 @@ for (const p of m.pecas) {
   const dv = new DataView(bin.buffer);
   for (let i = 0; i < n; i++) for (let k = 0; k < 9; k++) dv.setFloat32(84 + i * 50 + 12 + k * 4, [i, 0, 0, i, 1, 0, i, 0, 1][k], true);
   igual("contagem de triângulos (binário)", contarTriangulosStl(bin), n);
+  // triângulos vazios (0, 0, 0): contados para o aviso e fora da malha (não puxam a caixa para a origem)
+  {
+    const nv = 4, bv = new Uint8Array(84 + 50 * nv), d2 = new DataView(bv.buffer);
+    d2.setUint32(80, nv, true);
+    for (let k = 0; k < 9; k++) d2.setFloat32(84 + 12 + k * 4, [5, 5, 5, 6, 5, 5, 5, 6, 5][k], true);
+    for (let k = 0; k < 9; k++) d2.setFloat32(84 + 50 + 12 + k * 4, [5, 5, 5, 5, 6, 5, 5, 5, 6][k], true);
+    const mv = malhaDoStl(bv);
+    igual("STL com 2 vazios: contados, fora da malha, caixa sem a origem", [triangulosVaziosStl(bv), mv.triangulos.length / 3, mv.min], [2, 2, [5, 5, 5]]);
+  }
   const dGrande = documentoImportado("scan.stl", bin), dPequeno = documentoImportado("cubo.stl", ascii(f));
   igual("STL acima do limite vira corpo de malha; pequeno continua sólido", [dGrande.features[0].nome, (dGrande.features[0] as { malha?: boolean }).malha, (dPequeno.features[0] as { malha?: boolean }).malha], ["Malha1", true, undefined]);
   // regenerar: corpo de malha exibido (sem faces selecionáveis) e volume da malha fechada
