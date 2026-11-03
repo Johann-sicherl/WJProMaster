@@ -26,6 +26,7 @@ import type {
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, SuporteEsboco, Vec3,
 } from "../model";
 import { assinaturaDados, deBase64, PREFIXO_ENVIADO } from "../model";
+import { distanciaAtePlano, excluirFace, moverCilindro, moverFacePlana } from "./edicaoDireta";
 import { malhaDoStl, type MalhaStl } from "./stl";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
@@ -2063,6 +2064,8 @@ function malhaImportada(f: FeatureImportado): MalhaStl {
   return m;
 }
 
+const ROTULO_DIRETA = { moverFace: "Mover face", excluirFace: "Excluir face", substituirFace: "Substituir face" } as const;
+
 /** Sólidos importados já lidos (o arquivo é lido uma vez; cada regeneração usa uma cópia). */
 const importados = new Map<string, Shape3D>();
 
@@ -2241,6 +2244,46 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       type Ff = { inList(l: Face[]): Ff };
       const t = f.paraFora ? -f.espessura : f.espessura;
       ctx.peca = peca.shell(t, (fi) => (fi as unknown as Ff).inList(faces) as never);
+      return;
+    }
+
+    case "moverFace":
+    case "excluirFace":
+    case "substituirFace": {
+      const peca = exigirPeca(ctx, ROTULO_DIRETA[f.tipo]);
+      if (!f.faces.length) throw new Error(`${ROTULO_DIRETA[f.tipo]}: selecione as faces.`);
+      const faces = f.faces.map((r) => {
+        if (r.tipo !== "face" || r.ctx) throw new Error(`${ROTULO_DIRETA[f.tipo]}: escolha faces da própria peça.`);
+        return acharFace(peca, r.ass);
+      });
+      // furo/pino dividido em duas faces pelo kernel: uma ferramenta por cilindro
+      const vistos: string[] = [];
+      const umaVezPorCilindro = (fc: Face) => {
+        const a = assinaturaFace(fc);
+        if (a.geom !== "cilindro" || !a.eixo || !a.pontoEixo) return true;
+        // mesmo cilindro = mesmo raio, mesma reta do eixo (direção sem sinal + ponto do eixo mais perto da origem)
+        const s = a.eixo[0] < 0 || (a.eixo[0] === 0 && (a.eixo[1] < 0 || (a.eixo[1] === 0 && a.eixo[2] < 0))) ? -1 : 1;
+        const e = a.eixo.map((x) => x * s) as Vec3;
+        const t = a.pontoEixo[0] * e[0] + a.pontoEixo[1] * e[1] + a.pontoEixo[2] * e[2];
+        const pe = [0, 1, 2].map((i) => a.pontoEixo![i] - e[i] * t);
+        const k = `${a.raio?.toFixed(5)}|${e.map((x) => x.toFixed(5))}|${pe.map((x) => x.toFixed(4))}`;
+        if (vistos.some((v) => v === k)) return false;
+        vistos.push(k);
+        return true;
+      };
+      let ferramentas: Ferramenta[];
+      if (f.tipo === "excluirFace") ferramentas = faces.filter(umaVezPorCilindro).map((fc) => excluirFace(peca, fc));
+      else if (f.tipo === "moverFace") {
+        const d = f.inverter ? -f.distancia : f.distancia;
+        ferramentas = faces.filter(umaVezPorCilindro).map((fc) => (assinaturaFace(fc).geom === "cilindro" ? moverCilindro(peca, fc, d) : moverFacePlana(peca, fc, d)));
+      } else {
+        if (f.alvo?.tipo !== "face") throw new Error("Substituir face: escolha a face substituta (campo azul).");
+        const alvo = f.alvo.ctx ? f.alvo.ass : assinaturaFace(acharFace(peca, f.alvo.ass));
+        ferramentas = faces.map((fc) => moverFacePlana(peca, fc, distanciaAtePlano(fc, alvo)));
+      }
+      aplicar(ctx, f.id, ferramentas);
+      // faces coplanares que a booleana deixou divididas viram uma só (a peça fica limpa para editar)
+      ctx.peca = (ctx.peca as Shape3D).simplify();
       return;
     }
 

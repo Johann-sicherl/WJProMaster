@@ -286,6 +286,29 @@ export interface FeatureCasca extends FeatureBase {
   paraFora: boolean;
 }
 
+/**
+ * Edição direta (corpos sem árvore, ex.: STEP/STL importados): docs/funcional/features.md §18.
+ * Mover face: faces planas andam ao longo da normal; furos/pinos mudam de raio. `distancia` > 0 =
+ * para fora do material (o material cresce); `inverter` troca o sentido.
+ */
+export interface FeatureMoverFace extends FeatureBase {
+  tipo: "moverFace";
+  faces: Referencia[];
+  distancia: number;
+  inverter: boolean;
+}
+/** Excluir face: furo (preenche), pino (remove) ou filete de raio constante (a quina volta). */
+export interface FeatureExcluirFace extends FeatureBase {
+  tipo: "excluirFace";
+  faces: Referencia[];
+}
+/** Substituir face: faces planas vão até o plano de uma face plana paralela (`alvo`). */
+export interface FeatureSubstituirFace extends FeatureBase {
+  tipo: "substituirFace";
+  faces: Referencia[];
+  alvo?: Referencia;
+}
+
 export interface FeatureInclinacao extends FeatureBase {
   tipo: "inclinacao";
   angulo: number;
@@ -636,7 +659,7 @@ export type Feature =
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva
   | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco | FeatureJunta | FeatureMeiaEsquadria
   | FeatureFecharCanto | FeatureAlivioCanto | FeatureQuebrarCanto | FeatureDesdobrar | FeatureDobrar | FeatureConverterChapa
-  | FeatureImportado;
+  | FeatureImportado | FeatureMoverFace | FeatureExcluirFace | FeatureSubstituirFace;
 
 /**
  * Corpo importado de um arquivo neutro (STEP ou STL, de qualquer CAD): o sólido entra na árvore
@@ -794,6 +817,12 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco" | "importado
       return { ...base, tipo, nome: `Casca${indice}`, espessura: 2, faces: [], paraFora: false };
     case "inclinacao":
       return { ...base, tipo, nome: `Inclinação${indice}`, angulo: 3, faces: [], inverter: false };
+    case "moverFace":
+      return { ...base, tipo, nome: `MoverFace${indice}`, faces: [], distancia: 5, inverter: false };
+    case "excluirFace":
+      return { ...base, tipo, nome: `ExcluirFace${indice}`, faces: [] };
+    case "substituirFace":
+      return { ...base, tipo, nome: `SubstituirFace${indice}`, faces: [] };
     case "varredura":
       return {
         ...base, tipo, nome: `Varredura${indice}`, operacao: "adicionar", tipoPerfil: "esboco",
@@ -924,6 +953,9 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   dobrar: "Dobrar",
   converterChapa: "Converter em chapa",
   importado: "Corpo importado",
+  moverFace: "Mover face",
+  excluirFace: "Excluir face",
+  substituirFace: "Substituir face",
 };
 
 /**

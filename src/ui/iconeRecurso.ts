@@ -10,7 +10,7 @@ export const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   varredura: "varredura", loft: "loft", curva: "helice",
   flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa", dobraEsboco: "dobra", junta: "junta", meiaEsquadria: "meiaEsquadria",
   fecharCanto: "fecharCanto", alivioCanto: "alivioCanto", quebrarCanto: "quebrarCanto",
-  desdobrar: "desdobrar", dobrar: "dobrar", converterChapa: "converterChapa", importado: "abrir",
+  desdobrar: "desdobrar", dobrar: "dobrar", converterChapa: "converterChapa", importado: "abrir", moverFace: "moverFace", excluirFace: "excluirFace", substituirFace: "substituirFace",
 };
 
 export function iconeFeature(f: Feature): NomeIcone {

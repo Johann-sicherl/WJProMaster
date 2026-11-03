@@ -78,6 +78,10 @@ export const ICONES = {
   padraoLinear: svg(`<rect x="3" y="9" width="5" height="5"/><rect x="10" y="9" width="5" height="5" stroke="${C}"/><rect x="17" y="9" width="4" height="5" stroke="${C}"/><path d="M3 19h18M18 17l3 2-3 2"/>`),
   padraoCircular: svg(`<circle cx="12" cy="12" r="7" stroke-dasharray="2 2"/><circle cx="12" cy="5" r="2"/><circle cx="18.1" cy="15.5" r="2" stroke="${C}"/><circle cx="5.9" cy="15.5" r="2" stroke="${C}"/><circle cx="12" cy="12" r="1"/>`),
   espelhar: svg(`<path d="M12 3v18" stroke-dasharray="2 2"/><path d="M10 6 4 9v8l6 2z"/><path d="m14 6 6 3v8l-6 2z" stroke="${C}"/>`),
+  // edição direta: bloco com a face de cima deslocada (seta), riscada (excluir) ou trocada por outra
+  moverFace: svg(`<path d="M4 12l8-4 8 4v6l-8 4-8-4z"/><path d="M4 9l8-4 8 4" stroke="${C}" stroke-dasharray="2 1.5"/><path d="M12 2v6M10 4l2-2 2 2" stroke="${C}"/>`),
+  excluirFace: svg(`<path d="M4 9l8-4 8 4v9l-8 4-8-4z"/><circle cx="12" cy="9" r="2.4" stroke="${C}"/><path d="M16 15l4 4M20 15l-4 4" stroke="${C}"/>`),
+  substituirFace: svg(`<path d="M4 13l8-4 8 4v5l-8 4-8-4z"/><path d="M4 6l8-4 8 4" stroke="${C}"/><path d="M12 6v5M10 9l2 2 2-2" stroke="${C}"/>`),
   casca: svg(`<path d="M4 8l8-4 8 4v9l-8 4-8-4z"/><path d="M7 9.5l5-2.5 5 2.5v6l-5 2.5-5-2.5z" stroke="${C}"/>`),
   nervura: svg(`<path d="M3 20h18M5 20V6M5 20 19 20"/><path d="M5 9l10 11" stroke="${C}" stroke-width="2.4"/>`),
   furo: svg(`<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M8 5v14M16 5v14" stroke="${C}" stroke-dasharray="2 2"/><path d="M8 5h8" stroke="${C}"/><path d="M6 5l2 3h8l2-3" stroke="${C}"/>`),

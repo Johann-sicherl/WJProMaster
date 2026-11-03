@@ -456,6 +456,23 @@ centro** do loft (também nos cortes). Esboços usados ficam aninhados na curva.
   **esboço em esboço** (dois esboços em planos que se cruzam).
 - Linha de partição (silhueta, projeção, interseção) ⏸
 
+## 18. Edição direta (corpos sem árvore) — ✅ (03/11/2026)
+
+Para corpos importados (STEP/STL), mas vale para qualquer sólido. Faixa Features → **Edição direta ▾**.
+Kernel em `src/kernel/edicaoDireta.ts`. O OpenCascade do navegador **não tem** o "defeaturing"
+(`BRepAlgoAPI_Defeaturing`): cada caso é resolvido com sólidos simples e booleanas, só onde o
+resultado é garantido; fora disso o recurso para com mensagem clara (nunca geometria errada).
+Depois da edição as faces coplanares são unidas (`simplify`).
+
+| Comando | Campos | Comportamento |
+|---|---|---|
+| **Mover face** | Faces (várias) · Distância (mm) · Inverter | Face **plana**: anda ao longo da normal (fora = põe material; Inverter = tira). As faces vizinhas precisam ser perpendiculares ao movimento (planas) ou cilindros com eixo nessa direção — peças prismáticas; senão: recusa. **Furo/pino** (cilindro de 360°, pontas retas): muda o raio (fora do material: furo fecha, pino engrossa). Distância aparece como cota "D" no modelo |
+| **Excluir face** | Faces | **Furo**: preenche (inclui ponta cônica de broca). **Pino**: sai. **Filete de raio constante** entre duas faces com tangências retas (convexo ou côncavo): a quina viva volta. Face plana: recusa ("use Mover face"). Saída de furo inclinada: recusa |
+| **Substituir face** | Faces a substituir · Face substituta (azul) | Faces planas vão até o plano da face substituta (paralela); mesmas regras de vizinhas do Mover face |
+
+Pendentes: mover com translação/rotação livre, vizinhas inclinadas (estender a vizinha),
+excluir face genérica (precisa do defeaturing), filete variável.
+
 ## 17. Gerais da peça
 
 | Função | Campos / comportamento | Fase |

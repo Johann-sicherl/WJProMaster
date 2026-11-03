@@ -120,6 +120,33 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       ] }] };
     case "converterChapa":
       return converterChapa() as Esquema<Feature>;
+    case "moverFace":
+      return { titulo: "Mover face", caixas: [
+        { titulo: "Faces a mover", campos: [
+          { t: "refs", rot: "Faces", cam: "faces", aceita: ["face"], multiplo: true },
+          { t: "info", texto: () => "Faces planas andam ao longo da normal (as vizinhas precisam ser perpendiculares). Furos e pinos mudam de raio." },
+        ] },
+        { titulo: "Deslocamento", campos: [
+          { t: "num", rot: "Distância", cam: "distancia", un: "mm", min: 0.001, passo: 0.5 },
+          { t: "inverter", rot: "Inverter (para dentro do material)", cam: "inverter" },
+          { t: "info", texto: (x) => (x as { inverter?: boolean }).inverter ? "Para dentro: tira material (face entra, furo cresce, pino afina)." : "Para fora: põe material (face sai, furo fecha, pino engrossa)." },
+        ] },
+      ] } as Esquema<Feature>;
+    case "excluirFace":
+      return { titulo: "Excluir face", caixas: [
+        { titulo: "Faces a excluir", campos: [
+          { t: "refs", rot: "Faces", cam: "faces", aceita: ["face"], multiplo: true },
+          { t: "info", texto: () => "Furo: é preenchido. Pino: sai. Filete de raio constante: a quina viva volta. (Faces planas: use Mover face.)" },
+        ] },
+      ] } as Esquema<Feature>;
+    case "substituirFace":
+      return { titulo: "Substituir face", caixas: [
+        { titulo: "Faces a substituir", campos: [{ t: "refs", rot: "Faces", cam: "faces", aceita: ["face"], multiplo: true }] },
+        { titulo: "Face substituta", campos: [
+          { t: "refs", rot: "Face substituta", cam: "alvo", aceita: ["face"], multiplo: false, cor: "azul" },
+          { t: "info", texto: () => "Faces planas vão até o plano da face substituta (paralela)." },
+        ] },
+      ] } as Esquema<Feature>;
     case "importado":
       return { titulo: "Corpo importado", caixas: [{ titulo: "Origem", campos: [
         { t: "info", texto: (x) => `Arquivo: ${(x as { arquivo: string }).arquivo}` },

@@ -26,6 +26,7 @@ export const PARAMETROS_RECURSO: Partial<Record<Feature["tipo"], [string, string
   chanfro: [["distancia", "D", "mm"]],
   casca: [["espessura", "Espessura", "mm"]],
   inclinacao: [["angulo", "Inclinação", "°"]],
+  moverFace: [["distancia", "D", "mm"]],
   nervura: [["espessura", "Espessura", "mm"]],
   furo: [["condicao.profundidade", "Profundidade", "mm"]],
   padraoLinear: [["dir1.espacamento", "Espaçamento", "mm"], ["dir1.instancias", "Instâncias", ""]],
