@@ -177,7 +177,22 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
 
 ### 2.12 Editar a peça / Abrir peça — ✅
 - **Abrir peça** abre o componente no ambiente de Peça (mesma janela; ao salvar volta para a
-  montagem, que se atualiza). **Editar no contexto** (com a montagem visível) ⏸.
+  montagem, que se atualiza). Peça alterada na montagem e ainda não salva: pergunta e grava antes.
+- **Cotas dos componentes na montagem** ✅ (03/11/2026, `src/montagem/cotas.ts`):
+  - **duplo clique numa face** de um componente mostra as cotas do recurso da peça que criou a
+    face (cotas dos esboços dele + D1, R, espessura…), sobre o componente e na posição dele;
+  - **árvore**: a seta ▸ do componente mostra a árvore de recursos da peça (esboços aninhados no
+    recurso que os usa); duplo clique (ou toque longo → Mostrar cotas) num recurso mostra as cotas;
+  - tocar uma cota edita no lugar (aceita "=expressão"); a peça muda em **todas as instâncias**,
+    com equações e configuração ativa da peça, esboços que acompanham a peça, posicionamentos
+    resolvidos de novo e um passo de desfazer (Ctrl+Z volta);
+  - a peça fica **"alterada (salve)"** na árvore; a atualização pelo cofre ao abrir não a
+    sobrescreve. **💾 da montagem** pergunta "Salvar também as peças alteradas?": OK grava cada
+    uma no arquivo dela no cofre (GO-OUT automático, nome mantido, sem trocar o vínculo da página
+    da Peça; travada por outra pessoa: não grava e avisa); Cancelar salva só a montagem (as
+    alterações ficam nela, ainda marcadas).
+- **Editar peça em contexto** (Peça com a montagem transparente em volta) e **referências a
+  outros componentes** (->): próximas etapas.
 
 ### 2.13 Importar montagem STEP — ✅ (01/11/2026)
 - **Abrir arquivo do aparelho** na Montagem aceita `.step/.stp` de qualquer CAD (do CAD comercial:

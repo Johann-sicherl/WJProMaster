@@ -4,7 +4,7 @@
 import type { LeituraMontagem } from "./importar";
 import type { Feature, Referencia } from "../model";
 import type { PedidoKernel, RespostaKernel } from "./worker";
-import type { ResultadoRegeneracao } from "./regenerar";
+import type { InfoReferencia, ResultadoRegeneracao } from "./regenerar";
 import type { Corte, Projecao } from "./projecao";
 import type { Camera, Orientacao } from "../desenho/modelo";
 import type { ResumoPlanificado } from "./dxf";
@@ -13,7 +13,9 @@ import type { PropriedadesMassa, ResultadoMedida, ResultadoVerificacao } from ".
 type SemSeq<T> = T extends unknown ? Omit<T, "seq"> : never;
 
 /** Peça de um componente: malha, topologia (para selecionar e posicionar), volume e erros. */
-export type ResultadoComponente = Pick<ResultadoRegeneracao, "malha" | "topologia" | "volume" | "erros"> & {
+export type ResultadoComponente = Pick<ResultadoRegeneracao, "malha" | "topologia" | "volume" | "erros" | "facesPorRecurso" | "suportes"> & {
+  /** planos de referência da peça (esboços neles: cotas mostradas na montagem) */
+  planos?: Extract<InfoReferencia, { tipo: "plano" }>[];
   /** só com planificar: linhas de dobra (3D) e o plano da chapa planificada */
   dobras?: [number, number, number][][];
   plano?: { olho: [number, number, number]; direita: [number, number, number] };

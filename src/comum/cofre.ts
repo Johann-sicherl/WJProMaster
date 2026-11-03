@@ -329,12 +329,24 @@ export interface ExtrasSalvar {
   referencias?: Omit<ReferenciaArquivo, "id" | "pai" | "mod">[];
   /** dados do modelo (tipo, configurações, material, massa, volume) */
   modelo?: DadosModelo;
+  /**
+   * Grava neste arquivo do cofre (ex.: peça alterada dentro da montagem), sem trocar o vínculo
+   * do app (a página da Peça continua ligada ao documento dela). Arquivo travado em GO-OUT por
+   * outra pessoa, ou que não existe mais: não grava e devolve o motivo (nunca pergunta pasta).
+   */
+  arquivo?: string;
 }
 
 export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: Blob, renomear?: (nome: string) => void, extras: ExtrasSalvar = {}): Promise<string> {
   const db = await abrirCofre();
   const usuario = await usuarioDo(db);
-  let a = vinculo(app) ? await db.ler<Arquivo>("arquivos", vinculo(app)!) : undefined;
+  const alvo = extras.arquivo ?? vinculo(app);
+  let a = alvo ? await db.ler<Arquivo>("arquivos", alvo) : undefined;
+  if (extras.arquivo) {
+    if (!a || a.lixeira) return `${nomeArquivo}: não salvo (o arquivo não está mais no cofre).`;
+    const b = a.checkout?.usuario !== usuario ? bloqueioDoCheckout(a, usuario) : null;
+    if (b) return `${a.nome}: não salvo (${b})`;
+  }
   let aviso = "";
   if (a?.lixeira) a = undefined;
   if (a && a.checkout?.usuario !== usuario) {
@@ -366,7 +378,7 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
       a.trabalho = undefined;
     } else a.trabalho = { blob, tamanho: dados.size, data: t, autor: usuario };
     // renomeado no app: o arquivo do cofre acompanha (sem repetir nome na pasta)
-    if (a.nome !== nomeArquivo) {
+    if (a.nome !== nomeArquivo && !extras.arquivo) {
       const irmaos = (await db.todos<Arquivo>("arquivos")).filter((x) => x.pasta === a!.pasta && x.id !== a!.id && !x.lixeira).map((x) => x.nome);
       a.nome = nomeLivre(nomeArquivo, irmaos);
     }
@@ -394,7 +406,7 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
     await db.por("arquivos", a);
   }
   if (extras.referencias) await gravarReferencias(db, a.id, extras.referencias);
-  ligar(app, a.id);
+  if (!extras.arquivo) ligar(app, a.id);
   avisarMudanca();
   // primeiro salvar: a versão 1 vai para o dispositivo, o pendrive e o Drive (GO-IN automático)
   const sinc = await sincronizarCofre({ pedir: true, publicar: primeiro });
