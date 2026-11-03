@@ -96,6 +96,7 @@ export function malhaDoStl(b: Uint8Array): MalhaStl {
     tri[i] = v;
   }
   const vertices = pos.slice(0, nv * 3);
+  orientar(tri, nv, vertices);
   const normais = new Float32Array(vertices.length);
   let vol = 0, area = 0;
   for (let t = 0; t < nt; t++) {
@@ -115,6 +116,100 @@ export function malhaDoStl(b: Uint8Array): MalhaStl {
     normais[i + 2] /= n;
   }
   return { vertices, normais, triangulos: tri, min, max, volume: fechada(tri, nv) ? Math.abs(vol) : null, area };
+}
+
+/**
+ * Deixa coerente a ordem dos vértices (o lado de fora) de triângulos vizinhos. Exportadores
+ * e escaneamentos às vezes gravam parte dos triângulos ao contrário: sem isso eles somem na tela
+ * (só a frente é desenhada: a peça fica "cheia de furos") e o volume não fecha.
+ * Em cada parte conectada (vizinhos pela aresta, só arestas com dois triângulos), percorre os
+ * vizinhos e vira os que estão na contramão; o sentido da parte é o da maioria dos triângulos
+ * do arquivo (assim cavidades internas continuam para dentro). No fim, se o volume total der
+ * negativo, a malha inteira estava do avesso e é virada. Altera `tri` no lugar.
+ */
+export function orientar(tri: Uint32Array, nv: number, v: Float32Array): number {
+  const nc = tri.length, nt = nc / 3;
+  const proxima = (h: number) => (h % 3 === 2 ? h - 2 : h + 1);
+  // vizinha de cada meia-aresta: índice da meia-aresta do outro triângulo; -1 borda; -2 aresta com 3+
+  const viz = new Int32Array(nc).fill(-1);
+  {
+    let cap = 1;
+    while (cap < nc) cap <<= 1;
+    const tabela = new Int32Array(cap).fill(-1);
+    for (let h = 0; h < nc; h++) {
+      const a = tri[h], b = tri[proxima(h)];
+      if (a === b) continue; // triângulo degenerado: aresta sem comprimento
+      const lo = a < b ? a : b, hi = a < b ? b : a;
+      let k = (Math.imul(lo, 73856093) ^ Math.imul(hi, 19349663)) & (cap - 1);
+      for (;;) {
+        const g = tabela[k];
+        if (g < 0) {
+          tabela[k] = h;
+          break;
+        }
+        const c = tri[g], d = tri[proxima(g)];
+        if ((c === lo && d === hi) || (c === hi && d === lo)) {
+          if (viz[g] === -1) {
+            viz[g] = h;
+            viz[h] = g;
+          } else {
+            // aresta não variedade: não propaga por ela
+            if (viz[g] >= 0) viz[viz[g]] = -2;
+            viz[g] = -2;
+            viz[h] = -2;
+          }
+          break;
+        }
+        k = (k + 1) & (cap - 1);
+      }
+    }
+  }
+  const inv = new Uint8Array(nt); // 1 = virar este triângulo (relativo ao arquivo)
+  const visto = new Uint8Array(nt);
+  const fila = new Int32Array(nt);
+  let viradas = 0;
+  for (let s = 0; s < nt; s++) {
+    if (visto[s]) continue;
+    visto[s] = 1;
+    let ini = 0, fim = 0, invertidos = 0;
+    fila[fim++] = s;
+    while (ini < fim) {
+      const t = fila[ini++];
+      if (inv[t]) invertidos++;
+      for (let e = 0; e < 3; e++) {
+        const h = t * 3 + e, g = viz[h];
+        if (g < 0) continue;
+        const u = (g / 3) | 0;
+        if (visto[u]) continue;
+        visto[u] = 1;
+        // mesmo sentido no arquivo (começam no mesmo vértice) = um deles tem de virar
+        inv[u] = (tri[h] === tri[g] ? 1 : 0) ^ inv[t];
+        fila[fim++] = u;
+      }
+    }
+    // maioria do arquivo decide o lado da parte
+    if (invertidos * 2 > fim) for (let i = 0; i < fim; i++) inv[fila[i]] ^= 1;
+  }
+  let vol = 0;
+  for (let t = 0; t < nt; t++) {
+    const a = tri[t * 3], b = tri[t * 3 + (inv[t] ? 2 : 1)], c = tri[t * 3 + (inv[t] ? 1 : 2)];
+    const ax = v[a * 3], ay = v[a * 3 + 1], az = v[a * 3 + 2];
+    const bx = v[b * 3], by = v[b * 3 + 1], bz = v[b * 3 + 2];
+    const cx = v[c * 3], cy = v[c * 3 + 1], cz = v[c * 3 + 2];
+    vol += ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx);
+  }
+  // do avesso só faz sentido em malha fechada (numa aberta o sinal depende da origem)
+  let aberta = false;
+  for (let h = 0; h < nc && !aberta; h++) if (viz[h] === -1 && tri[h] !== tri[proxima(h)]) aberta = true;
+  const tudo = !aberta && vol < 0 ? 1 : 0;
+  for (let t = 0; t < nt; t++)
+    if (inv[t] ^ tudo) {
+      const x = tri[t * 3 + 1];
+      tri[t * 3 + 1] = tri[t * 3 + 2];
+      tri[t * 3 + 2] = x;
+      viradas++;
+    }
+  return viradas;
 }
 
 /**

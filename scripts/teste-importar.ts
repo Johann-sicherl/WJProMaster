@@ -104,6 +104,29 @@ for (const p of m.pecas) {
   igual("cubo ASCII: 8 vértices soldados, 12 triângulos, volume 1000, área 600", [m.vertices.length / 3, m.triangulos.length / 3, Math.round(m.volume ?? -1), Math.round(m.area)], [8, 12, 1000, 600]);
   igual("malha aberta: sem volume", malhaDoStl(ascii(f.slice(1))).volume, null);
   igual("contagem de triângulos (ASCII)", contarTriangulosStl(ascii(f)), 12);
+  // triângulos gravados ao contrário (exportador/escaneamento): a leitura reorienta
+  const virar = (t: number[]) => [t[0], t[2], t[1]];
+  const sentido = (mm: typeof m) => {
+    // normal de cada triângulo aponta para fora do centro (5, 5, 5)
+    let fora = 0;
+    for (let t = 0; t < mm.triangulos.length; t += 3) {
+      const [a, b, c] = [0, 1, 2].map((k) => [...mm.vertices.slice(mm.triangulos[t + k] * 3, mm.triangulos[t + k] * 3 + 3)]);
+      const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+      const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+      if (n[0] * (a[0] + b[0] + c[0] - 15) + n[1] * (a[1] + b[1] + c[1] - 15) + n[2] * (a[2] + b[2] + c[2] - 15) > 0) fora++;
+    }
+    return fora;
+  };
+  const misto = malhaDoStl(ascii(f.map((t, i) => (i % 3 === 0 ? virar(t) : t))));
+  igual("triângulos misturados: todos para fora, volume 1000", [sentido(misto), Math.round(misto.volume ?? -1)], [12, 1000]);
+  const avesso = malhaDoStl(ascii(f.map(virar)));
+  igual("malha inteira do avesso: virada para fora", [sentido(avesso), Math.round(avesso.volume ?? -1)], [12, 1000]);
+  // dois cubos soltos, um deles com metade dos triângulos ao contrário
+  const dois = [...f.map((t, i) => (i < 5 ? virar(t) : t)), ...f.map((t) => t.map((i) => i + 8))];
+  v.push(...v.map((p) => [p[0] + 20, p[1], p[2]]));
+  const m2 = malhaDoStl(ascii(dois));
+  igual("duas partes: volume 2000", Math.round(m2.volume ?? -1), 2000);
+  v.length = 8;
   // binário com mais triângulos que o limite: o documento marca como corpo de malha
   const n = LIMITE_TRIANGULOS_SOLIDO + 1;
   const bin = new Uint8Array(84 + 50 * n);
