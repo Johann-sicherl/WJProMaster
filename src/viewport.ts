@@ -155,6 +155,18 @@ export class Viewport {
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, stencil: true });
     this.renderer.localClippingEnabled = true;
+    // vértices de corpos de malha (atributo `plano` = 1) são sombreados pela face, não pela normal
+    this.materialSolido.onBeforeCompile = (s) => {
+      s.vertexShader = s.vertexShader
+        .replace("#include <common>", "#include <common>\nattribute float plano;\nvarying float vPlano;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvPlano = plano;");
+      s.fragmentShader = s.fragmentShader
+        .replace("#include <common>", "#include <common>\nvarying float vPlano;")
+        .replace(
+          "#include <normal_fragment_begin>",
+          "#include <normal_fragment_begin>\nif (vPlano > 0.5) normal = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));",
+        );
+    };
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // poupa GPU do tablet
     this.renderer.autoClear = false;
     container.appendChild(this.renderer.domElement);
@@ -601,11 +613,21 @@ export class Viewport {
       geo.setAttribute("position", new THREE.BufferAttribute(m.vertices, 3));
       geo.setAttribute("normal", new THREE.BufferAttribute(m.normais, 3));
       geo.setIndex(new THREE.BufferAttribute(m.triangulos, 1));
-      // corpos de malha (STL) ficam depois das faces do sólido: desenhados dos dois lados, para que
-      // triângulos gravados ao contrário ou malha aberta não virem furos na tela
-      let cobertos = 0;
-      for (let i = 1; i < m.faces.length; i += 3) cobertos += m.faces[i];
-      const lado = cobertos < m.triangulos.length ? THREE.DoubleSide : THREE.FrontSide;
+      // corpos de malha (STL): triângulos fora das faces do sólido. São desenhados dos dois lados e
+      // sombreados pela face (normal tirada da geometria na GPU, atributo `plano`): normais de
+      // vértice de STL de CAD se anulam onde corpos se encostam ou há triângulos degenerados e
+      // viravam manchas brancas; triângulos ao contrário ou malha aberta não viram furos
+      const plano = new Uint8Array(m.vertices.length / 3);
+      const coberto = new Uint8Array(m.triangulos.length / 3);
+      for (let i = 0; i < m.faces.length; i += 3) coberto.fill(1, m.faces[i] / 3, (m.faces[i] + m.faces[i + 1]) / 3);
+      let temMalha = false;
+      for (let t = 0; t < coberto.length; t++)
+        if (!coberto[t]) {
+          temMalha = true;
+          plano[m.triangulos[t * 3]] = plano[m.triangulos[t * 3 + 1]] = plano[m.triangulos[t * 3 + 2]] = 1;
+        }
+      geo.setAttribute("plano", new THREE.BufferAttribute(plano, 1));
+      const lado = temMalha ? THREE.DoubleSide : THREE.FrontSide;
       if (this.materialSolido.side !== lado) {
         this.materialSolido.side = lado;
         this.materialSolido.needsUpdate = true;
