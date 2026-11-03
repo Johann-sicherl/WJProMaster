@@ -4,6 +4,7 @@
 
 import "./inicio.css";
 import { botaoDiagnostico } from "../comum/diagnostico";
+import { registrarComAtualizacao } from "../comum/atualizacao";
 
 interface Face {
   id: string;
@@ -154,7 +155,7 @@ async function sincronizarTudo(cofre: typeof import("../comum/cofre"), tarefas: 
 }
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
-  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+  registrarComAtualizacao();
 }
 
 // versão publicada (vite.config.ts): confere se o aparelho já pegou a atualização
