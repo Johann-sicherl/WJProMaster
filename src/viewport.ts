@@ -105,6 +105,10 @@ export class Viewport {
   private distCam = 2000;
   private controles: OrbitControls;
   private grupoPeca = new THREE.Group();
+  /** Editar peça em contexto: o resto da montagem, transparente, no sistema da peça (não se seleciona). */
+  private grupoContexto = new THREE.Group();
+  private materialContexto = new THREE.MeshStandardMaterial({ color: 0x9fb3c8, metalness: 0.05, roughness: 0.8, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide });
+  private materialContextoArestas = new THREE.LineBasicMaterial({ color: 0x6b7f94, transparent: true, opacity: 0.35, depthWrite: false });
   private faces: Uint32Array = new Uint32Array();
   private gruposArestas: Uint32Array = new Uint32Array();
   private posArestas: Float32Array = new Float32Array();
@@ -190,7 +194,7 @@ export class Viewport {
     this.grupoAlcas.renderOrder = 30;
     this.ouvintesCamera.add(() => { if (this.alcas.length) this.desenharAlcas(); });
     this.grupoPrevia.renderOrder = 4;
-    this.cena.add(this.grupoPeca, this.grupoRefs, this.grupoRefsExtras, this.grupoSecao, this.grupoDestaque, this.grupoPrevia, this.grupoEsboco, this.grupoAlcas);
+    this.cena.add(this.grupoPeca, this.grupoContexto, this.grupoRefs, this.grupoRefsExtras, this.grupoSecao, this.grupoDestaque, this.grupoPrevia, this.grupoEsboco, this.grupoAlcas);
     this.renderer.domElement.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       // toque longo nativo do Android: quem decide é o nosso temporizador (tempo configurável)
@@ -606,6 +610,45 @@ export class Viewport {
       this.camera.updateProjectionMatrix();
     }
     this.precisaRender = true;
+  }
+
+  /**
+   * Componentes da montagem em volta da peça editada em contexto (malha no sistema do componente e
+   * a matriz que o leva ao sistema da peça). null/[] tira tudo.
+   */
+  mostrarContexto(itens: { malha: { vertices: Float32Array; normais: Float32Array; triangulos: Uint32Array; arestas: Float32Array }; matriz: number[] }[] | null) {
+    this.grupoContexto.children.forEach((o) => (o as THREE.Mesh).geometry?.dispose());
+    this.grupoContexto.clear();
+    // geometria compartilhada entre instâncias da mesma malha
+    const geos = new Map<object, { g: THREE.BufferGeometry; a: THREE.BufferGeometry }>();
+    for (const it of itens ?? []) {
+      let par = geos.get(it.malha);
+      if (!par) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.BufferAttribute(it.malha.vertices, 3));
+        g.setAttribute("normal", new THREE.BufferAttribute(it.malha.normais, 3));
+        g.setIndex(new THREE.BufferAttribute(it.malha.triangulos, 1));
+        const a = new THREE.BufferGeometry();
+        a.setAttribute("position", new THREE.BufferAttribute(it.malha.arestas, 3));
+        par = { g, a };
+        geos.set(it.malha, par);
+      }
+      const m = new THREE.Matrix4().fromArray(it.matriz);
+      const solido = new THREE.Mesh(par.g, this.materialContexto);
+      const arestas = new THREE.LineSegments(par.a, this.materialContextoArestas);
+      for (const o of [solido, arestas]) {
+        o.matrixAutoUpdate = false;
+        o.matrix.copy(m);
+        o.renderOrder = 2; // transparente depois do sólido
+        this.grupoContexto.add(o);
+      }
+    }
+    this.grupoContexto.updateMatrixWorld(true);
+    this.precisaRender = true;
+  }
+
+  get temContexto() {
+    return this.grupoContexto.children.length > 0;
   }
 
   definirEstilo(e: EstiloExibicao) {
@@ -1149,6 +1192,7 @@ export class Viewport {
   /** Ajusta a câmera para a peça caber na tela. */
   enquadrar(animado = true) {
     const caixa = new THREE.Box3().setFromObject(this.grupoPeca);
+    if (this.grupoContexto.children.length) caixa.union(new THREE.Box3().setFromObject(this.grupoContexto));
     const centro = new THREE.Vector3();
     if (caixa.isEmpty()) {
       this.raioCena = 60;

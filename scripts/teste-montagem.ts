@@ -6,6 +6,7 @@ import {
   marcaDaPeca, montagemVazia, quantidades, quatDeEuler, aplicarPadroes, excluirPadrao, posesExplodidas, explosaoAutomatica, massaDaMontagem, copiasDoPadrao, quatEixoAngulo, rotuloComponente, validarMontagem, type Transformacao,
 } from "../src/montagem/modelo";
 import { recursoDaFace, referencialNaMontagem } from "../src/montagem/cotas";
+import { devolverPeca, itensDoContexto } from "../src/montagem/contexto";
 import { centroDoComponente, facesDoComponente, globalDaEntidade, juntar, localDaEntidade } from "../src/montagem/cena";
 import { resolverMontagem, tiposPossiveis, primitivaLocal, transformar, compRel } from "../src/montagem/solver";
 import type { Referencia, Vec3 } from "../src/model";
@@ -81,6 +82,33 @@ igual("marca muda com o conteúdo", marcaDe("a") !== marcaDe("b"), true);
   igual("face de nenhum recurso", recursoDaFace(pd, {}, 9), null);
   const rm = referencialNaMontagem({ origem: [1, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] }, { pos: [10, 0, 0], rot: quatEixoAngulo([0, 0, 1], 90) });
   igual("referencial do esboço na posição do componente", [r3(rm.origem), r3(rm.x), r3(rm.normal)], [[10, 1, 0], [0, 1, 0], [0, 0, 1]]);
+}
+
+// ---------- editar peça em contexto ----------
+{
+  const m = montagemVazia("M");
+  const pa = documentoExemplo(), pb = documentoExemplo();
+  pb.material = "aco";
+  const ia = embutirPeca(m, pa, { arquivo: "A" }), ib = embutirPeca(m, pb, { arquivo: "B" });
+  const ca = inserirComponente(m, ia);
+  const ca2 = inserirComponente(m, ia, { pos: [0, 0, 50], rot: [0, 0, 0, 1] });
+  const cb = inserirComponente(m, ib, { pos: [100, 0, 0], rot: [0, 0, 0, 1] });
+  ca.t = { pos: [10, 0, 0], rot: quatEixoAngulo([0, 1, 0], 90) };
+  const cs = inserirComponente(m, ib, { pos: [0, 99, 0], rot: [0, 0, 0, 1] });
+  cs.suprimido = true;
+  const info = itensDoContexto(m, ca.id)!;
+  igual("contexto: os outros componentes ativos (o suprimido fica de fora)", info.itens.map((i) => [i.comp === ca2.id ? "A2" : i.comp === cb.id ? "B" : "?", i.mesmaPeca]), [["A2", true], ["B", false]]);
+  // B está em (100,0,0) na montagem; visto da peça A (girada 90° em Y e em x = 10): aplicar a pose relativa leva a origem de B ao ponto certo
+  const relB = info.itens.find((i) => i.comp === cb.id)!.t;
+  igual("posição relativa: compor(pose de A, relativa) = pose de B", r3(aplicarPonto(compor(ca.t, relB), [0, 0, 0])), [100, 0, 0]);
+  // devolver: sem mudança não marca; com mudança troca a peça (todas as instâncias) e marca
+  const reaberto = JSON.parse(JSON.stringify(pa)) as Documento;
+  igual("devolver sem alteração: não marca", [devolverPeca(m, ca.id, reaberto), m.pecas.find((p) => p.id === ia)!.modificada ?? false], [false, false]);
+  reaberto.features[0].nome = "Base renomeada";
+  const pA = m.pecas.find((p) => p.id === ia)!;
+  const marcaAntes = pA.marca;
+  igual("devolver com alteração: troca a peça, marca nova, alterada", [devolverPeca(m, ca.id, reaberto), pA.doc.features[0].nome, pA.marca !== marcaAntes, pA.modificada], [true, "Base renomeada", true, true]);
+  igual("a outra peça não muda", m.pecas.find((p) => p.id === ib)!.modificada ?? false, false);
 }
 
 // ---------- cena junta ----------

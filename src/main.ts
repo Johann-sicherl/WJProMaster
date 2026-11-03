@@ -1,5 +1,7 @@
 import { atualizarExternas } from "./esboco/externas";
-import { deixarArquivo } from "./comum/transferir";
+import { deixar, deixarArquivo, esquecer, pegar } from "./comum/transferir";
+import { devolverPeca, itensDoContexto, type PedidoContexto, type VoltaContexto } from "./montagem/contexto";
+import { matriz, validarMontagem, type DocumentoMontagem } from "./montagem/modelo";
 import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO } from "./kernel/stl";
 import { pecasDoStep } from "./montagem/step";
 import "./style.css";
@@ -43,7 +45,7 @@ import { renderizarPainelEsboco } from "./esboco/painel";
 import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } from "./esboco/referencial";
 import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
-import { abrirCopias, abrirDoCofre, desligar, instalarPainelCofre, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
+import { abrirCopias, abrirDoCofre, desligar, instalarPainelCofre, ligar, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
 import { botaoDiagnostico, registrarMetrica } from "./comum/diagnostico";
 import { Armazem } from "./comum/armazem";
 import {
@@ -293,6 +295,11 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   estadoKernel = "pronto";
   viewport.mostrarMalha(r.malha, r.topologia);
   ultimaMalha = r.malha;
+  if (contexto) desenharContexto(); // outras instâncias desta peça na montagem acompanham
+  if (enquadrarContexto && contexto && r.malha) {
+    enquadrarContexto = false;
+    viewport.enquadrar(false); // peça e montagem em volta
+  }
   viewport.mostrarPrevia(previaAtiva() ? r.previaRemovido : null);
   if (primeiraRegeneracao && r.malha) {
     viewport.enquadrar(false);
@@ -3461,6 +3468,11 @@ nomeDoc.onchange = () => {
 
 /** Salva no cofre do WJPDM: no dispositivo, em GO-OUT (o GO-IN publica no pendrive e no Drive). */
 function salvarPeca(): Promise<string> {
+  // editando em contexto: 💾 salva a montagem (que pergunta pelas peças alteradas), como no CAD de referência
+  if (contexto) {
+    void voltarDoContexto(true);
+    return Promise.resolve("Voltando à montagem para salvar…");
+  }
   capturarAtiva(doc);
   limparConfiguracoes(doc);
   const dados = new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" });
@@ -3633,6 +3645,10 @@ function abrirDialogoNovo() {
 
 /** Mostra o documento na área de trabalho (novo, aberto de arquivo ou recuperado). */
 function abrirDocumento(d: Documento) {
+  if (contexto && !entrandoNoContexto) {
+    if (!confirm(`Sair da edição em contexto (${contexto.nomeMontagem}) sem levar as alterações da peça à montagem?`)) return;
+    sairDoContexto();
+  }
   if (editor) sairEsboco();
   if (comando) fecharComando();
   fecharAvaliacao();
@@ -3657,6 +3673,10 @@ function abrirDocumento(d: Documento) {
 
 function fecharDocumento() {
   if (!aberto) return;
+  if (contexto) {
+    if (!confirm(`Sair da edição em contexto (${contexto.nomeMontagem}) sem levar as alterações da peça à montagem?`)) return;
+    sairDoContexto();
+  }
   if (doc.features.length && !confirm("Fechar a peça? (o que não foi salvo em arquivo se perde)")) return;
   if (editor) sairEsboco();
   if (comando) fecharComando();
@@ -4009,8 +4029,123 @@ $("btn-lateral").onclick = () => abrirGaveta(!document.body.classList.contains("
 aplicarDispositivo();
 atualizarAreaDeTrabalho();
 if (!prefs.dispositivo) escolherDispositivo(true);
+// ---------- editar peça em contexto (vindo da montagem) ----------
+
+/** Peça editada com a montagem em volta: a montagem (cópia) e o componente cuja peça é esta. */
+let contexto: { montagem: DocumentoMontagem; comp: string; nomeMontagem: string } | null = null;
+let entrandoNoContexto = false;
+/** malhas das outras peças da montagem (cada peça uma vez) */
+const malhasContexto = new Map<string, NonNullable<ResultadoRegeneracao["malha"]>>();
+let contextoVisivel = true;
+let enquadrarContexto = false;
+
+function desenharContexto() {
+  const info = contexto && contextoVisivel ? itensDoContexto(contexto.montagem, contexto.comp) : null;
+  if (!info) return viewport.mostrarContexto(null);
+  viewport.mostrarContexto(info.itens.flatMap((it) => {
+    const malha = it.mesmaPeca ? ultimaMalha : malhasContexto.get(it.peca.id);
+    return malha ? [{ malha, matriz: matriz(it.t) }] : [];
+  }));
+}
+
+/**
+ * Entra na edição em contexto: abre a peça do componente (ou, numa recarga da página, o que já
+ * estava sendo editado) e calcula as outras peças da montagem para mostrar em volta.
+ */
+async function entrarNoContexto(retomar: boolean): Promise<boolean> {
+  const ped = await pegar<PedidoContexto>("contexto", false);
+  const m = ped ? validarMontagem(ped.montagem) : null;
+  const info = m && ped ? itensDoContexto(m, ped.comp) : null;
+  if (!m || !ped || !info) return false;
+  contexto = { montagem: m, comp: ped.comp, nomeMontagem: m.nome };
+  sessionStorage.setItem("wjcad:emContexto", "1");
+  if (info.peca.arquivo) ligar("cad", info.peca.arquivo);
+  else desligar("cad");
+  entrandoNoContexto = true;
+  try {
+    abrirDocumento((retomar && carregarAutosave()) || validarDocumento(JSON.parse(JSON.stringify(info.peca.doc))));
+  } finally {
+    entrandoNoContexto = false;
+  }
+  instalarBarraContexto();
+  avisar(`Editando ${info.peca.nome} no contexto de ${m.nome}: o resto da montagem aparece transparente. "Voltar à montagem" leva as alterações.`);
+  await kernel.pronto;
+  const outras = new Map(info.itens.filter((i) => !i.mesmaPeca).map((i) => [i.peca.id, i.peca]));
+  for (const p of outras.values()) {
+    try {
+      const r = await kernel.componente(`contexto:${p.id}:${p.marca ?? ""}`, p.doc.features.slice(0, p.doc.retrocesso ?? p.doc.features.length));
+      if (r.malha) malhasContexto.set(p.id, r.malha);
+    } catch {
+      /* peça vizinha que não reconstrói: fica de fora do contexto */
+    }
+  }
+  // o kernel guarda a última peça calculada (medir, exportar): reconstrói a editada por último;
+  // ao chegar, desenha a montagem em volta e enquadra tudo
+  enquadrarContexto = true;
+  regenerar();
+  return true;
+}
+
+function instalarBarraContexto() {
+  document.querySelectorAll(".btn-contexto").forEach((b) => b.remove());
+  const voltar = document.createElement("button");
+  voltar.className = "btn-ic btn-voltar btn-contexto";
+  voltar.title = `Voltar à montagem ${contexto?.nomeMontagem ?? ""} levando as alterações da peça (💾 também volta e salva a montagem)`;
+  voltar.innerHTML = `${ICONES.montagem}<span>Voltar à montagem</span>`;
+  voltar.onclick = () => void voltarDoContexto(false);
+  const ver = document.createElement("button");
+  ver.className = "btn-ic btn-voltar btn-contexto";
+  const rotular = () => {
+    ver.title = contextoVisivel ? "Ocultar o resto da montagem" : "Mostrar o resto da montagem (transparente)";
+    ver.innerHTML = `${ICONES[contextoVisivel ? "olho" : "olhoFechado"]}<span>Montagem</span>`;
+  };
+  rotular();
+  ver.onclick = () => {
+    contextoVisivel = !contextoVisivel;
+    rotular();
+    desenharContexto();
+  };
+  document.querySelector(".rapidas")?.prepend(voltar, ver);
+}
+
+/** Sai do contexto sem voltar (outro documento aberto): tira a montagem e os botões. */
+function sairDoContexto() {
+  contexto = null;
+  malhasContexto.clear();
+  sessionStorage.removeItem("wjcad:emContexto");
+  void esquecer("contexto");
+  document.querySelectorAll(".btn-contexto").forEach((b) => b.remove());
+  viewport.mostrarContexto(null);
+}
+
+/** Leva a peça editada de volta à montagem (todas as instâncias); `salvar`: a montagem salva ao abrir. */
+async function voltarDoContexto(salvar: boolean) {
+  if (!contexto) return;
+  if (editor || comando) return avisar("Conclua o esboço ou o comando (✓) antes de voltar à montagem.");
+  capturarAtiva(doc);
+  const m = contexto.montagem;
+  const alterada = devolverPeca(m, contexto.comp, doc);
+  const volta: VoltaContexto = { montagem: m, comp: contexto.comp, alterada, salvar };
+  await deixar("contexto-volta", volta);
+  await esquecer("contexto");
+  sessionStorage.removeItem("wjcad:emContexto");
+  sessionStorage.removeItem("wjcad:voltarMontagem");
+  location.href = new URL(`${import.meta.env.BASE_URL}cad/montagem/#voltar-contexto`, location.href).href;
+}
+
+const pedidoDeContexto = location.hash === "#editar-contexto";
+const emContexto = pedidoDeContexto || !!sessionStorage.getItem("wjcad:emContexto");
+if (emContexto) {
+  if (pedidoDeContexto) history.replaceState(null, "", location.pathname + location.search);
+  void entrarNoContexto(!pedidoDeContexto).then((ok) => {
+    if (!ok) {
+      sessionStorage.removeItem("wjcad:emContexto");
+      avisar("A montagem da edição em contexto não está mais disponível.");
+    }
+  });
+}
 // vindo do WJPDM ("Abrir no app"): abre direto o documento que o cofre deixou no salvamento automático
-if (location.hash === "#abrir-autosave") {
+else if (location.hash === "#abrir-autosave") {
   history.replaceState(null, "", location.pathname + location.search);
   const doCofre = carregarAutosave();
   if (doCofre) abrirDocumento(doCofre);
@@ -4023,7 +4158,9 @@ if (location.hash === "#abrir-autosave") {
   abrirDocumento(d);
 }
 // peça aberta a partir de uma montagem ou de um desenho: botão para voltar (o mais recente primeiro)
-if (sessionStorage.getItem("wjcad:voltarMontagem")) {
+if (emContexto) {
+  /* em contexto: o botão é "Voltar à montagem" (leva a peça editada) */
+} else if (sessionStorage.getItem("wjcad:voltarMontagem")) {
   const b = document.createElement("button");
   b.className = "btn-ic btn-voltar";
   b.title = "Voltar à montagem (salve a peça antes: a montagem se atualiza do cofre)";
