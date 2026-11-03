@@ -137,3 +137,14 @@ body.disp-celular .tp-vistas button span, body.disp-celular .tp-nova span { disp
 body.disp-tablet .tp-etapas li { min-height: 44px; }
 body.disp-tablet .tp-etapas li button, body.disp-tablet .tp-nova-etapa button { min-height: 44px; min-width: 44px; }
 @media (max-width: 760px) { .tp-etapas { margin-left: 0; } }
+
+/* prazos das etapas */
+.tp-etapas li input[type="date"], .tp-etapas-ed li input[type="date"] { flex: none; width: 150px; min-height: 32px; padding: 2px 6px; border: 1px solid var(--linha); border-radius: 6px; font-size: 13px; color: var(--texto-2); background: var(--painel); }
+.tp-etapas li input[type="date"]:not(:focus):invalid, .tp-etapas li input[type="date"][value=""] { opacity: .55; }
+.tp-atraso { color: var(--erro); font-weight: 600; }
+.tp-no-prazo { color: var(--ok); font-weight: 600; }
+.tp-linha-atrasada td { color: var(--erro); }
+tr[data-ir] { cursor: pointer; }
+tr[data-ir]:hover td { background: var(--painel-2); }
+.tp-sub { margin: 12px 0 6px; font-size: 14px; color: var(--texto-2); }
+@media (max-width: 760px) { .tp-etapas li { flex-wrap: wrap; } .tp-etapas li input[type="date"] { width: 132px; } }

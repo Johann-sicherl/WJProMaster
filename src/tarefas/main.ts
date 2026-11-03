@@ -12,7 +12,7 @@ import { IC } from "../comum/icones";
 import { lerLocal, gravarLocal, sincronizarTarefas } from "./copias";
 import { areaEscrita, permitirOnline, reconhecedor } from "./escrita";
 import {
-  alertas, caminhoPasta, concluidaEm, criarPasta, criarTarefa, descendentes, diaLocal, diasEntre, duracao, estadoDe, estadosOrdenados, excluirEstado,
+  alertas, alertasEtapas, estadoPelasEtapas, painelEtapas, prazoEtapa, type EtapaAtrasada, caminhoPasta, concluidaEm, criarPasta, criarTarefa, descendentes, diaLocal, diasEntre, duracao, estadoDe, estadosOrdenados, excluirEstado,
   excluirPasta, adicionarEtapa, excluirEtapa, excluirTarefa, marcarEtapa, moverEtapa, progresso, filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, uid, type Base, type Etapa, type Estado, type Tarefa, type TipoEstado,
 } from "./regras";
 
@@ -382,12 +382,32 @@ function listaEtapas(t: Tarefa): string {
   return `<div class="tp-etapas">
     <ul>${(t.etapas ?? []).map((e, k) => `<li data-etapa="${e.id}" class="${e.feita ? "tp-etapa-feita" : ""}">
       <label class="tp-chk"><input type="checkbox" data-etapa-feita ${e.feita ? "checked" : ""}/><span>${escapar(e.titulo)}</span></label>
-      ${e.feita ? `<small>${dataHora(e.feita)}</small>` : ""}
+      ${situacaoEtapa(e)}
+      <input type="date" data-etapa-prazo value="${e.prazo ?? ""}" title="Prazo de entrega da etapa (opcional)" aria-label="Prazo da etapa" />
       <button data-etapa-sobe ${k ? "" : "disabled"} title="Subir">↑</button><button data-etapa-tira title="Excluir etapa">✕</button></li>`).join("")}</ul>
     <div class="tp-linha tp-nova-etapa"><input data-etapa-nova placeholder="Nova etapa (Enter adiciona)" autocomplete="off" />
       <button data-etapa-add title="Adicionar etapa">${IC.mais}</button>
       <button data-etapa-caneta title="Escrever a etapa com a caneta">${IC.caneta}</button></div>
   </div>`;
+}
+
+/** Feita: data e hora + no prazo / atraso. Pendente com prazo: atrasada / vence em. */
+function situacaoEtapa(e: Etapa): string {
+  if (e.feita) {
+    const d = e.prazo ? diasEntre(e.prazo, diaLocal(new Date(e.feita))) : null;
+    const prazo = d === null ? "" : d > 0 ? ` <b class="tp-atraso">${d} d de atraso</b>` : ` <b class="tp-no-prazo">no prazo</b>`;
+    return `<small>feita ${dataHora(e.feita)}${prazo}</small>`;
+  }
+  if (!e.prazo) return "";
+  const d = diasEntre(hoje(), e.prazo);
+  return `<span class="wj-selo${d < 0 ? " tp-atrasada" : d <= base.config.diasAlerta ? " tp-proxima" : ""}">${d < 0 ? `atrasada ${-d} d` : d === 0 ? "vence hoje" : `em ${d} d`}</span>`;
+}
+
+/** Depois de mexer nas etapas: todas feitas conclui a tarefa (e desmarcar reabre). */
+function conferirConclusao(t: Tarefa) {
+  const antes = estadoDe(base, t.estado)?.tipo;
+  if (!estadoPelasEtapas(base, t, agoraISO())) return;
+  aviso(antes !== "fim" ? `Todas as etapas feitas: "${t.titulo}" foi concluída.` : `Etapa reaberta: "${t.titulo}" voltou para ${estadoDe(base, t.estado)?.nome ?? "andamento"}.`);
 }
 
 function abrirEtapas(id: string, abrir: boolean) {
@@ -458,7 +478,13 @@ conteudo.addEventListener("change", (e) => {
   if (alvo.matches("[data-etapa-feita]")) {
     const t = base.tarefas.find((x) => x.id === alvo.closest<HTMLElement>(".tp-tarefa")?.dataset.id);
     const id = alvo.closest<HTMLElement>("[data-etapa]")?.dataset.etapa;
-    if (t && id) alterar(() => marcarEtapa(t, id, alvo.checked, agoraISO()));
+    if (t && id) alterar(() => (marcarEtapa(t, id, alvo.checked, agoraISO()), conferirConclusao(t)));
+    return;
+  }
+  if (alvo.matches("[data-etapa-prazo]")) {
+    const t = base.tarefas.find((x) => x.id === alvo.closest<HTMLElement>(".tp-tarefa")?.dataset.id);
+    const id = alvo.closest<HTMLElement>("[data-etapa]")?.dataset.etapa;
+    if (t && id) alterar(() => prazoEtapa(t, id, alvo.value, agoraISO()));
     return;
   }
   const s = (e.target as HTMLElement).closest<HTMLSelectElement>("[data-estado]");
@@ -479,7 +505,7 @@ conteudo.addEventListener("click", (e) => {
     abrirEtapas(t.id, !etapasAbertas.has(t.id));
     renderizarLista();
   } else if (etapa && alvo.closest("[data-etapa-sobe]")) alterar(() => moverEtapa(t, etapa, -1, agoraISO()));
-  else if (etapa && alvo.closest("[data-etapa-tira]")) alterar(() => excluirEtapa(t, etapa, agoraISO()));
+  else if (etapa && alvo.closest("[data-etapa-tira]")) alterar(() => (excluirEtapa(t, etapa, agoraISO()), conferirConclusao(t)));
   else if (alvo.closest("[data-etapa-add]")) novaEtapa(t, alvo.closest<HTMLElement>(".tp-tarefa")!.querySelector<HTMLInputElement>("[data-etapa-nova]")!.value);
   else if (alvo.closest("[data-etapa-caneta]")) void escreverTexto(`Nova etapa — ${t.titulo}`).then((x) => x && novaEtapa(t, x));
   else if (alvo.closest("[data-editar]")) editarTarefa(t);
@@ -495,7 +521,7 @@ conteudo.addEventListener("keydown", (e) => {
 /** Adiciona a etapa e devolve o foco ao campo de nova etapa (para seguir digitando). */
 function novaEtapa(t: Tarefa, texto: string) {
   if (!texto.trim()) return;
-  alterar(() => adicionarEtapa(t, texto, agoraISO()));
+  alterar(() => (adicionarEtapa(t, texto, agoraISO()), conferirConclusao(t)));
   conteudo.querySelector<HTMLInputElement>(`.tp-tarefa[data-id="${t.id}"] [data-etapa-nova]`)?.focus();
 }
 conteudo.addEventListener("contextmenu", (e) => {
@@ -649,6 +675,7 @@ function editorEtapas(raiz: HTMLElement, etapas: Etapa[]) {
     lista.innerHTML = etapas.map((e, k) => `<li data-k="${k}">
       <input type="checkbox" data-feita ${e.feita ? "checked" : ""} aria-label="Etapa feita" />
       <input data-texto value="${escapar(e.titulo)}" aria-label="Etapa ${k + 1}" />
+      <input type="date" data-prazo-etapa value="${e.prazo ?? ""}" title="Prazo de entrega da etapa (opcional)" aria-label="Prazo da etapa ${k + 1}" />
       <button data-sobe ${k ? "" : "disabled"} title="Subir">↑</button><button data-tira title="Excluir etapa">✕</button></li>`).join("");
   };
   const adicionar = (texto: string) => {
@@ -677,6 +704,10 @@ function editorEtapas(raiz: HTMLElement, etapas: Etapa[]) {
     if (!e) return;
     if (alvo.matches("[data-feita]")) e.feita = alvo.checked ? agoraISO() : null;
     else if (alvo.matches("[data-texto]")) e.titulo = alvo.value.trim() || e.titulo;
+    else if (alvo.matches("[data-prazo-etapa]")) {
+      if (alvo.value) e.prazo = alvo.value;
+      else delete e.prazo;
+    }
   });
   lista.addEventListener("click", (ev) => {
     const alvo = ev.target as HTMLElement;
@@ -696,7 +727,7 @@ function editorEtapas(raiz: HTMLElement, etapas: Etapa[]) {
 
 const htmlEditorEtapas = () => `
   <div class="tp-etapas-ed">
-    <span class="tp-rotulo">Etapas <small>(opcional: sub-tarefas para concluir a tarefa)</small></span>
+    <span class="tp-rotulo">Etapas <small>(opcional: sub-tarefas com prazo opcional; todas feitas = tarefa concluída)</small></span>
     <ul data-etapas></ul>
     <div class="tp-linha tp-nova-etapa"><input data-nova-etapa placeholder="Nova etapa (Enter adiciona)" autocomplete="off" />
       <button data-add-etapa title="Adicionar etapa">${IC.mais}</button>
@@ -748,6 +779,7 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
       const antes = JSON.stringify(nova.etapas ?? []);
       if (JSON.stringify(etapas) !== antes) (etapas.length ? (nova.etapas = etapas) : delete nova.etapas), (nova.atualizado = agora);
       if (t && (t.titulo !== titulo || t.prazo !== dataPrazo || t.pasta !== p)) Object.assign(t, { titulo, prazo: dataPrazo, pasta: p, atualizado: agora });
+      conferirConclusao(nova);
       if (etapas.length) etapasAbertas.add(nova.id);
     });
   }
@@ -767,7 +799,8 @@ function renderizarPainel() {
       const ids = descendentes(base, p.id);
       const ts = base.tarefas.filter((t) => ids.has(t.pasta));
       const x = painel(base, ts, new Date());
-      linhas.push(`<tr><td style="padding-left:${8 + nivel * 16}px">${escapar(p.nome)}</td><td>${x.total}</td>${estados.map((e) => `<td>${x.porEstado[e.id] || ""}</td>`).join("")}<td>${x.atrasadas || ""}</td><td>${x.atendimento ? duracao(x.atendimento.media) : ""}</td></tr>`);
+      const y = painelEtapas(base, ts, new Date());
+      linhas.push(`<tr><td style="padding-left:${8 + nivel * 16}px">${escapar(p.nome)}</td><td>${x.total}</td>${estados.map((e) => `<td>${x.porEstado[e.id] || ""}</td>`).join("")}<td>${x.atrasadas || ""}</td><td>${x.atendimento ? duracao(x.atendimento.media) : ""}</td><td>${y.total ? `${y.feitas}/${y.total}` : ""}</td><td>${pct(y.pctNoPrazo)}</td></tr>`);
       andar(p.id, nivel + 1);
     }
   };
@@ -786,7 +819,43 @@ function renderizarPainel() {
       <div class="tp-bloco"><span>Tempo de execução (Em execução → Concluído)</span>${est(pn.execucao)}</div>
       <div class="tp-bloco"><span>Concluídas</span><b>${pn.concluidas7}</b><small>nos últimos 7 dias · ${pn.concluidas30} nos últimos 30</small></div>
     </div>
-    ${linhas.length ? `<h3>Por pasta</h3><div class="tp-rolar"><table class="wj-tabela"><thead><tr><th>Pasta</th><th>Total</th>${estados.map((e) => `<th>${escapar(e.nome)}</th>`).join("")}<th>Atrasadas</th><th>Atendimento médio</th></tr></thead><tbody>${linhas.join("")}</tbody></table></div>` : ""}`;
+    ${linhas.length ? `<h3>Por pasta</h3><div class="tp-rolar"><table class="wj-tabela"><thead><tr><th>Pasta</th><th>Total</th>${estados.map((e) => `<th>${escapar(e.nome)}</th>`).join("")}<th>Atrasadas</th><th>Atendimento médio</th><th>Etapas feitas</th><th>Etapas no prazo</th></tr></thead><tbody>${linhas.join("")}</tbody></table></div>` : ""}
+    ${blocoEtapas(escopo)}`;
+  conteudo.querySelectorAll<HTMLElement>("tr[data-ir]").forEach((tr) => (tr.onclick = () => irParaTarefa(tr.dataset.ir!)));
+}
+
+const pct = (v: number | null) => (v === null ? "" : `${Math.round(v)}%`);
+const dias = (v: number | null) => (v === null ? "—" : `${v.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} d`);
+const txtDias = (d: number) => (d < 0 ? `atrasada ${-d} dia(s)` : d === 0 ? "vence hoje" : `vence em ${d} dia(s)`);
+
+/** Painel: análise das etapas (andamento e cumprimento dos prazos estimados). */
+function blocoEtapas(escopo: Tarefa[]): string {
+  const e = painelEtapas(base, escopo, new Date());
+  if (!e.total) return `<h3>Etapas (sub-tarefas)</h3><p class="tp-nota">Nenhuma tarefa com etapas aqui.</p>`;
+  const avaliadas = e.noPrazo + e.comAtraso;
+  return `<h3>Etapas (sub-tarefas)</h3>
+    <div class="tp-blocos">
+      <div class="tp-bloco"><span>Etapas feitas</span><b>${e.feitas}/${e.total}</b><small>${Math.round((100 * e.feitas) / e.total)}% · em ${e.tarefas} tarefa(s)</small></div>
+      <div class="tp-bloco${e.pctNoPrazo !== null && e.pctNoPrazo < 70 ? " tp-alerta" : ""}"><span>Entregues no prazo</span><b>${pct(e.pctNoPrazo) || "—"}</b><small>${avaliadas ? `${e.noPrazo} de ${avaliadas} feitas com prazo` : "nenhuma etapa feita com prazo"}</small></div>
+      <div class="tp-bloco"><span>Entregues com atraso</span><b>${e.comAtraso}</b><small>atraso médio ${dias(e.atrasoMedio)}</small></div>
+      <div class="tp-bloco"><span>Folga média</span><b>${dias(e.folgaMedia)}</b><small>antes do prazo, nas entregues no prazo</small></div>
+      <div class="tp-bloco${e.pendentesAtrasadas ? " tp-alerta" : ""}"><span>⚠ Pendentes atrasadas</span><b>${e.pendentesAtrasadas}</b><small>de ${e.pendentes} pendente(s)</small></div>
+      <div class="tp-bloco"><span>Vencem em até ${base.config.diasAlerta} dia(s)</span><b>${e.vencendo}</b><small>${e.total - e.comPrazo} etapa(s) sem prazo</small></div>
+    </div>
+    ${e.urgentes.length ? `<h3>Etapas atrasadas ou perto do prazo</h3><div class="tp-rolar"><table class="wj-tabela"><thead><tr><th>Tarefa</th><th>Etapa</th><th>Prazo</th><th>Situação</th></tr></thead><tbody>
+      ${e.urgentes.map((u) => `<tr data-ir="${u.tarefa.id}" class="${u.dias < 0 ? "tp-linha-atrasada" : ""}"><td>${escapar(u.tarefa.titulo)}</td><td>${escapar(u.etapa.titulo)}</td><td>${dataBR(u.etapa.prazo!)}</td><td>${txtDias(u.dias)}</td></tr>`).join("")}
+    </tbody></table></div>` : ""}`;
+}
+
+/** Abre a tarefa na lista com as etapas visíveis. */
+function irParaTarefa(id: string) {
+  const t = base.tarefas.find((x) => x.id === id);
+  if (!t) return;
+  pastaSel = t.pasta;
+  vista = "lista";
+  abrirEtapas(t.id, true);
+  renderizar();
+  conteudo.querySelector(`.tp-tarefa[data-id="${t.id}"]`)?.scrollIntoView({ block: "center" });
 }
 
 // ---------- configurações ----------
@@ -889,16 +958,22 @@ function removerEstado(e: Estado) {
 
 function mostrarAlertas(sempre: boolean) {
   const l = alertas(base, hoje());
-  if (!l.length) {
-    if (sempre) aviso(`Nenhuma tarefa pendente com prazo nos próximos ${base.config.diasAlerta} dia(s).`);
+  const le: EtapaAtrasada[] = alertasEtapas(base, hoje());
+  if (!l.length && !le.length) {
+    if (sempre) aviso(`Nenhuma tarefa ou etapa pendente com prazo nos próximos ${base.config.diasAlerta} dia(s).`);
     return;
   }
-  const txt = (d: number) => (d < 0 ? `atrasada ${-d} dia(s)` : d === 0 ? "vence hoje" : `vence em ${d} dia(s)`);
-  const { corpo, fechar } = janela(`Prazos: ${l.length} tarefa(s) pendente(s)`, `
-    <ul class="tp-alertas">${l.map((a) => `<li data-id="${a.tarefa.id}" class="${a.dias < 0 ? "tp-atrasada" : a.dias === 0 ? "tp-hoje" : ""}">
+  const txt = txtDias;
+  const titulo = [l.length ? `${l.length} tarefa(s)` : "", le.length ? `${le.length} etapa(s)` : ""].filter(Boolean).join(" e ");
+  const { corpo, fechar } = janela(`Prazos: ${titulo} pendente(s)`, `
+    ${l.length ? `<ul class="tp-alertas">${l.map((a) => `<li data-id="${a.tarefa.id}" class="${a.dias < 0 ? "tp-atrasada" : a.dias === 0 ? "tp-hoje" : ""}">
       <span class="tp-ponto" style="--cor:${estadoDe(base, a.tarefa.estado)?.cor ?? "#8a96a3"}"></span>
       <span><b>${escapar(a.tarefa.titulo)}</b><small>${escapar(caminhoPasta(base, a.tarefa.pasta))} · ${escapar(estadoDe(base, a.tarefa.estado)?.nome ?? "")} · prazo ${dataBR(a.tarefa.prazo!)}</small></span>
-      <em>${txt(a.dias)}</em></li>`).join("")}</ul>
+      <em>${txt(a.dias)}</em></li>`).join("")}</ul>` : ""}
+    ${le.length ? `<h4 class="tp-sub">Etapas</h4><ul class="tp-alertas">${le.map((a) => `<li data-etapa-de="${a.tarefa.id}" class="${a.dias < 0 ? "tp-atrasada" : a.dias === 0 ? "tp-hoje" : ""}">
+      <span class="tp-ponto" style="--cor:#8a96a3"></span>
+      <span><b>${escapar(a.etapa.titulo)}</b><small>etapa de ${escapar(a.tarefa.titulo)} · prazo ${dataBR(a.etapa.prazo!)}</small></span>
+      <em>${txt(a.dias)}</em></li>`).join("")}</ul>` : ""}
     <p class="tp-nota">Alerta com ${base.config.diasAlerta} dia(s) de antecedência (Configurações).</p>`, [{ rotulo: "OK", destaque: true }]);
   corpo.querySelectorAll<HTMLElement>("li[data-id]").forEach((li) => (li.onclick = () => {
     const t = base.tarefas.find((x) => x.id === li.dataset.id);
@@ -908,6 +983,10 @@ function mostrarAlertas(sempre: boolean) {
     vista = "lista";
     renderizar();
     editarTarefa(t);
+  }));
+  corpo.querySelectorAll<HTMLElement>("li[data-etapa-de]").forEach((li) => (li.onclick = () => {
+    fechar();
+    irParaTarefa(li.dataset.etapaDe!);
   }));
 }
 
