@@ -13,7 +13,7 @@ import { lerLocal, gravarLocal, sincronizarTarefas } from "./copias";
 import { areaEscrita, permitirOnline, reconhecedor } from "./escrita";
 import {
   alertas, alertasEtapas, estadoPelasEtapas, painelEtapas, prazoEtapa, type EtapaAtrasada, caminhoPasta, concluidaEm, criarPasta, criarTarefa, descendentes, diaLocal, diasEntre, duracao, estadoDe, estadosOrdenados, excluirEstado,
-  excluirPasta, adicionarEtapa, excluirEtapa, excluirTarefa, marcarEtapa, moverEtapa, progresso, filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, uid, type Base, type Etapa, type Estado, type Tarefa, type TipoEstado,
+  excluirPasta, adicionarEtapa, definirNota, definirNotaEtapa, excluirEtapa, excluirTarefa, marcarEtapa, moverEtapa, progresso, filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, uid, type Base, type Etapa, type Estado, type Tarefa, type TipoEstado,
 } from "./regras";
 
 // ---------- estado da página ----------
@@ -31,7 +31,9 @@ let busca = "";
 const fechadas = new Set<string>(JSON.parse(pref("fechadas", "[]")) as string[]);
 let textoSincronia = "";
 /** tarefas com a lista de etapas aberta na lista */
-const etapasAbertas = new Set<string>(JSON.parse(pref("etapas-abertas", "[]")) as string[]);
+// começam todas recolhidas a cada abertura; a seta ▸/▾ da tarefa expande ou recolhe
+const etapasAbertas = new Set<string>();
+localStorage.removeItem("wjtask:etapas-abertas"); // preferência antiga (as abertas ficavam guardadas)
 permitirOnline(pref("online", "1") === "1");
 
 const agoraISO = () => new Date().toISOString();
@@ -369,6 +371,13 @@ function seloPrazo(t: Tarefa): string {
   return `<span class="wj-selo${cls}">${txt}</span>`;
 }
 
+/** Seta ▸/▾ que expande ou recolhe as etapas (espaço vazio na tarefa sem etapas, para alinhar). */
+function setaEtapas(t: Tarefa): string {
+  if (!progresso(t).total && !etapasAbertas.has(t.id)) return `<span class="tp-seta-etapas" aria-hidden="true"></span>`;
+  const aberta = etapasAbertas.has(t.id);
+  return `<button class="tp-seta-etapas" data-etapas aria-expanded="${aberta}" title="${aberta ? "Recolher" : "Expandir"} as etapas">${aberta ? "▾" : "▸"}</button>`;
+}
+
 /** Botão com o progresso das etapas (abre/fecha a lista); nada para tarefa sem etapas. */
 function seloEtapas(t: Tarefa): string {
   const { feitas, total } = progresso(t);
@@ -381,11 +390,13 @@ function seloEtapas(t: Tarefa): string {
 function listaEtapas(t: Tarefa): string {
   return `<div class="tp-etapas">
     <ul>${(t.etapas ?? []).map((e, k) => `<li data-etapa="${e.id}" class="${e.feita ? "tp-etapa-feita" : ""}">
-      <label class="tp-chk"><input type="checkbox" data-etapa-feita ${e.feita ? "checked" : ""}/><span>${escapar(e.titulo)}</span></label>
+      <label class="tp-chk"><input type="checkbox" data-etapa-feita ${e.feita ? "checked" : ""}/><span>${escapar(e.titulo)}${e.nota ? `<small class="tp-obs" data-etapa-nota title="Editar a observação">${escapar(e.nota)}</small>` : ""}</span></label>
       ${situacaoEtapa(e)}
+      <button class="tp-nota-bt${e.nota ? " tp-com-nota" : ""}" data-etapa-nota title="${e.nota ? "Editar a observação" : "Observação (nota/lembrete)"} da etapa">${IC.nota}</button>
       <input type="date" data-etapa-prazo value="${e.prazo ?? ""}" title="Prazo de entrega da etapa (opcional)" aria-label="Prazo da etapa" />
       <button data-etapa-sobe ${k ? "" : "disabled"} title="Subir">↑</button><button data-etapa-tira title="Excluir etapa">✕</button></li>`).join("")}</ul>
     <div class="tp-linha tp-nova-etapa"><input data-etapa-nova placeholder="Nova etapa (Enter adiciona)" autocomplete="off" />
+      <input type="date" data-etapa-nova-prazo title="Prazo de entrega da nova etapa (opcional)" aria-label="Prazo da nova etapa" />
       <button data-etapa-add title="Adicionar etapa">${IC.mais}</button>
       <button data-etapa-caneta title="Escrever a etapa com a caneta">${IC.caneta}</button></div>
   </div>`;
@@ -416,7 +427,6 @@ function conferirConclusao(t: Tarefa) {
 function abrirEtapas(id: string, abrir: boolean) {
   if (abrir) etapasAbertas.add(id);
   else etapasAbertas.delete(id);
-  guardarPref("etapas-abertas", JSON.stringify([...etapasAbertas]));
 }
 
 function seletorEstado(t: Tarefa): string {
@@ -429,19 +439,23 @@ function renderizarLista() {
   const ordem = new Map(estadosOrdenados(base).map((e, k) => [e.id, k]));
   const q = busca.trim().toLowerCase();
   const lista = escopo
-    .filter((t) => (!filtroEstado || t.estado === filtroEstado) && (!q || t.titulo.toLowerCase().includes(q)))
+    .filter((t) => (!filtroEstado || t.estado === filtroEstado) && (!q || [t.titulo, t.nota ?? "", ...(t.etapas ?? []).flatMap((e) => [e.titulo, e.nota ?? ""])].some((x) => x.toLowerCase().includes(q))))
     .sort((a, b) => {
       const fa = estadoDe(base, a.estado)?.tipo === "fim", fb = estadoDe(base, b.estado)?.tipo === "fim";
       if (fa !== fb) return fa ? 1 : -1;
       if (fa) return (concluidaEm(base, b) ?? "").localeCompare(concluidaEm(base, a) ?? "");
       return (a.prazo ?? "9999").localeCompare(b.prazo ?? "9999") || (ordem.get(b.estado)! - ordem.get(a.estado)!) || b.criada.localeCompare(a.criada);
     });
+  // expandir/recolher todas: vale para as tarefas com etapas que estão na lista
+  const comEtapas = lista.filter((t) => progresso(t).total);
+  const algumaAberta = comEtapas.some((t) => etapasAbertas.has(t.id));
   const mostrarPasta = !pastaSel || (comSub && base.pastas.some((p) => p.pai === pastaSel));
   const titulo = pastaSel ? caminhoPasta(base, pastaSel) : "Todas as tarefas";
   conteudo.innerHTML = `
     <div class="tp-cabeca">
       <h2>${escapar(titulo)}</h2>
       <div class="tp-filtros">
+        ${comEtapas.length ? `<button class="tp-todas-etapas" data-todas-etapas title="${algumaAberta ? "Recolher" : "Expandir"} as etapas de todas as tarefas da lista">${algumaAberta ? "▴ Recolher todas" : "▾ Expandir todas"}</button>` : ""}
         ${pastaSel && base.pastas.some((p) => p.pai === pastaSel) ? `<label class="tp-chk"><input type="checkbox" data-sub ${comSub ? "checked" : ""}/> Incluir subpastas</label>` : ""}
         <select data-filtro aria-label="Filtrar por estado"><option value="">Todos os estados</option>${estadosOrdenados(base).map((e) => `<option value="${e.id}"${e.id === filtroEstado ? " selected" : ""}>${escapar(e.nome)} (${escopo.filter((t) => t.estado === e.id).length})</option>`).join("")}</select>
         <input type="search" data-busca placeholder="Procurar" value="${escapar(busca)}" />
@@ -450,11 +464,14 @@ function renderizarLista() {
     ${lista.length ? `<ul class="tp-lista">${lista.map((t) => `
       <li class="tp-tarefa${estadoDe(base, t.estado)?.tipo === "fim" ? " tp-feita" : ""}" data-id="${t.id}">
         ${seletorEstado(t)}
+        ${setaEtapas(t)}
         <div class="tp-texto" data-editar>
           <span class="tp-titulo">${escapar(t.titulo)}</span>
           <span class="tp-meta">criada ${dataHora(t.criada)}${mostrarPasta ? ` · ${escapar(caminhoPasta(base, t.pasta))}` : ""} ${seloPrazo(t)}</span>
+          ${t.nota ? `<span class="tp-obs" data-nota title="Editar a observação">${escapar(t.nota)}</span>` : ""}
         </div>
         ${seloEtapas(t)}
+        <button class="tp-nota-bt${t.nota ? " tp-com-nota" : ""}" data-nota title="${t.nota ? "Editar a observação" : "Observação (nota/lembrete)"} da tarefa">${IC.nota}</button>
         <button class="tp-mais" data-menu title="Opções da tarefa">⋯</button>
         ${etapasAbertas.has(t.id) ? listaEtapas(t) : ""}
       </li>`).join("")}</ul>`
@@ -474,6 +491,10 @@ function renderizarLista() {
     n.setSelectionRange(n.value.length, n.value.length);
   };
   conteudo.querySelector<HTMLElement>("[data-nova]")?.addEventListener("click", () => editarTarefa(null));
+  conteudo.querySelector<HTMLElement>("[data-todas-etapas]")?.addEventListener("click", () => {
+    for (const t of comEtapas) abrirEtapas(t.id, !algumaAberta);
+    renderizarLista();
+  });
 }
 
 conteudo.addEventListener("change", (e) => {
@@ -507,6 +528,12 @@ conteudo.addEventListener("click", (e) => {
   } else if (alvo.closest("[data-etapas]")) {
     abrirEtapas(t.id, !etapasAbertas.has(t.id));
     renderizarLista();
+  } else if (etapa && alvo.closest("[data-etapa-nota]")) {
+    e.preventDefault(); // o texto da nota fica dentro do rótulo da caixa de marcar
+    const et = t.etapas?.find((x) => x.id === etapa);
+    if (et) void escreverNota(`Observação da etapa — ${et.titulo}`, et.nota).then((x) => x !== null && alterar(() => definirNotaEtapa(t, etapa, x, agoraISO())));
+  } else if (alvo.closest("[data-nota]")) {
+    void escreverNota(`Observação — ${t.titulo}`, t.nota).then((x) => x !== null && alterar(() => definirNota(t, x, agoraISO())));
   } else if (etapa && alvo.closest("[data-etapa-sobe]")) alterar(() => moverEtapa(t, etapa, -1, agoraISO()));
   else if (etapa && alvo.closest("[data-etapa-tira]")) alterar(() => (excluirEtapa(t, etapa, agoraISO()), conferirConclusao(t)));
   else if (alvo.closest("[data-etapa-add]")) novaEtapa(t, alvo.closest<HTMLElement>(".tp-tarefa")!.querySelector<HTMLInputElement>("[data-etapa-nova]")!.value);
@@ -524,7 +551,9 @@ conteudo.addEventListener("keydown", (e) => {
 /** Adiciona a etapa e devolve o foco ao campo de nova etapa (para seguir digitando). */
 function novaEtapa(t: Tarefa, texto: string) {
   if (!texto.trim()) return;
-  alterar(() => (adicionarEtapa(t, texto, agoraISO()), conferirConclusao(t)));
+  // prazo escolhido junto com o texto da nova etapa (opcional)
+  const prazo = conteudo.querySelector<HTMLInputElement>(`.tp-tarefa[data-id="${t.id}"] [data-etapa-nova-prazo]`)?.value || null;
+  alterar(() => (adicionarEtapa(t, texto, agoraISO(), prazo), conferirConclusao(t)));
   conteudo.querySelector<HTMLInputElement>(`.tp-tarefa[data-id="${t.id}"] [data-etapa-nova]`)?.focus();
 }
 conteudo.addEventListener("contextmenu", (e) => {
@@ -540,6 +569,7 @@ function menuTarefa(t: Tarefa, x: number, y: number) {
     { rotulo: "Editar", icone: "editar", acao: () => editarTarefa(t) },
     { rotulo: etapasAbertas.has(t.id) ? "Fechar etapas" : progresso(t).total ? "Ver etapas" : "Adicionar etapas", icone: "lista", acao: () => (abrirEtapas(t.id, !etapasAbertas.has(t.id)), renderizarLista()) },
     { rotulo: "Mover para outra pasta…", icone: "movimento", acao: () => moverTarefa(t) },
+    { rotulo: t.nota ? "Editar observação" : "Observação…", icone: "nota", acao: () => void escreverNota(`Observação — ${t.titulo}`, t.nota).then((x) => x !== null && alterar(() => definirNota(t, x, agoraISO()))) },
     { rotulo: "Histórico de estados", icone: "historico", acao: () => historico(t) },
     "-",
     { rotulo: "Excluir tarefa", icone: "apagar", acao: async () => (await confirmar("Excluir tarefa", `Excluir <b>${escapar(t.titulo)}</b>?`)) && alterar((b) => excluirTarefa(b, t.id, agoraISO())) },
@@ -583,7 +613,7 @@ const htmlEscrita = (valor: string) => `
       </div>`;
 
 /** Liga o campo e a área de escrita de `htmlEscrita` dentro de uma janela; Enter no campo chama `aoEnter`. */
-function ligarEscrita(corpo: HTMLElement, aoEnter: () => void) {
+function ligarEscrita(corpo: HTMLElement, aoEnter?: () => void) {
   const campo = $<HTMLTextAreaElement>("[data-titulo]", corpo);
   // com teclado físico (ou no computador), o campo já abre pronto para digitar; só com o teclado
   // da tela o foco fica fora, para ele não cobrir a área de escrita
@@ -619,7 +649,7 @@ function ligarEscrita(corpo: HTMLElement, aoEnter: () => void) {
   $("[data-desf]", corpo).onclick = () => area.desfazer();
   $("[data-limpa]", corpo).onclick = () => area.limpar();
   campo.onkeydown = (e) => {
-    if (e.key !== "Enter" || e.shiftKey) return;
+    if (!aoEnter || e.key !== "Enter" || e.shiftKey) return; // sem aoEnter (nota): Enter quebra a linha
     e.preventDefault();
     aoEnter();
   };
@@ -670,10 +700,39 @@ function escreverTexto(titulo: string, valor = ""): Promise<string | null> {
   });
 }
 
+/**
+ * Observação (nota/lembrete) de tarefa ou etapa: digitar, caneta com transcrição ou S Pen; várias
+ * linhas (Enter quebra a linha). Devolve o texto ("" apaga) ou null se cancelou.
+ */
+function escreverNota(titulo: string, valor = ""): Promise<string | null> {
+  return new Promise((resolver) => {
+    let feito = false;
+    const terminar = (v: string | null) => ((feito = true), resolver(v));
+    const { corpo, fechar } = janela(titulo, `<div class="tp-escrita tp-escrita-nota">${htmlEscrita(valor)}</div>`, [
+      ...(valor ? [{ rotulo: "Apagar observação", acao: () => terminar("") }] : []),
+      { rotulo: "Cancelar" },
+      { rotulo: "OK", destaque: true, acao: () => (void ok(), false) },
+    ], true);
+    const { campo, area } = ligarEscrita(corpo);
+    campo.placeholder = "Escreva a observação abaixo com a caneta (ou digite aqui)";
+    async function ok() {
+      await area.concluir();
+      terminar(campo.value.trim());
+      fechar();
+    }
+    new MutationObserver((_, o) => {
+      if (corpo.isConnected) return;
+      o.disconnect();
+      if (!feito) resolver(null);
+    }).observe(document.body, { childList: true });
+  });
+}
+
 /** Lista editável de etapas (rascunho) dentro da janela da tarefa. */
 function editorEtapas(raiz: HTMLElement, etapas: Etapa[]) {
   const lista = $("[data-etapas]", raiz);
   const nova = $<HTMLInputElement>("[data-nova-etapa]", raiz);
+  const prazoNova = $<HTMLInputElement>("[data-prazo-nova]", raiz);
   const desenhar = () => {
     lista.innerHTML = etapas.map((e, k) => `<li data-k="${k}">
       <input type="checkbox" data-feita ${e.feita ? "checked" : ""} aria-label="Etapa feita" />
@@ -684,7 +743,8 @@ function editorEtapas(raiz: HTMLElement, etapas: Etapa[]) {
   const adicionar = (texto: string) => {
     const t = texto.trim();
     if (!t) return;
-    etapas.push({ id: uid(), titulo: t, feita: null });
+    etapas.push({ id: uid(), titulo: t, feita: null, ...(prazoNova.value ? { prazo: prazoNova.value } : {}) });
+    prazoNova.value = "";
     desenhar();
   };
   nova.onkeydown = (e) => {
@@ -733,6 +793,7 @@ const htmlEditorEtapas = () => `
     <span class="tp-rotulo">Etapas <small>(opcional: sub-tarefas com prazo opcional; todas feitas = tarefa concluída)</small></span>
     <ul data-etapas></ul>
     <div class="tp-linha tp-nova-etapa"><input data-nova-etapa placeholder="Nova etapa (Enter adiciona)" autocomplete="off" />
+      <input type="date" data-prazo-nova title="Prazo de entrega da nova etapa (opcional)" aria-label="Prazo da nova etapa" />
       <button data-add-etapa title="Adicionar etapa">${IC.mais}</button>
       <button data-caneta-etapa title="Escrever a etapa com a caneta">${IC.caneta}</button></div>
   </div>`;
@@ -783,7 +844,6 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
       if (JSON.stringify(etapas) !== antes) (etapas.length ? (nova.etapas = etapas) : delete nova.etapas), (nova.atualizado = agora);
       if (t && (t.titulo !== titulo || t.prazo !== dataPrazo || t.pasta !== p)) Object.assign(t, { titulo, prazo: dataPrazo, pasta: p, atualizado: agora });
       conferirConclusao(nova);
-      if (etapas.length) etapasAbertas.add(nova.id);
     });
   }
 }
