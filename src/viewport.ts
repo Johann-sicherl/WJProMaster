@@ -727,7 +727,7 @@ export class Viewport {
    * Exibição de cada corpo (pasta Corpos sólidos): trechos de triângulos ocultos (1) ou
    * transparentes (2) e as arestas ocultas (índices de grupo). Corpo oculto também não é tocado.
    */
-  exibirCorpos(trechos: { ini: number; qtd: number; modo: 1 | 2 }[], arestas: number[]) {
+  exibirCorpos(trechos: { ini: number; qtd: number; modo: 1 | 2 }[], arestas: number[], suaves: number[] = []) {
     const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
     const linhas = this.grupoPeca.getObjectByName("arestas") as THREE.LineSegments | undefined;
     if (!solido) return;
@@ -756,12 +756,15 @@ export class Viewport {
       const g = linhas.geometry;
       g.clearGroups();
       this.arestaOculta = arestas.length ? new Uint8Array(this.gruposArestas.length / 2) : null;
-      if (this.arestaOculta) {
-        for (const i of arestas) this.arestaOculta[i] = 1;
+      if (this.arestaOculta) for (const i of arestas) this.arestaOculta[i] = 1;
+      // arestas suaves (entre faces quase tangentes, ex.: facetas de STL) não são desenhadas,
+      // mas continuam tocáveis; as de corpos ocultos nem desenhadas nem tocáveis
+      const naoDesenhar = [...arestas, ...suaves];
+      if (naoDesenhar.length) {
         // grupos de vértices de linha: oculto (1) / visível (0), na ordem dos grupos das arestas
         const n = (g.getAttribute("position") as THREE.BufferAttribute).count;
         const marca = new Uint8Array(n);
-        for (const i of arestas) marca.fill(1, this.gruposArestas[i * 2], this.gruposArestas[i * 2] + this.gruposArestas[i * 2 + 1]);
+        for (const i of naoDesenhar) marca.fill(1, this.gruposArestas[i * 2], this.gruposArestas[i * 2] + this.gruposArestas[i * 2 + 1]);
         let ini = 0;
         for (let k = 1; k <= n; k++) if (k === n || marca[k] !== marca[ini]) { g.addGroup(ini, k - ini, marca[ini]); ini = k; }
         linhas.material = [this.materialArestas, this.materialArestaOculta];
