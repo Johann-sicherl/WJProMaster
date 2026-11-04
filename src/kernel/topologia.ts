@@ -100,6 +100,39 @@ export function listarTopo(forma: { wrapped: unknown }, tipo: "face" | "aresta")
   return out;
 }
 
+/** Sólidos de uma forma (corpos da peça), sem repetição. */
+export function listarSolidos(forma: { wrapped: unknown }): Shape3D[] {
+  const oc = getOC() as never as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const exp = new oc.TopExp_Explorer(forma.wrapped, oc.TopAbs_ShapeEnum.TopAbs_SOLID, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  const out: Shape3D[] = [];
+  try {
+    for (; exp.More(); exp.Next()) out.push(cast(downcast(exp.Current())) as unknown as Shape3D);
+  } finally {
+    exp.delete();
+  }
+  return out;
+}
+
+/** Índices (na lista `todas`) das faces de `parte` — por hash + IsSame, linear. */
+export function indicesDasFaces(todas: Face[], parte: Face[]): number[] {
+  const oc = getOC() as never as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const mapa = new Map<number, number[]>();
+  todas.forEach((f, i) => {
+    const h = oc.ReplicadShapeHasher.HashCode((f as unknown as { wrapped: unknown }).wrapped, HASH_CODE_MAX) as number;
+    const l = mapa.get(h);
+    if (l) l.push(i);
+    else mapa.set(h, [i]);
+  });
+  const out: number[] = [];
+  for (const f of parte) {
+    const w = (f as unknown as { wrapped: { IsSame(x: unknown): boolean } }).wrapped;
+    const h = oc.ReplicadShapeHasher.HashCode(w, HASH_CODE_MAX) as number;
+    const i = (mapa.get(h) ?? []).find((k) => w.IsSame((todas[k] as unknown as { wrapped: unknown }).wrapped));
+    if (i !== undefined) out.push(i);
+  }
+  return out;
+}
+
 export function topologia(peca: Shape3D) {
   let t = cache.get(peca);
   if (t) return t;

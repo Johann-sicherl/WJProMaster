@@ -60,7 +60,25 @@ const camposFino = <F>(): Campo<F>[] => [
   { t: "num", rot: "Espessura T2", cam: "fino.t2", un: "mm", min: 0.001, passo: 0.5, vis: (f) => (f as { fino?: { tipo: string } }).fino?.tipo === "duas" },
 ];
 
+/** "Mesclar resultado" (multicorpo) nos ressaltos: desmarcado, o ressalto vira um corpo separado. */
+const caixaMesclar: Caixa<Feature> = { titulo: "Opções", campos: [
+  { t: "check", rot: "Mesclar resultado", cam: "mesclar" },
+  { t: "info", texto: (x) => (x as { mesclar?: boolean }).mesclar === false ? "O ressalto vira um corpo separado (pasta Corpos sólidos)." : "O ressalto se funde à peça." },
+] };
+
 export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
+  const e = esquemaBase(f, d);
+  if ((f.tipo === "extrusao" || f.tipo === "revolucao" || f.tipo === "varredura" || f.tipo === "loft") && f.operacao === "adicionar") {
+    return { ...e, caixas: [...e.caixas, caixaMesclar] };
+  }
+  return e;
+}
+
+/** Referências a corpos: toque na peça (o corpo sob o toque) ou na pasta Corpos sólidos. */
+const campoCorpos = (rot: string, cam: string, multiplo = true, cor?: "azul"): Campo<Feature> =>
+  ({ t: "refs", rot, cam, aceita: ["corpo"], multiplo, dica: "Toque o corpo na peça ou na pasta Corpos sólidos", ...(cor && { cor }) });
+
+function esquemaBase(f: Feature, d: DadosEsquema): Esquema<Feature> {
   switch (f.tipo) {
     case "extrusao":
       return extrusao(f.operacao === "cortar", d) as Esquema<Feature>;
@@ -167,8 +185,28 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       return escala(d) as Esquema<Feature>;
     case "domo":
       return domo() as Esquema<Feature>;
-    case "moverCorpo":
-      return moverCorpo() as Esquema<Feature>;
+    case "moverCorpo": {
+      const e = moverCorpo() as Esquema<Feature>;
+      return { ...e, caixas: [{ titulo: "Corpos", campos: [campoCorpos("Corpos a mover (vazio = todos)", "corpos")] }, ...e.caixas] };
+    }
+    case "excluirCorpo":
+      return { titulo: "Excluir/Manter corpo", caixas: [{ titulo: "Corpos", campos: [
+        { t: "sel", rot: "Tipo", cam: "manter", opcoes: [["false", "Excluir corpos"], ["true", "Manter corpos"]], valor: (x) => String((x as { manter: boolean }).manter), aoMudar: (x, v) => { (x as { manter: boolean }).manter = v === "true"; } },
+        campoCorpos("Corpos", "corpos"),
+        { t: "info", texto: (x) => (x as { manter: boolean }).manter ? "Fica só com os corpos escolhidos." : "Tira os corpos escolhidos da peça." },
+      ] }] };
+    case "combinar":
+      return { titulo: "Combinar", caixas: [{ titulo: "Tipo de operação", campos: [
+        { t: "sel", rot: "Operação", cam: "operacao", opcoes: [["adicionar", "Adicionar"], ["subtrair", "Subtrair"], ["comum", "Comum"]] },
+        { ...campoCorpos("Corpo principal", "principal", false, "azul"), vis: (x) => (x as { operacao: string }).operacao === "subtrair" },
+        campoCorpos("Corpos a combinar", "corpos"),
+        { t: "info", texto: (x) => ({ adicionar: "Funde os corpos num só.", subtrair: "Tira os outros corpos do corpo principal.", comum: "Fica só o volume comum a todos." } as Record<string, string>)[(x as { operacao: string }).operacao] },
+      ] }] };
+    case "dividir":
+      return { titulo: "Dividir", caixas: [{ titulo: "Ferramentas de corte", campos: [
+        { t: "refs", rot: "Planos / faces planas", cam: "ferramentas", aceita: ["plano", "face"], multiplo: true },
+        { t: "info", texto: () => "Cada plano corta os corpos que atravessa; cada lado vira um corpo (pasta Corpos sólidos)." },
+      ] }] };
   }
 }
 

@@ -358,11 +358,12 @@ Abas: Manual · Assistente (⏸)
 |---|---|---|
 | Domo (Dome) | ✅ (04/11/2026) faces planas, altura, inverter (côncavo): calota esférica que sobe a altura no centro e encosta no ponto mais afastado do contorno (face circular: calota exata; termina 0,01% do raio para dentro da borda, senão a booleana do kernel falha). Ponto/esboço de restrição, elíptico e contínuo ⏸ | ✅ |
 | Envolver (Wrap) | tipo: gravar/em relevo/riscar; método analítico/spline; esboço, face, espessura | ⏸ |
-| Combinar (Combine) | Adicionar · Subtrair · Comum; corpo principal; corpos a combinar | F3 |
-| Dividir (Split) | ferramentas de corte, corpos resultantes, consumir corpos | ⏸ |
-| Mover/Copiar corpos | ✅ (04/11/2026) **Mover/Copiar corpo**: ΔX/ΔY/ΔZ, girar em X, Y, Z (graus, em torno da origem ou do centroide), copiar N vezes. Move a peça inteira, **inclusive corpos de malha (STL)**. Até vértice e modo restrições ⏸; por corpo quando houver multicorpo | ✅ |
-| Excluir/Manter corpo | excluir / manter corpos selecionados | F3 |
+| Combinar (Combine) | ✅ (04/11/2026) Adicionar · Subtrair (do corpo principal) · Comum; corpos tocados na peça ou na pasta Corpos sólidos | ✅ |
+| Dividir (Split) | ✅ (04/11/2026) planos/faces planas de corte: cada lado vira um corpo. Esboço como ferramenta e salvar corpos em arquivos ⏸ (use "Inserir em nova peça" no menu do corpo) | ✅ |
+| Mover/Copiar corpos | ✅ (04/11/2026) **Mover/Copiar corpo**: ΔX/ΔY/ΔZ, girar em X, Y, Z (graus, em torno da origem ou do centroide), copiar N vezes. Move a peça inteira, **inclusive corpos de malha (STL)**, ou só os corpos escolhidos (campo Corpos). Até vértice e modo restrições ⏸ | ✅ |
+| Excluir/Manter corpo | ✅ (04/11/2026) excluir os corpos escolhidos ou manter só eles (sólidos e malhas STL) | ✅ |
 | Escala (Scale) | ✅ (04/11/2026) em torno do centroide / origem / sistema de coordenadas; **só uniforme** (o OpenCascade do navegador não exporta a transformação não uniforme). Vale para corpos de malha | ✅ |
+| **Multicorpo** | ✅ (04/11/2026) **Mesclar resultado** (caixa Opções de Extrusão, Revolução, Varredura e Loft; desmarcado = corpo separado). Pasta **Corpos sólidos (N)** no alto da árvore: cada corpo com o nome do último recurso que mexeu nele; toque seleciona (destaca as faces) ou entra no campo de corpos do comando; **botão direito / toque longo (dedo ou caneta)** abre o menu do corpo: ícones Ocultar/Mostrar · Isolar · Transparência · Enquadrar, e Mover/Copiar · Combinar · Excluir corpo · Manter só este corpo · **Inserir em nova peça** (peça derivada numa aba nova: mesma árvore + Manter corpo) · Editar recurso · Mostrar na árvore. Corpo oculto também não é tocado. Referência de corpo = centro e volume (malha: recurso + cópia). Material/aparência por corpo ⏸ | ✅ |
 | Interseção, Recuo, Flexionar, Deformar, Forma livre | — | ⏸ |
 | Rosca cosmética | aresta circular, padrão, tamanho, profundidade, nota | F3 |
 

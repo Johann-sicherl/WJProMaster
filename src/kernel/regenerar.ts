@@ -11,6 +11,7 @@ import {
   drawRectangle,
   makeBox,
   makeOffset,
+  measureShapeVolumeProperties,
   measureVolume,
   Plane,
   type Drawing,
@@ -22,7 +23,7 @@ import {
   makeCompound,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureImportado, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft, FeaturePontoRef, FeatureMoverCorpo,
+  Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureImportado, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft, FeaturePontoRef, FeatureMoverCorpo, FeatureCombinar, FeatureDividir, FeatureExcluirCorpo,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, SuporteEsboco, Vec3,
 } from "../model";
 import { assinaturaDados, deBase64, PREFIXO_ENVIADO } from "../model";
@@ -43,7 +44,7 @@ import { cruzarEsbocos, curvaPorPontos, lerPontosXYZ, pontosHelice, polilinhasDe
 import { lofting } from "./loft";
 import {
   acharAresta, acharFace, arestasDosItens, assinaturaAresta, assinaturaFace, ErroReferencia,
-  listarTopo, propagarTangente, topologia, type Topologia,
+  indicesDasFaces, listarSolidos, listarTopo, propagarTangente, topologia, type Topologia,
 } from "./topologia";
 
 export interface ErroFeature {
@@ -71,7 +72,21 @@ export type InfoReferencia =
   /** Sistema de coordenadas: origem e eixos X, Y, Z. */
   | { id: string; tipo: "sistema"; ref: Referencial; tamanho: number };
 
+/** Corpo da peça (pasta "Corpos sólidos" da árvore). */
+export interface InfoCorpo {
+  /** recurso mais recente que mexeu no corpo (nome do corpo na árvore) */
+  recurso?: string;
+  /** faces do corpo (índices de `topologia.faces`) */
+  faces: number[];
+  volume: number;
+  centro: Vec3;
+  /** corpo de malha (STL): recurso importado, cópia e trecho de `malha.triangulos` (índices) */
+  malha?: { id: string; copia: number; ini: number; qtd: number };
+}
+
 export interface ResultadoRegeneracao {
+  /** corpos sólidos e de malha, na ordem da peça */
+  corpos?: InfoCorpo[];
   malha: MalhaPeca | null;
   erros: ErroFeature[];
   volume: number | null; // mm³
@@ -116,10 +131,13 @@ interface Ferramenta {
   op: "adicionar" | "cortar";
 }
 
+/** Corpo de malha com a origem (recurso importado e nº da cópia de Mover/Copiar). */
+type MalhaCorpo = MalhaStl & { idCorpo?: string; copia?: number };
+
 interface Ctx {
   peca: Shape3D | null;
   /** corpos de malha (só exibidos) */
-  malhas: MalhaStl[];
+  malhas: MalhaCorpo[];
   esbocos: Map<string, FeatureEsboco>;
   ferramentas: Map<string, Ferramenta[]>;
   planos: Map<string, Referencial>;
@@ -156,9 +174,11 @@ function exigirPeca(ctx: Ctx, oque = "Este recurso"): Shape3D {
   return ctx.peca;
 }
 
-function aplicar(ctx: Ctx, id: string, ferramentas: Ferramenta[]) {
+function aplicar(ctx: Ctx, id: string, ferramentas: Ferramenta[], mesclar = true) {
   for (const f of ferramentas) {
-    if (f.op === "adicionar") ctx.peca = ctx.peca ? ctx.peca.fuse(f.tool) : f.tool;
+    // "Mesclar resultado" desmarcado: o ressalto vira um corpo separado (multicorpo)
+    if (f.op === "adicionar" && !mesclar && ctx.peca) ctx.peca = makeCompound([...listarSolidos(ctx.peca), f.tool] as never) as unknown as Shape3D;
+    else if (f.op === "adicionar") ctx.peca = ctx.peca ? ctx.peca.fuse(f.tool) : f.tool;
     else ctx.peca = exigirPeca(ctx, "O corte").cut(f.tool);
   }
   ctx.ferramentas.set(id, ferramentas);
@@ -1969,7 +1989,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     // só corpos de malha: exibidos sem faces/arestas selecionáveis
     const malha = ctx.malhas.length ? juntarMalhas(null, ctx.malhas) : null;
     const volume = ctx.malhas.length && ctx.malhas.every((m) => m.volume !== null) ? ctx.malhas.reduce((s, m) => s + m.volume!, 0) : null;
-    return { malha, erros, volume, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes };
+    return { malha, erros, volume, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes, corpos: corposDaMalha(ctx, 0) };
   }
 
   const m = peca.mesh({ tolerance: tolerancia, angularTolerance: 15 });
@@ -1988,6 +2008,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     faces: Uint32Array.from(m.faceGroups.flatMap((g) => [g.start, g.count, g.faceId >>> 0])),
     gruposArestas: Uint32Array.from(a.edgeGroups.flatMap((g) => [g.start, g.count])),
   };
+  const facesPorRecurso = planificada ? {} : rastreador.atribuir(peca);
   return {
     malha: ctx.malhas.length ? juntarMalhas(malhaSolido, ctx.malhas) : malhaSolido,
     erros,
@@ -1995,10 +2016,46 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     topologia: topologia(peca).topo,
     referencias: ctx.refsSaida,
     tempos,
-    facesPorRecurso: planificada ? {} : rastreador.atribuir(peca),
+    corpos: [...corposSolidos(peca, facesPorRecurso, features), ...corposDaMalha(ctx, malhaSolido.triangulos.length)],
+    facesPorRecurso,
     previaRemovido: planificada ? null : previaRemovido,
     suportes: ctx.suportes,
   };
+}
+
+/** Corpos sólidos da peça final, com as faces e o recurso mais recente que mexeu em cada um. */
+function corposSolidos(peca: Shape3D, facesPorRecurso: Record<string, number[]>, features: Feature[]): InfoCorpo[] {
+  const solidos = listarSolidos(peca);
+  if (!solidos.length) return [];
+  const todas = topologia(peca).faces as Face[];
+  const ordem = new Map(features.map((f, i) => [f.id, i]));
+  const dono = new Map<number, string>();
+  for (const [id, fs] of Object.entries(facesPorRecurso)) for (const i of fs) {
+    const atual = dono.get(i);
+    if (!atual || (ordem.get(id) ?? -1) > (ordem.get(atual) ?? -1)) dono.set(i, id);
+  }
+  return solidos.map((s) => {
+    const faces = solidos.length === 1 ? todas.map((_, i) => i) : indicesDasFaces(todas, listarTopo(s, "face"));
+    let recurso: string | undefined;
+    for (const i of faces) {
+      const d = dono.get(i);
+      if (d && (!recurso || (ordem.get(d) ?? -1) > (ordem.get(recurso) ?? -1))) recurso = d;
+    }
+    const p = measureShapeVolumeProperties(s) as unknown as { volume: number; centerOfMass: Vec3 };
+    return { recurso, faces, volume: p.volume, centro: p.centerOfMass };
+  });
+}
+
+/** Corpos de malha (STL), com o trecho de triângulos de cada um na malha exibida. */
+function corposDaMalha(ctx: Ctx, inicio: number): InfoCorpo[] {
+  let ini = inicio;
+  return ctx.malhas.map((m) => {
+    const qtd = m.triangulos.length;
+    const c: Vec3 = [(m.min[0] + m.max[0]) / 2, (m.min[1] + m.max[1]) / 2, (m.min[2] + m.max[2]) / 2];
+    const info: InfoCorpo = { recurso: m.idCorpo, faces: [], volume: m.volume ?? 0, centro: c, malha: { id: m.idCorpo ?? "", copia: m.copia ?? 0, ini, qtd } };
+    ini += qtd;
+    return info;
+  });
 }
 
 /** Material que um recurso tirou da peça (antes − depois), em malha; null se não tirou nada. */
@@ -2264,16 +2321,120 @@ function moverCorpo(f: FeatureMoverCorpo, ctx: Ctx) {
     }
     return t;
   };
-  const base = ctx.peca, malhas = ctx.malhas;
+  // corpos escolhidos (vazio = a peça inteira)
+  const sel = f.corpos?.length ? corposEscolhidos(f.corpos, ctx) : null;
+  const solidos = ctx.peca ? listarSolidos(ctx.peca) : [];
+  const movS = sel ? sel.solidos.map((i) => solidos[i]) : solidos;
+  const fixosS = sel ? solidos.filter((_, i) => !sel.solidos.includes(i)) : [];
+  const movM = sel ? sel.malhas.map((i) => ctx.malhas[i]) : ctx.malhas;
+  const fixosM = sel ? ctx.malhas.filter((_, i) => !sel.malhas.includes(i)) : [];
+  const corpo = (k: number) => (movS.length ? (movS.length === 1 ? solido(movS[0], k) : solido(makeCompound(movS as never) as unknown as Shape3D, k)) : null);
+  const malhaK = (k: number) => movM.map((m) => ({ ...transformarMalha(m, ponto(k), direcao(k)), idCorpo: m.idCorpo, copia: f.copiar ? (m.copia ?? 0) * 100 + k : m.copia }));
   if (!f.copiar) {
-    if (base) ctx.peca = solido(base, 1);
-    ctx.malhas = malhas.map((m) => transformarMalha(m, ponto(1), direcao(1)));
+    const movido = corpo(1);
+    const todos = [...fixosS, ...(movido ? listarSolidos(movido) : [])];
+    ctx.peca = todos.length ? (todos.length === 1 ? todos[0] : (makeCompound(todos as never) as unknown as Shape3D)) : null;
+    ctx.malhas = [...fixosM, ...malhaK(1)];
     return;
   }
   for (let k = 1; k <= n; k++) {
-    if (base) ctx.peca = (ctx.peca as Shape3D).fuse(solido(base, k));
-    ctx.malhas = [...ctx.malhas, ...malhas.map((m) => transformarMalha(m, ponto(k), direcao(k)))];
+    const c2 = corpo(k);
+    if (c2) ctx.peca = (ctx.peca as Shape3D).fuse(c2);
+    ctx.malhas = [...ctx.malhas, ...malhaK(k)];
   }
+}
+
+/**
+ * Corpos escolhidos (Referencia "corpo"): sólido de centro e volume mais parecidos; corpo de malha
+ * pelo recurso importado e cópia. Índices em `listarSolidos(ctx.peca)` e em `ctx.malhas`.
+ */
+function corposEscolhidos(refs: Referencia[], ctx: Ctx): { solidos: number[]; malhas: number[] } {
+  const solidos = ctx.peca ? listarSolidos(ctx.peca) : [];
+  const props = solidos.map((s) => {
+    const p = measureShapeVolumeProperties(s) as unknown as { volume: number; centerOfMass: Vec3 };
+    return { v: p.volume, c: p.centerOfMass };
+  });
+  const out = { solidos: [] as number[], malhas: [] as number[] };
+  for (const r of refs) {
+    if (r.tipo !== "corpo") throw new Error("Escolha corpos (pasta Corpos sólidos da árvore, ou toque na peça).");
+    if (r.malha) {
+      const i = ctx.malhas.findIndex((m) => m.idCorpo === r.malha && (m.copia ?? 0) === (r.copia ?? 0));
+      if (i < 0) throw new ErroReferencia("Corpo de malha não encontrado.");
+      if (!out.malhas.includes(i)) out.malhas.push(i);
+      continue;
+    }
+    let melhor = -1, nota = Infinity;
+    props.forEach((p, i) => {
+      const n = Math.hypot(...sub3(p.c, r.centro)) + Math.abs(p.v - r.volume) / Math.max(1, Math.cbrt(Math.abs(r.volume)) ** 2);
+      if (n < nota) { nota = n; melhor = i; }
+    });
+    if (melhor < 0) throw new ErroReferencia("Corpo não encontrado (a peça mudou demais: escolha de novo).");
+    if (!out.solidos.includes(melhor)) out.solidos.push(melhor);
+  }
+  return out;
+}
+
+const juntarSolidos = (l: Shape3D[]): Shape3D | null => (l.length ? (l.length === 1 ? l[0] : (makeCompound(l as never) as unknown as Shape3D)) : null);
+
+/** Excluir/Manter corpo. */
+function excluirCorpo(f: FeatureExcluirCorpo, ctx: Ctx) {
+  if (!f.corpos.length) throw new Error("Excluir/Manter corpo: escolha os corpos.");
+  const sel = corposEscolhidos(f.corpos, ctx);
+  const solidos = ctx.peca ? listarSolidos(ctx.peca) : [];
+  const fica = (i: number, l: number[]) => (f.manter ? l.includes(i) : !l.includes(i));
+  ctx.peca = juntarSolidos(solidos.filter((_, i) => fica(i, sel.solidos)));
+  ctx.malhas = ctx.malhas.filter((_, i) => fica(i, sel.malhas));
+}
+
+/** Combinar corpos: adicionar, subtrair do principal, ou o comum entre eles. */
+function combinar(f: FeatureCombinar, ctx: Ctx) {
+  const solidos = ctx.peca ? listarSolidos(ctx.peca) : [];
+  const sel = corposEscolhidos(f.corpos, ctx);
+  if (sel.malhas.length) throw new Error("Combinar: corpos de malha (STL) não entram em booleanas; simplifique o STL para virar sólido.");
+  let usados = sel.solidos;
+  let res: Shape3D;
+  if (f.operacao === "subtrair") {
+    if (!f.principal) throw new Error("Combinar: escolha o corpo principal (de onde os outros saem).");
+    const p = corposEscolhidos([f.principal], ctx).solidos[0];
+    const tirar = usados.filter((i) => i !== p);
+    if (!tirar.length) throw new Error("Combinar: escolha os corpos a subtrair.");
+    res = solidos[p];
+    for (const i of tirar) res = res.cut(solidos[i]);
+    usados = [p, ...tirar];
+  } else {
+    if (usados.length < 2) throw new Error("Combinar: escolha pelo menos dois corpos.");
+    res = solidos[usados[0]];
+    for (const i of usados.slice(1)) res = f.operacao === "adicionar" ? res.fuse(solidos[i]) : res.intersect(solidos[i]);
+    if (f.operacao === "comum" && !(measureVolume(res) > 1e-9)) throw new Error("Combinar: os corpos não têm volume em comum.");
+  }
+  ctx.peca = juntarSolidos([...solidos.filter((_, i) => !usados.includes(i)), ...listarSolidos(res)]);
+}
+
+/** Dividir: cada plano corta os corpos que atravessa; cada lado vira um corpo. */
+function dividir(f: FeatureDividir, ctx: Ctx) {
+  const peca = exigirPeca(ctx, "Dividir");
+  if (!f.ferramentas.length) throw new Error("Dividir: escolha planos ou faces planas de corte.");
+  let solidos = listarSolidos(peca);
+  const cx = caixa(ctx)!;
+  const L = cx.diag * 4 + 10;
+  let cortou = false;
+  for (const r of f.ferramentas) {
+    const p = planoDeRef(r, ctx);
+    // meio-espaço: prisma grande sobre o plano, do lado da normal
+    const meio = drawRectangle(L, L).sketchOnPlane(new Plane(p.origem, p.x, p.normal)).extrude(L) as unknown as Shape3D;
+    const novos: Shape3D[] = [];
+    for (const s of solidos) {
+      const a = s.intersect(meio), b = s.cut(meio);
+      const va = measureVolume(a), vb = measureVolume(b);
+      if (va > 1e-9 && vb > 1e-9) {
+        novos.push(...listarSolidos(a), ...listarSolidos(b));
+        cortou = true;
+      } else novos.push(s);
+    }
+    solidos = novos;
+  }
+  if (!cortou) throw new Error("Dividir: o plano não atravessa nenhum corpo.");
+  ctx.peca = juntarSolidos(solidos);
 }
 
 function regenerarFeature(f: Feature, ctx: Ctx) {
@@ -2285,13 +2446,13 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       ctx.esbocos.set(f.id, f);
       return;
     case "extrusao":
-      return aplicar(ctx, f.id, extrusao(f, ctx));
+      return aplicar(ctx, f.id, extrusao(f, ctx), f.mesclar !== false);
     case "revolucao":
-      return aplicar(ctx, f.id, revolucao(f, ctx));
+      return aplicar(ctx, f.id, revolucao(f, ctx), f.mesclar !== false);
     case "varredura":
-      return aplicar(ctx, f.id, [{ tool: varredura(f, ctx), op: f.operacao }]);
+      return aplicar(ctx, f.id, [{ tool: varredura(f, ctx), op: f.operacao }], f.mesclar !== false);
     case "loft":
-      return aplicar(ctx, f.id, [{ tool: loftRecurso(f, ctx), op: f.operacao }]);
+      return aplicar(ctx, f.id, [{ tool: loftRecurso(f, ctx), op: f.operacao }], f.mesclar !== false);
     case "nervura":
       return aplicar(ctx, f.id, nervura(f, ctx));
     case "furo":
@@ -2548,7 +2709,7 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       abaOuCorte(f, ctx);
       return reconstruirChapa(ctx);
     case "importado":
-      if (f.malha) return void ctx.malhas.push(malhaImportada(f));
+      if (f.malha) return void ctx.malhas.push({ ...malhaImportada(f), idCorpo: f.id, copia: 0 });
       return aplicar(ctx, f.id, [{ tool: corpoImportado(f), op: "adicionar" }]);
     case "curva": {
       const t = curvaRecurso(f, ctx);
@@ -2588,7 +2749,7 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
         c = s.origem;
       }
       if (peca) ctx.peca = escalar(peca, f.fator, c);
-      ctx.malhas = ctx.malhas.map((m) => transformarMalha(m, (p) => soma3(c, mul3(sub3(p, c), f.fator)), (n) => n));
+      ctx.malhas = ctx.malhas.map((m) => ({ ...transformarMalha(m, (p) => soma3(c, mul3(sub3(p, c), f.fator)), (n) => n), idCorpo: m.idCorpo, copia: m.copia }));
       return;
     }
     case "domo": {
@@ -2605,6 +2766,12 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
     }
     case "moverCorpo":
       return moverCorpo(f, ctx);
+    case "excluirCorpo":
+      return excluirCorpo(f, ctx);
+    case "combinar":
+      return combinar(f, ctx);
+    case "dividir":
+      return dividir(f, ctx);
 
     case "eixoRef": {
       let e: { origem: Vec3; dir: Vec3 };

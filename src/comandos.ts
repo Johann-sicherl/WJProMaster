@@ -70,11 +70,14 @@ export const ABAS: Aba[] = [
       },
       { id: "espelhar", rotulo: "Espelhar", icone: "espelhar", dica: "Espelha recursos ou a peça em relação a um plano", grupo: 2 },
       {
-        id: "grupo-corpo", rotulo: "Mover corpo", icone: "moverCorpo", dica: "Mover/copiar, escalar a peça; domo", grupo: 2,
+        id: "grupo-corpo", rotulo: "Mover corpo", icone: "moverCorpo", dica: "Corpos: mover/copiar, escala, domo, combinar, dividir, excluir/manter", grupo: 2,
         itens: [
           { id: "mover-corpo", rotulo: "Mover/Copiar corpo", icone: "moverCorpo", dica: "Desloca e gira a peça inteira, inclusive STL (corpo de malha); com cópias", grupo: 2 },
           { id: "escala", rotulo: "Escala", icone: "escala", dica: "Escala uniforme em torno do centroide, da origem ou de um sistema de coordenadas", grupo: 2 },
           { id: "domo", rotulo: "Domo", icone: "domo", dica: "Calota esférica sobre faces planas (convexa ou côncava)", grupo: 2 },
+          { id: "combinar", rotulo: "Combinar", icone: "combinar", dica: "Adicionar, subtrair ou o comum entre corpos", grupo: 2 },
+          { id: "dividir", rotulo: "Dividir", icone: "dividir", dica: "Corta os corpos por planos: cada lado vira um corpo", grupo: 2 },
+          { id: "excluir-corpo", rotulo: "Excluir/Manter corpo", icone: "excluirCorpo", dica: "Tira corpos da peça, ou fica só com eles", grupo: 2 },
         ],
       },
       {
