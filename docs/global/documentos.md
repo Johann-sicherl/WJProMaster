@@ -16,11 +16,14 @@ margens em mm, padrão ABNT):
   alinhamento, texto alternativo), links, linha, quebra de página (Ctrl+Enter), campo de data;
 - sumário com páginas aproximadas (inserir/atualizar), painel de navegação pelos títulos;
 - localizar/substituir, contagem de palavras, ortografia do navegador em PT-BR;
-- impressão/PDF com cabeçalho, rodapé e "Página X de Y"; marcas de fim de página na tela;
+- impressão/PDF com cabeçalho, rodapé e "Página X de Y";
+- **folhas separadas na tela** (04/11/2026), como num processador de texto: cada página é uma folha com
+  vão entre elas, o parágrafo que não cabe desce inteiro para a folha seguinte, cabeçalho/rodapé/número em
+  cada folha; quebra de página manual leva o texto à folha seguinte (parágrafo não se divide entre folhas ainda);
 - colar de outros programas limpo (sem scripts/estilos estranhos);
 - arquivos `.wjdoc`, abrir/exportar HTML e Markdown, abrir TXT, salvamento automático, offline.
 
-🟡 Próximos: paginação real na tela (motor `@wj/paginacao`), estilos editáveis, notas de rodapé,
+🟡 Próximos: paginação linha a linha (dividir parágrafo entre folhas, viúvas/órfãs; motor `@wj/paginacao`), estilos editáveis, notas de rodapé,
 legendas e referências cruzadas, controle de alterações e comentários, mala direta, `.docx`.
 
 ---
