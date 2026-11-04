@@ -812,7 +812,7 @@ export class Viewport {
    * Plano (principal ou criado) ou eixo de referência sob o ponteiro. Planos: toque dentro do
    * retângulo visível; eixos: perto da linha. A peça na frente tem prioridade (teste de profundidade).
    */
-  picarReferencia(clientX: number, clientY: number, tolPx = 10): { tipo: "plano" | "eixo" | "curva"; id: string; borda: boolean } | null {
+  picarReferencia(clientX: number, clientY: number, tolPx = 10): { tipo: "plano" | "eixo" | "curva" | "ponto"; id: string; borda: boolean } | null {
     const ray = this.raio(clientX, clientY);
     const r = this.renderer.domElement.getBoundingClientRect();
     const mx = clientX - r.left, my = clientY - r.top;
@@ -822,6 +822,16 @@ export class Viewport {
     };
     const solido = this.solido();
     const hitPeca = solido ? ray.intersectObject(solido)[0]?.distance ?? Infinity : Infinity;
+    // pontos de referência primeiro (menores que tudo)
+    let melhorPonto: string | null = null, dp = tolPx;
+    this.grupoRefsExtras.traverse((o) => {
+      const id = o.userData.idRef;
+      if (!id || id.tipo !== "ponto" || !visivel(o)) return;
+      const t = this.paraTela(new THREE.Vector3().fromBufferAttribute((o as THREE.Points).geometry.getAttribute("position") as THREE.BufferAttribute, 0));
+      const d = Math.hypot(t.x - mx, t.y - my);
+      if (d < dp) { dp = d; melhorPonto = id.id; }
+    });
+    if (melhorPonto) return { tipo: "ponto", id: melhorPonto, borda: true };
     // eixos primeiro (são finos): distância na tela até o segmento
     let melhorEixo: string | null = null, dm = tolPx;
     this.grupoRefsExtras.traverse((o) => {
@@ -1150,6 +1160,28 @@ export class Viewport {
             new THREE.LineBasicMaterial({ color: ativo ? COR_DESTAQUE : COR_CURVA }),
           );
           l.userData.idRef = { tipo: "curva", id: r.id };
+          g.add(l);
+        }
+        this.grupoRefsExtras.add(g);
+      } else if (r.tipo === "ponto") {
+        // ponto de referência: marca em cruz (tocável onde um vértice é aceito)
+        const pt = new THREE.Points(
+          new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...r.p)]),
+          new THREE.PointsMaterial({ color: ativo ? COR_DESTAQUE : COR_CURVA, size: 9, sizeAttenuation: false, depthTest: false }),
+        );
+        pt.renderOrder = 7;
+        pt.userData.idRef = { tipo: "ponto", id: r.id };
+        this.grupoRefsExtras.add(pt);
+      } else if (r.tipo === "sistema") {
+        // sistema de coordenadas: tríade X (vermelho), Y (verde), Z (azul)
+        const g = new THREE.Group();
+        const o = new THREE.Vector3(...r.ref.origem);
+        for (const [d, c] of [[r.ref.x, 0xd03a3a], [r.ref.y, 0x2f9e44], [r.ref.normal, 0x2f6fd1]] as [Vec3, number][]) {
+          const l = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([o, o.clone().addScaledVector(new THREE.Vector3(...d), r.tamanho)]),
+            new THREE.LineBasicMaterial({ color: ativo ? COR_DESTAQUE : c, depthTest: false }),
+          );
+          l.renderOrder = 7;
           g.add(l);
         }
         this.grupoRefsExtras.add(g);

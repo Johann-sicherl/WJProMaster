@@ -976,6 +976,49 @@ verdade("nome repetido ganha o próximo número", nomeUnico(["Extrusão1", "Cort
   verdade("excluir face plana: recusa e aponta Mover face", /Mover face/.test(regenerar([...pecaBase, excluir([topo])]).erros[0]?.mensagem ?? ""));
 }
 
+// ---------- Inserir: escala, domo, mover/copiar corpo, ponto e sistema de coordenadas ----------
+{
+  const b0 = retangulo(10, 20, "XZ");
+  const caixa = [b0, ext(b0, 30)] as Feature[]; // 10 × 30 × 20 = 6000
+  const nf = <T,>(t: Parameters<typeof novaFeature>[0], mod: Partial<T>) => ({ ...(novaFeature(t, 1) as unknown as T), ...mod }) as unknown as Feature;
+  confere("escala 2 no centroide: volume × 8", regenerar([...caixa, nf("escala", { fator: 2 })]).volume, 48000);
+  const rE = regenerar([...caixa, nf("escala", { fator: 2, centro: "origem" })]);
+  verdade("escala 2 na origem: topo vai de y = 30 a y = 60", (rE.topologia?.faces ?? []).some((x) => x.normal && x.normal[1] > 0.99 && Math.abs(x.centro[1] - 60) < 1e-6));
+  // domo no topo de um cilindro Ø20 × 10: calota de altura 5 (esfera de raio 12,5)
+  const c0 = novoEsboco(1, { tipo: "plano", plano: "XZ", deslocamento: 0 });
+  op.circulo(c0, op.ponto(c0, { x: 0, y: 0 }), 10);
+  const cil = [c0, ext(c0, 10)] as Feature[];
+  const topoCil = face(cil, [0, 1, 0], [0, 10, 0]);
+  const calota = (Math.PI * 25 * (3 * 12.5 - 5)) / 3;
+  confere("domo h5 em Ø20: + calota esférica", regenerar([...cil, nf("domo", { faces: [topoCil], altura: 5 })]).volume, Math.PI * 1000 + calota, 1e-3);
+  confere("domo côncavo: − calota", regenerar([...cil, nf("domo", { faces: [topoCil], altura: 5, inverter: true })]).volume, Math.PI * 1000 - calota, 1e-3);
+  // mover/copiar: 2 cópias a 50 mm em X = 3 caixas; girar 90° em Z deita a caixa
+  confere("copiar corpo 2× a 50 mm: volume × 3", regenerar([...caixa, nf("moverCorpo", { dx: 50, copiar: true, copias: 2 })]).volume, 18000);
+  const rG = regenerar([...caixa, nf("moverCorpo", { rz: 90, dy: 5 })]);
+  const yMax = Math.max(...(rG.topologia?.faces ?? []).map((x) => x.centro[1]));
+  verdade("girar 90° em Z e subir 5: a altura de 30 vira largura (topo em y = 10)", Math.abs(yMax - 10) < 1e-6 && Math.abs((rG.volume ?? 0) - 6000) < 1e-3);
+  // corpo de malha (STL grande) também se move
+  const nT = 10001, binM = new Uint8Array(84 + 50 * nT), dvM = new DataView(binM.buffer);
+  dvM.setUint32(80, nT, true);
+  for (let i = 0; i < nT; i++) for (let k = 0; k < 9; k++) dvM.setFloat32(84 + i * 50 + 12 + k * 4, [i, 0, 0, i, 1, 0, i, 0, 1][k], true);
+  const malhaF = documentoImportado("scan.stl", binM).features[0];
+  const rM = regenerar([malhaF, nf("moverCorpo", { dx: 1000 })]);
+  const xs = rM.malha!.vertices.filter((_, i) => i % 3 === 0);
+  verdade("malha STL movida 1000 em X", rM.erros.length === 0 && Math.min(...xs) === 1000);
+  // ponto e sistema de coordenadas
+  const rP = regenerar([...caixa, nf("pontoRef", { modo: "coordenadas", x: 1, y: 2, z: 3 }), nf("sistemaCoord", {})]);
+  const pt = rP.referencias.find((x) => x.tipo === "ponto") as { p: number[] } | undefined;
+  const sc = rP.referencias.find((x) => x.tipo === "sistema") as { ref: { x: number[]; normal: number[] } } | undefined;
+  verdade("ponto por coordenadas e sistema padrão (Z = X × Y)", pt?.p.join() === "1,2,3" && sc?.ref.x.join() === "1,0,0" && sc?.ref.normal.join() === "0,0,1");
+  const arTopo = { tipo: "aresta", ass: regenerar(cil).topologia!.arestas.find((x) => x.geom === "circulo" && Math.abs((x.centro?.[1] ?? 0) - 10) < 1e-6)! } as Referencia;
+  const pId = (novaFeature("pontoRef", 1) as { id: string }).id;
+  const ptC = { ...nf("pontoRef", { modo: "centroArco", ref1: arTopo }), id: pId } as Feature;
+  const eixoP = nf("eixoRef", { modo: "doisPontos", ref1: { tipo: "ponto", id: pId }, ref2: { tipo: "vertice", p: [0, 50, 0] } });
+  const rC = regenerar([...cil, ptC, eixoP]);
+  const ex = rC.referencias.find((x) => x.tipo === "eixo") as { origem: number[] } | undefined;
+  verdade("centro do arco do topo (0, 10, 0) usado como ponto do eixo", rC.erros.length === 0 && ex?.origem.map((v) => Math.round(v)).join() === "0,10,0");
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);

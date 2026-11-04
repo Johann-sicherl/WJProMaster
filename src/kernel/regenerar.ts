@@ -22,12 +22,13 @@ import {
   makeCompound,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureImportado, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
+  Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureImportado, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft, FeaturePontoRef, FeatureMoverCorpo,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, SuporteEsboco, Vec3,
 } from "../model";
 import { assinaturaDados, deBase64, PREFIXO_ENVIADO } from "../model";
 import { distanciaAtePlano, excluirFace, moverCilindro, moverFacePlana } from "./edicaoDireta";
 import { malhaDoStl, type MalhaStl } from "./stl";
+import { centroDeMassa, domo, eixosDoSistema, escalar, projetarNoPlano, retaComPlano, retaComReta } from "./recursosExtras";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
 import { medidasFuro } from "./furos";
@@ -65,7 +66,10 @@ export type InfoReferencia =
   | { id: string; tipo: "plano"; ref: Referencial; tamanho: number }
   | { id: string; tipo: "eixo"; origem: Vec3; dir: Vec3; comprimento: number }
   /** Curva 3D: polilinhas para desenhar e tocar no viewport. */
-  | { id: string; tipo: "curva"; linhas: Vec3[][] };
+  | { id: string; tipo: "curva"; linhas: Vec3[][] }
+  | { id: string; tipo: "ponto"; p: Vec3 }
+  /** Sistema de coordenadas: origem e eixos X, Y, Z. */
+  | { id: string; tipo: "sistema"; ref: Referencial; tamanho: number };
 
 export interface ResultadoRegeneracao {
   malha: MalhaPeca | null;
@@ -129,6 +133,9 @@ interface Ctx {
   /** Ferramentas de recursos comuns depois da chapa (reaplicadas quando a chapa muda). */
   opsAposChapa: Ferramenta[];
   refsSaida: InfoReferencia[];
+  /** pontos de referência e sistemas de coordenadas já calculados */
+  pontos: Map<string, Vec3>;
+  sistemas: Map<string, Referencial>;
   /** suportes de esboço que mudaram ao acompanhar a face (a interface guarda no documento) */
   suportes: Record<string, SuporteEsboco>;
 }
@@ -141,7 +148,7 @@ function novoCtx(): Ctx {
     ["Y", { origem: [0, 0, 0], dir: [0, 1, 0] }],
     ["Z", { origem: [0, 0, 0], dir: [0, 0, 1] }],
   ]);
-  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, curvas: new Map(), chapa: null, corpoAntesChapa: null, opsAposChapa: [], suportes: {}, refsSaida: [], malhas: [] };
+  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, curvas: new Map(), chapa: null, corpoAntesChapa: null, opsAposChapa: [], suportes: {}, refsSaida: [], malhas: [], pontos: new Map(), sistemas: new Map() };
 }
 
 function exigirPeca(ctx: Ctx, oque = "Este recurso"): Shape3D {
@@ -224,6 +231,11 @@ function eixoDeRef(ref: Referencia | undefined, ctx: Ctx): { origem: Vec3; dir: 
 function pontoDeRef(ref: Referencia | undefined, ctx: Ctx): Vec3 {
   if (!ref) throw new Error("Escolha um vértice.");
   if (ref.tipo === "vertice") return ref.p;
+  if (ref.tipo === "ponto") {
+    const p = ctx.pontos.get(ref.id);
+    if (!p) throw new ErroReferencia("Ponto de referência não encontrado (excluído ou depois deste recurso).");
+    return p;
+  }
   if (ref.tipo === "aresta") {
     const a = ref.ctx ? ref.ass : assinaturaAresta(acharAresta(exigirPeca(ctx), ref.ass));
     return a.centro ?? a.meio;
@@ -1948,6 +1960,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
   for (const ri of ctx.refsSaida) {
     if (ri.tipo === "plano") ri.tamanho = Math.max(30, tam);
     else if (ri.tipo === "eixo") ri.comprimento = Math.max(40, tam * 1.4);
+    else if (ri.tipo === "sistema") ri.tamanho = Math.max(15, tam * 0.35);
   }
 
   const peca = ctx.peca;
@@ -2150,6 +2163,117 @@ function corpoImportado(f: FeatureImportado): Shape3D {
     importados.set(chave, s);
   }
   return s.clone() as Shape3D;
+}
+
+/** Ponto de referência (features.md §15). */
+function pontoRecurso(f: FeaturePontoRef, ctx: Ctx): Vec3 {
+  switch (f.modo) {
+    case "coordenadas":
+      return [f.x, f.y, f.z];
+    case "centroArco": {
+      if (f.ref1?.tipo !== "aresta") throw new Error("Ponto: escolha uma aresta circular.");
+      const a = f.ref1.ctx ? f.ref1.ass : assinaturaAresta(acharAresta(exigirPeca(ctx), f.ref1.ass));
+      if (!a.centro) throw new Error("Ponto: a aresta escolhida não é um arco/círculo.");
+      return a.centro;
+    }
+    case "centroFace": {
+      if (f.ref1?.tipo !== "face") throw new Error("Ponto: escolha uma face.");
+      return (f.ref1.ctx ? f.ref1.ass : assinaturaFace(acharFace(exigirPeca(ctx), f.ref1.ass))).centro;
+    }
+    case "projecao": {
+      const p = pontoDeRef(f.ref1, ctx);
+      const pl = planoDeRef(f.ref2, ctx);
+      return projetarNoPlano(p, pl.origem, pl.normal);
+    }
+    case "intersecao": {
+      const a = eixoDeRef(f.ref1, ctx);
+      const r2 = f.ref2;
+      if (r2?.tipo === "plano" || (r2?.tipo === "face" && r2.ass.geom === "plano")) {
+        const pl = planoDeRef(r2, ctx);
+        return retaComPlano(a.origem, a.dir, pl.origem, pl.normal);
+      }
+      const b = eixoDeRef(r2, ctx);
+      return retaComReta(a.origem, a.dir, b.origem, b.dir);
+    }
+    case "aoLongo": {
+      if (f.ref1?.tipo !== "aresta" || f.ref1.ctx) throw new Error("Ponto: escolha uma aresta da peça.");
+      const e = acharAresta(exigirPeca(ctx), f.ref1.ass);
+      const L = assinaturaAresta(e).comprimento || 1;
+      const t = f.porcentagem ? f.distancia / 100 : f.distancia / L;
+      if (!(t >= 0 && t <= 1)) throw new Error(`Ponto: a posição passa do comprimento da aresta (${L.toFixed(2)} mm).`);
+      const v = e.pointAt(t);
+      return [v.x, v.y, v.z];
+    }
+  }
+}
+
+/** Aplica uma transformação aos vértices (e outra às normais) de um corpo de malha. */
+function transformarMalha(m: MalhaStl, ponto: (p: Vec3) => Vec3, direcao: (n: Vec3) => Vec3): MalhaStl {
+  const vertices = new Float32Array(m.vertices.length), normais = new Float32Array(m.normais.length);
+  const min: Vec3 = [Infinity, Infinity, Infinity], max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < vertices.length; i += 3) {
+    const p = ponto([m.vertices[i], m.vertices[i + 1], m.vertices[i + 2]]);
+    const n = direcao([m.normais[i], m.normais[i + 1], m.normais[i + 2]]);
+    for (let k = 0; k < 3; k++) {
+      vertices[i + k] = p[k];
+      normais[i + k] = n[k];
+      if (p[k] < min[k]) min[k] = p[k];
+      if (p[k] > max[k]) max[k] = p[k];
+    }
+  }
+  // escala muda volume e área (a escala é uniforme: fator³ e fator²)
+  const f0 = m.vertices.length >= 3 ? Math.hypot(...sub3(ponto([m.vertices[0], m.vertices[1], m.vertices[2]]), ponto([m.vertices[0] + 1, m.vertices[1], m.vertices[2]]))) : 1;
+  return { ...m, vertices, normais, min, max, volume: m.volume === null ? null : m.volume * f0 ** 3, area: m.area * f0 ** 2 };
+}
+
+/** Rotação em torno de X, depois Y, depois Z (graus), aplicada a um vetor. */
+function girarXYZ(v: Vec3, rx: number, ry: number, rz: number): Vec3 {
+  const r = (a: number) => (a * Math.PI) / 180;
+  let [x, y, z] = v;
+  if (rx) { const c = Math.cos(r(rx)), s = Math.sin(r(rx)); [y, z] = [y * c - z * s, y * s + z * c]; }
+  if (ry) { const c = Math.cos(r(ry)), s = Math.sin(r(ry)); [x, z] = [x * c + z * s, -x * s + z * c]; }
+  if (rz) { const c = Math.cos(r(rz)), s = Math.sin(r(rz)); [x, y] = [x * c - y * s, x * s + y * c]; }
+  return [x, y, z];
+}
+
+/** Mover/Copiar corpo: sólidos e corpos de malha juntos (features.md §13). */
+function moverCorpo(f: FeatureMoverCorpo, ctx: Ctx) {
+  if (ctx.chapa) throw new Error("Mover/Copiar corpo depois da chapa metálica não é suportado (as dobras são refeitas pela chapa).");
+  if (!ctx.peca && !ctx.malhas.length) throw new Error("Mover/Copiar corpo: não há corpo antes dele na árvore.");
+  const n = f.copiar ? Math.max(1, Math.min(50, Math.round(f.copias))) : 1;
+  const c: Vec3 = f.centro === "centroide" && ctx.peca ? centroDeMassa(ctx.peca) : [0, 0, 0];
+  const d: Vec3 = [f.dx, f.dy, f.dz];
+  // transformação de ordem k (k-ésima repetição do movimento)
+  const ponto = (k: number) => (p: Vec3): Vec3 => {
+    let q = p;
+    for (let i = 0; i < k; i++) q = soma3(soma3(c, girarXYZ(sub3(q, c), f.rx, f.ry, f.rz)), d);
+    return q;
+  };
+  const direcao = (k: number) => (v: Vec3): Vec3 => {
+    let w = v;
+    for (let i = 0; i < k; i++) w = girarXYZ(w, f.rx, f.ry, f.rz);
+    return w;
+  };
+  const solido = (s: Shape3D, k: number): Shape3D => {
+    let t = s.clone() as Shape3D;
+    for (let i = 0; i < k; i++) {
+      if (f.rx) t = t.rotate(f.rx, c, [1, 0, 0]) as Shape3D;
+      if (f.ry) t = t.rotate(f.ry, c, [0, 1, 0]) as Shape3D;
+      if (f.rz) t = t.rotate(f.rz, c, [0, 0, 1]) as Shape3D;
+      if (f.dx || f.dy || f.dz) t = t.translate(d) as Shape3D;
+    }
+    return t;
+  };
+  const base = ctx.peca, malhas = ctx.malhas;
+  if (!f.copiar) {
+    if (base) ctx.peca = solido(base, 1);
+    ctx.malhas = malhas.map((m) => transformarMalha(m, ponto(1), direcao(1)));
+    return;
+  }
+  for (let k = 1; k <= n; k++) {
+    if (base) ctx.peca = (ctx.peca as Shape3D).fuse(solido(base, k));
+    ctx.malhas = [...ctx.malhas, ...malhas.map((m) => transformarMalha(m, ponto(k), direcao(k)))];
+  }
 }
 
 function regenerarFeature(f: Feature, ctx: Ctx) {
@@ -2432,6 +2556,55 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       ctx.refsSaida.push({ id: f.id, tipo: "curva", linhas: polilinhasDe(t, arestaDe) });
       return;
     }
+
+    case "pontoRef": {
+      const p = pontoRecurso(f, ctx);
+      ctx.pontos.set(f.id, p);
+      ctx.refsSaida.push({ id: f.id, tipo: "ponto", p });
+      return;
+    }
+    case "sistemaCoord": {
+      const origem = f.origem ? pontoDeRef(f.origem, ctx) : [0, 0, 0] as Vec3;
+      const dir = (r: Referencia | undefined, inv: boolean): Vec3 | null => {
+        if (!r) return null;
+        const d = r.tipo === "plano" || (r.tipo === "face" && r.ass.geom === "plano") ? planoDeRef(r, ctx).normal : eixoDeRef(r, ctx).dir;
+        return inv ? mul3(d, -1) : d;
+      };
+      const ex = eixosDoSistema(dir(f.eixoX, f.inverterX) ?? (f.inverterX ? [-1, 0, 0] : null), dir(f.eixoY, f.inverterY) ?? (f.inverterY ? [0, -1, 0] : null));
+      const r: Referencial = { origem, x: ex.x, y: ex.y, normal: ex.z };
+      ctx.sistemas.set(f.id, r);
+      ctx.refsSaida.push({ id: f.id, tipo: "sistema", ref: r, tamanho: 0 });
+      return;
+    }
+    case "escala": {
+      if (ctx.chapa) throw new Error("Escala depois da chapa metálica não é suportada (as dobras são refeitas pela chapa).");
+      const peca = ctx.peca;
+      if (!peca && !ctx.malhas.length) throw new Error("A escala precisa de um corpo antes dela na árvore.");
+      let c: Vec3 = [0, 0, 0];
+      if (f.centro === "centroide" && peca) c = centroDeMassa(peca);
+      else if (f.centro === "sistema") {
+        const s = f.sistema ? ctx.sistemas.get(f.sistema) : undefined;
+        if (!s) throw new ErroReferencia("Escolha um sistema de coordenadas criado antes da escala.");
+        c = s.origem;
+      }
+      if (peca) ctx.peca = escalar(peca, f.fator, c);
+      ctx.malhas = ctx.malhas.map((m) => transformarMalha(m, (p) => soma3(c, mul3(sub3(p, c), f.fator)), (n) => n));
+      return;
+    }
+    case "domo": {
+      const peca = exigirPeca(ctx, "O domo");
+      if (!f.faces.length) throw new Error("Domo: selecione faces planas.");
+      const ferr = f.faces.map((r) => {
+        if (r.tipo !== "face" || r.ctx) throw new Error("Domo: escolha faces planas da própria peça.");
+        const fc = acharFace(peca, r.ass);
+        const a = assinaturaFace(fc);
+        if (a.geom !== "plano" || !a.normal) throw new Error("Domo: a face escolhida não é plana.");
+        return domo(fc, a.normal, f.altura, f.inverter);
+      });
+      return aplicar(ctx, f.id, ferr);
+    }
+    case "moverCorpo":
+      return moverCorpo(f, ctx);
 
     case "eixoRef": {
       let e: { origem: Vec3; dir: Vec3 };

@@ -356,13 +356,13 @@ Abas: Manual · Assistente (⏸)
 
 | Comando | Campos principais | Fase |
 |---|---|---|
-| Domo (Dome) | faces, distância, inverter, ponto/esboço de restrição, direção, domo elíptico, contínuo | ⏸ |
+| Domo (Dome) | ✅ (04/11/2026) faces planas, altura, inverter (côncavo): calota esférica que sobe a altura no centro e encosta no ponto mais afastado do contorno (face circular: calota exata; termina 0,01% do raio para dentro da borda, senão a booleana do kernel falha). Ponto/esboço de restrição, elíptico e contínuo ⏸ | ✅ |
 | Envolver (Wrap) | tipo: gravar/em relevo/riscar; método analítico/spline; esboço, face, espessura | ⏸ |
 | Combinar (Combine) | Adicionar · Subtrair · Comum; corpo principal; corpos a combinar | F3 |
 | Dividir (Split) | ferramentas de corte, corpos resultantes, consumir corpos | ⏸ |
-| Mover/Copiar corpos | transladar (Δ ou até vértice), girar (X,Y,Z), copiar (nº), modo restrições | ⏸ |
+| Mover/Copiar corpos | ✅ (04/11/2026) **Mover/Copiar corpo**: ΔX/ΔY/ΔZ, girar em X, Y, Z (graus, em torno da origem ou do centroide), copiar N vezes. Move a peça inteira, **inclusive corpos de malha (STL)**. Até vértice e modo restrições ⏸; por corpo quando houver multicorpo | ✅ |
 | Excluir/Manter corpo | excluir / manter corpos selecionados | F3 |
-| Escala (Scale) | em torno do centroide/origem/sistema; uniforme ou X/Y/Z | ⏸ |
+| Escala (Scale) | ✅ (04/11/2026) em torno do centroide / origem / sistema de coordenadas; **só uniforme** (o OpenCascade do navegador não exporta a transformação não uniforme). Vale para corpos de malha | ✅ |
 | Interseção, Recuo, Flexionar, Deformar, Forma livre | — | ⏸ |
 | Rosca cosmética | aresta circular, padrão, tamanho, profundidade, nota | F3 |
 
@@ -410,7 +410,7 @@ plano + aresta → ângulo), eixo (2 planos, 2 vértices) e Medir.
   espaçamento, ângulo de escalonamento, margens, semente (círculo, quadrado, losango, polígono)
 - Padrão variável: tabela de variações
 
-## 15. Geometria de referência — ✅ plano e eixo; demais pendentes
+## 15. Geometria de referência — ✅ plano, eixo, ponto e sistema de coordenadas
 
 - Planos e eixos são **selecionáveis no viewport** ✅: borda de qualquer plano (prioridade sobre a
   peça); área de plano criado pelo usuário quando está na frente da peça; planos principais pela
@@ -427,13 +427,16 @@ plano + aresta → ângulo), eixo (2 planos, 2 vértices) e Medir.
 ### Eixo
 Uma linha/aresta/eixo · Dois planos · Dois pontos/vértices · Face cilíndrica/cônica · Ponto e face/plano
 
-### Sistema de coordenadas
-Origem (vértice/ponto), eixos X, Y, Z (arestas/direções), inverter cada eixo;
-ou posição/rotação numéricas
+### Sistema de coordenadas — ✅ (04/11/2026)
+Origem (vértice/ponto/centro de aresta; vazio = origem da peça), eixo X e eixo Y (aresta, eixo ou
+face/plano pela normal), inverter X e Y; Z = X × Y; sem Y, Y fica perpendicular a X. Tríade
+colorida no modelo. Usado como centro da Escala. Posição/rotação numéricas ⏸
 
-### Ponto
-Centro de arco · Centro da face · Interseção · Projeção · No ponto ·
-Ao longo da curva (distância / porcentagem / distribuir igualmente, nº de pontos)
+### Ponto — ✅ (04/11/2026)
+Centro de arco · Centro da face · Interseção (aresta × plano/face ou aresta × aresta) · Projeção
+(vértice/ponto em plano/face) · Ao longo da aresta (distância ou porcentagem) · Coordenadas X, Y, Z.
+Marca no modelo, tocável onde um vértice é aceito (eixo por dois pontos, Até o vértice, origem de
+sistema). Distribuir N pontos ⏸
 
 ### Centro de massa · Caixa delimitadora — 🟡 (mostrados em Avaliar → Massa)
 
