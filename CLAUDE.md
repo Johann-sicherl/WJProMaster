@@ -31,6 +31,10 @@
    e **fazer o merge** quando estiver verde (isso publica no GitHub Pages e no Cloudflare Pages).
    Ele não deve precisar entrar no GitHub nem no Cloudflare. Só parar para perguntar se algo
    exigir decisão dele ou acesso que a sessão não tem.
+7. **Menor trabalho possível para o Johann acessar as atualizações** (04/11/2026): toda entrega pronta
+   é publicada na hora (PR → merge → deploy conferido), sem esperar pedido; ele só abre o app e toca
+   "Atualizar". Entregas são testadas simulando o **tablet** (toque, 1280×800, perfil Tablet).
+8. **Tudo em português**, inclusive as descrições dos comandos que o Claude executa.
 
 Responda sempre em **português (Brasil)**. O dono do projeto é o Johann, engenheiro mecânico
 que usa CAD paramétrico profissionalmente; trate-o como usuário avançado de CAD.

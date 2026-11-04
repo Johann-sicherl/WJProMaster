@@ -111,65 +111,63 @@ function medidasFolha() {
   return { h, passo: h + VAO_FOLHAS, util: h - (p.margens.sup + p.margens.inf) * MM, sup: p.margens.sup * MM, inf: p.margens.inf * MM };
 }
 
-/** Blocos que podem pular para a folha seguinte: filhos do texto, itens de lista e linhas de citação. */
-function blocosDoTexto(): HTMLElement[] {
-  const out: HTMLElement[] = [];
-  for (const b of texto.children) {
-    if (!(b instanceof HTMLElement)) continue;
-    if (b.tagName === "UL" || b.tagName === "OL") out.push(...([...b.children] as HTMLElement[]));
-    else out.push(b);
-  }
-  return out;
-}
-
 /**
- * Paginação como num processador de texto: o texto corre numa coluna só, e cada bloco que passaria
- * do fim da área útil de uma folha desce (margem acima dele, `data-salto`) para o começo da
- * seguinte. As folhas brancas, com o vão cinza entre elas, são desenhadas atrás do texto.
+ * Paginação como num processador de texto: o texto corre numa coluna só e, em cada fim de folha,
+ * um bloco invisível de largura total (float, em `.dc-vaos`, fora do texto editável) ocupa a margem
+ * de baixo, o vão e a margem de cima da folha seguinte. As linhas que cairiam ali descem sozinhas
+ * para a folha seguinte (o parágrafo continua lá, linha a linha) sem mexer no texto nem no desfazer.
+ * Só a quebra de página manual desce o bloco seguinte com margem (`data-salto`, fora do arquivo).
+ * As folhas brancas são desenhadas atrás do texto.
  */
 function marcarPaginas() {
   const m = medidasFolha();
-  const blocos = blocosDoTexto();
-  // tira os saltos antigos e mede tudo de uma vez (uma leitura de layout)
   for (const b of texto.querySelectorAll<HTMLElement>("[data-salto]")) {
     b.style.marginTop = "";
     b.removeAttribute("data-salto");
   }
-  const rt = texto.getBoundingClientRect();
-  const esc = rt.height && texto.offsetHeight ? rt.height / texto.offsetHeight : 1;
-  const caixas = blocos.map((b) => {
-    const r = b.getBoundingClientRect();
-    return { topo: (r.top - rt.top) / esc, base: (r.bottom - rt.top) / esc };
-  });
-  const saltos: [HTMLElement, number][] = [];
-  let acc = 0; // quanto os blocos seguintes já desceram
-  let forcar = false; // depois de uma quebra de página manual
-  let fim = 0;
-  for (let i = 0; i < blocos.length; i++) {
-    const b = blocos[i];
-    const topo = caixas[i].topo + acc, base = caixas[i].base + acc;
-    const folha = Math.max(0, Math.floor((topo + 1) / m.passo));
-    const limite = folha * m.passo + m.util;
-    const inicioFolha = folha * m.passo;
-    const alto = base - topo;
-    let desce = 0;
-    if (forcar && topo > inicioFolha + 0.5) desce = (folha + 1) * m.passo - topo;
-    else if (topo >= limite - 0.5) desce = (folha + 1) * m.passo - topo; // caiu no vão
-    else if (base > limite + 0.5 && topo > inicioFolha + 0.5 && alto <= m.util) desce = (folha + 1) * m.passo - topo; // não cabe: vai inteiro
-    forcar = b.tagName === "HR" && b.classList.contains("dc-pagina");
-    if (desce > 0.5 && i > 0) {
-      const anterior = caixas[i - 1].base;
-      const vao = caixas[i].topo - anterior; // margem efetiva de hoje (margens se sobrepõem)
-      saltos.push([b, vao + desce]);
-      acc += desce;
+  let vaos = papel.querySelector<HTMLDivElement>(".dc-vaos");
+  if (!vaos) {
+    vaos = el("div", { class: "dc-vaos", "aria-hidden": "true", contenteditable: "false" }) as HTMLDivElement;
+    papel.insertBefore(vaos, texto);
+  }
+  const rt0 = texto.getBoundingClientRect();
+  const esc = rt0.height && texto.offsetHeight ? rt0.height / texto.offsetHeight : 1;
+  const vao = m.passo - m.util; // margem inferior + vão + margem superior
+  const fimDoTexto = () => {
+    const rt = texto.getBoundingClientRect();
+    const u = texto.lastElementChild?.getBoundingClientRect();
+    return u ? (u.bottom - rt.top) / esc : 0;
+  };
+  const porVaos = (n: number) => {
+    if (vaos!.childElementCount === n * 2) return;
+    vaos!.innerHTML = Array.from({ length: n }, () => `<div class="dc-vao-coluna" style="height:${m.util.toFixed(2)}px"></div><div class="dc-vao" style="height:${vao.toFixed(2)}px"></div>`).join("");
+  };
+  // quantas folhas: põe os vãos, mede, e repete se o texto passou da última (o texto só cresce)
+  let n = Math.max(1, paginas);
+  for (let volta = 0; volta < 6; volta++) {
+    porVaos(n);
+    // quebras de página manuais: o bloco seguinte começa no topo da folha seguinte
+    const rt = texto.getBoundingClientRect();
+    for (const hr of texto.querySelectorAll<HTMLElement>(":scope > hr.dc-pagina")) {
+      const b = hr.nextElementSibling as HTMLElement | null;
+      if (!b) continue;
+      const topo = (b.getBoundingClientRect().top - rt.top) / esc;
+      const folha = Math.floor((topo + 1) / m.passo);
+      if (topo <= folha * m.passo + 0.5) continue; // já está no topo de uma folha
+      const ant = (hr.getBoundingClientRect().bottom - rt.top) / esc;
+      b.dataset.salto = "1";
+      b.style.marginTop = `${(topo - ant + (folha + 1) * m.passo - topo).toFixed(1)}px`;
     }
-    fim = Math.max(fim, base + (desce > 0.5 && i > 0 ? desce : 0));
+    const fim = fimDoTexto();
+    const precisa = Math.max(1, Math.floor(Math.max(0, fim - 1) / m.passo) + 1);
+    if (precisa === n) break;
+    n = precisa;
+    for (const b of texto.querySelectorAll<HTMLElement>("[data-salto]")) {
+      b.style.marginTop = "";
+      b.removeAttribute("data-salto");
+    }
   }
-  for (const [b, mt] of saltos) {
-    b.dataset.salto = "1";
-    b.style.marginTop = `${mt.toFixed(1)}px`;
-  }
-  paginas = Math.max(1, Math.floor(Math.max(0, fim - 1) / m.passo) + 1);
+  paginas = n;
   desenharFolhas(m);
   atualizarStatus();
 }
