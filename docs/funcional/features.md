@@ -365,7 +365,8 @@ Abas: Manual · Assistente (⏸)
 | Escala (Scale) | ✅ (04/11/2026) em torno do centroide / origem / sistema de coordenadas; **só uniforme** (o OpenCascade do navegador não exporta a transformação não uniforme). Vale para corpos de malha | ✅ |
 | **Multicorpo** | ✅ (04/11/2026) **Mesclar resultado** (caixa Opções de Extrusão, Revolução, Varredura e Loft; desmarcado = corpo separado). Pasta **Corpos sólidos (N)** no alto da árvore: cada corpo com o nome do último recurso que mexeu nele; toque seleciona (destaca as faces) ou entra no campo de corpos do comando; **botão direito / toque longo (dedo ou caneta)** abre o menu do corpo: ícones Ocultar/Mostrar · Isolar · Transparência · Enquadrar, e Mover/Copiar · Combinar · Excluir corpo · Manter só este corpo · **Inserir em nova peça** (peça derivada numa aba nova: mesma árvore + Manter corpo) · Editar recurso · Mostrar na árvore. Corpo oculto também não é tocado. Referência de corpo = centro e volume (malha: recurso + cópia). Material/aparência por corpo ⏸ | ✅ |
 | Interseção, Recuo, Flexionar, Deformar, Forma livre | — | ⏸ |
-| Rosca cosmética | aresta circular, padrão, tamanho, profundidade, nota | F3 |
+| **Rosca** (modelada) | ✅ (04/11/2026) face cilíndrica (pino = externa, furo = interna, detectado pela normal), tamanho ISO métrico grosso (sugerido pelo Ø da face; preenche o passo) ou personalizado, passo, comprimento (para na ponta da face), rosca esquerda, começar na outra ponta. Perfil em V de 60° varrido numa hélice (externa 0,6134 P; interna 0,5413 P). Antes do corte a peça tem as faces do mesmo cilindro unificadas (a lateral de cilindro extrudado vem em duas metades e a booleana falhava na costura). Rosca cosmética com nota no desenho ⏸ | ✅ |
+| **Inserir peça** | ✅ (04/11/2026) outra peça (.wjcad) do cofre entra como corpo: cópia da árvore dela (até a barra de retrocesso) calculada à parte, botão **Atualizar do cofre**; **Espelhar** (Lateral/Frontal/Superior: lado esquerdo/direito), ΔX/ΔY/ΔZ, mesclar ou corpo separado | ✅ |
 
 ## 14. Padrões
 
@@ -458,7 +459,7 @@ centro** do loft (também nos cortes). Esboços usados ficam aninhados na curva.
   (erro claro se houver vão ou ramificação).
 - **Curva projetada** ✅: **esboço em faces** (normal do esboço, inverter, bidirecional) e
   **esboço em esboço** (dois esboços em planos que se cruzam).
-- Linha de partição (silhueta, projeção, interseção) ⏸
+- **Linha de partição** ✅ (04/11/2026), menu Curvas ▾: esboço projetado nos dois sentidos da normal divide as faces escolhidas (BRepAlgoAPI_Splitter com as curvas sobre as faces); volume igual, faces separadas para inclinar/filetar/pintar. Silhueta e interseção como ferramenta ⏸
 
 ## 18. Edição direta (corpos sem árvore) — ✅ (03/11/2026)
 

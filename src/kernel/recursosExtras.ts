@@ -2,7 +2,7 @@
 // Escala, Domo, Ponto de referência e Sistema de coordenadas. Puro sobre o replicad; testado em
 // scripts/teste-recursos.ts.
 
-import { basicFaceExtrusion, cast, makeCylinder, makeSphere, measureShapeVolumeProperties, Vector, type Face, type Shape3D } from "replicad";
+import { assembleWire, basicFaceExtrusion, cast, genericSweep, getOC, makeCylinder, makeHelix, makeLine, makeSphere, measureShapeVolumeProperties, Vector, type Face, type Shape3D } from "replicad";
 import type { Vec3 } from "../model";
 import { listarTopo } from "./topologia";
 
@@ -115,4 +115,62 @@ export function eixosDoSistema(x0: Vec3 | null, y0: Vec3 | null): { x: Vec3; y: 
     y = unit(sub(g, mul(x, esc(g, x))));
   }
   return { x, y, z: cruz(x, y) };
+}
+
+/**
+ * Rosca modelada (ISO métrica, perfil em V de 60°): sulco varrido ao longo de uma hélice e
+ * cortado do cilindro. Externa: o V entra no pino a partir do raio externo (profundidade
+ * 0,6134 P). Interna: o V sai do furo para fora (0,5413 P). Começa um passo antes da ponta
+ * (`inicio`), para a rosca abrir limpa na face, e anda `comprimento` ao longo de `dir`.
+ */
+export function ferramentaRosca(inicio: Vec3, dir: Vec3, raio: number, passo: number, comprimento: number, interna: boolean, esquerda: boolean): Shape3D {
+  if (!(passo > 0)) throw new Error("Rosca: o passo deve ser maior que zero.");
+  if (!(comprimento > 0)) throw new Error("Rosca: o comprimento deve ser maior que zero.");
+  const voltas = (comprimento + passo) / passo;
+  if (voltas > 400) throw new Error(`Rosca: voltas demais (${Math.round(voltas)}); o máximo é 400.`);
+  const n = unit(dir);
+  const c0 = sub(inicio, mul(n, passo));
+  const helice = makeHelix(passo, comprimento + passo, raio, c0, n, esquerda);
+  const p0 = tupla((helice as unknown as { startPoint: { x: number; y: number; z: number } }).startPoint);
+  const radial = unit(sub(sub(p0, c0), mul(n, esc(sub(p0, c0), n))));
+  const t = Math.tan(Math.PI / 6);
+  const prof = interna ? 0.5413 * passo : 0.6134 * passo;
+  const folga = 0.15 * passo; // o V começa um pouco fora do material (corte limpo)
+  // perfil no plano (radial, eixo) do início da hélice: base fora do material, ponta para dentro
+  const s = interna ? 1 : -1; // externa: ponta para o eixo; interna: ponta para fora
+  const base = mul(radial, -s * folga);
+  const pts: Vec3[] = [
+    soma(soma(p0, base), mul(n, -(prof + folga) * t)),
+    soma(p0, mul(radial, s * prof)),
+    soma(soma(p0, base), mul(n, (prof + folga) * t)),
+  ];
+  const fio = assembleWire([makeLine(pts[0], pts[1]), makeLine(pts[1], pts[2]), makeLine(pts[2], pts[0])]);
+  return genericSweep(fio, helice, { frenet: true }) as Shape3D;
+}
+
+/** Diâmetro nominal de um tamanho ISO ("M10" → 10, "M2,5" → 2,5). */
+export function diametroNominal(tamanho: string): number {
+  return Number(tamanho.replace(/^M/i, "").replace(",", "."));
+}
+
+/**
+ * Linha de partição: divide as faces da peça pelas arestas dadas (curvas sobre as faces), sem
+ * mudar o volume — as partes viram faces separadas (para inclinar, filetar ou pintar só uma parte).
+ */
+export function dividirFaces(peca: Shape3D, arestas: { wrapped: unknown }[]): Shape3D {
+  const oc = getOC() as never as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const sp = new oc.BRepAlgoAPI_Splitter();
+  const args = new oc.NCollection_List_TopoDS_Shape();
+  const tools = new oc.NCollection_List_TopoDS_Shape();
+  try {
+    args.Append(peca.wrapped);
+    for (const a of arestas) tools.Append(a.wrapped);
+    sp.SetArguments(args);
+    sp.SetTools(tools);
+    sp.Build(new oc.Message_ProgressRange());
+    if (!sp.IsDone()) throw new Error("Linha de partição: o kernel não conseguiu dividir as faces.");
+    return cast(sp.Shape()) as unknown as Shape3D;
+  } finally {
+    for (const x of [sp, args, tools]) x.delete();
+  }
 }

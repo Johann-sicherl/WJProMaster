@@ -776,6 +776,29 @@ export class Viewport {
     return hits.find((h) => h.faceIndex == null || this.modoTri![h.faceIndex] !== 1);
   }
 
+  /**
+   * Ponto da superfície sob o toque (sólidos e corpos de malha STL), sem os corpos ocultos; perto
+   * de um vértice do triângulo tocado (até `encaixePx`), vai para o vértice.
+   */
+  picarPontoSuperficie(clientX: number, clientY: number, encaixePx = 10): { p: Vec3; tri: number } | null {
+    const s = this.solido();
+    if (!s) return null;
+    const h = this.primeiroVisivel(this.raio(clientX, clientY).intersectObject(s));
+    if (!h || h.faceIndex == null) return null;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const mx = clientX - r.left, my = clientY - r.top;
+    const pos = s.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const idx = s.geometry.getIndex()!;
+    let melhor: Vec3 = h.point.toArray() as Vec3, dm = encaixePx;
+    for (let k = 0; k < 3; k++) {
+      const v = new THREE.Vector3().fromBufferAttribute(pos, idx.getX(h.faceIndex * 3 + k));
+      const t = this.paraTela(v);
+      const d = Math.hypot(t.x - mx, t.y - my);
+      if (d < dm) { dm = d; melhor = v.toArray() as Vec3; }
+    }
+    return { p: melhor, tri: h.faceIndex };
+  }
+
   /** Triângulo da peça sob o toque (índice na malha exibida), sem os corpos ocultos. */
   picarTriangulo(clientX: number, clientY: number): number | null {
     const s = this.solido();

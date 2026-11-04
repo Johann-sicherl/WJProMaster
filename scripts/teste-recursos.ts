@@ -1045,6 +1045,44 @@ verdade("nome repetido ganha o próximo número", nomeUnico(["Extrusão1", "Cort
   verdade("mover só o corpo B 100 em Y: A fica, B sobe", rmv.corpos?.length === 2 && rmv.corpos.some((c) => Math.abs(c.centro[1] - 10) < 1e-6) && rmv.corpos.some((c) => Math.abs(c.centro[1] - 110) < 1e-6));
 }
 
+// ---------- rosca, linha de partição, inserir peça ----------
+{
+  const nf = <T,>(t: Parameters<typeof novaFeature>[0], mod: Partial<T>) => ({ ...(novaFeature(t, 1) as unknown as T), ...mod }) as unknown as Feature;
+  // pino Ø10 × 20 (eixo Y) com rosca M10 × 1,5 em 12 mm
+  const c0 = novoEsboco(1, { tipo: "plano", plano: "XZ", deslocamento: 0 });
+  op.circulo(c0, op.ponto(c0, { x: 0, y: 0 }), 5);
+  const pino = [c0, ext(c0, 20)] as Feature[];
+  const V = Math.PI * 25 * 20;
+  const lateral = regenerar(pino).topologia!.faces.find((x) => x.geom === "cilindro")!;
+  const rr = regenerar([...pino, nf("rosca", { face: { tipo: "face", ass: lateral }, passo: 1.5, comprimento: 12 })]);
+  semErros("rosca externa", rr);
+  const tirado = V - (rr.volume ?? V);
+  // sulco: área do V dentro do pino ≈ 0,6134P × 0,354P × 2… ao longo de ~9 voltas de 2π·4,7 mm
+  verdade(`rosca externa tira material do pino (${tirado.toFixed(1)} mm³, esperado 80 a 160)`, tirado > 80 && tirado < 160);
+  // furo Ø8,5 passante numa placa 30 × 30 × 15, rosca interna M10 × 1,5
+  const p0 = retangulo(30, 30, "XZ");
+  const f0 = novoEsboco(2, { tipo: "plano", plano: "XZ", deslocamento: 0 });
+  op.circulo(f0, op.ponto(f0, { x: 0, y: 0 }), 4.25);
+  const placa = [p0, ext(p0, 15), f0, ext(f0, 15, { operacao: "cortar", condicao: { tipo: "passanteAmbos", dist: 15 } } as Partial<FeatureExtrusao>)] as Feature[];
+  const rp = regenerar(placa);
+  const furoF = rp.topologia!.faces.find((x) => x.geom === "cilindro")!;
+  const ri = regenerar([...placa, nf("rosca", { face: { tipo: "face", ass: furoF }, passo: 1.5, comprimento: 15 })]);
+  semErros("rosca interna", ri);
+  verdade("rosca interna tira material da parede do furo", (rp.volume ?? 0) - (ri.volume ?? 0) > 40);
+  // linha de partição: círculo Ø10 no topo da placa divide a face de cima (volume igual, 1 face a mais)
+  const lp = novoEsboco(3, { tipo: "plano", plano: "XZ", deslocamento: 15 });
+  op.circulo(lp, op.ponto(lp, { x: 8, y: 8 }), 3);
+  const topo = face(placa, [0, 1, 0], [10, 15, 10]);
+  const rl = regenerar([...placa, lp, nf("linhaParticao", { esboco: lp.id, faces: [topo] })]);
+  semErros("linha de partição", rl);
+  verdade("linha de partição: mesma peça, uma face a mais", Math.abs((rl.volume ?? 0) - (rp.volume ?? 0)) < 1e-3 && (rl.topologia?.faces.length ?? 0) === (rp.topologia?.faces.length ?? 0) + 1);
+  // inserir peça: o pino entra como corpo separado, espelhado no Plano Lateral e deslocado 40 em X
+  const ins = nf("inserirPeca", { arquivo: "x", nomeArquivo: "pino", features: JSON.parse(JSON.stringify(pino)), espelhar: true, planoEspelho: "YZ", dx: 40 });
+  const rI = regenerar([...placa, ins]);
+  semErros("inserir peça", rI);
+  verdade("peça inserida: corpo separado com o volume do pino", rI.corpos?.length === 2 && Math.abs((rI.volume ?? 0) - (rp.volume ?? 0) - V) < 1e-3);
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);

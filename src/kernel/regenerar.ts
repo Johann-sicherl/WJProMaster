@@ -23,13 +23,13 @@ import {
   makeCompound,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureImportado, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft, FeaturePontoRef, FeatureMoverCorpo, FeatureCombinar, FeatureDividir, FeatureExcluirCorpo,
+  Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureImportado, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft, FeaturePontoRef, FeatureMoverCorpo, FeatureCombinar, FeatureDividir, FeatureExcluirCorpo, FeatureRosca, FeatureLinhaParticao, FeatureInserirPeca,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, SuporteEsboco, Vec3,
 } from "../model";
 import { assinaturaDados, deBase64, PREFIXO_ENVIADO } from "../model";
 import { distanciaAtePlano, excluirFace, moverCilindro, moverFacePlana } from "./edicaoDireta";
 import { malhaDoStl, type MalhaStl } from "./stl";
-import { centroDeMassa, domo, eixosDoSistema, escalar, projetarNoPlano, retaComPlano, retaComReta } from "./recursosExtras";
+import { centroDeMassa, dividirFaces, domo, eixosDoSistema, escalar, ferramentaRosca, projetarNoPlano, retaComPlano, retaComReta } from "./recursosExtras";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
 import { medidasFuro } from "./furos";
@@ -1985,6 +1985,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
 
   const peca = ctx.peca;
   ultimaPeca = peca;
+  ultimasMalhas = ctx.malhas;
   if (!peca) {
     // só corpos de malha: exibidos sem faces/arestas selecionáveis
     const malha = ctx.malhas.length ? juntarMalhas(null, ctx.malhas) : null;
@@ -2375,6 +2376,80 @@ function corposEscolhidos(refs: Referencia[], ctx: Ctx): { solidos: number[]; ma
 }
 
 const juntarSolidos = (l: Shape3D[]): Shape3D | null => (l.length ? (l.length === 1 ? l[0] : (makeCompound(l as never) as unknown as Shape3D)) : null);
+
+/** Rosca modelada numa face cilíndrica (pino: externa; furo: interna). */
+function rosca(f: FeatureRosca, ctx: Ctx): Shape3D {
+  const peca = exigirPeca(ctx, "A rosca");
+  if (f.face?.tipo !== "face" || f.face.ctx) throw new Error("Rosca: escolha a face cilíndrica (pino ou furo) da peça.");
+  const face = acharFace(peca, f.face.ass);
+  const a = assinaturaFace(face);
+  if (a.geom !== "cilindro" || !a.eixo || !a.pontoEixo || !a.raio) throw new Error("Rosca: a face escolhida não é cilíndrica.");
+  // pontas da face ao longo do eixo (pelas arestas da face)
+  const ts: number[] = [];
+  for (const e of listarTopo(face, "aresta")) for (const k of [0, 0.5, 1]) {
+    const p = e.pointAt(k);
+    ts.push(esc3(sub3([p.x, p.y, p.z], a.pontoEixo), a.eixo));
+  }
+  const t0 = Math.min(...ts), t1 = Math.max(...ts);
+  const comp = Math.min(f.comprimento, t1 - t0);
+  const inicio = f.inverter ? soma3(a.pontoEixo, mul3(a.eixo, t1)) : soma3(a.pontoEixo, mul3(a.eixo, t0));
+  const dir = f.inverter ? mul3(a.eixo, -1) : a.eixo;
+  // furo: a normal da face aponta para o eixo
+  const meio = face.pointOnSurface(0.5, 0.5);
+  const pm: Vec3 = [meio.x, meio.y, meio.z];
+  const nm = face.normalAt(meio);
+  const radial = sub3(pm, soma3(a.pontoEixo, mul3(a.eixo, esc3(sub3(pm, a.pontoEixo), a.eixo))));
+  const interna = esc3([nm.x, nm.y, nm.z], radial) < 0;
+  return ferramentaRosca(inicio, dir, a.raio, f.passo, comp, interna, f.esquerda);
+}
+
+/** Linha de partição: o esboço projetado (nos dois sentidos da normal) divide as faces. */
+function linhaParticao(f: FeatureLinhaParticao, ctx: Ctx) {
+  const peca = exigirPeca(ctx, "A linha de partição");
+  const esb = esbocoDe(f.esboco, ctx);
+  if (!f.faces.length) throw new Error("Linha de partição: escolha as faces a dividir.");
+  const r = referencial(esb.suporte, ctx.planos);
+  const arestas = trechosDoEsboco(esb, r).map(arestaDe);
+  if (!arestas.length) throw new Error("Linha de partição: o esboço não tem curvas (só construção?).");
+  const faces = f.faces.map((x) => {
+    if (x.tipo !== "face" || x.ctx) throw new Error("Linha de partição: escolha faces da própria peça.");
+    return acharFace(peca, x.ass);
+  });
+  const curvas = projetarEmFaces(arestas, r.normal, faces, tamanhoCena(ctx), true).map(arestaDe);
+  ctx.peca = dividirFaces(peca, curvas);
+}
+
+/** Peças inseridas já calculadas (a árvore delas não muda a cada regeneração desta peça). */
+const pecasInseridas = new Map<string, Shape3D>();
+
+/** Outra peça do cofre como corpo: a árvore dela calculada à parte, espelhada e deslocada. */
+function pecaInserida(f: FeatureInserirPeca): Shape3D {
+  if (!f.features.length) throw new Error("Inserir peça: escolha a peça no cofre.");
+  const texto = JSON.stringify(f.features);
+  let h = 2166136261;
+  for (let i = 0; i < texto.length; i++) h = Math.imul(h ^ texto.charCodeAt(i), 16777619);
+  const chave = `${texto.length}:${h >>> 0}`;
+  let base = pecasInseridas.get(chave);
+  if (!base) {
+    const sub = novoCtx();
+    for (const g of f.features) {
+      if (g.suprimida) continue;
+      try {
+        regenerarFeature(g, sub);
+      } catch (e) {
+        throw new Error(`Peça inserida (${f.nomeArquivo}), recurso ${g.nome}: ${traduzirErro(e, g.tipo)}`);
+      }
+    }
+    if (!sub.peca) throw new Error(`Peça inserida (${f.nomeArquivo}): a peça não tem sólido.`);
+    base = sub.peca;
+    if (pecasInseridas.size > 4) pecasInseridas.clear();
+    pecasInseridas.set(chave, base);
+  }
+  let s = base.clone() as Shape3D;
+  if (f.espelhar) s = s.mirror(f.planoEspelho) as Shape3D;
+  if (f.dx || f.dy || f.dz) s = s.translate([f.dx, f.dy, f.dz]) as Shape3D;
+  return s;
+}
 
 /** Excluir/Manter corpo. */
 function excluirCorpo(f: FeatureExcluirCorpo, ctx: Ctx) {
@@ -2768,6 +2843,18 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       return moverCorpo(f, ctx);
     case "excluirCorpo":
       return excluirCorpo(f, ctx);
+    case "rosca":
+    {
+      const tool = rosca(f, ctx);
+      // cilindro extrudado de esboço tem a lateral em duas metades: a booleana com a hélice falha
+      // na costura; unificar as faces do mesmo cilindro antes resolve
+      ctx.peca = (ctx.peca as Shape3D).simplify();
+      return aplicar(ctx, f.id, [{ tool, op: "cortar" }]);
+    }
+    case "linhaParticao":
+      return linhaParticao(f, ctx);
+    case "inserirPeca":
+      return aplicar(ctx, f.id, [{ tool: pecaInserida(f), op: "adicionar" }], f.mesclar);
     case "combinar":
       return combinar(f, ctx);
     case "dividir":
@@ -2796,6 +2883,12 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
 }
 
 let ultimaPeca: Shape3D | null = null;
+/** corpos de malha da última regeneração (propriedades de massa de STL) */
+let ultimasMalhas: MalhaStl[] = [];
+
+export function malhasAtuais(): MalhaStl[] {
+  return ultimasMalhas;
+}
 
 export function pecaAtual(): Shape3D | null {
   return ultimaPeca;

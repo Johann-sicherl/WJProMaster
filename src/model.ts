@@ -544,6 +544,45 @@ export interface FeatureDividir extends FeatureBase {
   ferramentas: Referencia[];
 }
 
+/** Rosca modelada (features.md §13): sulco ISO em V de 60° numa face cilíndrica (pino ou furo). */
+export interface FeatureRosca extends FeatureBase {
+  tipo: "rosca";
+  face?: Referencia;
+  /** tamanho ISO (preenche o passo) ou "personalizado" */
+  tamanho: string;
+  passo: number;
+  comprimento: number;
+  esquerda: boolean;
+  /** começa na outra ponta da face */
+  inverter: boolean;
+}
+
+/** Linha de partição (features.md §16): projeta o esboço nas faces e as divide. */
+export interface FeatureLinhaParticao extends FeatureBase {
+  tipo: "linhaParticao";
+  esboco?: string;
+  faces: Referencia[];
+}
+
+/**
+ * Inserir peça (features.md §13): outra peça do cofre entra como corpo (cópia da árvore dela,
+ * atualizável), opcionalmente espelhada (lado esquerdo/direito) e deslocada.
+ */
+export interface FeatureInserirPeca extends FeatureBase {
+  tipo: "inserirPeca";
+  /** id do arquivo no cofre e nome para mostrar */
+  arquivo: string;
+  nomeArquivo: string;
+  versao?: number;
+  features: Feature[];
+  espelhar: boolean;
+  planoEspelho: Plano;
+  dx: number;
+  dy: number;
+  dz: number;
+  mesclar: boolean;
+}
+
 /** Domo sobre faces planas (features.md §13). */
 export interface FeatureDomo extends FeatureBase {
   tipo: "domo";
@@ -761,7 +800,7 @@ export type Feature =
   | FeatureFecharCanto | FeatureAlivioCanto | FeatureQuebrarCanto | FeatureDesdobrar | FeatureDobrar | FeatureConverterChapa
   | FeatureImportado | FeatureMoverFace | FeatureExcluirFace | FeatureSubstituirFace
   | FeaturePontoRef | FeatureSistemaCoord | FeatureEscala | FeatureDomo | FeatureMoverCorpo
-  | FeatureExcluirCorpo | FeatureCombinar | FeatureDividir;
+  | FeatureExcluirCorpo | FeatureCombinar | FeatureDividir | FeatureRosca | FeatureLinhaParticao | FeatureInserirPeca;
 
 /**
  * Corpo importado de um arquivo neutro (STEP ou STL, de qualquer CAD): o sólido entra na árvore
@@ -937,6 +976,12 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco" | "importado
       return { ...base, tipo, nome: `Combinar${indice}`, operacao: "adicionar", corpos: [] };
     case "dividir":
       return { ...base, tipo, nome: `Dividir${indice}`, ferramentas: [] };
+    case "rosca":
+      return { ...base, tipo, nome: `Rosca${indice}`, tamanho: "M10", passo: 1.5, comprimento: 10, esquerda: false, inverter: false };
+    case "linhaParticao":
+      return { ...base, tipo, nome: `LinhaDePartição${indice}`, faces: [] };
+    case "inserirPeca":
+      return { ...base, tipo, nome: `Peça${indice}`, arquivo: "", nomeArquivo: "", features: [], espelhar: false, planoEspelho: "YZ", dx: 0, dy: 0, dz: 0, mesclar: false };
     case "moverCorpo":
       return { ...base, tipo, nome: `MoverCorpo${indice}`, dx: 0, dy: 0, dz: 0, rx: 0, ry: 0, rz: 0, centro: "origem", copiar: false, copias: 1 };
     case "substituirFace":
@@ -1082,6 +1127,9 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   excluirCorpo: "Excluir/Manter corpo",
   combinar: "Combinar",
   dividir: "Dividir",
+  rosca: "Rosca",
+  linhaParticao: "Linha de partição",
+  inserirPeca: "Peça inserida",
 };
 
 /**

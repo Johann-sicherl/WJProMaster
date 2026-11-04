@@ -8,6 +8,7 @@ import { lerMontagemStep } from "../src/kernel/importar";
 import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO, malhaDoStl, triangulosVaziosStl } from "../src/kernel/stl";
 import { assinaturaDados, documentoImportado, LIMITE_DADOS_UMA_VEZ, PREFIXO_ENVIADO } from "../src/model";
 import { regenerar, temDadosDe } from "../src/kernel/regenerar";
+import { massa } from "../src/kernel/avaliar";
 import { montagemDoStep, nomesDosCorpos, pecasDoStep, textoStep } from "../src/montagem/step";
 import { aplicarPonto, quantidades, validarMontagem } from "../src/montagem/modelo";
 
@@ -104,6 +105,9 @@ for (const p of m.pecas) {
   igual("cubo ASCII: 8 vértices soldados, 12 triângulos, volume 1000, área 600", [m.vertices.length / 3, m.triangulos.length / 3, Math.round(m.volume ?? -1), Math.round(m.area)], [8, 12, 1000, 600]);
   igual("malha aberta: sem volume", malhaDoStl(ascii(f.slice(1))).volume, null);
   igual("contagem de triângulos (ASCII)", contarTriangulosStl(ascii(f)), 12);
+  // propriedades de massa de corpo de malha: cubo 10 mm → V 1000, centro (5, 5, 5), Ixx = 1000·200/12
+  const pm = massa(null, [malhaDoStl(ascii(f))]);
+  igual("massa do STL: volume, centro e Ixx do cubo", [Math.round(pm.volume), pm.centro.map((x) => Math.round(x * 1e6) / 1e6), Math.round(pm.inercia[0] * 100) / 100, Math.round(pm.area)], [1000, [5, 5, 5], 16666.67, 600]);
   // triângulos gravados ao contrário (exportador/escaneamento): a leitura reorienta
   const virar = (t: number[]) => [t[0], t[2], t[1]];
   const sentido = (mm: typeof m) => {
