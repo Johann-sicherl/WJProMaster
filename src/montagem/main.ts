@@ -26,7 +26,7 @@ import {
   quatEixoAngulo, rotuloComponente, validarMontagem, type ComponenteMontagem, type DocumentoMontagem, type PecaEmbutida, type Posicionamento,
   type PadraoComponentes, type RefMontagem, type TipoPosicionamento, type Transformacao,
 } from "./modelo";
-import { centroDaCaixa, centroDoComponente, facesDoComponente, globalDaEntidade, indiceLocal, juntar, localDaEntidade, type Cena } from "./cena";
+import { centroDaCaixa, centroDoComponente, componenteDoTriangulo, facesDoComponente, globalDaEntidade, indiceLocal, juntar, localDaEntidade, type Cena } from "./cena";
 import type { Topologia } from "../kernel/topologia";
 import { compRel, NOME_TIPO, primitivaLocal, resolverMontagem, tiposPossiveis, transformar, type ResultadoSolver } from "./solver";
 import {
@@ -85,6 +85,7 @@ for (const id of ["XY", "XZ", "YZ"] as const) viewport.definirVisibilidadeRefere
 const kernel = new ClienteKernel();
 const prefsCad = lerPrefsCad();
 viewport.tempoToqueLongo = prefsCad.toqueLongoMs ?? 600;
+queueMicrotask(() => (viewport.interceptador = interceptarArraste)); // arraste livre fora de comando
 if (prefsCad.estilo) viewport.definirEstilo(prefsCad.estilo as never);
 
 kernel.pronto.then(() => {
@@ -901,12 +902,15 @@ async function abrirPeca(c: ComponenteMontagem) {
 // ---------- seleção no modelo ----------
 
 /** Componente sob o ponteiro (pela face/aresta/vértice tocada). */
-function componenteSob(x: number, y: number, tol = 10): { comp: string; ent: Entidade } | null {
+function componenteSob(x: number, y: number, tol = 10): { comp: string; ent: Entidade | null } | null {
   if (!cena) return null;
   const ent = viewport.picarEntidade(x, y, new Set(["face", "aresta", "vertice"]), tol);
-  if (!ent) return null;
-  const l = localDaEntidade(cena.mapa, ent.tipo, ent.indice);
-  return l ? { comp: l.comp, ent } : null;
+  const l = ent ? localDaEntidade(cena.mapa, ent.tipo, ent.indice) : null;
+  if (l) return { comp: l.comp, ent };
+  // corpo de malha (STL): sem faces/arestas — o componente vem do triângulo tocado
+  const tri = viewport.picarTriangulo(x, y);
+  const comp = tri === null ? null : componenteDoTriangulo(cena.mapa, tri);
+  return comp ? { comp, ent: null } : null;
 }
 
 function tocarComponente(id: string, somar: boolean, ancora?: HTMLElement, xy?: { x: number; y: number }) {
@@ -1050,7 +1054,7 @@ function mostrarPainel(emComando: boolean) {
 
 function fecharComando() {
   comando = null;
-  viewport.interceptador = null;
+  viewport.interceptador = interceptarArraste; // fora de comando: arraste livre (mouse/caneta)
   mostrarPainel(false);
   destacar();
   renderizarAbas();
@@ -1363,15 +1367,20 @@ function aplicarMover() {
   if (solucao?.erros.size) avisar("Movido; os posicionamentos puxaram o componente de volta nos graus que eles prendem.");
 }
 
-let arraste: { comp: string; outros: string[]; ref: { origem: Vec3; x: Vec3; y: Vec3; normal: Vec3 }; p0: { x: number; y: number }; x0: number; y0: number; t0: Map<string, Transformacao>; centro: Vec3; quadro: number } | null = null;
+let arraste: { livre?: boolean; moveu?: boolean; longo?: number; ultimo?: { x: number; y: number }; comp: string; outros: string[]; ref: { origem: Vec3; x: Vec3; y: Vec3; normal: Vec3 }; p0: { x: number; y: number }; x0: number; y0: number; t0: Map<string, Transformacao>; centro: Vec3; quadro: number } | null = null;
 
 /** Pointerdown no viewport durante Mover/Girar: começa a arrastar o componente tocado. */
 function interceptarArraste(e: PointerEvent): boolean {
-  if (comando?.tipo !== "mover" || !doc) return false;
+  if (!doc) return false;
   if (e.pointerType === "mouse" && e.button !== 0) return false;
+  // fora de comando, como nos CADs profissionais: mouse (botão esquerdo) ou caneta arrastam o
+  // componente flutuante tocado; o dedo continua girando a vista
+  const livre = !comando && e.pointerType !== "touch";
+  if (comando?.tipo !== "mover" && !livre) return false;
   const alvo = componenteSob(e.clientX, e.clientY, e.pointerType === "touch" ? 22 : 10);
   if (!alvo) return false;
   const c = compDe(alvo.comp)!;
+  if (livre && (c.fixo || c.padrao)) return false; // fixo: o arraste gira a vista (sem aviso)
   if (c.padrao) {
     avisar(`${rotuloComponente(doc, c)} é cópia de um padrão: mova a semente (${nomeComp(c.semente ?? null)}).`);
     return true;
@@ -1380,58 +1389,106 @@ function interceptarArraste(e: PointerEvent): boolean {
     avisar(`${rotuloComponente(doc, c)} está fixo: flutue-o para mover (menu do componente).`);
     return true;
   }
-  if (!selComps.includes(c.id)) selComps = [c.id];
+  // livre: a seleção só muda no soltar (clique) ou quando o arraste começa de fato
+  if (!livre && !selComps.includes(c.id)) selComps = [c.id];
   const eixos = viewport.eixosCamera();
   const origem = viewport.pontoSob(e.clientX, e.clientY) ?? c.t.pos;
   const ref = { origem, x: eixos.direita, y: eixos.cima, normal: eixos.dir };
   const p0 = viewport.telaParaPlano(e.clientX, e.clientY, ref);
   if (!p0) return false;
-  const outros = selComps.filter((id) => id !== c.id && !compDe(id)?.fixo);
+  const outros = selComps.includes(c.id) ? selComps.filter((id) => id !== c.id && !compDe(id)?.fixo) : [];
   arraste = {
-    comp: c.id, outros, ref, p0, x0: e.clientX, y0: e.clientY, quadro: 0,
+    comp: c.id, outros, ref, p0, x0: e.clientX, y0: e.clientY, quadro: 0, livre,
     t0: new Map([c.id, ...outros].map((id) => [id, compDe(id)!.t])),
     centro: (cena && centroDoComponente(cena, c.id)) ?? c.t.pos,
   };
-  viewport.canvas().setPointerCapture(e.pointerId);
+  // caneta parada no componente: toque longo abre o menu (o viewport não vê este toque)
+  if (livre && e.pointerType === "pen" && viewport.tempoToqueLongo > 0) {
+    const a = arraste, { clientX, clientY } = e;
+    a.longo = window.setTimeout(() => {
+      if (arraste !== a || a.moveu) return;
+      arraste = null;
+      viewport.aoMenuContexto?.(new MouseEvent("contextmenu", { clientX, clientY }));
+      navigator.vibrate?.(15);
+    }, viewport.tempoToqueLongo);
+  }
+  try {
+    viewport.canvas().setPointerCapture(e.pointerId);
+  } catch {
+    /* ponteiro já solto: o arraste segue pelos eventos do próprio canvas */
+  }
   destacar();
   renderizarArvore();
   return true;
 }
 
 function moverArraste(e: PointerEvent) {
-  if (!arraste || comando?.tipo !== "mover" || !doc) return;
+  if (!arraste || (comando?.tipo !== "mover" && !arraste.livre) || !doc) return;
   const a = arraste;
-  if (a.quadro) return; // um cálculo por quadro
+  if (!a.moveu) {
+    // só vira arraste depois de alguns px: abaixo disso é clique (seleciona no soltar)
+    if (Math.hypot(e.clientX - a.x0, e.clientY - a.y0) <= 6) return;
+    a.moveu = true;
+    clearTimeout(a.longo);
+    if (a.livre && !selComps.includes(a.comp)) {
+      selComps = [a.comp];
+      destacar();
+      renderizarArvore();
+    }
+  }
+  a.ultimo = { x: e.clientX, y: e.clientY };
+  if (a.quadro) return; // um cálculo por quadro (com a última posição do ponteiro)
   a.quadro = requestAnimationFrame(() => {
     a.quadro = 0;
-    if (arraste !== a || comando?.tipo !== "mover") return;
-    const ids = [a.comp, ...a.outros];
-    if (comando.girar) {
-      // horizontal gira em torno do "para cima" da tela, vertical em torno da "direita"
-      const qx = quatEixoAngulo(a.ref.y, (e.clientX - a.x0) * 0.6);
-      const qy = quatEixoAngulo(a.ref.x, (e.clientY - a.y0) * 0.6);
-      for (const id of ids) compDe(id)!.t = girarEmTorno(girarEmTorno(a.t0.get(id)!, qx, a.centro), qy, a.centro);
-    } else {
-      const p = viewport.telaParaPlano(e.clientX, e.clientY, a.ref);
-      if (!p) return;
-      const dx = p.x - a.p0.x, dy = p.y - a.p0.y;
-      const d: Vec3 = [a.ref.x[0] * dx + a.ref.y[0] * dy, a.ref.x[1] * dx + a.ref.y[1] * dy, a.ref.x[2] * dx + a.ref.y[2] * dy];
-      for (const id of ids) {
-        const t = a.t0.get(id)!;
-        compDe(id)!.t = { pos: [t.pos[0] + d[0], t.pos[1] + d[1], t.pos[2] + d[2]], rot: t.rot };
-      }
-    }
-    // com posicionamentos: o solver segura o que eles prendem e o componente segue o arraste no resto
-    const preso = doc!.posicionamentos.some((m) => !m.suprimido && (m.a?.comp === a.comp || m.b?.comp === a.comp));
-    if (preso && !a.outros.length) resolver({ arrastado: { comp: a.comp, alvo: compDe(a.comp)!.t }, semGraus: true });
-    montarCena();
+    if (arraste !== a || (comando?.tipo !== "mover" && !a.livre)) return;
+    aplicarArraste(a);
   });
 }
 
-function soltarArraste() {
+function aplicarArraste(a: NonNullable<typeof arraste>) {
+  if (!doc || !a.ultimo) return;
+  const e = { clientX: a.ultimo.x, clientY: a.ultimo.y };
+  const ids = [a.comp, ...a.outros];
+  if (comando?.tipo === "mover" && comando.girar) {
+    // horizontal gira em torno do "para cima" da tela, vertical em torno da "direita"
+    const qx = quatEixoAngulo(a.ref.y, (e.clientX - a.x0) * 0.6);
+    const qy = quatEixoAngulo(a.ref.x, (e.clientY - a.y0) * 0.6);
+    for (const id of ids) compDe(id)!.t = girarEmTorno(girarEmTorno(a.t0.get(id)!, qx, a.centro), qy, a.centro);
+  } else {
+    const p = viewport.telaParaPlano(e.clientX, e.clientY, a.ref);
+    if (!p) return;
+    const dx = p.x - a.p0.x, dy = p.y - a.p0.y;
+    const d: Vec3 = [a.ref.x[0] * dx + a.ref.y[0] * dy, a.ref.x[1] * dx + a.ref.y[1] * dy, a.ref.x[2] * dx + a.ref.y[2] * dy];
+    for (const id of ids) {
+      const t = a.t0.get(id)!;
+      compDe(id)!.t = { pos: [t.pos[0] + d[0], t.pos[1] + d[1], t.pos[2] + d[2]], rot: t.rot };
+    }
+  }
+  // com posicionamentos: o solver segura o que eles prendem e o componente segue o arraste no resto
+  const preso = doc.posicionamentos.some((m) => !m.suprimido && (m.a?.comp === a.comp || m.b?.comp === a.comp));
+  if (preso && !a.outros.length) resolver({ arrastado: { comp: a.comp, alvo: compDe(a.comp)!.t }, semGraus: true });
+  montarCena();
+}
+
+let ultimoClique: { x: number; y: number; t: number } | null = null;
+
+function soltarArraste(e: PointerEvent) {
   if (!arraste) return;
-  cancelAnimationFrame(arraste.quadro);
+  const a = arraste;
+  cancelAnimationFrame(a.quadro);
+  clearTimeout(a.longo);
   arraste = null;
+  if (a.quadro && a.moveu) aplicarArraste(a); // última posição ainda não desenhada
+  if (!a.moveu) {
+    // não arrastou: foi clique/toque no componente (o viewport não viu o pointerdown)
+    if (e.type !== "pointerup") return;
+    const agora = performance.now();
+    const duplo = ultimoClique && agora - ultimoClique.t < 380 && Math.hypot(e.clientX - ultimoClique.x, e.clientY - ultimoClique.y) < 8;
+    ultimoClique = duplo ? null : { x: e.clientX, y: e.clientY, t: agora };
+    if (duplo) viewport.aoToqueDuplo?.(e);
+    else viewport.aoToqueCurto?.(e);
+    return;
+  }
   resolver();
   montarCena();
   registrarPasso();

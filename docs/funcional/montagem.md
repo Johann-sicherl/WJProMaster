@@ -129,6 +129,10 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
 ### 2.3 Mover componente (Move Component) — ✅
 - **Arrastar** no viewport (dedo/caneta/mouse): componente flutuante se move no plano da tela,
   respeitando os posicionamentos (os graus de liberdade restantes) M-B.
+- **Fora do comando** (como nos CADs profissionais) ✅ 04/11/2026: **mouse (botão esquerdo) ou caneta**
+  arrastando um componente flutuante o movem; clique sem arrastar seleciona; caneta parada abre o
+  menu do componente; o **dedo** continua girando a vista (no tablet, mover com o dedo = comando Mover).
+  Vale também para componentes de **malha (STL)**, escolhidos pelo triângulo tocado.
 - **Caixa "Mover"**:
   - Arraste livre ✅ M-A;
   - **Ao longo de entidade** (aresta/eixo) M-B;

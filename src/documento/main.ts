@@ -85,7 +85,6 @@ function aplicarPagina() {
   let [w, h] = TAMANHOS[p.tamanho];
   if (p.orientacao === "paisagem") [w, h] = [h, w];
   papel.style.width = `${w}mm`;
-  papel.style.minHeight = `${h}mm`;
   papel.style.padding = `${p.margens.sup}mm ${p.margens.dir}mm ${p.margens.inf}mm ${p.margens.esq}mm`;
   papel.style.zoom = String(zoom);
   // impressão: tamanho, margens, cabeçalho e rodapé (caixas de margem do @page)
@@ -102,23 +101,110 @@ function aplicarPagina() {
   marcarPaginas();
 }
 
-/** Linhas tracejadas onde cada página termina (aproximação; a impressão pagina de verdade). */
-function marcarPaginas() {
-  papel.querySelectorAll(".dc-quebra-visual").forEach((x) => x.remove());
+/** Espaço cinza entre uma folha e a seguinte (px de tela a 100%). */
+const VAO_FOLHAS = 16;
+
+/** Altura da folha e área útil (px a 100%). */
+function medidasFolha() {
   const p = doc.pagina;
-  let [, h] = TAMANHOS[p.tamanho];
-  if (p.orientacao === "paisagem") h = TAMANHOS[p.tamanho][0];
-  const util = (h - p.margens.sup - p.margens.inf) * MM;
-  const alto = texto.scrollHeight;
-  paginas = Math.max(1, Math.ceil(alto / util));
-  for (let k = 1; k < paginas; k++) {
-    const m = el("div", { class: "dc-quebra-visual" }, `<span>Página ${k + 1}</span>`);
-    m.style.top = `${p.margens.sup * MM + k * util}px`;
-    m.style.height = "0";
-    m.style.background = "none";
-    papel.append(m);
+  const h = (p.orientacao === "paisagem" ? TAMANHOS[p.tamanho][0] : TAMANHOS[p.tamanho][1]) * MM;
+  return { h, passo: h + VAO_FOLHAS, util: h - (p.margens.sup + p.margens.inf) * MM, sup: p.margens.sup * MM, inf: p.margens.inf * MM };
+}
+
+/** Blocos que podem pular para a folha seguinte: filhos do texto, itens de lista e linhas de citação. */
+function blocosDoTexto(): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  for (const b of texto.children) {
+    if (!(b instanceof HTMLElement)) continue;
+    if (b.tagName === "UL" || b.tagName === "OL") out.push(...([...b.children] as HTMLElement[]));
+    else out.push(b);
   }
+  return out;
+}
+
+/**
+ * Paginação como num processador de texto: o texto corre numa coluna só, e cada bloco que passaria
+ * do fim da área útil de uma folha desce (margem acima dele, `data-salto`) para o começo da
+ * seguinte. As folhas brancas, com o vão cinza entre elas, são desenhadas atrás do texto.
+ */
+function marcarPaginas() {
+  const m = medidasFolha();
+  const blocos = blocosDoTexto();
+  // tira os saltos antigos e mede tudo de uma vez (uma leitura de layout)
+  for (const b of texto.querySelectorAll<HTMLElement>("[data-salto]")) {
+    b.style.marginTop = "";
+    b.removeAttribute("data-salto");
+  }
+  const rt = texto.getBoundingClientRect();
+  const esc = rt.height && texto.offsetHeight ? rt.height / texto.offsetHeight : 1;
+  const caixas = blocos.map((b) => {
+    const r = b.getBoundingClientRect();
+    return { topo: (r.top - rt.top) / esc, base: (r.bottom - rt.top) / esc };
+  });
+  const saltos: [HTMLElement, number][] = [];
+  let acc = 0; // quanto os blocos seguintes já desceram
+  let forcar = false; // depois de uma quebra de página manual
+  let fim = 0;
+  for (let i = 0; i < blocos.length; i++) {
+    const b = blocos[i];
+    const topo = caixas[i].topo + acc, base = caixas[i].base + acc;
+    const folha = Math.max(0, Math.floor((topo + 1) / m.passo));
+    const limite = folha * m.passo + m.util;
+    const inicioFolha = folha * m.passo;
+    const alto = base - topo;
+    let desce = 0;
+    if (forcar && topo > inicioFolha + 0.5) desce = (folha + 1) * m.passo - topo;
+    else if (topo >= limite - 0.5) desce = (folha + 1) * m.passo - topo; // caiu no vão
+    else if (base > limite + 0.5 && topo > inicioFolha + 0.5 && alto <= m.util) desce = (folha + 1) * m.passo - topo; // não cabe: vai inteiro
+    forcar = b.tagName === "HR" && b.classList.contains("dc-pagina");
+    if (desce > 0.5 && i > 0) {
+      const anterior = caixas[i - 1].base;
+      const vao = caixas[i].topo - anterior; // margem efetiva de hoje (margens se sobrepõem)
+      saltos.push([b, vao + desce]);
+      acc += desce;
+    }
+    fim = Math.max(fim, base + (desce > 0.5 && i > 0 ? desce : 0));
+  }
+  for (const [b, mt] of saltos) {
+    b.dataset.salto = "1";
+    b.style.marginTop = `${mt.toFixed(1)}px`;
+  }
+  paginas = Math.max(1, Math.floor(Math.max(0, fim - 1) / m.passo) + 1);
+  desenharFolhas(m);
   atualizarStatus();
+}
+
+function desenharFolhas(m: ReturnType<typeof medidasFolha>) {
+  const p = doc.pagina;
+  let camada = papel.querySelector<HTMLDivElement>(".dc-folhas");
+  if (!camada) {
+    camada = el("div", { class: "dc-folhas", "aria-hidden": "true" }) as HTMLDivElement;
+    papel.prepend(camada);
+  }
+  papel.style.height = `${paginas * m.passo - VAO_FOLHAS}px`;
+  const html: string[] = [];
+  for (let k = 0; k < paginas; k++) {
+    const cab = p.cabecalho ? `<div class="dc-folha-cab" style="top:${(m.sup / 2).toFixed(1)}px">${escapar(p.cabecalho)}</div>` : "";
+    const rod = p.rodape ? `<div class="dc-folha-rod esq">${escapar(p.rodape)}</div>` : "";
+    const num = p.numerar ? `<div class="dc-folha-rod dir">Página ${k + 1} de ${paginas}</div>` : "";
+    html.push(`<div class="dc-folha" style="top:${k * m.passo}px;height:${m.h.toFixed(1)}px;--inf:${m.inf.toFixed(1)}px">${cab}${rod}${num}</div>`);
+  }
+  const novo = html.join("");
+  if (camada.dataset.html !== novo) {
+    camada.innerHTML = novo;
+    camada.dataset.html = novo;
+  }
+}
+
+/** HTML do texto sem os saltos de paginação (o que se salva e exporta). */
+function htmlDoTexto() {
+  const c = texto.cloneNode(true) as HTMLElement;
+  for (const b of c.querySelectorAll<HTMLElement>("[data-salto]")) {
+    b.style.marginTop = "";
+    b.removeAttribute("data-salto");
+    if (!b.getAttribute("style")) b.removeAttribute("style");
+  }
+  return c.innerHTML;
 }
 
 // ---------- seleção e comandos ----------
@@ -347,13 +433,12 @@ function titulos(): HTMLElement[] {
   return hs;
 }
 
-/** Página aproximada do elemento (pela altura útil da página). */
+/** Folha em que o elemento está. */
 function paginaDe(e: HTMLElement) {
-  const p = doc.pagina;
-  let [, h] = TAMANHOS[p.tamanho];
-  if (p.orientacao === "paisagem") h = TAMANHOS[p.tamanho][0];
-  const util = (h - p.margens.sup - p.margens.inf) * MM;
-  return Math.floor((e.offsetTop - texto.offsetTop) / util) + 1;
+  const m = medidasFolha();
+  const rt = texto.getBoundingClientRect();
+  const esc = rt.height && texto.offsetHeight ? rt.height / texto.offsetHeight : 1;
+  return Math.floor((e.getBoundingClientRect().top - rt.top) / esc / m.passo + 1e-6) + 1;
 }
 
 function htmlSumario() {
@@ -441,10 +526,13 @@ function paginaDoCursor() {
 }
 
 let temporizador = 0;
+let quadroPaginar = 0;
 function mudou() {
   clearTimeout(temporizador);
+  cancelAnimationFrame(quadroPaginar);
+  quadroPaginar = requestAnimationFrame(marcarPaginas); // texto que passa da folha desce já
   temporizador = window.setTimeout(() => {
-    doc.html = texto.innerHTML;
+    doc.html = htmlDoTexto();
     autosave.guardar(CHAVE, doc);
     marcarPaginas();
     renderizarNavegacao();
@@ -491,7 +579,7 @@ async function abrir() {
 }
 
 function salvar() {
-  doc.html = texto.innerHTML;
+  doc.html = htmlDoTexto();
   salvarArquivo(JSON.stringify(doc), doc.nome, "wjdoc");
   casca.avisar("Documento salvo (.wjdoc).");
 }
@@ -500,7 +588,7 @@ function exportarHTML() {
   const p = doc.pagina;
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${escapar(doc.nome)}</title>
 <style>body{font-family:sans-serif;font-size:11pt;line-height:1.5;max-width:${TAMANHOS[p.tamanho][0] - p.margens.esq - p.margens.dir}mm;margin:2em auto}table{border-collapse:collapse}td,th{border:1px solid #999;padding:4px 6px}img{max-width:100%}blockquote{border-left:3px solid #bbb;margin-left:0;padding-left:12px;color:#555}</style>
-</head><body>${texto.innerHTML}</body></html>`;
+</head><body>${htmlDoTexto()}</body></html>`;
   baixar(html, doc.nome, "html", "text/html");
 }
 
@@ -836,7 +924,16 @@ texto.addEventListener("keydown", (e) => {
   }
 });
 rolagem.addEventListener("scroll", () => barraImagem(imgSel && document.querySelector(".dc-barra-img") ? imgSel : null));
-new ResizeObserver(() => marcarPaginas()).observe(texto);
+// largura/zoom mudou (o texto quebra diferente): pagina de novo; a altura muda com os próprios saltos
+let largTexto = 0;
+new ResizeObserver(() => {
+  if (texto.offsetWidth === largTexto) return;
+  largTexto = texto.offsetWidth;
+  marcarPaginas();
+}).observe(texto);
+// fonte ou imagem que chega depois muda a altura das linhas: pagina de novo
+void document.fonts?.ready.then(() => marcarPaginas());
+texto.addEventListener("load", () => mudou(), true);
 
 carregar(doc);
 atualizarStatus();

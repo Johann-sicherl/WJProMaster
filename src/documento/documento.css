@@ -14,16 +14,19 @@
   --mm: 3.7795px;
   position: relative;
   margin: 0 auto;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(30, 45, 60, 0.18);
   transform-origin: top center;
 }
-.dc-quebra-visual {
-  position: absolute; left: -16px; right: -16px; height: 14px; pointer-events: none;
-  background: #e4e8ec; border-top: 1px dashed #b9c2cc; border-bottom: 1px dashed #b9c2cc;
-}
-.dc-quebra-visual span { position: absolute; right: 22px; top: -18px; font-size: 11px; color: var(--texto-2); }
+/* folhas de papel (uma por página) atrás do texto, com o vão cinza entre elas */
+.dc-folhas { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.dc-folha { position: absolute; left: 0; right: 0; background: #fff; box-shadow: 0 1px 4px rgba(30, 45, 60, 0.18); }
+.dc-folha-cab, .dc-folha-rod { position: absolute; font: 9pt "Noto Sans", system-ui, sans-serif; color: #5e6b78; white-space: nowrap; transform: translateY(-50%); }
+.dc-folha-cab { left: 0; right: 0; text-align: center; }
+.dc-folha-rod { bottom: calc(var(--inf) / 2); transform: translateY(50%); }
+.dc-folha-rod.esq { left: 12mm; }
+.dc-folha-rod.dir { right: 12mm; }
 .dc-texto {
+  position: relative;
+  z-index: 1;
   outline: none;
   min-height: 100%;
   font-family: "Noto Sans", system-ui, sans-serif;
@@ -62,9 +65,10 @@
 .dc-barra-img button { min-height: 32px; padding: 0 8px; font-size: 13px; }
 @media print {
   .dc-principal { display: block; }
-  .dc-navegacao, .dc-quebra-visual { display: none !important; }
+  .dc-navegacao, .dc-folhas { display: none !important; }
+  .dc-texto [data-salto] { margin-top: 0 !important; }
   .dc-rolagem { padding: 0; background: #fff; overflow: visible; }
-  .dc-papel { box-shadow: none; width: auto !important; min-height: 0 !important; padding: 0 !important; transform: none !important; }
+  .dc-papel { box-shadow: none; width: auto !important; height: auto !important; padding: 0 !important; transform: none !important; }
   .dc-texto hr.dc-pagina { break-after: page; border: 0; margin: 0; }
   .dc-texto hr.dc-pagina::after { display: none; }
   .dc-texto h1, .dc-texto h2, .dc-texto h3 { break-after: avoid; }
