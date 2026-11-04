@@ -151,6 +151,14 @@ export class Viewport {
     polygonOffsetUnits: 1,
   });
   private materialArestas = new THREE.LineBasicMaterial({ color: 0x1f2a35 });
+  /** corpo oculto (pasta Corpos sólidos): grupo de triângulos/arestas que não é desenhado */
+  private materialOculto = new THREE.MeshBasicMaterial({ visible: false });
+  private materialArestaOculta = new THREE.LineBasicMaterial({ visible: false });
+  /** corpo transparente */
+  private materialTransparente = new THREE.MeshStandardMaterial({ color: 0xd0d7df, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide });
+  /** triângulos (0 normal, 1 oculto, 2 transparente) e arestas (1 = oculta) de cada corpo */
+  private modoTri: Uint8Array | null = null;
+  private arestaOculta: Uint8Array | null = null;
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, stencil: true });
@@ -538,7 +546,7 @@ export class Viewport {
 
   private picarFaceEm(solido: THREE.Mesh, faces: Uint32Array, clientX: number, clientY: number, oclusor: THREE.Mesh | null): FacePlana | null {
     const ray = this.raio(clientX, clientY);
-    const hit = ray.intersectObject(solido)[0];
+    const hit = this.primeiroVisivel(ray.intersectObject(solido));
     if (!hit || hit.faceIndex == null) return null;
     const frente = oclusor ? ray.intersectObject(oclusor)[0] : undefined;
     if (frente && frente.distance < hit.distance - 1e-6) return null;
@@ -643,6 +651,8 @@ export class Viewport {
       this.grupoPeca.add(arestas);
     }
     this.faces = m?.faces ?? new Uint32Array();
+    this.modoTri = null;
+    this.arestaOculta = null;
     this.aplicarEstilo();
     this.aplicarAnalise();
     this.aplicarSecao();
@@ -713,6 +723,67 @@ export class Viewport {
 
   // ---------- seleção de faces, arestas e vértices ----------
 
+  /**
+   * Exibição de cada corpo (pasta Corpos sólidos): trechos de triângulos ocultos (1) ou
+   * transparentes (2) e as arestas ocultas (índices de grupo). Corpo oculto também não é tocado.
+   */
+  exibirCorpos(trechos: { ini: number; qtd: number; modo: 1 | 2 }[], arestas: number[]) {
+    const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
+    const linhas = this.grupoPeca.getObjectByName("arestas") as THREE.LineSegments | undefined;
+    if (!solido) return;
+    const geo = solido.geometry;
+    const total = geo.index ? geo.index.count : 0;
+    geo.clearGroups();
+    if (!trechos.length) {
+      this.modoTri = null;
+      solido.material = this.materialSolido;
+    } else {
+      const modo = new Uint8Array(total / 3);
+      for (const t of trechos) modo.fill(t.modo, t.ini / 3, (t.ini + t.qtd) / 3);
+      this.modoTri = modo;
+      // grupos contíguos de mesmo modo
+      let ini = 0;
+      for (let k = 1; k <= modo.length; k++) {
+        if (k === modo.length || modo[k] !== modo[ini]) {
+          geo.addGroup(ini * 3, (k - ini) * 3, modo[ini]);
+          ini = k;
+        }
+      }
+      this.materialTransparente.clippingPlanes = this.materialSolido.clippingPlanes;
+      solido.material = [this.materialSolido, this.materialOculto, this.materialTransparente];
+    }
+    if (linhas) {
+      const g = linhas.geometry;
+      g.clearGroups();
+      this.arestaOculta = arestas.length ? new Uint8Array(this.gruposArestas.length / 2) : null;
+      if (this.arestaOculta) {
+        for (const i of arestas) this.arestaOculta[i] = 1;
+        // grupos de vértices de linha: oculto (1) / visível (0), na ordem dos grupos das arestas
+        const n = (g.getAttribute("position") as THREE.BufferAttribute).count;
+        const marca = new Uint8Array(n);
+        for (const i of arestas) marca.fill(1, this.gruposArestas[i * 2], this.gruposArestas[i * 2] + this.gruposArestas[i * 2 + 1]);
+        let ini = 0;
+        for (let k = 1; k <= n; k++) if (k === n || marca[k] !== marca[ini]) { g.addGroup(ini, k - ini, marca[ini]); ini = k; }
+        linhas.material = [this.materialArestas, this.materialArestaOculta];
+      } else linhas.material = this.materialArestas;
+    }
+    this.precisaRender = true;
+  }
+
+  /** Primeiro toque do raio num triângulo que não está oculto. */
+  private primeiroVisivel(hits: THREE.Intersection[]): THREE.Intersection | undefined {
+    if (!this.modoTri) return hits[0];
+    return hits.find((h) => h.faceIndex == null || this.modoTri![h.faceIndex] !== 1);
+  }
+
+  /** Triângulo da peça sob o toque (índice na malha exibida), sem os corpos ocultos. */
+  picarTriangulo(clientX: number, clientY: number): number | null {
+    const s = this.solido();
+    if (!s) return null;
+    const h = this.primeiroVisivel(this.raio(clientX, clientY).intersectObject(s));
+    return h?.faceIndex ?? null;
+  }
+
   /** Triângulos exibidos da peça (sólidos e corpos de malha), para cortar/projetar no esboço. */
   malhaDaPeca(): { pos: ArrayLike<number>; idx: ArrayLike<number> | null } | null {
     const s = this.solido();
@@ -766,7 +837,7 @@ export class Viewport {
     const mx = clientX - r.left, my = clientY - r.top;
     const ray = this.raio(clientX, clientY);
     const solido = fonte.solido;
-    const hit = solido ? ray.intersectObject(solido)[0] : undefined;
+    const hit = solido ? (oclusor ? ray.intersectObject(solido)[0] : this.primeiroVisivel(ray.intersectObject(solido))) : undefined;
     // o que fica na frente (a peça editada, ao procurar no contexto) também esconde
     const frente = oclusor ? ray.intersectObject(oclusor)[0] : undefined;
     const prox = Math.min(hit?.distance ?? Infinity, frente?.distance ?? Infinity);
@@ -789,6 +860,7 @@ export class Viewport {
       let melhor = -1, dm = tolPx;
       const a = new THREE.Vector3(), b = new THREE.Vector3();
       for (let g = 0; g < fonte.grupos.length / 2; g++) {
+        if (!oclusor && this.arestaOculta?.[g]) continue;
         const ini = fonte.grupos[g * 2], qtd = fonte.grupos[g * 2 + 1];
         for (let k = ini; k + 1 < ini + qtd; k += 2) {
           a.fromArray(fonte.pos, k * 3);
@@ -1264,9 +1336,17 @@ export class Viewport {
     const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
     this.infoAnalise = "";
     if (!solido) return;
-    if (solido.material !== this.materialSolido) (solido.material as THREE.Material).dispose();
-    solido.material = this.materialSolido;
+    const mat = solido.material;
+    if (!Array.isArray(mat) && mat !== this.materialSolido) mat.dispose();
     const a = this.analise;
+    // corpos ocultos/transparentes ficam como estão quando não há análise
+    if (!a && Array.isArray(mat)) {
+      this.precisaRender = true;
+      return;
+    }
+    solido.geometry.clearGroups();
+    this.modoTri = null;
+    solido.material = this.materialSolido;
     if (!a) {
       this.precisaRender = true;
       return;

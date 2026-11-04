@@ -68,6 +68,11 @@ export type Referencia =
   | { tipo: "recurso"; id: string }
   /** Recurso de ponto de referência (vale onde um vértice é aceito). */
   | { tipo: "ponto"; id: string }
+  /**
+   * Corpo sólido da peça (multicorpo): reencontrado pelo corpo de centro e volume mais parecidos.
+   * `malha` = corpo de malha (STL) do recurso importado com esse id (`copia` = cópia de Mover/Copiar).
+   */
+  | { tipo: "corpo"; centro: Vec3; volume: number; malha?: string; copia?: number }
   /** Recurso de curva 3D (hélice, composta, por pontos, projetada). */
   | { tipo: "curva"; id: string };
 
@@ -212,6 +217,8 @@ export interface RecursoFino {
 
 export interface FeatureExtrusao extends FeatureBase {
   tipo: "extrusao";
+  /** false: o ressalto vira um corpo separado (multicorpo); padrão true = funde na peça */
+  mesclar?: boolean;
   operacao: "adicionar" | "cortar";
   /** Esboço usado como perfil. Sem esboço, usa o perfil rápido abaixo. */
   esboco?: string;
@@ -237,6 +244,8 @@ export interface FeatureExtrusao extends FeatureBase {
 
 export interface FeatureRevolucao extends FeatureBase {
   tipo: "revolucao";
+  /** false: o ressalto vira um corpo separado (multicorpo); padrão true = funde na peça */
+  mesclar?: boolean;
   operacao: "adicionar" | "cortar";
   /** Esboço usado como perfil. */
   esboco?: string;
@@ -325,6 +334,8 @@ export interface FeatureInclinacao extends FeatureBase {
  */
 export interface FeatureVarredura extends FeatureBase {
   tipo: "varredura";
+  /** false: o ressalto vira um corpo separado (multicorpo); padrão true = funde na peça */
+  mesclar?: boolean;
   operacao: "adicionar" | "cortar";
   tipoPerfil: "esboco" | "circular";
   /** Perfil de esboço: esboço fechado (ou aberto com recurso fino). */
@@ -355,6 +366,8 @@ export interface RestricaoLoft {
 /** Loft (ressalto ou corte): transição entre perfis. Campos: docs/funcional/features.md §5. */
 export interface FeatureLoft extends FeatureBase {
   tipo: "loft";
+  /** false: o ressalto vira um corpo separado (multicorpo); padrão true = funde na peça */
+  mesclar?: boolean;
   operacao: "adicionar" | "cortar";
   /** Esboços dos perfis, na ordem do loft. */
   perfis: Referencia[];
@@ -496,6 +509,8 @@ export interface FeatureEscala extends FeatureBase {
  */
 export interface FeatureMoverCorpo extends FeatureBase {
   tipo: "moverCorpo";
+  /** corpos a mover (vazio = todos) */
+  corpos?: Referencia[];
   dx: number;
   dy: number;
   dz: number;
@@ -505,6 +520,28 @@ export interface FeatureMoverCorpo extends FeatureBase {
   centro: "origem" | "centroide";
   copiar: boolean;
   copias: number;
+}
+
+/** Excluir/Manter corpo (features.md §13): tira os corpos escolhidos, ou mantém só eles. */
+export interface FeatureExcluirCorpo extends FeatureBase {
+  tipo: "excluirCorpo";
+  corpos: Referencia[];
+  manter: boolean;
+}
+
+/** Combinar corpos (features.md §13): adicionar, subtrair do corpo principal ou ficar com o comum. */
+export interface FeatureCombinar extends FeatureBase {
+  tipo: "combinar";
+  operacao: "adicionar" | "subtrair" | "comum";
+  /** subtrair: corpo de onde os outros saem */
+  principal?: Referencia;
+  corpos: Referencia[];
+}
+
+/** Dividir (features.md §13): corta os corpos por planos/faces planas; cada lado vira um corpo. */
+export interface FeatureDividir extends FeatureBase {
+  tipo: "dividir";
+  ferramentas: Referencia[];
 }
 
 /** Domo sobre faces planas (features.md §13). */
@@ -723,7 +760,8 @@ export type Feature =
   | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco | FeatureJunta | FeatureMeiaEsquadria
   | FeatureFecharCanto | FeatureAlivioCanto | FeatureQuebrarCanto | FeatureDesdobrar | FeatureDobrar | FeatureConverterChapa
   | FeatureImportado | FeatureMoverFace | FeatureExcluirFace | FeatureSubstituirFace
-  | FeaturePontoRef | FeatureSistemaCoord | FeatureEscala | FeatureDomo | FeatureMoverCorpo;
+  | FeaturePontoRef | FeatureSistemaCoord | FeatureEscala | FeatureDomo | FeatureMoverCorpo
+  | FeatureExcluirCorpo | FeatureCombinar | FeatureDividir;
 
 /**
  * Corpo importado de um arquivo neutro (STEP ou STL, de qualquer CAD): o sólido entra na árvore
@@ -857,7 +895,7 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco" | "importado
   switch (tipo) {
     case "extrusao":
       return {
-        ...base, tipo, nome: `Extrusão${indice}`, operacao: "adicionar",
+        ...base, tipo, nome: `Extrusão${indice}`, mesclar: true, operacao: "adicionar",
         plano: "XZ", deslocamento: 0, centroU: 0, centroV: 0,
         perfil: { tipo: "retangulo", largura: 40, altura: 40, raioCanto: 0 },
         profundidade: 10,
@@ -869,7 +907,7 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco" | "importado
       };
     case "revolucao":
       return {
-        ...base, tipo, nome: `Revolução${indice}`, operacao: "adicionar",
+        ...base, tipo, nome: `Revolução${indice}`, mesclar: true, operacao: "adicionar",
         plano: "XY", raioInterno: 10, largura: 10, altura: 20, angulo: 360,
         direcao2: { ativa: false, angulo: 90 }, fino: FINO_PADRAO(),
       };
@@ -893,20 +931,26 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco" | "importado
       return { ...base, tipo, nome: `Escala${indice}`, centro: "centroide", fator: 1 };
     case "domo":
       return { ...base, tipo, nome: `Domo${indice}`, faces: [], altura: 5, inverter: false };
+    case "excluirCorpo":
+      return { ...base, tipo, nome: `ExcluirCorpo${indice}`, corpos: [], manter: false };
+    case "combinar":
+      return { ...base, tipo, nome: `Combinar${indice}`, operacao: "adicionar", corpos: [] };
+    case "dividir":
+      return { ...base, tipo, nome: `Dividir${indice}`, ferramentas: [] };
     case "moverCorpo":
       return { ...base, tipo, nome: `MoverCorpo${indice}`, dx: 0, dy: 0, dz: 0, rx: 0, ry: 0, rz: 0, centro: "origem", copiar: false, copias: 1 };
     case "substituirFace":
       return { ...base, tipo, nome: `SubstituirFace${indice}`, faces: [] };
     case "varredura":
       return {
-        ...base, tipo, nome: `Varredura${indice}`, operacao: "adicionar", tipoPerfil: "esboco",
+        ...base, tipo, nome: `Varredura${indice}`, mesclar: true, operacao: "adicionar", tipoPerfil: "esboco",
         diametro: 10, trajetoria: [], guias: [], mesclarFacesSuaves: true,
         tangenciaInicio: "nenhuma", tangenciaFim: "nenhuma", fino: FINO_PADRAO(),
       };
     case "loft": {
       const rest = (): RestricaoLoft => ({ tipo: "nenhuma", comprimento: 1, inverter: false });
       return {
-        ...base, tipo, nome: `Loft${indice}`, operacao: "adicionar", perfis: [],
+        ...base, tipo, nome: `Loft${indice}`, mesclar: true, operacao: "adicionar", perfis: [],
         restricaoInicio: rest(), restricaoFim: rest(), guias: [], influenciaGuias: "proximaGuia",
         linhaCentro: [], secoesLinhaCentro: 20, mesclarFacesTangentes: true, fecharLoft: false,
         mostrarPrevia: true, microtolerancia: false, fino: FINO_PADRAO(),
@@ -1035,6 +1079,9 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   escala: "Escala",
   domo: "Domo",
   moverCorpo: "Mover/Copiar corpo",
+  excluirCorpo: "Excluir/Manter corpo",
+  combinar: "Combinar",
+  dividir: "Dividir",
 };
 
 /**
@@ -1069,6 +1116,7 @@ export function validarDocumento(dados: unknown): Documento {
   if ((d.versao ?? 1) < 3) migrarParaYParaCima(d);
   for (const f of d.features) {
     if (f.tipo === "flangeAresta") f.folga ??= 0.25;
+    if (f.tipo === "extrusao" || f.tipo === "revolucao" || f.tipo === "varredura" || f.tipo === "loft") f.mesclar ??= true;
     if (f.tipo === "extrusao") {
       // versão 1: profundidade negativa = sentido oposto
       if (f.profundidade < 0) {

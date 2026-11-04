@@ -11,7 +11,7 @@ import { ABAS, type Comando, type IdAba } from "./comandos";
 import { ICONES, type NomeIcone } from "./icones";
 import { iconeFeature } from "./ui/iconeRecurso";
 import { ClienteKernel } from "./kernel/cliente";
-import type { InfoReferencia, ResultadoRegeneracao } from "./kernel/regenerar";
+import type { InfoCorpo, InfoReferencia, ResultadoRegeneracao } from "./kernel/regenerar";
 import type { PropriedadesMassa } from "./kernel/avaliar";
 import {
   documentoExemplo,
@@ -180,6 +180,14 @@ let tempos: { id: string; ms: number }[] = [];
 let referenciasKernel: InfoReferencia[] = [];
 /** Faces da peça final de cada recurso (destaque ao selecionar na árvore). */
 let facesPorRecurso: Record<string, number[]> = {};
+// ---------- multicorpo (pasta Corpos sólidos) ----------
+let corpos: InfoCorpo[] = [];
+/** exibição de cada corpo (chave estável entre regenerações) */
+const corposOcultos = new Set<string>();
+const corposTransparentes = new Set<string>();
+let pastaCorposAberta = false;
+/** corpo selecionado na pasta (índice em `corpos`) */
+let corpoSel: number | null = null;
 const historico: string[] = [];
 const refazer: string[] = [];
 let primeiraRegeneracao = true;
@@ -299,6 +307,9 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   estadoKernel = "pronto";
   viewport.mostrarMalha(r.malha, r.topologia);
   ultimaMalha = r.malha;
+  corpos = r.corpos ?? [];
+  if (corpoSel !== null && corpoSel >= corpos.length) corpoSel = null;
+  aplicarExibicaoCorpos();
   if (contexto) desenharContexto(); // outras instâncias desta peça na montagem acompanham
   if (enquadrarContexto && contexto && r.malha) {
     enquadrarContexto = false;
@@ -554,7 +565,7 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco" | "impo
   "mover-face": "moverFace", "excluir-face": "excluirFace", "substituir-face": "substituirFace",
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
   plano: "planoRef", eixo: "eixoRef", "ponto-ref": "pontoRef", "sistema-coord": "sistemaCoord",
-  "mover-corpo": "moverCorpo", escala: "escala", domo: "domo", varredura: "varredura", "corte-varredura": "varredura",
+  "mover-corpo": "moverCorpo", escala: "escala", domo: "domo", combinar: "combinar", dividir: "dividir", "excluir-corpo": "excluirCorpo", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
   "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco", junta: "junta", "meia-esquadria": "meiaEsquadria",
   "fechar-canto": "fecharCanto", "alivio-canto": "alivioCanto", "quebrar-canto": "quebrarCanto",
@@ -671,6 +682,15 @@ function criarRecurso(id: string) {
     case "excluirFace":
     case "domo":
       f.faces = faces;
+      break;
+    case "dividir":
+      f.ferramentas = [...planosArvore, ...facesPlanas];
+      break;
+    case "combinar":
+    case "excluirCorpo":
+    case "moverCorpo":
+      if (corpoSel !== null && corpos[corpoSel]) f.corpos = [refDoCorpo(corpoSel)];
+      if (f.tipo === "combinar" && f.corpos.length) f.principal = f.corpos[0];
       break;
     case "pontoRef": {
       // pré-seleção: aresta circular = centro do arco; face = centro; vértice + plano = projeção;
@@ -1167,6 +1187,10 @@ function rotuloRefBase(r: Referencia, i: number): string {
     case "aresta": return `Aresta<${i + 1}>`;
     case "vertice": return `Vértice<${i + 1}>`;
     case "ponto": return doc.features.find((f) => f.id === r.id)?.nome ?? "Ponto?";
+    case "corpo": {
+      const i = indiceDoCorpo(r);
+      return i >= 0 ? nomeCorpo(i) : `Corpo<${i + 1}>`;
+    }
     case "plano": return ["XY", "XZ", "YZ"].includes(r.id) ? `Plano ${NOME_PLANO[r.id as Plano]}` : doc.features.find((f) => f.id === r.id)?.nome ?? "Plano?";
     case "eixo": return ["X", "Y", "Z"].includes(r.id) ? `Eixo ${r.id}` : doc.features.find((f) => f.id === r.id)?.nome ?? "Eixo?";
     case "esboco": return doc.features.find((f) => f.id === r.id)?.nome ?? "Esboço?";
@@ -1274,6 +1298,233 @@ function mostrarReferenciasExtras(destaque?: string) {
   );
 }
 
+// ---------- multicorpo: pasta Corpos sólidos, exibição e menu do corpo ----------
+
+/** Nome do corpo na árvore: o recurso mais recente que mexeu nele (como nos CADs profissionais). */
+function nomeCorpo(i: number): string {
+  const c = corpos[i];
+  const f = c?.recurso ? doc.features.find((x) => x.id === c.recurso) : undefined;
+  const base = f?.nome ?? `Corpo${i + 1}`;
+  const iguais = corpos.filter((x) => x.recurso === c?.recurso);
+  return iguais.length > 1 ? `${base}[${iguais.indexOf(c) + 1}]` : base;
+}
+
+/** Chave estável do corpo entre regenerações (exibição oculta/transparente). */
+function chaveCorpo(i: number): string {
+  const c = corpos[i];
+  if (c.malha) return `m:${c.malha.id}:${c.malha.copia}`;
+  return `s:${c.recurso ?? ""}:${corpos.filter((x, k) => k < i && !x.malha && x.recurso === c.recurso).length}`;
+}
+
+function refDoCorpo(i: number): Referencia {
+  const c = corpos[i];
+  return c.malha
+    ? { tipo: "corpo", centro: c.centro, volume: c.volume, malha: c.malha.id, copia: c.malha.copia }
+    : { tipo: "corpo", centro: c.centro, volume: c.volume };
+}
+
+/** Corpo (índice em `corpos`) mais parecido com a referência. */
+function indiceDoCorpo(r: Extract<Referencia, { tipo: "corpo" }>): number {
+  if (r.malha) return corpos.findIndex((c) => c.malha?.id === r.malha && c.malha?.copia === (r.copia ?? 0));
+  let melhor = -1, nota = Infinity;
+  corpos.forEach((c, i) => {
+    if (c.malha) return;
+    const n = Math.hypot(c.centro[0] - r.centro[0], c.centro[1] - r.centro[1], c.centro[2] - r.centro[2]) + Math.abs(c.volume - r.volume) / Math.max(1, Math.cbrt(Math.abs(r.volume)) ** 2);
+    if (n < nota) { nota = n; melhor = i; }
+  });
+  return melhor;
+}
+
+/** Corpo sob um triângulo da malha exibida. */
+function corpoDoTriangulo(tri: number): number {
+  const idx = tri * 3;
+  const faces = ultimaMalha?.faces;
+  return corpos.findIndex((c) => {
+    if (c.malha) return idx >= c.malha.ini && idx < c.malha.ini + c.malha.qtd;
+    if (!faces) return false;
+    return c.faces.some((fi) => idx >= faces[fi * 3] && idx < faces[fi * 3] + faces[fi * 3 + 1]);
+  });
+}
+
+/** Trechos de triângulos e arestas de cada corpo oculto/transparente → viewport. */
+function aplicarExibicaoCorpos() {
+  const faces = ultimaMalha?.faces;
+  const trechos: { ini: number; qtd: number; modo: 1 | 2 }[] = [];
+  const facesOcultas = new Set<number>();
+  corpos.forEach((c, i) => {
+    const k = chaveCorpo(i);
+    const modo = corposOcultos.has(k) ? 1 : corposTransparentes.has(k) ? 2 : 0;
+    if (!modo) return;
+    if (c.malha) trechos.push({ ini: c.malha.ini, qtd: c.malha.qtd, modo });
+    else if (faces) for (const fi of c.faces) {
+      trechos.push({ ini: faces[fi * 3], qtd: faces[fi * 3 + 1], modo });
+      if (modo === 1) facesOcultas.add(fi);
+    }
+  });
+  // aresta oculta: só quando todas as faces dela estão ocultas
+  const arestas: number[] = [];
+  const topo = viewport.topologia;
+  if (facesOcultas.size && topo?.arestasDaFace) {
+    const visivel = new Set<number>();
+    topo.arestasDaFace.forEach((es, fi) => { if (!facesOcultas.has(fi)) for (const e of es) visivel.add(e); });
+    for (const fi of facesOcultas) for (const e of topo.arestasDaFace[fi] ?? []) if (!visivel.has(e)) arestas.push(e);
+  }
+  viewport.exibirCorpos(trechos, arestas);
+}
+
+function alternarCorpo(conj: Set<string>, i: number) {
+  const k = chaveCorpo(i);
+  if (conj.has(k)) conj.delete(k);
+  else conj.add(k);
+  aplicarExibicaoCorpos();
+  renderizarArvore();
+}
+
+/** Isolar: só o corpo fica visível (de novo: mostra todos). */
+function isolarCorpo(i: number) {
+  const outros = corpos.map((_, k) => chaveCorpo(k)).filter((_, k) => k !== i);
+  const isolado = outros.length > 0 && outros.every((k) => corposOcultos.has(k)) && !corposOcultos.has(chaveCorpo(i));
+  corposOcultos.clear();
+  if (!isolado) for (const k of outros) corposOcultos.add(k);
+  aplicarExibicaoCorpos();
+  renderizarArvore();
+  avisar(isolado ? "Todos os corpos visíveis." : `${nomeCorpo(i)} isolado (toque Isolar de novo para ver todos).`);
+}
+
+/** Recurso de corpo já preenchido com o corpo do menu. */
+function recursoComCorpo(id: string, i: number, mod: Partial<Record<string, unknown>> = {}) {
+  corpoSel = i;
+  criarRecurso(id);
+  if (comando && "corpos" in comando.f) {
+    Object.assign(comando.f, { corpos: [refDoCorpo(i)], ...mod });
+    if (comando.f.tipo === "combinar") comando.f.principal = comando.f.corpos[0];
+    renderizarComando();
+    regenerar();
+  }
+}
+
+/** Nova peça só com este corpo (peça derivada: mesma árvore + Manter corpo), em outra aba. */
+async function corpoEmNovaPeca(i: number) {
+  const copia = validarDocumento(JSON.parse(JSON.stringify(doc)));
+  const manter = novaFeature("excluirCorpo", 1) as Extract<Feature, { tipo: "excluirCorpo" }>;
+  manter.nome = "ManterCorpo1";
+  manter.manter = true;
+  manter.corpos = [refDoCorpo(i)];
+  copia.features.push(manter);
+  delete copia.retrocesso;
+  copia.nome = `${doc.nome} - ${nomeCorpo(i)}`;
+  await deixar("nova-peca", copia);
+  window.open(new URL(`${import.meta.env.BASE_URL}cad/#nova-peca`, location.href).href, "_blank");
+}
+
+/** Menu do corpo (botão direito; no tablet, toque longo do dedo ou da caneta): ícones no topo + lista. */
+function menuDoCorpo(i: number, x: number, y: number) {
+  fecharPopover();
+  esconderBarraContexto();
+  const k = chaveCorpo(i);
+  const oculto = corposOcultos.has(k), transp = corposTransparentes.has(k);
+  const f = corpos[i].recurso ? doc.features.find((z) => z.id === corpos[i].recurso) : undefined;
+  const p = document.createElement("div");
+  p.className = "popover menu-corpo";
+  p.dataset.ancora = "corpo";
+  const icones: [NomeIcone, string, () => void][] = [
+    [oculto ? "olho" : "olhoFechado", oculto ? "Mostrar" : "Ocultar", () => alternarCorpo(corposOcultos, i)],
+    ["isolar", "Isolar", () => isolarCorpo(i)],
+    ["transparencia", transp ? "Opaco" : "Transparência", () => alternarCorpo(corposTransparentes, i)],
+    ["enquadrar", "Enquadrar", () => { viewport.enquadrar(); }],
+  ];
+  const lista: [NomeIcone, string, () => void][] = [
+    ["moverCorpo", "Mover/Copiar corpo…", () => recursoComCorpo("mover-corpo", i)],
+    ["combinar", "Combinar…", () => recursoComCorpo("combinar", i)],
+    ["excluirCorpo", "Excluir corpo…", () => recursoComCorpo("excluir-corpo", i)],
+    ["excluirCorpo", "Manter só este corpo…", () => recursoComCorpo("excluir-corpo", i, { manter: true })],
+    ["nova", "Inserir em nova peça", () => void corpoEmNovaPeca(i)],
+  ];
+  p.innerHTML = `<div class="menu-corpo-icones"></div><div class="menu-corpo-sec">Corpo · ${escapar(nomeCorpo(i))}</div>`;
+  const barra = p.querySelector(".menu-corpo-icones")!;
+  for (const [ic, rot, acao] of icones) {
+    const b = document.createElement("button");
+    b.innerHTML = ICONES[ic];
+    b.title = rot;
+    b.setAttribute("aria-label", rot);
+    b.onclick = () => { fecharPopover(); acao(); };
+    barra.appendChild(b);
+  }
+  const item = (ic: NomeIcone, rot: string, acao: () => void) => {
+    const b = document.createElement("button");
+    b.innerHTML = `${ICONES[ic]}<span>${rot}</span>`;
+    b.onclick = () => { fecharPopover(); acao(); };
+    p.appendChild(b);
+  };
+  for (const [ic, rot, acao] of lista) item(ic, rot, acao);
+  if (f) {
+    const sec = document.createElement("div");
+    sec.className = "menu-corpo-sec";
+    sec.textContent = `Recurso · ${f.nome}`;
+    p.appendChild(sec);
+    item(iconeFeature(f), "Editar recurso", () => abrirComando(f, false));
+    item("arvore", "Mostrar na árvore", () => { definirSel({ tipo: "feature", id: f.id }); renderizarTudo(); });
+  }
+  document.body.appendChild(p);
+  p.style.top = `${Math.max(8, Math.min(y, window.innerHeight - p.offsetHeight - 8))}px`;
+  p.style.left = `${Math.max(8, Math.min(x, window.innerWidth - p.offsetWidth - 8))}px`;
+  popoverAberto = p;
+}
+
+/** Toque longo (dedo ou caneta) num item: o mesmo que o botão direito. */
+function aoToqueLongo(el: HTMLElement, acao: (x: number, y: number) => void) {
+  let t = 0, x0 = 0, y0 = 0;
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse") return;
+    x0 = e.clientX; y0 = e.clientY;
+    clearTimeout(t);
+    t = window.setTimeout(() => { t = 0; acao(x0, y0); }, prefs.toqueLongoMs || 600);
+  });
+  const cancelar = () => { clearTimeout(t); t = 0; };
+  el.addEventListener("pointerup", cancelar);
+  el.addEventListener("pointercancel", cancelar);
+  el.addEventListener("pointermove", (e) => { if (Math.hypot(e.clientX - x0, e.clientY - y0) > 10) cancelar(); });
+}
+
+/** Pasta "Corpos sólidos (N)" no alto da árvore. */
+function pastaCorpos(lista: HTMLElement) {
+  if (!corpos.length) return;
+  const li = document.createElement("li");
+  li.className = "item ref pasta-corpos";
+  li.innerHTML = `<span class="item-seta">${pastaCorposAberta ? "▾" : "▸"}</span><span class="item-ic">${ICONES.corpos}</span><span class="item-texto"><strong></strong></span>`;
+  li.querySelector("strong")!.textContent = `Corpos sólidos (${corpos.length})`;
+  li.onclick = () => { pastaCorposAberta = !pastaCorposAberta; renderizarArvore(); };
+  lista.appendChild(li);
+  if (!pastaCorposAberta) return;
+  corpos.forEach((c, i) => {
+    const it = document.createElement("li");
+    it.className = "item filho corpo";
+    it.style.setProperty("--nivel", "1");
+    const k = chaveCorpo(i);
+    it.classList.toggle("oculta", corposOcultos.has(k));
+    it.classList.toggle("ativo", corpoSel === i);
+    it.innerHTML = `<span class="item-seta vazia"></span><span class="item-ic">${c.malha ? ICONES.abrir : ICONES.peca}</span><span class="item-texto"><strong></strong><small></small></span>`;
+    it.querySelector("strong")!.textContent = nomeCorpo(i);
+    it.querySelector("small")!.textContent = `${c.malha ? "Corpo de malha" : "Corpo sólido"}${corposOcultos.has(k) ? " · oculto" : corposTransparentes.has(k) ? " · transparente" : ""}`;
+    it.onclick = (ev) => {
+      ev.stopPropagation();
+      if (comando?.campo?.aceita.includes("corpo")) return adicionarAoCampo(refDoCorpo(i));
+      if (editor || comando) return avisar("Conclua o comando atual (✓) antes de selecionar outro item.");
+      corpoSel = corpoSel === i ? null : i;
+      definirSel(null);
+      limparSelPeca();
+      viewport.destacarEntidades(corpoSel === null ? [] : c.faces.map((indice) => ({ tipo: "face" as const, indice })), null, [], []);
+      renderizarArvore();
+    };
+    it.oncontextmenu = (ev) => {
+      ev.preventDefault();
+      if (!editor && !comando) menuDoCorpo(i, ev.clientX, ev.clientY);
+    };
+    aoToqueLongo(it, (x, y) => { if (!editor && !comando) menuDoCorpo(i, x, y); });
+    lista.appendChild(it);
+  });
+}
+
 // ---------- toques no modelo ----------
 
 function filtroEntidades(aceita: TipoSel[]): Set<TipoEntidade> {
@@ -1374,6 +1625,12 @@ function instalarToqueCurto() {
     if (comando) {
       const c = comando.campo;
       if (!c) return avisar("Toque um campo de seleção (rosa) no painel para escolher geometria.");
+      if (c.aceita.includes("corpo")) {
+        const tri = viewport.picarTriangulo(e.clientX, e.clientY);
+        const i = tri === null ? -1 : corpoDoTriangulo(tri);
+        if (i >= 0) return adicionarAoCampo(refDoCorpo(i));
+        if (c.aceita.length === 1) return avisar("Toque um corpo da peça (ou na pasta Corpos sólidos).");
+      }
       const refAceita = refViewport && c.aceita.includes(tipoSelDe(refViewport.tipo)) ? refViewport : null;
       if (refAceita && refAceita === refPrioritaria) return adicionarAoCampo({ tipo: refAceita.tipo, id: refAceita.id });
       const filtroCampo = filtrar(filtroEntidades(c.aceita));
@@ -2154,6 +2411,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
   lista.appendChild(raiz);
 
   if (!mini) {
+    pastaCorpos(lista);
     const mat = document.createElement("li");
     mat.className = "item ref";
     const m = doc.material ? MATERIAIS[doc.material] : undefined;
@@ -2293,7 +2551,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     const alvo = ref.tipo === "recurso" || ref.tipo === "esboco" || ref.tipo === "curva" || ref.tipo === "ponto" || (ref.tipo === "plano" || ref.tipo === "eixo") && !["XY", "XZ", "YZ", "X", "Y", "Z"].includes(ref.id)
       ? doc.features.find((x) => x.id === (ref as { id: string }).id) : undefined;
     const icone: NomeIcone = alvo ? iconeFeature(alvo)
-      : ({ face: "peca", aresta: "linha", vertice: "ponto", plano: "plano", eixo: "eixoRef", linhaEsboco: "linha", esboco: "esboco", recurso: "peca", curva: "helice", ponto: "pontoRef" } as const)[ref.tipo];
+      : ({ face: "peca", aresta: "linha", vertice: "ponto", plano: "plano", eixo: "eixoRef", linhaEsboco: "linha", esboco: "esboco", recurso: "peca", curva: "helice", ponto: "pontoRef", corpo: "peca" } as const)[ref.tipo];
     li.innerHTML = `<span class="item-seta vazia"></span><span class="item-ic">${ICONES[icone]}</span><span class="item-texto"><strong></strong><small></small></span>`;
     li.querySelector("strong")!.textContent = rotuloRef(ref, k);
     li.querySelector("small")!.textContent = descricaoUsado(ref);
@@ -2418,6 +2676,7 @@ function descricaoUsado(r: Referencia): string {
     case "aresta": return `Aresta (${({ linha: "reta", circulo: "circular", outra: "curva" } as const)[r.ass.geom]})`;
     case "vertice": return "Vértice";
     case "ponto": return "Ponto de referência";
+    case "corpo": return r.malha ? "Corpo de malha" : "Corpo sólido";
     case "plano": return "Plano";
     case "eixo": return "Eixo";
     case "linhaEsboco": return "Linha do esboço";
@@ -4400,6 +4659,12 @@ else if (location.hash === "#abrir-autosave") {
   history.replaceState(null, "", location.pathname + location.search);
   const doCofre = carregarAutosave();
   if (doCofre) abrirDocumento(doCofre);
+} else if (location.hash === "#nova-peca") {
+  // "Inserir em nova peça" do menu do corpo: peça derivada só com aquele corpo
+  history.replaceState(null, "", location.pathname + location.search);
+  void pegar<Documento>("nova-peca").then((d) => {
+    if (d) abrirDocumento(validarDocumento(d));
+  });
 } else if (location.hash === "#novo") {
   // Novo → Peça nas páginas de montagem/desenho
   history.replaceState(null, "", location.pathname + location.search);

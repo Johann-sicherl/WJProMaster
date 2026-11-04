@@ -12,6 +12,7 @@ export const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   fecharCanto: "fecharCanto", alivioCanto: "alivioCanto", quebrarCanto: "quebrarCanto",
   desdobrar: "desdobrar", dobrar: "dobrar", converterChapa: "converterChapa", importado: "abrir", moverFace: "moverFace", excluirFace: "excluirFace", substituirFace: "substituirFace",
   pontoRef: "pontoRef", sistemaCoord: "sistemaCoord", escala: "escala", domo: "domo", moverCorpo: "moverCorpo",
+  excluirCorpo: "excluirCorpo", combinar: "combinar", dividir: "dividir",
 };
 
 export function iconeFeature(f: Feature): NomeIcone {

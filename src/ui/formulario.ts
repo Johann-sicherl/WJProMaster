@@ -5,7 +5,7 @@
 
 import type { Referencia } from "../model";
 
-export type TipoSel = "face" | "aresta" | "vertice" | "plano" | "eixo" | "esboco" | "recurso" | "curva";
+export type TipoSel = "face" | "aresta" | "vertice" | "plano" | "eixo" | "esboco" | "recurso" | "curva" | "corpo";
 
 type Vis<F> = { vis?: (f: F) => boolean };
 export type Campo<F> = Vis<F> & (

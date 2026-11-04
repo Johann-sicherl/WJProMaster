@@ -1061,3 +1061,11 @@ body.disp-computador .pc-tipo { min-height: 36px; }
 .dialogo-stl footer { display: flex; justify-content: flex-end; padding: 8px 16px 12px; }
 .dialogo-stl .aviso-stl { background: #fff4d6; border: 1px solid #e0b44a; border-radius: 8px; padding: 8px 10px; color: #6b4a00; }
 .lista-simplificar .campo input { width: 120px; margin-left: 8px; }
+
+/* menu do corpo (pasta Corpos sólidos): ícones no topo + lista; botão direito ou toque longo */
+.menu-corpo { min-width: 230px; }
+.menu-corpo-icones { display: flex; gap: 2px; padding: 2px 2px 6px; border-bottom: 1px solid var(--linha); margin-bottom: 4px; }
+.menu-corpo-icones button { flex: 0 0 auto; width: 40px; min-height: 40px; justify-content: center; padding: 0; }
+.menu-corpo-sec { font-size: 12px; font-weight: 600; color: var(--texto-2); padding: 6px 10px 2px; }
+body.disp-tablet .menu-corpo-icones button, body.disp-celular .menu-corpo-icones button { width: 48px; min-height: 48px; }
+.pasta-corpos .item-seta { width: 14px; display: inline-flex; justify-content: center; color: var(--texto-2); }

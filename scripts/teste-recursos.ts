@@ -1019,6 +1019,32 @@ verdade("nome repetido ganha o próximo número", nomeUnico(["Extrusão1", "Cort
   verdade("centro do arco do topo (0, 10, 0) usado como ponto do eixo", rC.erros.length === 0 && ex?.origem.map((v) => Math.round(v)).join() === "0,10,0");
 }
 
+// ---------- multicorpo: mesclar resultado, excluir/manter, combinar, dividir, mover um corpo ----------
+{
+  const nf = <T,>(t: Parameters<typeof novaFeature>[0], mod: Partial<T>) => ({ ...(novaFeature(t, 1) as unknown as T), ...mod }) as unknown as Feature;
+  // bloco A 20 × 20 × 20 na origem; bloco B 20 × 20 × 20 sobreposto em 10 mm (x de 10 a 30), separado
+  const a0 = retangulo(20, 20, "XZ");
+  const b0 = retangulo(20, 20, "XZ", 10, 0);
+  const dois = [a0, ext(a0, 20), b0, ext(b0, 20, { mesclar: false })] as Feature[];
+  const r = regenerar(dois);
+  semErros("dois corpos", r);
+  verdade("mesclar desmarcado: 2 corpos na pasta Corpos sólidos", r.corpos?.length === 2);
+  confere("volumes somados (sobrepostos, sem fundir)", r.volume, 16000);
+  const ref = (i: number): Referencia => ({ tipo: "corpo", centro: r.corpos![i].centro, volume: r.corpos![i].volume });
+  const rca = regenerar([...dois, nf("combinar", { operacao: "adicionar", corpos: [ref(0), ref(1)] })]);
+  semErros("combinar", rca);
+  confere("combinar adicionar: um corpo de 30 × 20 × 20", rca.volume, 12000);
+  confere("combinar subtrair B de A", regenerar([...dois, nf("combinar", { operacao: "subtrair", principal: ref(0), corpos: [ref(0), ref(1)] })]).volume, 4000);
+  confere("combinar comum", regenerar([...dois, nf("combinar", { operacao: "comum", corpos: [ref(0), ref(1)] })]).volume, 4000);
+  const rex = regenerar([...dois, nf("excluirCorpo", { corpos: [ref(1)] })]);
+  verdade("excluir corpo B: fica 1 corpo de 8000", rex.corpos?.length === 1 && Math.abs((rex.volume ?? 0) - 8000) < 1e-3);
+  confere("manter só o corpo B", regenerar([...dois, nf("excluirCorpo", { corpos: [ref(1)], manter: true })]).volume, 8000);
+  const rdv = regenerar([a0, ext(a0, 20), nf("dividir", { ferramentas: [{ tipo: "plano", id: "YZ" }] })]);
+  verdade("dividir o bloco pelo Plano Lateral: 2 corpos de 4000", rdv.corpos?.length === 2 && rdv.corpos.every((c) => Math.abs(c.volume - 4000) < 1e-3));
+  const rmv = regenerar([...dois, nf("moverCorpo", { corpos: [ref(1)], dy: 100 })]);
+  verdade("mover só o corpo B 100 em Y: A fica, B sobe", rmv.corpos?.length === 2 && rmv.corpos.some((c) => Math.abs(c.centro[1] - 10) < 1e-6) && rmv.corpos.some((c) => Math.abs(c.centro[1] - 110) < 1e-6));
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);
