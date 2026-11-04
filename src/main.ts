@@ -1405,7 +1405,31 @@ function aplicarExibicaoCorpos() {
     topo.arestasDaFace.forEach((es, fi) => { if (!facesOcultas.has(fi)) for (const e of es) visivel.add(e); });
     for (const fi of facesOcultas) for (const e of topo.arestasDaFace[fi] ?? []) if (!visivel.has(e)) arestas.push(e);
   }
-  viewport.exibirCorpos(trechos, arestas);
+  viewport.exibirCorpos(trechos, arestas, arestasSuaves());
+}
+
+/**
+ * Arestas entre faces planas quase tangentes (até 20°): num sólido que veio de STL cada triângulo
+ * vira uma face, e desenhar todas as arestas deixava as partes curvas listradas de preto.
+ * Calculado uma vez por topologia.
+ */
+let suavesCache: { topo: unknown; lista: number[] } | null = null;
+function arestasSuaves(): number[] {
+  const topo = viewport.topologia;
+  if (!topo?.arestasDaFace) return [];
+  if (suavesCache?.topo === topo) return suavesCache.lista;
+  const facesDa = new Map<number, number[]>();
+  topo.arestasDaFace.forEach((es, fi) => { for (const e of es) { const l = facesDa.get(e); if (l) l.push(fi); else facesDa.set(e, [fi]); } });
+  const cos20 = Math.cos((20 * Math.PI) / 180);
+  const lista: number[] = [];
+  for (const [e, fs] of facesDa) {
+    if (fs.length !== 2) continue;
+    const a = topo.faces[fs[0]], b = topo.faces[fs[1]];
+    if (a?.geom !== "plano" || b?.geom !== "plano" || !a.normal || !b.normal) continue;
+    if (a.normal[0] * b.normal[0] + a.normal[1] * b.normal[1] + a.normal[2] * b.normal[2] >= cos20) lista.push(e);
+  }
+  suavesCache = { topo, lista };
+  return lista;
 }
 
 function alternarCorpo(conj: Set<string>, i: number) {
