@@ -7,7 +7,7 @@ import { makeCompound, measureArea, measureShapeVolumeProperties, setOC, type Sh
 import type { Feature, Referencia, Vec3 } from "../model";
 import { posicionar, projetar, type Corte } from "./projecao";
 import type { Camera, Orientacao } from "../desenho/modelo";
-import { ehFatal, esquecerSolidosImportados, exportar, exportarDxf, pecaAtual, regenerar, regenerarComRecuperacao, temDadosDe } from "./regenerar";
+import { ehFatal, esquecerSolidosImportados, exportar, exportarDxf, malhasAtuais, pecaAtual, regenerar, regenerarComRecuperacao, temDadosDe } from "./regenerar";
 
 /** Resposta do kernel: "mande o conteúdo importado de novo" (a interface reenvia sozinha). */
 export const REENVIAR = "__REENVIAR_DADOS__";
@@ -135,7 +135,7 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
         enviar({ tipo: "resposta", seq: p.seq, dados: medir(pecaAtual(), p.refs) });
         break;
       case "massa":
-        enviar({ tipo: "resposta", seq: p.seq, dados: massa(pecaAtual()) });
+        enviar({ tipo: "resposta", seq: p.seq, dados: massa(pecaAtual(), malhasAtuais()) });
         break;
       case "verificar":
         enviar({ tipo: "resposta", seq: p.seq, dados: verificar(pecaAtual()) });

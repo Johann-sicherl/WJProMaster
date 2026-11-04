@@ -48,7 +48,8 @@ import { renderizarPainelEsboco } from "./esboco/painel";
 import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } from "./esboco/referencial";
 import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
-import { abrirCopias, abrirDoCofre, desligar, instalarPainelCofre, ligar, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
+import { ISO } from "./kernel/furos";
+import { abrirCopias, abrirDoCofre, desligar, documentosDoCofre, instalarPainelCofre, lerDoCofre, ligar, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
 import { botaoDiagnostico, registrarMetrica } from "./comum/diagnostico";
 import { Armazem } from "./comum/armazem";
 import {
@@ -565,7 +566,8 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco" | "impo
   "mover-face": "moverFace", "excluir-face": "excluirFace", "substituir-face": "substituirFace",
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
   plano: "planoRef", eixo: "eixoRef", "ponto-ref": "pontoRef", "sistema-coord": "sistemaCoord",
-  "mover-corpo": "moverCorpo", escala: "escala", domo: "domo", combinar: "combinar", dividir: "dividir", "excluir-corpo": "excluirCorpo", varredura: "varredura", "corte-varredura": "varredura",
+  "mover-corpo": "moverCorpo", escala: "escala", domo: "domo", combinar: "combinar", dividir: "dividir", "excluir-corpo": "excluirCorpo",
+  rosca: "rosca", "linha-particao": "linhaParticao", "inserir-peca": "inserirPeca", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
   "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco", junta: "junta", "meia-esquadria": "meiaEsquadria",
   "fechar-canto": "fecharCanto", "alivio-canto": "alivioCanto", "quebrar-canto": "quebrarCanto",
@@ -601,6 +603,7 @@ function criarRecurso(id: string) {
   const tipo = TIPO_POR_COMANDO[id];
   if (!tipo) return;
   if (tipo === "furo") return iniciarFuro();
+  if (tipo === "inserirPeca") return void iniciarInserirPeca();
   const f = novaFeature(tipo, nomeNovo(tipo));
   // pré-seleção: itens da árvore (Ctrl/Shift soma) e geometria tocada no modelo
   const naArvore = selArvore();
@@ -686,6 +689,27 @@ function criarRecurso(id: string) {
     case "dividir":
       f.ferramentas = [...planosArvore, ...facesPlanas];
       break;
+    case "rosca": {
+      const cil = faces.find((r) => r.tipo === "face" && r.ass.geom === "cilindro");
+      if (cil) f.face = cil;
+      // tamanho ISO pelo diâmetro da face (pino: nominal; furo: o da broca é menor)
+      if (cil?.tipo === "face" && cil.ass.raio) {
+        const d = 2 * cil.ass.raio;
+        const iso = Object.keys(ISO).map((k) => [k, Number(k.replace(/^M/i, "").replace(",", "."))] as const);
+        const perto = iso.reduce((m, x) => (Math.abs(x[1] - d) < Math.abs(m[1] - d) ? x : m));
+        const acima = iso.find((x) => x[1] > d + 1e-6 && x[1] - ISO[x[0]].passo * 1.0825 <= d + 0.2);
+        const k = Math.abs(perto[1] - d) < 0.3 ? perto[0] : acima?.[0] ?? perto[0];
+        f.tamanho = k;
+        f.passo = ISO[k].passo;
+      }
+      break;
+    }
+    case "linhaParticao": {
+      const esb = esbocoSel ?? ultimoEsbocoLivre();
+      if (esb) f.esboco = esb.id;
+      f.faces = faces;
+      break;
+    }
     case "combinar":
     case "excluirCorpo":
     case "moverCorpo":
@@ -891,6 +915,18 @@ function dadosEsquema(f: Feature): DadosEsquema {
   return {
     esbocosAntes: antes.filter((x) => x.tipo === "esboco").map((x) => [x.id, x.nome]),
     recursosAntes: antes.filter((x) => REPETIVEIS.includes(x.tipo)).map((x) => [x.id, x.nome]),
+    atualizarPecaInserida: (x) => {
+      if (x.tipo !== "inserirPeca") return;
+      void lerPecaParaInserir(x.arquivo).then((l) => {
+        if (!l) return;
+        x.features = l.features;
+        x.versao = l.versao;
+        avisar(`${x.nome}: atualizada para a versão ${l.versao} do cofre.`);
+        if (comando) renderizarComando();
+        alterou(true);
+        regenerar();
+      });
+    },
     sistemasAntes: antes.filter((x) => x.tipo === "sistemaCoord" && !x.suprimida).map((x) => [x.id, x.nome]),
     linhasEsboco: (id) => {
       const e = doc.features.find((x) => x.id === id);
@@ -1403,6 +1439,69 @@ function recursoComCorpo(id: string, i: number, mod: Partial<Record<string, unkn
   }
 }
 
+/** Janela simples para escolher uma peça (.wjcad) do cofre. */
+async function escolherPecaDoCofre(): Promise<{ id: string; nome: string } | null> {
+  let docs: Awaited<ReturnType<typeof documentosDoCofre>> = [];
+  try {
+    docs = await documentosDoCofre(["wjcad", "jlscad"]);
+  } catch {
+    docs = [];
+  }
+  if (!docs.length) {
+    avisar("Não há peças no cofre: salve a peça a inserir no cofre primeiro.", 6000);
+    return null;
+  }
+  const fundo = document.createElement("div");
+  fundo.className = "fundo-dialogo";
+  fundo.innerHTML = `<div class="dialogo dialogo-stl" role="dialog" aria-modal="true"><header><strong>Inserir peça do cofre</strong></header>
+    <div class="dialogo-corpo"><div class="lista-simplificar"></div></div><footer><button data-x>Cancelar</button></footer></div>`;
+  const lista = fundo.querySelector(".lista-simplificar")!;
+  for (const d of docs) {
+    const b = document.createElement("button");
+    b.dataset.id = d.arquivo.id;
+    b.textContent = `${d.arquivo.nome} — ${d.caminho}`;
+    lista.appendChild(b);
+  }
+  document.body.appendChild(fundo);
+  return new Promise((ok) => {
+    fundo.onclick = (e) => {
+      const b = (e.target as HTMLElement).closest("button");
+      if (!b) return;
+      fundo.remove();
+      const d = b.dataset.id ? docs.find((x) => x.arquivo.id === b.dataset.id) : undefined;
+      ok(d ? { id: d.arquivo.id, nome: d.arquivo.nome } : null);
+    };
+  });
+}
+
+/** Lê a peça do cofre (árvore até a barra de retrocesso dela) para a Peça inserida. */
+async function lerPecaParaInserir(id: string): Promise<{ features: Feature[]; versao: number; nome: string } | null> {
+  const r = await lerDoCofre(id);
+  if (!r) {
+    avisar("Não foi possível ler a peça no cofre.");
+    return null;
+  }
+  const d = validarDocumento(JSON.parse(r.texto));
+  const fs = d.retrocesso !== undefined ? d.features.slice(0, d.retrocesso) : d.features;
+  return { features: fs, versao: r.versao, nome: r.arquivo.nome };
+}
+
+/** Inserir peça: escolhe a peça no cofre e abre o comando (espelhar, posição, mesclar). */
+async function iniciarInserirPeca() {
+  const esc = await escolherPecaDoCofre();
+  if (!esc) return;
+  const lida = await lerPecaParaInserir(esc.id);
+  if (!lida) return;
+  const f = novaFeature("inserirPeca", nomeNovo("inserirPeca")) as Extract<Feature, { tipo: "inserirPeca" }>;
+  f.arquivo = esc.id;
+  f.nomeArquivo = lida.nome;
+  f.versao = lida.versao;
+  f.features = lida.features;
+  f.nome = lida.nome.replace(/\.[^.]+$/, "");
+  inserirFeature(f);
+  abrirComando(f, true);
+}
+
 /** Nova peça só com este corpo (peça derivada: mesma árvore + Manter corpo), em outra aba. */
 async function corpoEmNovaPeca(i: number) {
   const copia = validarDocumento(JSON.parse(JSON.stringify(doc)));
@@ -1660,10 +1759,12 @@ function instalarToqueCurto() {
     }
     if (avaliacao?.tipo === "medir") {
       const ent = viewport.picarEntidade(e.clientX, e.clientY, filtrar(TODAS), tol);
-      if (!ent) {
+      // corpo de malha (STL) não tem faces/arestas: o toque vira um ponto da superfície
+      const naMalha = !ent ? viewport.picarPontoSuperficie(e.clientX, e.clientY, tol) : null;
+      if (!ent && !naMalha) {
         avaliacao.refs = [];
       } else {
-        const r = refDeEntidade(ent)!;
+        const r: Referencia = ent ? refDeEntidade(ent)! : { tipo: "vertice", p: naMalha!.p };
         const i = avaliacao.refs.findIndex((x) => mesmaRef(x, r));
         if (i >= 0) avaliacao.refs.splice(i, 1);
         else {

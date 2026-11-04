@@ -28,6 +28,7 @@ export const PARAMETROS_RECURSO: Partial<Record<Feature["tipo"], [string, string
   inclinacao: [["angulo", "Inclinação", "°"]],
   moverFace: [["distancia", "D", "mm"]],
   domo: [["altura", "Altura", "mm"]],
+  rosca: [["comprimento", "Comprimento", "mm"], ["passo", "Passo", "mm"]],
   escala: [["fator", "Fator", ""]],
   moverCorpo: [["dx", "ΔX", "mm"], ["dy", "ΔY", "mm"], ["dz", "ΔZ", "mm"], ["rx", "Ângulo X", "°"], ["ry", "Ângulo Y", "°"], ["rz", "Ângulo Z", "°"]],
   nervura: [["espessura", "Espessura", "mm"]],

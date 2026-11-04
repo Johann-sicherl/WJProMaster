@@ -79,8 +79,15 @@ function descreverUm(peca: Shape3D, r: Referencia): LinhaMedida[] {
 }
 
 export function medir(peca: Shape3D | null, refs: Referencia[]): ResultadoMedida {
-  if (!peca) throw new Error("Não há peça para medir.");
   if (!refs.length) return { linhas: [{ rotulo: "Medir", valor: "Toque faces, arestas ou vértices" }] };
+  // pontos tocados na superfície (corpo de malha STL, ou sem sólido): conta direta, sem o kernel
+  if (refs.every((r) => r.tipo === "vertice")) {
+    const ps = refs.slice(0, 2).map((r) => (r as Extract<Referencia, { tipo: "vertice" }>).p);
+    if (ps.length === 1) return { linhas: [{ rotulo: "X; Y; Z", valor: xyz(ps[0]) }] };
+    const d = sub(ps[1], ps[0]);
+    return { linhas: [{ rotulo: "Distância", valor: mm(norma(d)) }, { rotulo: "ΔX; ΔY; ΔZ", valor: xyz(d.map(Math.abs) as Vec3) }], segmento: [ps[0], ps[1]] };
+  }
+  if (!peca) throw new Error("Não há peça sólida para medir faces/arestas (num corpo de malha STL, toque pontos da superfície).");
   if (refs.length === 1) return { linhas: descreverUm(peca, refs[0]) };
   const [a, b] = refs.slice(0, 2).map((r) => itemDe(peca, r));
   const O = oc();
@@ -119,7 +126,56 @@ export interface PropriedadesMassa {
   eixos: [Vec3, Vec3, Vec3];
 }
 
-export function massa(peca: Shape3D | null): PropriedadesMassa {
+/** Malha triangular (corpo de malha STL): vértices e triângulos. */
+export interface MalhaMassa {
+  vertices: Float32Array;
+  triangulos: Uint32Array;
+  volume: number | null;
+}
+
+/**
+ * Propriedades de massa de corpos de malha fechados (STL): volume, área, centro e inércia pela
+ * soma dos tetraedros (origem, a, b, c) de cada triângulo — covariância det/120·(aaᵀ+bbᵀ+ccᵀ+ssᵀ).
+ */
+function massaDaMalha(malhas: MalhaMassa[]): PropriedadesMassa {
+  if (malhas.some((m) => m.volume === null)) throw new Error("O corpo de malha (STL) não é fechado: sem volume não há propriedades de massa (simplifique ou corrija o STL).");
+  let V = 0, area = 0;
+  const cm: Vec3 = [0, 0, 0];
+  const C = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (const m of malhas) {
+    const v = m.vertices, t = m.triangulos;
+    for (let i = 0; i < t.length; i += 3) {
+      const a: Vec3 = [v[t[i] * 3], v[t[i] * 3 + 1], v[t[i] * 3 + 2]];
+      const b: Vec3 = [v[t[i + 1] * 3], v[t[i + 1] * 3 + 1], v[t[i + 1] * 3 + 2]];
+      const c: Vec3 = [v[t[i + 2] * 3], v[t[i + 2] * 3 + 1], v[t[i + 2] * 3 + 2]];
+      const n: Vec3 = [(b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])];
+      area += norma(n) / 2;
+      const det = esc(a, [b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2], b[0] * c[1] - b[1] * c[0]]);
+      V += det / 6;
+      for (let k = 0; k < 3; k++) cm[k] += (det / 24) * (a[k] + b[k] + c[k]);
+      const s: Vec3 = [a[0] + b[0] + c[0], a[1] + b[1] + c[1], a[2] + b[2] + c[2]];
+      for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) C[p][q] += (det / 120) * (a[p] * a[q] + b[p] * b[q] + c[p] * c[q] + s[p] * s[q]);
+    }
+  }
+  // malha orientada para dentro: inverte o sinal de tudo
+  const sg = V < 0 ? -1 : 1;
+  V *= sg;
+  const centro = cm.map((x) => (x * sg) / V) as Vec3;
+  // momentos no centro: C' = C − V·c·cᵀ; tensor J = tr(C')·I − C'
+  const Cc = C.map((r, p) => r.map((x, q) => x * sg - V * centro[p] * centro[q]));
+  const tr = Cc[0][0] + Cc[1][1] + Cc[2][2];
+  const J = Cc.map((r, p) => r.map((x, q) => (p === q ? tr - x : -x)));
+  const { valores, vetores } = autovalores(J);
+  return {
+    volume: V, area, centro,
+    inercia: [J[0][0], J[1][1], J[2][2], J[0][1], J[0][2], J[1][2]],
+    principais: valores as [number, number, number],
+    eixos: vetores as [Vec3, Vec3, Vec3],
+  };
+}
+
+export function massa(peca: Shape3D | null, malhas: MalhaMassa[] = []): PropriedadesMassa {
+  if (!peca && malhas.length) return massaDaMalha(malhas);
   if (!peca) throw new Error("Não há peça.");
   const props = measureShapeVolumeProperties(peca) as unknown as {
     volume: number; centerOfMass: Vec3; wrapped: { MomentOfInertia(a: unknown): number };

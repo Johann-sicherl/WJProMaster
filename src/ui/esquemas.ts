@@ -9,12 +9,14 @@ import type {
   FeaturePontoRef, FeatureSistemaCoord, FeatureEscala, FeatureDomo, FeatureMoverCorpo,
 } from "../model";
 import { TABELA_CHAPA } from "../model";
-import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
+import { FIXADORES, ISO, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
 import type { Caixa, Campo, Esquema } from "./formulario";
 
 export interface DadosEsquema {
   esbocosAntes: [string, string][];
   recursosAntes: [string, string][]; // recursos que podem ser repetidos
+  /** Inserir peça: relê a peça no cofre (versão mais recente) */
+  atualizarPecaInserida?(f: Feature): void;
   /** sistemas de coordenadas antes do recurso (centro da escala) */
   sistemasAntes: [string, string][];
   linhasEsboco(esbocoId: string | undefined): [string, string][];
@@ -202,6 +204,43 @@ function esquemaBase(f: Feature, d: DadosEsquema): Esquema<Feature> {
         campoCorpos("Corpos a combinar", "corpos"),
         { t: "info", texto: (x) => ({ adicionar: "Funde os corpos num só.", subtrair: "Tira os outros corpos do corpo principal.", comum: "Fica só o volume comum a todos." } as Record<string, string>)[(x as { operacao: string }).operacao] },
       ] }] };
+    case "rosca":
+      return { titulo: "Rosca", caixas: [
+        { titulo: "Face", campos: [
+          { t: "refs", rot: "Face cilíndrica (pino ou furo)", cam: "face", aceita: ["face"], multiplo: false },
+          { t: "inverter", rot: "Começar na outra ponta", cam: "inverter" },
+        ] },
+        { titulo: "Especificação", campos: [
+          { t: "sel", rot: "Tamanho", cam: "tamanho", opcoes: [...Object.keys(ISO).map((k): [string, string] => [k, `${k} × ${ISO[k].passo}`]), ["personalizado", "Personalizado"]],
+            aoMudar: (x, v) => { if (ISO[v]) (x as { passo: number }).passo = ISO[v].passo; } },
+          { t: "num", rot: "Passo", cam: "passo", un: "mm", min: 0.05, passo: 0.05 },
+          { t: "num", rot: "Comprimento", cam: "comprimento", un: "mm", min: 0.1, passo: 1 },
+          { t: "check", rot: "Rosca esquerda", cam: "esquerda" },
+          { t: "info", texto: () => "Perfil ISO em V de 60°: pino (rosca externa, profundidade 0,6134 P) ou furo (interna, 0,5413 P; faça o furo no Ø da broca). O comprimento para na ponta da face." },
+        ] },
+      ] };
+    case "linhaParticao":
+      return { titulo: "Linha de partição", caixas: [{ titulo: "Seleções", campos: [
+        { t: "sel", rot: "Esboço", cam: "esboco", opcoes: () => [["", "(escolha)"], ...d.esbocosAntes] },
+        { t: "refs", rot: "Faces a dividir", cam: "faces", aceita: ["face"], multiplo: true },
+        { t: "info", texto: () => "O esboço é projetado nos dois sentidos da normal e divide as faces escolhidas; o volume não muda." },
+      ] }] };
+    case "inserirPeca":
+      return { titulo: "Inserir peça", caixas: [
+        { titulo: "Peça", campos: [
+          { t: "info", texto: (x) => `Do cofre: ${(x as { nomeArquivo: string }).nomeArquivo || "(nenhuma)"}${(x as { versao?: number }).versao ? ` · versão ${(x as { versao?: number }).versao}` : ""}` },
+          ...(d.atualizarPecaInserida ? [{ t: "botao" as const, rot: "Atualizar do cofre", acao: (x: Feature) => d.atualizarPecaInserida!(x) }] : []),
+        ] },
+        { titulo: "Espelhar (lado esquerdo/direito)", opcional: "espelhar", campos: [
+          { t: "sel", rot: "Plano de simetria", cam: "planoEspelho", opcoes: [["YZ", "Lateral"], ["XY", "Frontal"], ["XZ", "Superior"]] },
+        ] },
+        { titulo: "Posição", campos: [
+          { t: "num", rot: "ΔX", cam: "dx", un: "mm" },
+          { t: "num", rot: "ΔY", cam: "dy", un: "mm" },
+          { t: "num", rot: "ΔZ", cam: "dz", un: "mm" },
+          { t: "check", rot: "Mesclar com a peça", cam: "mesclar" },
+        ] },
+      ] };
     case "dividir":
       return { titulo: "Dividir", caixas: [{ titulo: "Ferramentas de corte", campos: [
         { t: "refs", rot: "Planos / faces planas", cam: "ferramentas", aceita: ["plano", "face"], multiplo: true },

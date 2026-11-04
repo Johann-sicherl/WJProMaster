@@ -8,6 +8,10 @@ de seção e os itens ⏸.
 
 ## 1. Medir (Measure) — ✅
 Janela flutuante (não bloqueia o modelo), resultados atualizam a cada clique.
+- **Corpos importados** ✅ (04/11/2026): STEP vira sólido (faces, arestas e vértices como sempre).
+  **STL como corpo de malha** (sem faces/arestas): o toque vira um **ponto da superfície**
+  (encaixa no vértice do triângulo a até ~10 px); dois pontos dão distância e ΔX/ΔY/ΔZ, um ponto
+  dá X; Y; Z — direto, sem o kernel (vale também sem nenhum sólido na peça).
 - **Seleções**: lista de entidades (faces, arestas, vértices, pontos de esboço, eixos, planos,
   origem); limpar seleções
 - **Resultados** conforme a seleção:
@@ -24,6 +28,8 @@ Janela flutuante (não bloqueia o modelo), resultados atualizam a cada clique.
 - Medidas desenhadas temporariamente no viewport (rótulos)
 
 ## 2. Propriedades de massa (Mass Properties) — ✅
+- **Corpo de malha (STL) fechado** ✅ (04/11/2026): volume, área, centro e inércia pela soma dos
+  tetraedros dos triângulos (`massaDaMalha` em `src/kernel/avaliar.ts`); malha aberta: aviso.
 - **Itens selecionados**: corpos (padrão: peça inteira) · incluir corpos ocultos
 - **Material/densidade**: do material da peça (ver features.md §17) ou densidade informada
 - **Relatar coordenadas relativas a**: sistema de coordenadas (padrão: origem)
