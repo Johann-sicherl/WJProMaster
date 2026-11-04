@@ -9,6 +9,8 @@ import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO, malhaDoStl, triangulosVa
 import { assinaturaDados, documentoImportado, LIMITE_DADOS_UMA_VEZ, PREFIXO_ENVIADO } from "../src/model";
 import { regenerar, temDadosDe } from "../src/kernel/regenerar";
 import { massa } from "../src/kernel/avaliar";
+import { estilosDoStep } from "../src/kernel/coresStep";
+import { casarFaces } from "../src/aparencia";
 import { montagemDoStep, nomesDosCorpos, pecasDoStep, textoStep } from "../src/montagem/step";
 import { aplicarPonto, quantidades, validarMontagem } from "../src/montagem/modelo";
 
@@ -175,6 +177,70 @@ for (const p of m.pecas) {
   const r2 = regenerar(soAssinatura);
   igual("reconstrói só com a assinatura (mesma malha)", [r2.erros.length, r2.malha!.triangulos.length], [0, r1.malha!.triangulos.length]);
   verdade("assinatura desconhecida: o kernel pede o conteúdo de novo", !temDadosDe([{ ...d.features[0], dados: PREFIXO_ENVIADO + "outro:1:a:b" }] as typeof d.features));
+}
+
+// ---------- cores do STEP (AP214): gravadas pelo XCAF, como um CAD exporta ----------
+{
+  const oc = getOC() as never as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const cor = (r: number, g: number, b: number) => new oc.Quantity_ColorRGBA(r, g, b, 1);
+  const gravar = (montar: (tool: any, cores: any) => void) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    const doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString("XmlOcaf", true));
+    const tool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
+    const cores = oc.XCAFDoc_DocumentTool.ColorTool(doc.Main());
+    montar(tool, cores);
+    tool.UpdateAssemblies();
+    const w = new oc.STEPCAFControl_Writer(new oc.XSControl_WorkSession(), false);
+    w.SetColorMode(true);
+    oc.Interface_Static.SetIVal("write.step.assembly", 1);
+    if (!w.Perform(doc, "/cores.step", new oc.Message_ProgressRange())) throw new Error("não gravou o STEP colorido");
+    const b = oc.FS.readFile("/cores.step") as Uint8Array;
+    oc.FS.unlink("/cores.step");
+    return b;
+  };
+  const SURF = oc.XCAFDoc_ColorType.XCAFDoc_ColorSurf;
+  // peça: caixa azul com a face de cima vermelha
+  const caixa = makeBox([0, 0, 0], [40, 20, 10]);
+  const topo = caixa.faces.find((f) => f.center.z > 9.9)!;
+  const peca = gravar((tool, cores) => {
+    const l = tool.AddShape(caixa.wrapped, false, true);
+    cores.SetColor(l, cor(0, 0, 1), SURF);
+    const lf = tool.AddSubShape(l, topo.wrapped);
+    cores.SetColor(lf, cor(1, 0, 0), SURF);
+  });
+  const est = estilosDoStep(new TextDecoder("latin1").decode(peca));
+  igual("texto do STEP: 1 sólido e 1 face pintados", [est.solidos.length, est.faces.length, est.solidos[0]?.cor.toString(16), est.faces[0]?.cor.toString(16)], [1, 1, "ff", "ff0000"]);
+  const rc = regenerar(documentoImportado("caixa.step", peca).features);
+  const cf = rc.coresFaces ?? [];
+  const iTopo = rc.topologia!.faces.findIndex((f) => f.centro[2] > 9.9);
+  igual("peça importada: 6 faces com cor; a de cima vermelha, as outras azuis", [cf.length, cf[iTopo]?.toString(16), cf.filter((c, i) => i !== iTopo && c === 0x0000ff).length], [6, "ff0000", 5]);
+  // montagem: base com a face de cima vermelha (cores por face) e pino verde (cor única)
+  const base = makeBox([0, 0, 0], [100, 10, 60]);
+  const cima = base.faces.find((f) => f.center.y > 9.9)!;
+  const pinoF = makeCylinder(5, 30, [0, 0, 0], [0, 1, 0]);
+  const asm = gravar((tool, cores) => {
+    const lb = tool.AddShape(base.wrapped, false, true);
+    cores.SetColor(tool.AddSubShape(lb, cima.wrapped), cor(1, 0, 0), SURF);
+    const lp = tool.AddShape(pinoF.wrapped, false, true);
+    cores.SetColor(lp, cor(0, 1, 0), SURF);
+    const raiz = tool.NewShape();
+    tool.AddComponent(raiz, lb, new oc.TopLoc_Location());
+    const t = new oc.gp_Trsf();
+    t.SetTranslation(new oc.gp_Vec(20, 10, 30));
+    tool.AddComponent(raiz, lp, new oc.TopLoc_Location(t));
+  });
+  const la = await lerMontagemStep(asm);
+  const pinoL = la.corpos.find((c) => Math.round(c.volume) === Math.round(Math.PI * 25 * 30));
+  const baseL = la.corpos.find((c) => Math.round(c.volume) === 60000);
+  igual("montagem: pino inteiro verde (cor da peça)", pinoL?.cor?.toString(16), "ff00");
+  igual("montagem: base com 1 face vermelha (cor por face)", [baseL?.cor, baseL?.cores?.length, baseL?.cores?.[0]?.cor.toString(16)], [undefined, 1, "ff0000"]);
+  const ma = montagemDoStep("cores.step", new TextDecoder().decode(asm), la);
+  const docBase = ma.pecas.find((p) => p.doc.aparencias?.length)?.doc;
+  const docPino = ma.pecas.find((p) => p.doc.corPeca !== undefined)?.doc;
+  igual("montagem: aparências vão para os documentos das peças", [docPino?.corPeca, docBase?.aparencias?.length], [0x00ff00, 1]);
+  // casamento das faces guardadas com a peça reconstruída
+  const rb = regenerar(docBase!.features);
+  const cb = casarFaces(rb.topologia!.faces, docBase!.aparencias!.map((a) => ({ ass: (a as { ass: never }).ass, cor: a.cor })));
+  igual("face pintada reencontrada na peça", [...cb].filter((c) => c >= 0).length, 1);
 }
 
 console.log(falhas ? `\nimportar: ${falhas} falha(s)` : "\nimportar: tudo certo");

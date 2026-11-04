@@ -2,6 +2,8 @@
 // (OpenCascade via replicad). Não depende do navegador: roda no Web Worker e nos testes.
 // Campos e comportamento de cada recurso: docs/funcional/features.md.
 
+import { casarFaces, type CorDeFace } from "../aparencia";
+import { coresDoStep } from "./coresImportadas";
 import {
   draw,
   drawCircle,
@@ -91,6 +93,8 @@ export interface ResultadoRegeneracao {
   erros: ErroFeature[];
   volume: number | null; // mm³
   topologia: Topologia | null;
+  /** cor de cada face (índices de `topologia.faces`; -1 = sem cor) vinda do arquivo importado */
+  coresFaces?: number[];
   referencias: InfoReferencia[];
   tempos: { id: string; ms: number }[];
   /** Faces da peça final (índices de `topologia.faces`) de cada recurso: destaque na árvore. */
@@ -156,6 +160,8 @@ interface Ctx {
   sistemas: Map<string, Referencial>;
   /** suportes de esboço que mudaram ao acompanhar a face (a interface guarda no documento) */
   suportes: Record<string, SuporteEsboco>;
+  /** cores das faces vindas dos arquivos importados (STEP AP214) */
+  coresArquivo: CorDeFace[];
 }
 
 function novoCtx(): Ctx {
@@ -166,7 +172,7 @@ function novoCtx(): Ctx {
     ["Y", { origem: [0, 0, 0], dir: [0, 1, 0] }],
     ["Z", { origem: [0, 0, 0], dir: [0, 0, 1] }],
   ]);
-  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, curvas: new Map(), chapa: null, corpoAntesChapa: null, opsAposChapa: [], suportes: {}, refsSaida: [], malhas: [], pontos: new Map(), sistemas: new Map() };
+  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, curvas: new Map(), chapa: null, corpoAntesChapa: null, opsAposChapa: [], suportes: {}, refsSaida: [], malhas: [], pontos: new Map(), sistemas: new Map(), coresArquivo: [] };
 }
 
 function exigirPeca(ctx: Ctx, oque = "Este recurso"): Shape3D {
@@ -2015,6 +2021,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     erros,
     volume,
     topologia: topologia(peca).topo,
+    coresFaces: ctx.coresArquivo.length ? Array.from(casarFaces(topologia(peca).topo.faces, ctx.coresArquivo)) : undefined,
     referencias: ctx.refsSaida,
     tempos,
     corpos: [...corposSolidos(peca, facesPorRecurso, features), ...corposDaMalha(ctx, malhaSolido.triangulos.length)],
@@ -2139,6 +2146,8 @@ const ROTULO_DIRETA = { moverFace: "Mover face", excluirFace: "Excluir face", su
 
 /** Sólidos importados já lidos (o arquivo é lido uma vez; cada regeneração usa uma cópia). */
 const importados = new Map<string, Shape3D>();
+/** cores das faces de cada STEP lido (mesma chave de `importados`) */
+const coresImportados = new Map<string, CorDeFace[]>();
 
 /**
  * Bytes dos arquivos importados, pela assinatura: a interface manda o conteúdo uma vez e, nas
@@ -2189,6 +2198,11 @@ function corpoImportado(f: FeatureImportado): Shape3D {
         const forma = cast(leitor.OneShape()) as unknown as Shape3D;
         leitor.delete();
         s = forma;
+        try {
+          coresImportados.set(chave, coresDoStep(bytesDoImportado(f), forma));
+        } catch {
+          coresImportados.set(chave, []); // cores são extra: sem elas a peça abre cinza
+        }
       } else {
         // o STL é só uma malha de triângulos soltos: costura em cascas fechadas, um sólido por
         // casca, e une os triângulos coplanares em faces (fica editável como uma peça comum)
@@ -2785,7 +2799,9 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       return reconstruirChapa(ctx);
     case "importado":
       if (f.malha) return void ctx.malhas.push({ ...malhaImportada(f), idCorpo: f.id, copia: 0 });
-      return aplicar(ctx, f.id, [{ tool: corpoImportado(f), op: "adicionar" }]);
+      aplicar(ctx, f.id, [{ tool: corpoImportado(f), op: "adicionar" }]);
+      ctx.coresArquivo.push(...(coresImportados.get(`${f.formato}:${assinaturaDados(f.id, f.dados)}`) ?? []));
+      return;
     case "curva": {
       const t = curvaRecurso(f, ctx);
       ctx.curvas.set(f.id, t);

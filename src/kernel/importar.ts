@@ -5,6 +5,10 @@
 
 import { cast, getOC, measureShapeVolumeProperties, type Shape3D } from "replicad";
 import type { Quat, Transformacao } from "../montagem/modelo";
+import type { CorDeFace } from "../aparencia";
+import { coresDaForma } from "./coresImportadas";
+import { estilosDoStep } from "./coresStep";
+import { listarTopo } from "./topologia";
 
 export interface CorpoLido {
   /** STEP só desta peça, no sistema de coordenadas dela */
@@ -12,6 +16,9 @@ export interface CorpoLido {
   volume: number;
   /** quantas vezes aparece na montagem */
   n: number;
+  /** cores do arquivo (STEP AP214): a peça toda numa cor só, ou cores por face */
+  cor?: number;
+  cores?: CorDeFace[];
 }
 
 export interface LeituraMontagem {
@@ -69,10 +76,24 @@ export async function lerMontagemStep(bytes: Uint8Array): Promise<LeituraMontage
   const formas: unknown[] = []; // forma de cada corpo (reconhece outra instância da mesma peça)
   const instancias: LeituraMontagem["instancias"] = [];
   const identidade = new oc.TopLoc_Location();
+  let estilos: ReturnType<typeof estilosDoStep> | null = null;
+  try {
+    estilos = estilosDoStep(new TextDecoder("latin1").decode(bytes));
+  } catch {
+    estilos = null; // cores são extra
+  }
   const novoCorpo = (forma: unknown, chave: unknown) => {
     const s = cast(forma as never) as unknown as Shape3D;
     arquivos.push(s.blobSTEP());
-    corpos.push({ step: new Uint8Array(0), volume: measureShapeVolumeProperties(s).volume, n: 0 });
+    const corpo: CorpoLido = { step: new Uint8Array(0), volume: measureShapeVolumeProperties(s).volume, n: 0 };
+    // cores no sistema da peça (os pontos do arquivo também estão nele)
+    const cores = estilos ? coresDaForma(s, estilos) : [];
+    if (cores.length) {
+      const nFaces = listarTopo(s, "face").length;
+      if (cores.length === nFaces && cores.every((c) => c.cor === cores[0].cor)) corpo.cor = cores[0].cor;
+      else corpo.cores = cores;
+    }
+    corpos.push(corpo);
     formas.push(chave);
     return corpos.length - 1;
   };

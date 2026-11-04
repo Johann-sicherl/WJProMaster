@@ -7,6 +7,8 @@ import { registrarComAtualizacao } from "../comum/atualizacao";
 import { instalarLateralAjustavel } from "../ui/lateral";
 import { abrirEmNovaJanela, gravarNaJanela, lerDaJanela, podarJanelas } from "../comum/janelas";
 import "../style.css";
+import { abrirEditorCor } from "../ui/editorCor";
+import { indiceDoCorpoRef, trechosDeCor, type TrechoCor } from "../aparencia";
 import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
 import { montagemDoStep } from "./step";
@@ -150,8 +152,89 @@ function montarCena() {
   });
   cena = itens.length ? juntar(itens) : null;
   viewport.mostrarMalha(cena?.malha ?? null, cena?.topo ?? null);
+  aplicarCoresCena();
   destacar();
   reexibirCotas();
+}
+
+// ---------- aparências (cores) ----------
+
+/** Trechos coloridos de cada peça (na malha da peça), guardados enquanto a peça e as cores não mudam. */
+const coresDaPeca = new WeakMap<PecaEmbutida, { chave: string; ap: unknown; sem: unknown; cor: unknown; mat: unknown; trechos: TrechoCor[] }>();
+
+function trechosDaPeca(p: PecaEmbutida, r: ResultadoComponente): TrechoCor[] {
+  const k = chaveDe(p), d = p.doc;
+  const c = coresDaPeca.get(p);
+  if (c && c.chave === k && c.ap === d.aparencias && c.sem === d.semCoresArquivo && c.cor === d.corPeca && c.mat === d.material) return c.trechos;
+  const m = r.malha!;
+  const trechos: TrechoCor[] = [];
+  // a peça toda: aparência da peça ou cor do material
+  const base = d.corPeca ?? (d.material ? MATERIAIS[d.material]?.cor : undefined);
+  if (base !== undefined) trechos.push({ ini: 0, qtd: m.triangulos.length, cor: base });
+  trechos.push(...trechosDeCor(m.faces, r.topologia?.faces ?? [], d.semCoresArquivo ? undefined : r.coresFaces, d.aparencias, r.corpos, (a) => indiceDoCorpoRef(r.corpos ?? [], a.corpo)));
+  coresDaPeca.set(p, { chave: k, ap: d.aparencias, sem: d.semCoresArquivo, cor: d.corPeca, mat: d.material, trechos });
+  return trechos;
+}
+
+/** Cores da cena: as de cada peça e, por cima, a aparência própria de cada componente. */
+function aplicarCoresCena() {
+  if (!cena) return;
+  const out: TrechoCor[] = [];
+  cena.mapa.comps.forEach((id, k) => {
+    const c = compDe(id);
+    const r = c ? malhas.get(chaveDe(pecaDe(c))) : undefined;
+    const ini = cena!.mapa.tris[k], qtd = cena!.mapa.tris[k + 1] - ini;
+    if (!c || !r?.malha) return;
+    if (c.cor !== undefined) return void out.push({ ini, qtd, cor: c.cor });
+    for (const t of trechosDaPeca(pecaDe(c), r)) out.push({ ini: t.ini + ini, qtd: t.qtd, cor: t.cor });
+  });
+  viewport.definirCores(out);
+}
+
+/**
+ * Aparência do componente: só desta instância nesta montagem, ou da peça (vale em todas as
+ * montagens; a peça fica "alterada" até ser salva, como nas cotas).
+ */
+function abrirAparenciaComponente(cs: ComponenteMontagem[]) {
+  if (!cs.length || !doc) return;
+  esconderBarra();
+  const p = pecaDe(cs[0]);
+  const mesmaPeca = cs.every((c) => c.peca === p.id);
+  const antes = { cores: cs.map((c) => c.cor), peca: p.doc.corPeca, mod: p.modificada };
+  const mat = p.doc.material ? MATERIAIS[p.doc.material] : undefined;
+  const definir = (nivel: string, cor: number | null) => {
+    if (nivel === "componente") for (const c of cs) {
+      if (cor === null) delete c.cor;
+      else c.cor = cor;
+    }
+    else if (cor === null) delete p.doc.corPeca;
+    else p.doc.corPeca = cor;
+    aplicarCoresCena();
+  };
+  abrirEditorCor({
+    titulo: `Aparência · ${cs.length > 1 ? `${cs.length} componentes` : rotuloComponente(doc, cs[0])}`,
+    niveis: [
+      { id: "componente", rotulo: cs.length > 1 ? "Componentes (nesta montagem)" : "Componente (nesta montagem)", cor: cs[0].cor },
+      ...(mesmaPeca ? [{ id: "peca", rotulo: `Peça ${p.nome} (documento)`, cor: p.doc.corPeca }] : []),
+    ],
+    corPadrao: p.doc.corPeca ?? mat?.cor ?? 0xd0d7df,
+    previa: definir,
+    confirmar: (nivel, cor) => {
+      definir(nivel, cor);
+      if (nivel === "peca" && p.doc.corPeca !== antes.peca) p.modificada = true;
+      alterou();
+    },
+    cancelar: () => {
+      cs.forEach((c, i) => {
+        if (antes.cores[i] === undefined) delete c.cor;
+        else c.cor = antes.cores[i];
+      });
+      if (antes.peca === undefined) delete p.doc.corPeca;
+      else p.doc.corPeca = antes.peca;
+      p.modificada = antes.mod;
+      aplicarCoresCena();
+    },
+  });
 }
 
 // ---------- cotas dos componentes (duplo clique numa face, ou num recurso na árvore) ----------
@@ -789,6 +872,7 @@ function acoesDoComponente(): AcaoContexto[] {
   ];
   if (um) out.push({ rotulo: "Editar peça", icone: "esboco", acao: () => void editarPecaEmContexto(um) });
   if (um) out.push({ rotulo: "Abrir peça", icone: "peca", acao: () => void abrirPeca(um) });
+  out.push({ rotulo: "Aparência", icone: "aparencia", acao: () => abrirAparenciaComponente(cs) });
   out.push({ rotulo: "Excluir", icone: "fechar", acao: () => excluirSelecao() });
   return out;
 }
