@@ -4,6 +4,7 @@
 // Modelo puro em ./modelo.ts (testado em scripts/teste-desenho.ts).
 
 import { registrarComAtualizacao } from "../comum/atualizacao";
+import { instalarLateralAjustavel } from "../ui/lateral";
 import "../style.css";
 import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
@@ -2684,6 +2685,7 @@ $("btn-menu").onclick = () => {
   m.hidden = !m.hidden;
   $("btn-menu").setAttribute("aria-expanded", String(!m.hidden));
 };
+instalarLateralAjustavel("desenho");
 $("btn-lateral").innerHTML = ICONES.arvore;
 $("btn-lateral").onclick = () => document.body.classList.toggle("lateral-aberta");
 instalarFecharAoTocarFora(fecharMenu);

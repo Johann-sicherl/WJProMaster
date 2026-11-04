@@ -69,6 +69,7 @@ import { aplicarEquacoes, avaliarExpressao, resolverVariaveis } from "./equacoes
 import type { Analise } from "./analises";
 import { absorvidosDe, excluirRecursos, filhosDe } from "./dependencias";
 import { registrarComAtualizacao } from "./comum/atualizacao";
+import { instalarLateralAjustavel } from "./ui/lateral";
 
 const CHAVE_AUTOSAVE = "jlscad:documento";
 const CHAVE_PREFS = "jlscad:interface";
@@ -4594,6 +4595,7 @@ if (import.meta.env.DEV) {
 }
 
 // ---------- início ----------
+instalarLateralAjustavel("peca");
 $("btn-lateral").innerHTML = ICONES.arvore;
 $("btn-lateral").onclick = () => abrirGaveta(!document.body.classList.contains("lateral-aberta"));
 aplicarDispositivo();

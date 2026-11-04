@@ -4,6 +4,7 @@
 // solver em ./solver.ts (testados em scripts/teste-montagem.ts).
 
 import { registrarComAtualizacao } from "../comum/atualizacao";
+import { instalarLateralAjustavel } from "../ui/lateral";
 import "../style.css";
 import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
@@ -426,7 +427,7 @@ function destacar(realce: Entidade | null = null) {
 
 const PLANOS: [string, string][] = [["XY", "Plano Frontal"], ["XZ", "Plano Superior"], ["YZ", "Plano Lateral"], ["origem", "Origem"]];
 const planosVisiveis: Record<string, boolean> = { XY: true, XZ: true, YZ: true, origem: true };
-const recolhidos = new Set<string>(["__planos"]);
+const recolhidos = new Set<string>();
 const ICONE_TIPO: Record<TipoPosicionamento, NomeIcone> = {
   coincidente: "posCoincidente", paralelo: "posParalelo", perpendicular: "posPerpendicular", tangente: "posTangente",
   concentrico: "posConcentrico", travar: "posTravar", distancia: "posDistancia", angulo: "posAngulo",
@@ -499,7 +500,22 @@ function renderizarArvore() {
   lista.append(raiz);
 
   // planos e origem (recolhidos numa pasta, como os planos na peça)
-  const pasta = li("item ref", "plano", "Planos e origem", recolhidos.has("__planos") ? "toque para mostrar" : "");
+  const pasta = li("item ref", "plano", "Planos e origem", recolhidos.has("__planos") ? "toque para abrir" : "");
+  // olho da pasta: oculta/mostra os três planos e a origem de uma vez
+  const todosVisiveis = PLANOS.every(([id]) => planosVisiveis[id]);
+  const olhoPasta = document.createElement("button");
+  olhoPasta.className = "item-olho";
+  olhoPasta.title = todosVisiveis ? "Ocultar planos e origem" : "Mostrar planos e origem";
+  olhoPasta.innerHTML = todosVisiveis ? ICONES.olho : ICONES.olhoFechado;
+  olhoPasta.onclick = (ev) => {
+    ev.stopPropagation();
+    for (const [id] of PLANOS) {
+      planosVisiveis[id] = !todosVisiveis;
+      viewport.definirVisibilidadeReferencia(id as never, !todosVisiveis);
+    }
+    renderizarArvore();
+  };
+  pasta.append(olhoPasta);
   pasta.onclick = () => {
     if (recolhidos.has("__planos")) recolhidos.delete("__planos");
     else recolhidos.add("__planos");
@@ -2342,6 +2358,7 @@ $("btn-menu").onclick = () => {
   m.hidden = !m.hidden;
   $("btn-menu").setAttribute("aria-expanded", String(!m.hidden));
 };
+instalarLateralAjustavel("montagem");
 $("btn-lateral").innerHTML = ICONES.arvore;
 $("btn-lateral").onclick = () => document.body.classList.toggle("lateral-aberta");
 instalarFecharAoTocarFora(fecharMenu);
