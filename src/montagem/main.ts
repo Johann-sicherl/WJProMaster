@@ -5,6 +5,7 @@
 
 import { registrarComAtualizacao } from "../comum/atualizacao";
 import { instalarLateralAjustavel } from "../ui/lateral";
+import { abrirEmNovaJanela, gravarNaJanela, lerDaJanela, podarJanelas } from "../comum/janelas";
 import "../style.css";
 import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
@@ -79,6 +80,8 @@ let comando: Comando | null = null;
 
 aplicarDispositivo();
 const viewport = new Viewport($("viewport"));
+// planos padrão começam ocultos (a árvore mostra o olho fechado; tocar mostra de novo)
+for (const id of ["XY", "XZ", "YZ"] as const) viewport.definirVisibilidadeReferencia(id, false);
 const kernel = new ClienteKernel();
 const prefsCad = lerPrefsCad();
 viewport.tempoToqueLongo = prefsCad.toqueLongoMs ?? 600;
@@ -317,7 +320,7 @@ function registrarPasso() {
 function salvarAutosave() {
   if (!doc) return;
   try {
-    localStorage.setItem(CHAVE, JSON.stringify(doc));
+    gravarNaJanela(CHAVE, JSON.stringify(doc)); // cada janela tem o seu (várias montagens abertas)
   } catch {
     // grande demais para o navegador (STEP importado): tira a cópia velha para ela não voltar no
     // lugar desta, e avisa uma vez que o cofre é que guarda
@@ -426,7 +429,8 @@ function destacar(realce: Entidade | null = null) {
 // ---------- árvore ----------
 
 const PLANOS: [string, string][] = [["XY", "Plano Frontal"], ["XZ", "Plano Superior"], ["YZ", "Plano Lateral"], ["origem", "Origem"]];
-const planosVisiveis: Record<string, boolean> = { XY: true, XZ: true, YZ: true, origem: true };
+// planos começam ocultos (pedido do Johann); a origem fica visível
+const planosVisiveis: Record<string, boolean> = { XY: false, XZ: false, YZ: false, origem: true };
 const recolhidos = new Set<string>();
 const ICONE_TIPO: Record<TipoPosicionamento, NomeIcone> = {
   coincidente: "posCoincidente", paralelo: "posParalelo", perpendicular: "posPerpendicular", tangente: "posTangente",
@@ -882,9 +886,8 @@ async function abrirPeca(c: ComponenteMontagem) {
   if (p.arquivo) {
     const r = await lerDoCofre(p.arquivo);
     if (r) {
-      avisar(`Abrindo ${p.nome} no ambiente de Peça. Ao salvar lá e voltar, a montagem se atualiza.`);
-      sessionStorage.setItem("wjcad:voltarMontagem", "1");
-      const erro = await abrirArquivoNoApp(r.arquivo);
+      avisar(`Abrindo ${p.nome} numa janela nova. Ao salvar a peça lá e voltar para esta janela, a montagem se atualiza.`, 6000);
+      const erro = await abrirArquivoNoApp(r.arquivo, undefined, true);
       if (erro) avisar(erro);
       return;
     }
@@ -892,8 +895,7 @@ async function abrirPeca(c: ComponenteMontagem) {
   // peça só embutida (veio do aparelho): abre a cópia; ao salvar ela entra no cofre
   localStorage.setItem("jlscad:documento", JSON.stringify(p.doc));
   desligar("cad");
-  sessionStorage.setItem("wjcad:voltarMontagem", "1");
-  location.href = new URL(`${RAIZ}cad/#abrir-autosave`, location.href).href;
+  abrirEmNovaJanela(new URL(`${RAIZ}cad/#abrir-autosave`, location.href).href);
 }
 
 // ---------- seleção no modelo ----------
@@ -2232,8 +2234,8 @@ function abrirMontagem(d: DocumentoMontagem) {
 }
 
 /** Peças que vieram do cofre e mudaram lá (GO-IN, cópia de trabalho): atualiza a cópia embutida. */
-async function atualizarDoCofre() {
-  if (!doc) return;
+async function atualizarDoCofre(): Promise<number> {
+  if (!doc) return 0;
   const mudaram: string[] = [];
   for (const p of [...doc.pecas]) {
     // alterada na montagem e ainda não salva: a cópia embutida vale (não volta à do cofre)
@@ -2255,7 +2257,21 @@ async function atualizarDoCofre() {
     salvarAutosave();
     avisar(`Atualizado do cofre: ${mudaram.join(", ")}.`, 5000);
   }
+  return mudaram.length;
 }
+
+// várias janelas: ao voltar para esta, as peças salvas noutra janela entram na montagem
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !doc || comando) return;
+  void atualizarDoCofre().then(async (n) => {
+    if (!n) return;
+    await atualizarCena(true);
+    resolver();
+    montarCena();
+    renderizarArvore();
+    atualizarStatus();
+  });
+});
 
 function novaMontagem(abrirInserirLogo = true) {
   if (doc?.componentes.length && !confirm("Fechar a montagem atual e começar uma nova? (o que não foi salvo no cofre se perde)")) return;
@@ -2264,12 +2280,19 @@ function novaMontagem(abrirInserirLogo = true) {
   if (abrirInserirLogo) abrirInserir();
 }
 
+/** Com uma montagem aberta, outro documento abre numa janela nova (esta continua). */
+function irPara(caminho: string) {
+  const url = new URL(caminho, location.href).href;
+  if (doc) abrirEmNovaJanela(url);
+  else location.href = url;
+}
+
 /** Novo documento: Peça e Desenho abrem as páginas deles. */
 function abrirNovo() {
   abrirPopover($("btn-menu"), [
-    { rotulo: "Peça", icone: "peca", acao: () => (location.href = new URL(`${RAIZ}cad/#novo`, location.href).href) },
-    { rotulo: "Montagem", icone: "montagem", acao: () => novaMontagem() },
-    { rotulo: "Desenho", icone: "desenho", acao: () => (location.href = new URL(`${RAIZ}cad/desenho/#novo`, location.href).href) },
+    { rotulo: "Peça", icone: "peca", acao: () => irPara(`${RAIZ}cad/#novo`) },
+    { rotulo: "Montagem", icone: "montagem", acao: () => (doc?.componentes.length ? irPara(`${RAIZ}cad/montagem/#novo`) : novaMontagem()) },
+    { rotulo: "Desenho", icone: "desenho", acao: () => irPara(`${RAIZ}cad/desenho/#novo`) },
   ]);
 }
 
@@ -2288,13 +2311,13 @@ function fecharMontagem() {
 
 const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => void; doc?: boolean }> = {
   novo: { rotulo: "Novo…", icone: "nova", fazer: abrirNovo },
-  abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("asm") },
+  abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("asm", !!doc) },
   abrir: { rotulo: "Abrir arquivo do aparelho (.wjasm, montagem STEP)…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
   salvar: { rotulo: "Salvar (.wjasm)", icone: "salvar", fazer: () => void salvar(), doc: true },
   fechar: { rotulo: "Fechar montagem", icone: "fechar", fazer: fecharMontagem, doc: true },
   desenho: { rotulo: "Criar desenho desta montagem", icone: "desenho", fazer: () => {
     salvarAutosave();
-    location.href = new URL(`${RAIZ}cad/desenho/#de-montagem`, location.href).href;
+    abrirEmNovaJanela(new URL(`${RAIZ}cad/desenho/#de-montagem`, location.href).href);
   }, doc: true },
   locais: { rotulo: "Cópias do cofre (pendrive, Drive, dispositivo)…", icone: "pasta", fazer: () => void abrirCopias() },
   atalhos: { rotulo: "Atalhos", icone: "menu", fazer: () => abrirJanela("Atalhos da montagem", `<table class="tabela"><tbody>${[
@@ -2359,6 +2382,7 @@ $("btn-menu").onclick = () => {
   $("btn-menu").setAttribute("aria-expanded", String(!m.hidden));
 };
 instalarLateralAjustavel("montagem");
+podarJanelas();
 $("btn-lateral").innerHTML = ICONES.arvore;
 $("btn-lateral").onclick = () => document.body.classList.toggle("lateral-aberta");
 instalarFecharAoTocarFora(fecharMenu);
@@ -2414,7 +2438,7 @@ function atualizarAreaDeTrabalho() {
   rec.innerHTML = "";
   let ultima: DocumentoMontagem | null = null;
   try {
-    ultima = validarMontagem(JSON.parse(localStorage.getItem(CHAVE) ?? "null"));
+    ultima = validarMontagem(JSON.parse(lerDaJanela(CHAVE) ?? "null"));
   } catch {
     ultima = null;
   }
@@ -2486,12 +2510,13 @@ instalarPainelCofre("asm", salvar);
 void sincronizarAoAbrir(kernel.pronto)?.catch(() => {});
 {
   let inicial: DocumentoMontagem | null = null;
+  const hash = location.hash;
   try {
-    inicial = validarMontagem(JSON.parse(localStorage.getItem(CHAVE) ?? "null"));
+    // #abrir-autosave: o documento que outro app deixou na chave comum; senão, o desta janela
+    inicial = validarMontagem(JSON.parse((hash === "#abrir-autosave" ? localStorage.getItem(CHAVE) : lerDaJanela(CHAVE)) ?? "null"));
   } catch {
     inicial = null;
   }
-  const hash = location.hash;
   if (hash) history.replaceState(null, "", location.pathname + location.search);
   if (hash === "#novo") novaMontagem();
   else if (hash === "#abrir-autosave" && inicial) abrirMontagem(inicial);

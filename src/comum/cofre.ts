@@ -10,6 +10,7 @@ import { permissao, RepositorioAparelho, RepositorioPasta, type PastaDisco } fro
 import { sincronizar, type MetaCofre, type Repositorio, type ResultadoSincronia } from "../pdm/sincronia";
 import { nuvemGoogle, type DestinoNuvem } from "./drive";
 import { bloqueioDoCheckout, estadoDe, extensao, fluxoAtual, nomeLivre, trocarReferencias, usarFluxo, type Arquivo, type DadosModelo, type Pasta, type ReferenciaArquivo } from "../pdm/regras";
+import { abrirEmNovaJanela, fixarNaJanela, gravarNaJanela, lerDaJanela, removerDaJanela } from "./janelas";
 
 export type ChaveApp = "cad" | "asm" | "drw" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp" | "flow";
 export const NOME_APP: Record<ChaveApp, string> = {
@@ -198,11 +199,15 @@ function resumo(r: ResultadoSincronia, repos: Repositorio[], ausentes: string[])
 // ---------- salvar e abrir pelos apps ----------
 
 const chaveVinculo = (app: ChaveApp) => `wjpdm:vinculo:${app}`;
+// cada janela fica com o vínculo que tinha ao abrir (outra janela que abrir outro arquivo não troca)
+for (const app of Object.keys(NOME_APP) as ChaveApp[]) fixarNaJanela(chaveVinculo(app));
 /** Arquivo do cofre ligado ao documento aberto no app (salvar atualiza esse arquivo). */
-export const vinculo = (app: ChaveApp) => localStorage.getItem(chaveVinculo(app));
-export const ligar = (app: ChaveApp, id: string) => localStorage.setItem(chaveVinculo(app), id);
+export const vinculo = (app: ChaveApp) => lerDaJanela(chaveVinculo(app));
+export const ligar = (app: ChaveApp, id: string) => gravarNaJanela(chaveVinculo(app), id);
+/** Vínculo só na chave comum: passa o arquivo para a próxima janela que abrir, sem mexer nesta. */
+const ligarParaOutraJanela = (app: ChaveApp, id: string) => localStorage.setItem(chaveVinculo(app), id);
 /** Novo documento / aberto do aparelho: o próximo salvar cria um arquivo novo no cofre. */
-export const desligar = (app: ChaveApp) => localStorage.removeItem(chaveVinculo(app));
+export const desligar = (app: ChaveApp) => removerDaJanela(chaveVinculo(app));
 
 const caminhoDaPasta = (ps: Pasta[], id: string) => {
   const n: string[] = [];
@@ -541,7 +546,7 @@ export async function desfazerGoOut(id: string): Promise<string> {
 }
 
 /** Abre um arquivo do cofre no app (grava o salvamento automático do app e recarrega a página). */
-export async function abrirArquivoNoApp(a: Arquivo, db?: Armazem): Promise<string | null> {
+export async function abrirArquivoNoApp(a: Arquivo, db?: Armazem, novaJanela = false): Promise<string | null> {
   const app = APPS[extensao(a.nome)];
   if (!app) return "Este arquivo não abre em nenhum app do WJProMaster.";
   db ??= await abrirCofre();
@@ -557,8 +562,14 @@ export async function abrirArquivoNoApp(a: Arquivo, db?: Armazem): Promise<strin
     return `O arquivo não é um documento válido do ${app.app}.`;
   }
   localStorage.setItem(app.chave, texto);
-  ligar(app.face, a.id);
   const destino = new URL(`${import.meta.env.BASE_URL}${app.url}`, location.href);
+  if (novaJanela) {
+    // a janela atual continua com o documento dela; a nova lê o comum (documento e vínculo)
+    ligarParaOutraJanela(app.face, a.id);
+    abrirEmNovaJanela(destino.href);
+    return null;
+  }
+  ligar(app.face, a.id);
   if (destino.pathname === location.pathname) {
     // já está no app: troca o endereço e recarrega (só o "#" não recarregaria)
     history.replaceState(null, "", destino.href);
@@ -716,7 +727,8 @@ export async function abrirCopias(aoSincronizar?: () => void, mestre = false) {
 }
 
 /** Lista os arquivos da face no cofre (mais recentes primeiro) e abre o escolhido no app. */
-export async function abrirDoCofre(app: ChaveApp) {
+/** `novaJanela`: o app já tem um documento aberto — o escolhido abre noutra janela. */
+export async function abrirDoCofre(app: ChaveApp, novaJanela = false) {
   const db = await abrirCofre();
   const ps = await db.todos<Pasta>("pastas");
   const caminho = (id: string) => {
@@ -735,7 +747,7 @@ export async function abrirDoCofre(app: ChaveApp) {
     b.onclick = async () => {
       const a = lista.find((x) => x.id === b.dataset.id)!;
       fechar();
-      const erro = await abrirArquivoNoApp(a, db);
+      const erro = await abrirArquivoNoApp(a, db, novaJanela);
       if (erro) alert(erro);
     };
   });
