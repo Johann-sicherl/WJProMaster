@@ -19,6 +19,7 @@ import { atualizarExternas, criarExterna, idsExternos, podarExternas, pontoNaPro
 import { referencial, type Referencial } from "./referencial";
 import type { ResultadoSolver, SolverEsboco } from "./solver";
 import { construirCamada, descartarCamada } from "./visual";
+import { celulaSilhueta, cortarMalha, entidadesDe, silhuetaMalha } from "./malhaPlano";
 
 export type Ferramenta =
   | "selecionar" | "ponto" | "linha" | "retangulo" | "circulo" | "arco" | "rasgo" | "poligono" | "spline"
@@ -480,6 +481,51 @@ export class EditorEsboco {
     const proj = ref && projetar(ref, this.ref);
     if (!ref || !proj) return null;
     return { ref, proj, rotulo: ref.tipo === "vertice" ? "Vértice de outro componente (->)" : "Aresta de outro componente (->)" };
+  }
+
+  /**
+   * Curva de interseção (o plano do esboço corta a peça) ou Entidades de silhueta (contorno da peça
+   * vista na normal do plano): calculadas sobre a malha exibida — valem para sólidos e para corpos
+   * de malha (STL). Viram linhas e círculos normais do esboço.
+   */
+  trazerDoModelo(tipo: "intersecao" | "silhueta"): number {
+    const m = this.h.viewport.malhaDaPeca();
+    if (!m || !m.pos.length) {
+      this.h.avisar("Não há peça para trazer ao esboço.");
+      return 0;
+    }
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < m.pos.length; i++) {
+      if (m.pos[i] < lo) lo = m.pos[i];
+      if (m.pos[i] > hi) hi = m.pos[i];
+    }
+    const diag = Math.max(1e-6, (hi - lo) * Math.sqrt(3));
+    const solda = diag * 1e-5;
+    const polis = tipo === "intersecao" ? cortarMalha(m.pos, m.idx, this.ref, solda) : silhuetaMalha(m.pos, m.idx, this.ref, solda);
+    // tolerância da simplificação: começa fina (silhueta: 1,5 célula da grade, a escada some) e
+    // engrossa se sair entidade demais para o esboço
+    let tol = tipo === "silhueta" ? 1.5 * celulaSilhueta(m.pos, this.ref) : Math.max(1e-3, diag * 2e-4);
+    let ents = entidadesDe(polis, tol);
+    while (ents.length > 3000 && tol < diag * 0.01) ents = entidadesDe(polis, (tol *= 2));
+    if (!ents.length) {
+      this.h.avisar(tipo === "intersecao" ? "O plano do esboço não corta a peça." : "Nenhum contorno da peça visto deste plano.");
+      return 0;
+    }
+    const chave = (p: { x: number; y: number }) => `${Math.round(p.x / tol)},${Math.round(p.y / tol)}`;
+    const pontos = new Map<string, string>();
+    const pt = (p: { x: number; y: number }) => {
+      const k = chave(p);
+      let id = pontos.get(k);
+      if (!id) pontos.set(k, (id = op.ponto(this.esb, p)));
+      return id;
+    };
+    for (const e of ents) {
+      if (e.tipo === "circulo") op.circulo(this.esb, op.ponto(this.esb, e.c), e.r);
+      else op.linha(this.esb, pt(e.a), pt(e.b));
+    }
+    this.resolver(true);
+    this.h.avisar(`${tipo === "intersecao" ? "Curva de interseção" : "Entidades de silhueta"}: ${ents.length} entidade(s) no esboço.`);
+    return ents.length;
   }
 
   /** Converter entidades: a aresta/vértice da peça vira geometria do esboço (fixa, não construção). */

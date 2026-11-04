@@ -10,6 +10,7 @@ import * as op from "../src/esboco/operacoes";
 import { aninhamento, areaAssinada, encontrarLacos, idsNaSelecao, ORIGEM, EIXO_H, EIXO_V } from "../src/esboco/geometria";
 import { atualizarExternas, criarExterna, podarExternas, projetar } from "../src/esboco/externas";
 import { referencial } from "../src/esboco/referencial";
+import { cortarMalha, entidadesDe, silhuetaMalha } from "../src/esboco/malhaPlano";
 import { ajustarTextoCota, PASSO_COTA_PX } from "../src/esboco/cotas";
 import { readFileSync } from "node:fs";
 import * as opentype from "opentype.js";
@@ -524,6 +525,31 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   verdade("caixa sem cruzar não pega o que só corta a borda", idsNaSelecao(e, { tipo: "caixa", a: { x: 30, y: 5 }, b: { x: 50, y: -50 }, cruzando: false }).length === 0);
   const laco = idsNaSelecao(e, { tipo: "laco", pts: [{ x: 0, y: 20 }, { x: 25, y: 20 }, { x: 25, y: 45 }, { x: 55, y: 70 }, { x: 70, y: 55 }, { x: 0, y: 40 }] });
   verdade("laço pega o círculo e o ponto solto (pelo id do ponto)", tem(laco, c.id, pt.p));
+}
+
+// ---------- curva de interseção e silhueta sobre a malha (sólido ou STL) ----------
+{
+  // cubo 10 mm (12 triângulos, sem índice: como um STL solto) e esfera r = 10 em latitude/longitude
+  const v = [[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0], [0, 0, 10], [10, 0, 10], [10, 10, 10], [0, 10, 10]];
+  const f = [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]];
+  const cubo = new Float32Array(f.flatMap((t) => t.flatMap((i) => v[i])));
+  const meio = referencial({ tipo: "plano", plano: "XY", deslocamento: 5 });
+  const corte = entidadesDe(cortarMalha(cubo, null, meio, 1e-4), 1e-3);
+  const per = corte.reduce((s2, e) => s2 + (e.tipo === "linha" ? Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y) : 0), 0);
+  verdade("interseção do cubo em z = 5: quadrado 10 × 10 (4 linhas)", corte.length === 4 && Math.abs(per - 40) < 1e-6);
+  const sil = entidadesDe(silhuetaMalha(cubo, null, referencial({ tipo: "plano", plano: "XY", deslocamento: 0 }), 1e-4), 1e-3);
+  verdade("silhueta do cubo vista de frente: quadrado (4 linhas)", sil.length === 4 && sil.every((e) => e.tipo === "linha"));
+  const pos: number[] = [], idx: number[] = [], N = 48, M = 24;
+  for (let i = 0; i <= M; i++) for (let j = 0; j <= N; j++) {
+    const th = (Math.PI * i) / M, ph = (2 * Math.PI * j) / N;
+    pos.push(10 * Math.sin(th) * Math.cos(ph), 10 * Math.sin(th) * Math.sin(ph), 10 * Math.cos(th));
+  }
+  for (let i = 0; i < M; i++) for (let j = 0; j < N; j++) {
+    const a = i * (N + 1) + j, b = a + N + 1;
+    idx.push(a, b, a + 1, a + 1, b, b + 1);
+  }
+  const silE = entidadesDe(silhuetaMalha(new Float32Array(pos), new Uint32Array(idx), referencial({ tipo: "plano", plano: "XY", deslocamento: 0 }), 1e-4), 0.05);
+  verdade("silhueta da esfera de cima: um círculo de raio ≈ 10", silE.length === 1 && silE[0].tipo === "circulo" && Math.abs(silE[0].r - 10) < 0.2);
 }
 
 if (falhas) {

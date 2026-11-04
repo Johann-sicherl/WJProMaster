@@ -15,8 +15,18 @@ em arco por 3 pontos / em arco pelo centro · Círculo / perimetral · Arco pelo
 peça vira geometria fixa do esboço) · Padrão linear / circular de esboço · Exibir/Excluir relações ·
 painéis completos de Polígono, Aparar, Offset, Espelhar e Padrões (abaixo).
 ✅ Elipse · Elipse parcial · Parábola · Texto.
-Pendentes: Esboço 3D, Spline de estilo, Curva por equação, Cônica,
-Entidades de silhueta, Curva de interseção.
+✅ (04/11/2026) **Entidades de silhueta** e **Curva de interseção** (`src/esboco/malhaPlano.ts`), um toque
+no menu Converter ▾ (abre o esboço se preciso). Calculadas sobre a malha exibida da peça, então valem
+para **sólidos e corpos de malha (STL)**:
+- Curva de interseção: o plano do esboço corta os triângulos; segmentos encadeados.
+- Silhueta: triângulos projetados numa grade de até 2048 células no lado maior e borda da região
+  traçada (contorno externo e vazados que atravessam a peça, sem arestas internas; furinhos de uma
+  célula fechados). Precisão de 1,5 célula (ex.: 0,18 mm numa peça de 240 mm).
+- Polilinhas simplificadas (Douglas-Peucker); laços circulares viram círculos; acima de 3 000
+  entidades a tolerância engrossa. Viram linhas e círculos normais do esboço (sem vínculo com o modelo).
+- Solver: entidades sem relação nem cota são livres sem teste um a um (com milhares de entidades o
+  cálculo de "livres" levava ~1 min; agora milissegundos).
+Pendentes: Esboço 3D, Spline de estilo, Curva por equação, Cônica.
 
 Botões com **menu ▾** (o botão executa a última subfunção usada; a seta abre a lista):
 
@@ -72,7 +82,7 @@ angular · nº de instâncias · Exibir nº de instâncias ✓ · Raio · Ângul
 padronizar (seleção) · Instâncias a pular.
 
 Pontos de atenção: **Cônica** geral não existe no solver (PlaneGCS tem elipse, arco de elipse e parábola);
-**Esboço 3D**, **Spline de estilo** e **Entidades de silhueta** são os maiores — por último.
+**Esboço 3D** e **Spline de estilo** são os maiores — por último.
 
 ## 1. Entrar, sair e ambiente
 
