@@ -185,8 +185,11 @@ button svg { width: 22px; height: 22px; flex: none; }
 /* ---------- área principal ---------- */
 .area {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  /* largura da árvore: padrão do perfil, ou a arrastada pelo usuário (variável na própria .area) */
+  --larg-padrao: 300px;
+  grid-template-columns: var(--larg-lateral, var(--larg-padrao)) 1fr;
   min-height: 0;
+  position: relative;
 }
 
 .lateral, .propriedades {
@@ -415,7 +418,7 @@ button svg { width: 22px; height: 22px; flex: none; }
   .rapidas button[data-acao] { display: none; }
   .rapidas .sep { display: none; }
   .exportar { display: none; }
-  .area { grid-template-columns: 250px 1fr; }
+  .area { --larg-padrao: 250px; }
   #st-tempo { display: none; }
 }
 
@@ -845,7 +848,7 @@ body.disp-computador .cmd svg { width: 24px; height: 24px; }
 body.disp-computador .arvore .item { min-height: 36px; }
 body.disp-computador .arvore .item.filho { min-height: 30px; }
 body.disp-computador .aba { min-height: 32px; }
-body.disp-computador .area { grid-template-columns: 270px 1fr; }
+body.disp-computador .area { --larg-padrao: 270px; }
 body.disp-computador button svg { width: 20px; height: 20px; }
 
 /* celular: tela pequena — ícones sem texto, árvore e painéis numa gaveta sobre o modelo */
@@ -1069,3 +1072,25 @@ body.disp-computador .pc-tipo { min-height: 36px; }
 .menu-corpo-sec { font-size: 12px; font-weight: 600; color: var(--texto-2); padding: 6px 10px 2px; }
 body.disp-tablet .menu-corpo-icones button, body.disp-celular .menu-corpo-icones button { width: 48px; min-height: 48px; }
 .pasta-corpos .item-seta { width: 14px; display: inline-flex; justify-content: center; color: var(--texto-2); }
+
+/* árvore ajustável (Peça, Montagem, Desenho): alça na borda para arrastar, botão para recolher */
+.lateral-alca {
+  position: absolute; z-index: 15; top: 0; bottom: 0; width: 12px; margin-left: -6px;
+  left: var(--larg-lateral, var(--larg-padrao)); cursor: col-resize; touch-action: none;
+}
+.lateral-alca::after { content: ""; position: absolute; left: 5px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background .15s; }
+.lateral-alca:hover::after, .lateral-alca.arrastando::after { background: var(--acento); }
+.lateral-recolher {
+  position: absolute; z-index: 16; top: 50%; margin-top: -14px; left: calc(var(--larg-lateral, var(--larg-padrao)) - 14px);
+  width: 28px; height: 28px; border-radius: 14px; border: 1px solid var(--linha); background: var(--painel);
+  color: var(--texto-2); font-size: 16px; line-height: 1; display: grid; place-items: center; cursor: pointer; padding: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+}
+body.disp-tablet .lateral-recolher { width: 36px; height: 36px; border-radius: 18px; left: calc(var(--larg-lateral, var(--larg-padrao)) - 18px); }
+body.disp-tablet .lateral-alca { width: 20px; margin-left: -10px; }
+body.disp-tablet .lateral-alca::after { left: 9px; }
+body.lateral-recolhida .area { grid-template-columns: 0 1fr; }
+body.lateral-recolhida .area > .lateral { visibility: hidden; padding: 0; border: 0; }
+body.lateral-recolhida .lateral-alca { display: none; }
+body.lateral-recolhida .lateral-recolher { left: 6px; }
+body.disp-celular .lateral-alca, body.disp-celular .lateral-recolher, body.sem-documento .lateral-alca, body.sem-documento .lateral-recolher { display: none; }
