@@ -1,4 +1,7 @@
 import { atualizarExternas } from "./esboco/externas";
+import { abrirEditorCor } from "./ui/editorCor";
+import { casarFaces } from "./aparencia";
+import { trechosDeCor } from "./aparencia";
 import { deixar, deixarArquivo, esquecer, pegar, pegarArquivo } from "./comum/transferir";
 import { atualizarRefsDeContexto, devolverPeca, itensDoContexto, type PedidoContexto, type VoltaContexto } from "./montagem/contexto";
 import { juntar, localDaEntidade, type Cena } from "./montagem/cena";
@@ -39,6 +42,7 @@ import {
   ehBaseChapa,
   type Plano,
   type Referencia,
+  type Aparencia,
   type SuporteEsboco,
   type Vec3, nomeUnico, type AssinaturaFace
 } from "./model";
@@ -320,8 +324,10 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   viewport.mostrarMalha(r.malha, r.topologia);
   ultimaMalha = r.malha;
   corpos = r.corpos ?? [];
+  coresDoArquivo = r.coresFaces;
   if (corpoSel !== null && corpoSel >= corpos.length) corpoSel = null;
   aplicarExibicaoCorpos();
+  aplicarCores();
   if (contexto) desenharContexto(); // outras instâncias desta peça na montagem acompanham
   if (enquadrarContexto && contexto && r.malha) {
     enquadrarContexto = false;
@@ -1573,6 +1579,7 @@ function menuDoCorpo(i: number, x: number, y: number) {
     ["excluirCorpo", "Excluir corpo…", () => recursoComCorpo("excluir-corpo", i)],
     ["excluirCorpo", "Manter só este corpo…", () => recursoComCorpo("excluir-corpo", i, { manter: true })],
     ["nova", "Inserir em nova peça", () => void corpoEmNovaPeca(i)],
+    ["aparencia", "Aparência…", () => abrirAparencia({ corpo: i })],
   ];
   p.innerHTML = `<div class="menu-corpo-icones"></div><div class="menu-corpo-sec">Corpo · ${escapar(nomeCorpo(i))}</div>`;
   const barra = p.querySelector(".menu-corpo-icones")!;
@@ -1928,6 +1935,10 @@ function acoesDoModelo(): AcaoContexto[] {
     out.push({ rotulo: "Filete", icone: "filete", acao: () => criarRecurso("filete") }, { rotulo: "Chanfro", icone: "chanfro", acao: () => criarRecurso("chanfro") });
   }
   if (faces.length) out.push({ rotulo: "Casca", icone: "casca", acao: () => criarRecurso("casca") });
+  if (faces.length === 1 && selPeca.length === 1) {
+    const fi = indiceDaFace(faces[0].ass);
+    if (fi >= 0) out.push({ rotulo: "Aparência", icone: "aparencia", acao: () => abrirAparencia({ face: fi }) });
+  }
   out.push({
     rotulo: "Medir", icone: "medir", acao: () => {
       const refs = selPeca.slice(0, 2);
@@ -2964,7 +2975,99 @@ function renderizarTudo() {
 
 function aplicarMaterial() {
   const m = doc.material ? MATERIAIS[doc.material] : undefined;
-  viewport.definirCorPeca(m?.cor ?? 0xd0d7df);
+  viewport.definirCorPeca(doc.corPeca ?? m?.cor ?? 0xd0d7df);
+}
+
+/** Cores das faces vindas do arquivo importado (STEP AP214), da última reconstrução. */
+let coresDoArquivo: number[] | undefined;
+
+/** Aparências → viewport: cores do arquivo, corpos e faces pintados (a face vence o corpo). */
+function aplicarCores() {
+  const m = ultimaMalha, topo = viewport.topologia;
+  if (!m) return;
+  viewport.definirCores(trechosDeCor(m.faces, topo?.faces ?? [], doc.semCoresArquivo ? undefined : coresDoArquivo, doc.aparencias, corpos, (a) => indiceDoCorpo(a.corpo)));
+}
+
+/** Índice (em `topologia.faces`) da face guardada por assinatura; -1 se não está na peça. */
+function indiceDaFace(ass: AssinaturaFace): number {
+  return casarFaces(viewport.topologia?.faces ?? [], [{ ass, cor: 0 }]).indexOf(0);
+}
+
+/**
+ * Aparência (cor) da face, do corpo ou da peça inteira: painel com paleta, RGB/HSV e "Remover
+ * aparência"; o modelo muda enquanto se escolhe (prévia) e só grava no OK.
+ */
+function abrirAparencia(alvo: { face?: number; corpo?: number }) {
+  esconderBarraContexto();
+  fecharPopover();
+  const topo = viewport.topologia;
+  const fi = alvo.face ?? -1;
+  const corpo = alvo.corpo ?? (fi >= 0 ? corpos.findIndex((c) => c.faces.includes(fi)) : corpos.length === 1 ? 0 : -1);
+  const antes = JSON.stringify({ c: doc.corPeca, a: doc.aparencias, s: doc.semCoresArquivo });
+  const mat = doc.material ? MATERIAIS[doc.material] : undefined;
+  const corDaFace = () => {
+    if (fi < 0 || !topo) return undefined;
+    const u = (doc.aparencias ?? []).filter((a) => a.alvo === "face" && indiceDaFace(a.ass) === fi).pop();
+    return u?.cor;
+  };
+  const corDoCorpo = () => (doc.aparencias ?? []).filter((a) => a.alvo === "corpo" && indiceDoCorpo(a.corpo) === corpo).pop()?.cor;
+  const definir = (nivel: string, cor: number | null) => {
+    let ap = doc.aparencias ?? [];
+    if (nivel === "peca") {
+      if (cor === null) delete doc.corPeca;
+      else doc.corPeca = cor;
+    } else if (nivel === "corpo" && corpo >= 0) {
+      ap = ap.filter((a) => !(a.alvo === "corpo" && indiceDoCorpo(a.corpo) === corpo));
+      if (cor !== null) ap.push({ alvo: "corpo", corpo: refDoCorpo(corpo) as Extract<Referencia, { tipo: "corpo" }>, cor });
+    } else if (nivel === "face" && fi >= 0 && topo) {
+      ap = ap.filter((a) => !(a.alvo === "face" && indiceDaFace(a.ass) === fi));
+      if (cor !== null) ap.push({ alvo: "face", ass: topo.faces[fi], cor });
+    }
+    if (ap.length) doc.aparencias = ap;
+    else delete doc.aparencias;
+    aplicarMaterial();
+    aplicarCores();
+  };
+  const niveis = [
+    ...(fi >= 0 ? [{ id: "face", rotulo: "Face", cor: corDaFace() }] : []),
+    ...(corpo >= 0 && corpos.length > 1 ? [{ id: "corpo", rotulo: `Corpo (${nomeCorpo(corpo)})`, cor: corDoCorpo() }] : []),
+    { id: "peca", rotulo: "Peça", cor: doc.corPeca },
+  ];
+  const temArquivo = !!coresDoArquivo?.some((c) => c >= 0);
+  abrirEditorCor({
+    titulo: "Aparência",
+    niveis,
+    nivel: fi >= 0 ? "face" : alvo.corpo !== undefined && corpos.length > 1 ? "corpo" : "peca",
+    corPadrao: (fi >= 0 && !doc.semCoresArquivo && coresDoArquivo?.[fi] !== undefined && coresDoArquivo[fi] >= 0 ? coresDoArquivo[fi] : undefined) ?? doc.corPeca ?? mat?.cor ?? 0xd0d7df,
+    previa: definir,
+    confirmar: (nivel, cor) => {
+      definir(nivel, cor);
+      if (JSON.stringify({ c: doc.corPeca, a: doc.aparencias, s: doc.semCoresArquivo }) === antes) return;
+      registrarPasso();
+      salvarAutosave();
+      avisar("Aparência aplicada.");
+    },
+    cancelar: () => {
+      const v = JSON.parse(antes) as { c?: number; a?: Aparencia[]; s?: boolean };
+      doc.corPeca = v.c;
+      doc.aparencias = v.a;
+      doc.semCoresArquivo = v.s;
+      if (doc.corPeca === undefined) delete doc.corPeca;
+      if (!doc.aparencias) delete doc.aparencias;
+      if (!doc.semCoresArquivo) delete doc.semCoresArquivo;
+      aplicarMaterial();
+      aplicarCores();
+    },
+    extra: temArquivo ? {
+      rotulo: "Usar as cores do arquivo importado",
+      marcado: !doc.semCoresArquivo,
+      aoMudar: (v) => {
+        if (v) delete doc.semCoresArquivo;
+        else doc.semCoresArquivo = true;
+        aplicarCores();
+      },
+    } : undefined,
+  });
 }
 
 function escolherMaterial(ancora: HTMLElement) {
@@ -2975,6 +3078,7 @@ function escolherMaterial(ancora: HTMLElement) {
       marcado: doc.material === k,
       acao: () => definirMaterial(k),
     })),
+    { rotulo: "Aparência (cor) da peça…", acao: () => abrirAparencia({}) },
   ]);
 }
 

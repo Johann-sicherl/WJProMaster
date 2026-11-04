@@ -144,6 +144,7 @@ export const ICONES = {
   excluirCorpo: svg(`<path d="M4 9l6-3 6 3v7l-6 3-6-3z"/><path d="M15 15l6 6M21 15l-6 6" stroke="${C}"/>`),
   combinar: svg(`<rect x="3" y="7" width="10" height="10"/><rect x="9" y="4" width="11" height="11" stroke="${C}"/>`),
   dividir: svg(`<path d="M4 8l7-3.5 7 3.5v8l-7 3.5-7-3.5z"/><path d="M2 13h20" stroke="${C}" stroke-dasharray="3 2"/>`),
+  aparencia: svg(`<path d="M4 20c3 0 4-1.5 4-3.5a2.5 2.5 0 0 0-5 0c0 1.8-.5 2.8 1 3.5z"/><path d="M8.5 14.5 18 5a1.8 1.8 0 0 1 2.5 2.5L11 17" stroke="${C}"/><path d="M15 3.5c.9 1.4 1.4 2.3 1.4 3" stroke="${C}" stroke-opacity=".6"/>`),
   transparencia: svg(`<path d="M5 8l7-3.5 7 3.5v8l-7 3.5-7-3.5z" stroke-dasharray="2 2"/><path d="M12 4.5v15" stroke="${C}" stroke-opacity=".6"/>`),
   moverCorpo: svg(`<path d="M5 9l5-2.5 5 2.5v5.5l-5 2.5-5-2.5z"/><path d="M17 4h4v4M21 4l-5 5" stroke="${C}"/><path d="M14 20a6 6 0 0 0 6-6" stroke="${C}"/><path d="M18 14l2 0 .5 2" stroke="${C}"/>`),
   eixoRef: svg(`<path d="M4 20 20 4" stroke="${C}" stroke-dasharray="4 2"/><circle cx="12" cy="12" r="5"/>`),

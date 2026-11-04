@@ -166,10 +166,12 @@ export class Viewport {
     // vértices de corpos de malha (atributo `plano` = 1) são sombreados pela face, não pela normal
     this.materialSolido.onBeforeCompile = (s) => {
       s.vertexShader = s.vertexShader
-        .replace("#include <common>", "#include <common>\nattribute float plano;\nvarying float vPlano;")
-        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvPlano = plano;");
+        .replace("#include <common>", "#include <common>\nattribute float plano;\nvarying float vPlano;\nattribute vec3 corFace;\nvarying vec3 vCorFace;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvPlano = plano;\nvCorFace = corFace;");
+      // aparência (cor de face/corpo/componente): r < 0 = cor do material
       s.fragmentShader = s.fragmentShader
-        .replace("#include <common>", "#include <common>\nvarying float vPlano;")
+        .replace("#include <common>", "#include <common>\nvarying float vPlano;\nvarying vec3 vCorFace;")
+        .replace("#include <color_fragment>", "#include <color_fragment>\nif (vCorFace.r >= 0.0) diffuseColor.rgb = vCorFace;")
         .replace(
           "#include <normal_fragment_begin>",
           "#include <normal_fragment_begin>\nif (vPlano > 0.5) normal = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));",
@@ -635,6 +637,7 @@ export class Viewport {
           plano[m.triangulos[t * 3]] = plano[m.triangulos[t * 3 + 1]] = plano[m.triangulos[t * 3 + 2]] = 1;
         }
       geo.setAttribute("plano", new THREE.BufferAttribute(plano, 1));
+      geo.setAttribute("corFace", new THREE.BufferAttribute(new Float32Array(m.vertices.length).fill(-1), 3));
       const lado = temMalha ? THREE.DoubleSide : THREE.FrontSide;
       if (this.materialSolido.side !== lado) {
         this.materialSolido.side = lado;
@@ -1304,6 +1307,32 @@ export class Viewport {
   }
 
   // ---------- aparência, seção e análises ----------
+
+  /**
+   * Aparências: trechos de triângulos (índices em `triangulos`) pintados com a cor dada; o resto
+   * fica com a cor da peça. Lista vazia = tudo na cor da peça.
+   */
+  definirCores(trechos: { ini: number; qtd: number; cor: number }[]) {
+    const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
+    const attr = solido?.geometry.getAttribute("corFace") as THREE.BufferAttribute | undefined;
+    const idx = solido?.geometry.index;
+    if (!attr || !idx) return;
+    const arr = attr.array as Float32Array;
+    arr.fill(-1);
+    const c = new THREE.Color();
+    for (const t of trechos) {
+      c.setHex(t.cor); // sRGB → linear, como a cor do material
+      const fim = Math.min(idx.count, t.ini + t.qtd);
+      for (let i = t.ini; i < fim; i++) {
+        const v = idx.getX(i) * 3;
+        arr[v] = c.r;
+        arr[v + 1] = c.g;
+        arr[v + 2] = c.b;
+      }
+    }
+    attr.needsUpdate = true;
+    this.precisaRender = true;
+  }
 
   definirCorPeca(cor: number) {
     this.materialSolido.color.setHex(cor);

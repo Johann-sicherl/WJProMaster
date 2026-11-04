@@ -237,6 +237,16 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
 - Peça só com **corpo de malha** (STL grande, ex.: escaneamento 3D) entra na montagem para ser vista
   e movida (centro pela caixa dos pontos); sem faces/arestas para posicionar nem medir (01/11/2026).
 
+### 2.16 Aparência (cor) — ✅ (04/11/2026)
+- Menu do componente → **Aparência**: Aplicar em **Componente (nesta montagem)** — só esta(s)
+  instância(s), guardado no `.wjasm` (`cor` do componente, vence as cores da peça) — ou **Peça
+  (documento)** — vale em todas as montagens; a peça fica "alterada" até ser salva (como nas cotas).
+- Mesmo painel da Peça (paleta, RGB/HSV, hexadecimal, Remover aparência, prévia).
+- Cada componente mostra as cores da peça dele (peça, corpos, faces, cor do material, cores do STEP).
+- **Montagem STEP AP214** abre colorida: cada peça recebe as cores do arquivo (cor única → cor da
+  peça; por face → aparências de face).
+- Estados de exibição ⏸.
+
 ### 2.14 Nova peça na montagem (Insert New Part) — ⏸
 
 ### 2.15 Submontagens — M-D

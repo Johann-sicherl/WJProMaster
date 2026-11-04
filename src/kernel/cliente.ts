@@ -13,7 +13,7 @@ import type { PropriedadesMassa, ResultadoMedida, ResultadoVerificacao } from ".
 type SemSeq<T> = T extends unknown ? Omit<T, "seq"> : never;
 
 /** Peça de um componente: malha, topologia (para selecionar e posicionar), volume e erros. */
-export type ResultadoComponente = Pick<ResultadoRegeneracao, "malha" | "topologia" | "volume" | "erros" | "facesPorRecurso" | "suportes"> & {
+export type ResultadoComponente = Pick<ResultadoRegeneracao, "malha" | "topologia" | "coresFaces" | "corpos" | "volume" | "erros" | "facesPorRecurso" | "suportes"> & {
   /** planos de referência da peça (esboços neles: cotas mostradas na montagem) */
   planos?: Extract<InfoReferencia, { tipo: "plano" }>[];
   /** só com planificar: linhas de dobra (3D) e o plano da chapa planificada */

@@ -128,6 +128,8 @@ export interface ComponenteMontagem {
   /** de qual semente e com qual cópia (índice) veio */
   semente?: string;
   copia?: number;
+  /** aparência (cor 0xRRGGBB) só desta instância, nesta montagem: vence as cores da peça */
+  cor?: number;
 }
 
 /** Padrão de componentes (linear, circular) ou espelhamento: gera instâncias que seguem as sementes. */

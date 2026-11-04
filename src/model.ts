@@ -858,7 +858,18 @@ export interface Documento {
   configAtiva?: string;
   /** Parâmetros que mudam de uma configuração para outra (chaves de `configuracoes.ts`). */
   parametrosConfigurados?: string[];
+  /** Aparência (cor) da peça inteira: vence a cor do material. */
+  corPeca?: number;
+  /** Aparências de corpos e faces (a face vence o corpo, que vence a peça). */
+  aparencias?: Aparencia[];
+  /** true = ignora as cores que vieram do arquivo importado (STEP AP214) */
+  semCoresArquivo?: boolean;
 }
+
+/** Cor 0xRRGGBB aplicada a um corpo ou a uma face (por assinatura, como as referências). */
+export type Aparencia =
+  | { alvo: "corpo"; corpo: Extract<Referencia, { tipo: "corpo" }>; cor: number }
+  | { alvo: "face"; ass: AssinaturaFace; cor: number };
 
 export interface Material {
   nome: string;
@@ -1192,6 +1203,9 @@ export function validarDocumento(dados: unknown): Documento {
     }
   }
   d.versao = 3;
+  if (typeof d.corPeca !== "number") delete d.corPeca;
+  if (!Array.isArray(d.aparencias)) delete d.aparencias;
+  else d.aparencias = d.aparencias.filter((a) => a && typeof a.cor === "number" && ((a.alvo === "face" && a.ass?.centro) || (a.alvo === "corpo" && a.corpo?.centro)));
   return d;
 }
 

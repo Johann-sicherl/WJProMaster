@@ -2,7 +2,7 @@
 // as posições; aqui, só com o texto do arquivo, saem a árvore de produtos (NEXT_ASSEMBLY_USAGE_
 // OCCURRENCE) e os nomes das peças. Puro: testado em scripts/teste-montagem.ts.
 
-import { documentoImportado } from "../model";
+import { documentoImportado, type AssinaturaFace } from "../model";
 import { inserirComponente, montagemVazia, novoIdM, type DocumentoMontagem, type Transformacao } from "./modelo";
 
 /** Texto de uma string STEP: '' → ', \X2\hhhh…\X0\ (UTF-16), \X4\…\X0\, \X\hh (Latin-1), \S\c. */
@@ -120,7 +120,7 @@ export function nomeDoConjunto(texto: string): string | null {
 
 /** O que o kernel devolve (src/kernel/importar.ts), sem depender do kernel aqui. */
 export interface LeituraStep {
-  corpos: { step: Uint8Array; volume: number; n: number }[];
+  corpos: { step: Uint8Array; volume: number; n: number; cor?: number; cores?: { ass: AssinaturaFace; cor: number }[] }[];
   instancias: { corpo: number; t: Transformacao }[];
 }
 
@@ -153,6 +153,9 @@ export function montagemDoStep(nomeArquivo: string, texto: string, leitura: Leit
     usados.set(nome, k + 1);
     if (k) nome = `${nome} (${k + 1})`;
     const doc = documentoImportado(`${nome}.step`, c.step);
+    // cores do arquivo (o STEP de cada peça é regravado sem elas)
+    if (c.cor !== undefined) doc.corPeca = c.cor;
+    if (c.cores?.length) doc.aparencias = c.cores.map((x) => ({ alvo: "face" as const, ass: x.ass, cor: x.cor }));
     const id = novoIdM();
     d.pecas.push({ id, nome, doc });
     return id;

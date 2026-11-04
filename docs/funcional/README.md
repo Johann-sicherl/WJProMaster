@@ -80,7 +80,7 @@ Arquivos:
 - **Barra de vistas** (topo do viewport) ✅ recolhida numa setinha; aberta mostra: ampliar para caber,
   zoom por área (arrastar retângulo; Esc cancela), vista de seção, orientação ▾ (vistas padrão e
   normal a), ocultar/mostrar itens ▾ (ocultar todos os tipos; planos, eixos, origem, esboços) e
-  configurações de vista ▾ (estilo de exibição). Pendentes: vista anterior, aparência, cena.
+  configurações de vista ▾ (estilo de exibição). Aparência (cor de face/corpo/peça/componente) ✅. Pendentes: vista anterior, cena, estados de exibição.
 
 Legenda de status em cada campo/comando:
 
