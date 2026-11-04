@@ -713,6 +713,14 @@ export class Viewport {
 
   // ---------- seleção de faces, arestas e vértices ----------
 
+  /** Triângulos exibidos da peça (sólidos e corpos de malha), para cortar/projetar no esboço. */
+  malhaDaPeca(): { pos: ArrayLike<number>; idx: ArrayLike<number> | null } | null {
+    const s = this.solido();
+    if (!s) return null;
+    const g = s.geometry;
+    return { pos: (g.getAttribute("position") as THREE.BufferAttribute).array, idx: g.index ? g.index.array : null };
+  }
+
   private solido(): THREE.Mesh | null {
     const s = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
     return s && s.visible ? s : null;

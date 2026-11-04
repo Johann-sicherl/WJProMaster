@@ -99,7 +99,21 @@ export class SolverEsboco {
     if (gl0 <= 0) return livres;
 
     const pts = mapaPontos(esb);
-    const usados = new Set(esb.pontos.map((p) => p.id));
+    // atalho: ponto/curva sem nenhuma relação ou cota (nem na própria curva) é livre sem precisar
+    // perguntar ao solver — com milhares de entidades (silhueta, interseção) o teste um a um levava
+    // minutos; só o que está ligado a relações passa pelo teste
+    const citados = new Set<string>();
+    for (const r of esb.restricoes) for (const k of ["a", "b", "p", "g"] as const) {
+      const v = (r as Record<string, unknown>)[k];
+      if (typeof v === "string") citados.add(v);
+    }
+    const tocados = new Set<string>(citados);
+    for (const g of esb.geos) if (citados.has(g.id) || g.externa) for (const p of geoPontos(g)) tocados.add(p);
+    const usados = new Set(esb.pontos.map((p) => p.id).filter((id) => {
+      if (tocados.has(id)) return true;
+      livres.add(id);
+      return false;
+    }));
     for (const id of usados) {
       const p = pts.get(id)!;
       for (const eixo of ["x", "y"] as const) {
@@ -113,7 +127,8 @@ export class SolverEsboco {
       }
     }
     for (const g of esb.geos) {
-      if (g.tipo === "circulo" || g.tipo === "arco") {
+      if ((g.tipo === "circulo" || g.tipo === "arco") && !citados.has(g.id) && !g.externa) livres.add(g.id);
+      else if (g.tipo === "circulo" || g.tipo === "arco") {
         const r = g.r;
         const extra: Prim = g.tipo === "circulo"
           ? { id: "x", type: "circle_radius", c_id: base.ids.de(g.id), radius: r }

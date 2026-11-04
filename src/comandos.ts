@@ -202,8 +202,8 @@ export const ABAS: Aba[] = [
         id: "grupo-converter", rotulo: "Converter", icone: "converter", dica: "Trazer geometria do modelo para o esboço", grupo: 3,
         itens: [
           { id: "converter", rotulo: "Converter entidades", icone: "converter", dica: "Toque arestas/vértices da peça: viram geometria do esboço (fixa)", grupo: 3 },
-          { id: "silhueta", rotulo: "Entidades de silhueta", icone: "silhueta", dica: "Contorno da peça visto do plano do esboço", grupo: 3, emBreve: true },
-          { id: "intersecao", rotulo: "Curva de interseção", icone: "intersecao", dica: "Onde o plano do esboço corta a peça", grupo: 3, emBreve: true },
+          { id: "silhueta", rotulo: "Entidades de silhueta", icone: "silhueta", dica: "Contorno da peça (também STL) visto na normal do plano do esboço", grupo: 3 },
+          { id: "intersecao", rotulo: "Curva de interseção", icone: "intersecao", dica: "Onde o plano do esboço corta a peça (também STL)", grupo: 3 },
         ],
       },
       { id: "offset", rotulo: "Offset", icone: "offset", dica: "Copia uma cadeia de entidades a uma distância (O)", grupo: 3 },

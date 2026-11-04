@@ -2624,6 +2624,15 @@ async function comandoEsboco(c: Comando, botao: HTMLElement) {
       if (!editor) return avisar("Espelhamento dinâmico: abra um esboço primeiro.");
       editor.alternarEspelhoDinamico();
       return;
+    case "silhueta":
+    case "intersecao":
+      // um toque: abre o esboço (se preciso) e já traz o contorno/corte da peça
+      if (!editor && !(await iniciarEsboco())) return;
+      if (editor) {
+        editor.trazerDoModelo(c.id);
+        renderizarPainelEdicaoEsboco();
+      }
+      return;
     case "selecionarTudo":
       if (!editor) return avisar("Selecionar tudo: abra um esboço primeiro.");
       editor.selecionarTudo();
