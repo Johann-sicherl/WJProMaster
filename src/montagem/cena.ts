@@ -24,6 +24,8 @@ export interface MapaCena {
   vertices: number[];
   /** início de cada componente em `malha.vertices` (posições), para peças só de malha */
   pontos: number[];
+  /** início de cada componente em `malha.triangulos` (índices): toque num corpo de malha (STL) */
+  tris: number[];
 }
 
 export interface Cena {
@@ -61,7 +63,7 @@ export function juntar(itens: ItemCena[]): Cena {
   const vertices = new Float32Array(nV), normais = new Float32Array(nV), triangulos = new Uint32Array(nT);
   const arestas = new Float32Array(nA), gruposArestas = new Uint32Array(nG), faces = new Uint32Array(nF);
   const topo: Topologia = { faces: [], arestas: [], vertices: [], arestasDaFace: [] };
-  const mapa: MapaCena = { comps: [], faces: [], arestas: [], vertices: [], pontos: [] };
+  const mapa: MapaCena = { comps: [], faces: [], arestas: [], vertices: [], pontos: [], tris: [] };
   let oV = 0, oT = 0, oA = 0, oG = 0, oF = 0;
   for (const it of itens) {
     const m = it.malha, t = it.t;
@@ -104,6 +106,7 @@ export function juntar(itens: ItemCena[]): Cena {
     mapa.arestas.push(topo.arestas.length);
     mapa.vertices.push(topo.vertices.length);
     mapa.pontos.push(oV);
+    mapa.tris.push(oT);
     const nArestasAntes = topo.arestas.length;
     for (const f of it.topo.faces) topo.faces.push(transfFace(t, f));
     for (const a of it.topo.arestas) topo.arestas.push(transfAresta(t, a));
@@ -119,6 +122,7 @@ export function juntar(itens: ItemCena[]): Cena {
   mapa.arestas.push(topo.arestas.length);
   mapa.vertices.push(topo.vertices.length);
   mapa.pontos.push(oV);
+  mapa.tris.push(oT);
   return { malha: { vertices, normais, triangulos, arestas, faces, gruposArestas }, topo, mapa };
 }
 
@@ -126,6 +130,13 @@ export type TipoEnt = "face" | "aresta" | "vertice";
 const lista = (m: MapaCena, tipo: TipoEnt) => (tipo === "face" ? m.faces : tipo === "aresta" ? m.arestas : m.vertices);
 
 /** Entidade da cena → componente e índice dentro da peça (null se fora). */
+/** Componente dono de um triângulo da malha da cena (corpos de malha STL não têm faces). */
+export function componenteDoTriangulo(m: MapaCena, tri: number): string | null {
+  const idx = tri * 3;
+  for (let k = 0; k < m.comps.length; k++) if (idx >= m.tris[k] && idx < m.tris[k + 1]) return m.comps[k];
+  return null;
+}
+
 export function localDaEntidade(m: MapaCena, tipo: TipoEnt, indice: number): { comp: string; indice: number } | null {
   const l = lista(m, tipo);
   for (let k = 0; k < m.comps.length; k++) if (indice >= l[k] && indice < l[k + 1]) return { comp: m.comps[k], indice: indice - l[k] };
