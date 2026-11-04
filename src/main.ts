@@ -553,7 +553,8 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco" | "impo
   filete: "filete", chanfro: "chanfro", casca: "casca", nervura: "nervura", inclinacao: "inclinacao",
   "mover-face": "moverFace", "excluir-face": "excluirFace", "substituir-face": "substituirFace",
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
-  plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
+  plano: "planoRef", eixo: "eixoRef", "ponto-ref": "pontoRef", "sistema-coord": "sistemaCoord",
+  "mover-corpo": "moverCorpo", escala: "escala", domo: "domo", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
   "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco", junta: "junta", "meia-esquadria": "meiaEsquadria",
   "fechar-canto": "fecharCanto", "alivio-canto": "alivioCanto", "quebrar-canto": "quebrarCanto",
@@ -668,8 +669,31 @@ function criarRecurso(id: string) {
     case "casca":
     case "moverFace":
     case "excluirFace":
+    case "domo":
       f.faces = faces;
       break;
+    case "pontoRef": {
+      // pré-seleção: aresta circular = centro do arco; face = centro; vértice + plano = projeção;
+      // aresta + plano = interseção; aresta sozinha = ao longo dela
+      const ar = selPeca.find((r) => r.tipo === "aresta");
+      const vt = selPeca.find((r) => r.tipo === "vertice");
+      const pl = planosArvore[0] ?? facesPlanas[0];
+      if (vt && pl) Object.assign(f, { modo: "projecao", ref1: vt, ref2: pl });
+      else if (ar?.tipo === "aresta" && ar.ass.geom === "circulo") Object.assign(f, { modo: "centroArco", ref1: ar });
+      else if (ar && pl) Object.assign(f, { modo: "intersecao", ref1: ar, ref2: pl });
+      else if (ar) Object.assign(f, { modo: "aoLongo", ref1: ar });
+      else if (faces[0]) Object.assign(f, { modo: "centroFace", ref1: faces[0] });
+      else f.modo = "coordenadas";
+      break;
+    }
+    case "sistemaCoord": {
+      const vt = selPeca.find((r) => r.tipo === "vertice");
+      const dirs = [...selPeca.filter((r) => r.tipo === "aresta"), ...eixosArvore, ...planosArvore];
+      if (vt) f.origem = vt;
+      if (dirs[0]) f.eixoX = dirs[0];
+      if (dirs[1]) f.eixoY = dirs[1];
+      break;
+    }
     case "substituirFace":
       // duas ou mais faces tocadas: a última é a substituta
       f.faces = faces.length > 1 ? faces.slice(0, -1) : faces;
@@ -847,6 +871,7 @@ function dadosEsquema(f: Feature): DadosEsquema {
   return {
     esbocosAntes: antes.filter((x) => x.tipo === "esboco").map((x) => [x.id, x.nome]),
     recursosAntes: antes.filter((x) => REPETIVEIS.includes(x.tipo)).map((x) => [x.id, x.nome]),
+    sistemasAntes: antes.filter((x) => x.tipo === "sistemaCoord" && !x.suprimida).map((x) => [x.id, x.nome]),
     linhasEsboco: (id) => {
       const e = doc.features.find((x) => x.id === id);
       if (e?.tipo !== "esboco") return [];
@@ -1141,6 +1166,7 @@ function rotuloRefBase(r: Referencia, i: number): string {
     case "face": return `Face<${i + 1}>`;
     case "aresta": return `Aresta<${i + 1}>`;
     case "vertice": return `Vértice<${i + 1}>`;
+    case "ponto": return doc.features.find((f) => f.id === r.id)?.nome ?? "Ponto?";
     case "plano": return ["XY", "XZ", "YZ"].includes(r.id) ? `Plano ${NOME_PLANO[r.id as Plano]}` : doc.features.find((f) => f.id === r.id)?.nome ?? "Plano?";
     case "eixo": return ["X", "Y", "Z"].includes(r.id) ? `Eixo ${r.id}` : doc.features.find((f) => f.id === r.id)?.nome ?? "Eixo?";
     case "esboco": return doc.features.find((f) => f.id === r.id)?.nome ?? "Esboço?";
@@ -1272,7 +1298,9 @@ function filtrar(s: Set<TipoEntidade>): Set<TipoEntidade> {
   if (!filtroLigado()) return s;
   return new Set([...s].filter((t) => prefs.filtroSelecao!.includes(t)));
 }
-const refPermitida = (tipo: "plano" | "eixo" | "curva") => !filtroLigado() || prefs.filtroSelecao!.includes(tipo);
+/** Ponto de referência entra onde um vértice é aceito (campos e filtro de seleção). */
+const tipoSelDe = (tipo: "plano" | "eixo" | "curva" | "ponto"): TipoSel => (tipo === "ponto" ? "vertice" : tipo);
+const refPermitida = (tipo: "plano" | "eixo" | "curva" | "ponto") => !filtroLigado() || (prefs.filtroSelecao as string[]).includes(tipo === "ponto" ? "vertice" : tipo);
 
 function alternarFiltro(t: TipoFiltro | "limpar") {
   if (t === "limpar") prefs.filtroSelecao = [];
@@ -1346,7 +1374,7 @@ function instalarToqueCurto() {
     if (comando) {
       const c = comando.campo;
       if (!c) return avisar("Toque um campo de seleção (rosa) no painel para escolher geometria.");
-      const refAceita = refViewport && c.aceita.includes(refViewport.tipo) ? refViewport : null;
+      const refAceita = refViewport && c.aceita.includes(tipoSelDe(refViewport.tipo)) ? refViewport : null;
       if (refAceita && refAceita === refPrioritaria) return adicionarAoCampo({ tipo: refAceita.tipo, id: refAceita.id });
       const filtroCampo = filtrar(filtroEntidades(c.aceita));
       // condição final / início "De": também face ou vértice de outro componente (contexto)
@@ -1365,7 +1393,7 @@ function instalarToqueCurto() {
       const ent = viewport.picarEntidade(e.clientX, e.clientY, filtroCampo, tol);
       if (!ent) {
         // planos e eixos de referência clicados no viewport
-        if (refViewport && c.aceita.includes(refViewport.tipo)) adicionarAoCampo({ tipo: refViewport.tipo, id: refViewport.id });
+        if (refViewport && c.aceita.includes(tipoSelDe(refViewport.tipo))) adicionarAoCampo({ tipo: refViewport.tipo, id: refViewport.id });
         return;
       }
       const r = refDeEntidade(ent)!;
@@ -1477,7 +1505,7 @@ viewport.canvas().addEventListener("pointermove", (e) => {
     const filtro = filtrar(comando?.campo ? filtroEntidades(comando.campo.aceita) : comando ? new Set<TipoEntidade>() : TODAS);
     const ent = viewport.picarEntidade(e.clientX, e.clientY, filtro, 9);
     viewport.destacarEntidades(refsDestacadas().map(entidadeDeRef).filter((x): x is Entidade => !!x), ent, facesDosSelecionados(), facesDaPrevia());
-    const refB = !ent && (!comando || comando.campo?.aceita.some((a) => a === "plano" || a === "eixo" || a === "curva")) ? viewport.picarReferencia(e.clientX, e.clientY, 9) : null;
+    const refB = !ent && (!comando || comando.campo?.aceita.some((a) => a === "plano" || a === "eixo" || a === "curva" || a === "vertice")) ? viewport.picarReferencia(e.clientX, e.clientY, 9) : null;
     const ref = refB && refPermitida(refB.tipo) ? refB : null;
     viewport.canvas().style.cursor = ent || ref ? "pointer" : "";
   });
@@ -2262,10 +2290,10 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     const li = document.createElement("li");
     li.className = "item filho usado";
     li.style.setProperty("--nivel", String(nivel));
-    const alvo = ref.tipo === "recurso" || ref.tipo === "esboco" || ref.tipo === "curva" || (ref.tipo === "plano" || ref.tipo === "eixo") && !["XY", "XZ", "YZ", "X", "Y", "Z"].includes(ref.id)
+    const alvo = ref.tipo === "recurso" || ref.tipo === "esboco" || ref.tipo === "curva" || ref.tipo === "ponto" || (ref.tipo === "plano" || ref.tipo === "eixo") && !["XY", "XZ", "YZ", "X", "Y", "Z"].includes(ref.id)
       ? doc.features.find((x) => x.id === (ref as { id: string }).id) : undefined;
     const icone: NomeIcone = alvo ? iconeFeature(alvo)
-      : ({ face: "peca", aresta: "linha", vertice: "ponto", plano: "plano", eixo: "eixoRef", linhaEsboco: "linha", esboco: "esboco", recurso: "peca", curva: "helice" } as const)[ref.tipo];
+      : ({ face: "peca", aresta: "linha", vertice: "ponto", plano: "plano", eixo: "eixoRef", linhaEsboco: "linha", esboco: "esboco", recurso: "peca", curva: "helice", ponto: "pontoRef" } as const)[ref.tipo];
     li.innerHTML = `<span class="item-seta vazia"></span><span class="item-ic">${ICONES[icone]}</span><span class="item-texto"><strong></strong><small></small></span>`;
     li.querySelector("strong")!.textContent = rotuloRef(ref, k);
     li.querySelector("small")!.textContent = descricaoUsado(ref);
@@ -2389,6 +2417,7 @@ function descricaoUsado(r: Referencia): string {
     case "face": return `Face (${({ plano: "plana", cilindro: "cilíndrica", cone: "cônica", esfera: "esférica", outra: "curva" } as const)[r.ass.geom]})`;
     case "aresta": return `Aresta (${({ linha: "reta", circulo: "circular", outra: "curva" } as const)[r.ass.geom]})`;
     case "vertice": return "Vértice";
+    case "ponto": return "Ponto de referência";
     case "plano": return "Plano";
     case "eixo": return "Eixo";
     case "linhaEsboco": return "Linha do esboço";

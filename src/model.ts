@@ -66,6 +66,8 @@ export type Referencia =
   /** Linha de um esboço (eixo de revolução, direção). */
   | { tipo: "linhaEsboco"; esboco: string; geo: string }
   | { tipo: "recurso"; id: string }
+  /** Recurso de ponto de referência (vale onde um vértice é aceito). */
+  | { tipo: "ponto"; id: string }
   /** Recurso de curva 3D (hélice, composta, por pontos, projetada). */
   | { tipo: "curva"; id: string };
 
@@ -453,6 +455,67 @@ export interface FeaturePlanoRef extends FeatureBase {
   inverter: boolean;
 }
 
+/** Ponto de referência (features.md §15). */
+export interface FeaturePontoRef extends FeatureBase {
+  tipo: "pontoRef";
+  modo: "centroArco" | "centroFace" | "intersecao" | "projecao" | "aoLongo" | "coordenadas";
+  ref1?: Referencia;
+  ref2?: Referencia;
+  /** ao longo da aresta: distância do início (mm) ou porcentagem */
+  distancia: number;
+  porcentagem: boolean;
+  /** coordenadas */
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** Sistema de coordenadas (features.md §15): origem e direções X/Y; Z = X × Y. */
+export interface FeatureSistemaCoord extends FeatureBase {
+  tipo: "sistemaCoord";
+  origem?: Referencia;
+  eixoX?: Referencia;
+  eixoY?: Referencia;
+  inverterX: boolean;
+  inverterY: boolean;
+}
+
+/** Escala uniforme da peça (features.md §13). */
+export interface FeatureEscala extends FeatureBase {
+  tipo: "escala";
+  centro: "centroide" | "origem" | "sistema";
+  /** id do recurso Sistema de coordenadas (centro = "sistema") */
+  sistema?: string;
+  fator: number;
+}
+
+/**
+ * Mover/Copiar corpo (features.md §13): desloca e gira a peça inteira — sólidos e corpos de
+ * malha (STL) — em torno da origem ou do centroide; com cópias, repete o movimento N vezes.
+ * Rotação aplicada em X, depois Y, depois Z (graus), antes do deslocamento.
+ */
+export interface FeatureMoverCorpo extends FeatureBase {
+  tipo: "moverCorpo";
+  dx: number;
+  dy: number;
+  dz: number;
+  rx: number;
+  ry: number;
+  rz: number;
+  centro: "origem" | "centroide";
+  copiar: boolean;
+  copias: number;
+}
+
+/** Domo sobre faces planas (features.md §13). */
+export interface FeatureDomo extends FeatureBase {
+  tipo: "domo";
+  faces: Referencia[];
+  altura: number;
+  /** côncavo: tira a calota para dentro da peça */
+  inverter: boolean;
+}
+
 export interface FeatureEixoRef extends FeatureBase {
   tipo: "eixoRef";
   modo: "aresta" | "doisPlanos" | "cilindro" | "doisPontos";
@@ -659,7 +722,8 @@ export type Feature =
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva
   | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco | FeatureJunta | FeatureMeiaEsquadria
   | FeatureFecharCanto | FeatureAlivioCanto | FeatureQuebrarCanto | FeatureDesdobrar | FeatureDobrar | FeatureConverterChapa
-  | FeatureImportado | FeatureMoverFace | FeatureExcluirFace | FeatureSubstituirFace;
+  | FeatureImportado | FeatureMoverFace | FeatureExcluirFace | FeatureSubstituirFace
+  | FeaturePontoRef | FeatureSistemaCoord | FeatureEscala | FeatureDomo | FeatureMoverCorpo;
 
 /**
  * Corpo importado de um arquivo neutro (STEP ou STL, de qualquer CAD): o sólido entra na árvore
@@ -821,6 +885,16 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco" | "importado
       return { ...base, tipo, nome: `MoverFace${indice}`, faces: [], distancia: 5, inverter: false };
     case "excluirFace":
       return { ...base, tipo, nome: `ExcluirFace${indice}`, faces: [] };
+    case "pontoRef":
+      return { ...base, tipo, nome: `Ponto${indice}`, modo: "centroArco", distancia: 50, porcentagem: true, x: 0, y: 0, z: 0 };
+    case "sistemaCoord":
+      return { ...base, tipo, nome: `SistemaDeCoordenadas${indice}`, inverterX: false, inverterY: false };
+    case "escala":
+      return { ...base, tipo, nome: `Escala${indice}`, centro: "centroide", fator: 1 };
+    case "domo":
+      return { ...base, tipo, nome: `Domo${indice}`, faces: [], altura: 5, inverter: false };
+    case "moverCorpo":
+      return { ...base, tipo, nome: `MoverCorpo${indice}`, dx: 0, dy: 0, dz: 0, rx: 0, ry: 0, rz: 0, centro: "origem", copiar: false, copias: 1 };
     case "substituirFace":
       return { ...base, tipo, nome: `SubstituirFace${indice}`, faces: [] };
     case "varredura":
@@ -956,6 +1030,11 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   moverFace: "Mover face",
   excluirFace: "Excluir face",
   substituirFace: "Substituir face",
+  pontoRef: "Ponto",
+  sistemaCoord: "Sistema de coordenadas",
+  escala: "Escala",
+  domo: "Domo",
+  moverCorpo: "Mover/Copiar corpo",
 };
 
 /**

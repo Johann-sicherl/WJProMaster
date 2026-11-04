@@ -70,10 +70,20 @@ export const ABAS: Aba[] = [
       },
       { id: "espelhar", rotulo: "Espelhar", icone: "espelhar", dica: "Espelha recursos ou a peça em relação a um plano", grupo: 2 },
       {
-        id: "grupo-referencia", rotulo: "Geometria de referência", icone: "plano", dica: "Planos e eixos de referência", grupo: 3,
+        id: "grupo-corpo", rotulo: "Mover corpo", icone: "moverCorpo", dica: "Mover/copiar, escalar a peça; domo", grupo: 2,
+        itens: [
+          { id: "mover-corpo", rotulo: "Mover/Copiar corpo", icone: "moverCorpo", dica: "Desloca e gira a peça inteira, inclusive STL (corpo de malha); com cópias", grupo: 2 },
+          { id: "escala", rotulo: "Escala", icone: "escala", dica: "Escala uniforme em torno do centroide, da origem ou de um sistema de coordenadas", grupo: 2 },
+          { id: "domo", rotulo: "Domo", icone: "domo", dica: "Calota esférica sobre faces planas (convexa ou côncava)", grupo: 2 },
+        ],
+      },
+      {
+        id: "grupo-referencia", rotulo: "Geometria de referência", icone: "plano", dica: "Planos, eixos, pontos e sistemas de coordenadas", grupo: 3,
         itens: [
           { id: "plano", rotulo: "Plano", icone: "plano", dica: "Plano de referência (distância, ângulo, plano médio)", grupo: 3 },
           { id: "eixo", rotulo: "Eixo", icone: "eixoRef", dica: "Eixo de referência", grupo: 3 },
+          { id: "ponto-ref", rotulo: "Ponto", icone: "pontoRef", dica: "Ponto de referência: centro de arco/face, interseção, projeção, ao longo da aresta, coordenadas", grupo: 3 },
+          { id: "sistema-coord", rotulo: "Sistema de coordenadas", icone: "sistemaCoord", dica: "Origem e eixos X/Y/Z próprios (centro de escala, referência)", grupo: 3 },
         ],
       },
       {

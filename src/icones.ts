@@ -133,6 +133,11 @@ export const ICONES = {
   alivio: svg(`<path d="M4 4h16v16H4z"/><path d="M14 4v6h6" stroke="${C}"/><circle cx="14" cy="10" r="1.5" stroke="${C}"/>`),
 
   inclinacaoRecurso: svg(`<path d="M4 20h16"/><path d="M6 20 8 6h8l2 14"/><path d="M8 6h8" stroke="${C}" stroke-width="2.2"/><path d="M12 3v3" stroke-dasharray="1.5 1.5"/>`),
+  pontoRef: svg(`<path d="M3 16 9 6h12l-6 10z" stroke-opacity=".45"/><circle cx="12" cy="11" r="2.4" fill="${C}" stroke="${C}"/>`),
+  sistemaCoord: svg(`<path d="M6 18V5M6 18h13M6 18l-3 3" /><path d="M6 5l-1.5 2M6 5l1.5 2M19 18l-2-1.5M19 18l-2 1.5" stroke="${C}"/>`),
+  domo: svg(`<path d="M3 17h18v3H3z"/><path d="M5 17a7 7 0 0 1 14 0" stroke="${C}"/>`),
+  escala: svg(`<rect x="3" y="11" width="8" height="8"/><rect x="3" y="4" width="15" height="15" stroke="${C}" stroke-dasharray="3 2"/><path d="M11 11l6-6M13 5h4v4" stroke="${C}"/>`),
+  moverCorpo: svg(`<path d="M5 9l5-2.5 5 2.5v5.5l-5 2.5-5-2.5z"/><path d="M17 4h4v4M21 4l-5 5" stroke="${C}"/><path d="M14 20a6 6 0 0 0 6-6" stroke="${C}"/><path d="M18 14l2 0 .5 2" stroke="${C}"/>`),
   eixoRef: svg(`<path d="M4 20 20 4" stroke="${C}" stroke-dasharray="4 2"/><circle cx="12" cy="12" r="5"/>`),
   ponto: svg(`<circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="${C}"/><path d="M12 4v4M12 16v4M4 12h4M16 12h4" stroke-opacity=".5"/>`),
   equacoes: svg(`<path d="M5 7h6M8 4v6M5 17h6M14 5l5 5M19 5l-5 5"/><path d="M14 15h5M14 19h5" stroke="${C}"/>`),

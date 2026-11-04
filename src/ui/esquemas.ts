@@ -6,6 +6,7 @@ import type {
   FeatureRevolucao, FeatureVarredura, FeatureLoft, RestricaoLoft, TipoCondicao,
   FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria,
   FeatureFecharCanto, FeatureAlivioCanto, FeatureQuebrarCanto, FeatureDesdobrar, FeatureConverterChapa,
+  FeaturePontoRef, FeatureSistemaCoord, FeatureEscala, FeatureDomo, FeatureMoverCorpo,
 } from "../model";
 import { TABELA_CHAPA } from "../model";
 import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
@@ -14,6 +15,8 @@ import type { Caixa, Campo, Esquema } from "./formulario";
 export interface DadosEsquema {
   esbocosAntes: [string, string][];
   recursosAntes: [string, string][]; // recursos que podem ser repetidos
+  /** sistemas de coordenadas antes do recurso (centro da escala) */
+  sistemasAntes: [string, string][];
   linhasEsboco(esbocoId: string | undefined): [string, string][];
   contornos(esbocoId: string | undefined): [string, string][];
   editarPosicoesFuro(f: FeatureFuro): void;
@@ -156,7 +159,98 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       ] }] };
     case "esboco":
       return { titulo: "Esboço", caixas: [] };
+    case "pontoRef":
+      return pontoRef() as Esquema<Feature>;
+    case "sistemaCoord":
+      return sistemaCoord() as Esquema<Feature>;
+    case "escala":
+      return escala(d) as Esquema<Feature>;
+    case "domo":
+      return domo() as Esquema<Feature>;
+    case "moverCorpo":
+      return moverCorpo() as Esquema<Feature>;
   }
+}
+
+const MODOS_PONTO: [FeaturePontoRef["modo"], string][] = [
+  ["centroArco", "Centro de arco (aresta circular)"], ["centroFace", "Centro da face"],
+  ["intersecao", "Interseção (aresta × plano ou aresta × aresta)"], ["projecao", "Projeção (ponto em plano/face)"],
+  ["aoLongo", "Ao longo da aresta"], ["coordenadas", "Coordenadas X, Y, Z"],
+];
+
+/** Ponto de referência (features.md §15). */
+function pontoRef(): Esquema<FeaturePontoRef> {
+  const m = (...ms: FeaturePontoRef["modo"][]) => (f: FeaturePontoRef) => ms.includes(f.modo);
+  return { titulo: "Ponto", caixas: [{ titulo: "Seleções", campos: [
+    { t: "sel", rot: "Tipo", cam: "modo", opcoes: MODOS_PONTO },
+    { t: "refs", rot: "Aresta circular", cam: "ref1", aceita: ["aresta"], multiplo: false, vis: m("centroArco") },
+    { t: "refs", rot: "Face", cam: "ref1", aceita: ["face"], multiplo: false, vis: m("centroFace") },
+    { t: "refs", rot: "Aresta / eixo", cam: "ref1", aceita: ["aresta", "eixo"], multiplo: false, vis: m("intersecao", "aoLongo") },
+    { t: "refs", rot: "Plano, face ou 2ª aresta", cam: "ref2", aceita: ["plano", "face", "aresta", "eixo"], multiplo: false, vis: m("intersecao") },
+    { t: "refs", rot: "Ponto a projetar", cam: "ref1", aceita: ["vertice"], multiplo: false, vis: m("projecao") },
+    { t: "refs", rot: "Plano / face plana", cam: "ref2", aceita: ["plano", "face"], multiplo: false, vis: m("projecao"), cor: "azul" },
+    { t: "check", rot: "Em porcentagem do comprimento", cam: "porcentagem", vis: m("aoLongo") },
+    { t: "num", rot: "Distância do início", cam: "distancia", un: "mm", min: 0, vis: (f) => f.modo === "aoLongo" && !f.porcentagem },
+    { t: "num", rot: "Posição", cam: "distancia", un: "%", min: 0, max: 100, passo: 5, vis: (f) => f.modo === "aoLongo" && f.porcentagem },
+    { t: "num", rot: "X", cam: "x", un: "mm", vis: m("coordenadas") },
+    { t: "num", rot: "Y", cam: "y", un: "mm", vis: m("coordenadas") },
+    { t: "num", rot: "Z", cam: "z", un: "mm", vis: m("coordenadas") },
+    { t: "info", texto: () => "O ponto serve onde um vértice é aceito (eixo por dois pontos, condição Até o vértice, curva por pontos, origem de sistema de coordenadas)." },
+  ] }] };
+}
+
+/** Sistema de coordenadas (features.md §15). */
+function sistemaCoord(): Esquema<FeatureSistemaCoord> {
+  return { titulo: "Sistema de coordenadas", caixas: [{ titulo: "Seleções", campos: [
+    { t: "refs", rot: "Origem (vértice/ponto; vazio = origem da peça)", cam: "origem", aceita: ["vertice", "aresta"], multiplo: false },
+    { t: "refs", rot: "Eixo X (aresta, eixo ou face plana)", cam: "eixoX", aceita: ["aresta", "eixo", "face", "plano"], multiplo: false, cor: "azul" },
+    { t: "inverter", rot: "Inverter X", cam: "inverterX" },
+    { t: "refs", rot: "Eixo Y (opcional)", cam: "eixoY", aceita: ["aresta", "eixo", "face", "plano"], multiplo: false, cor: "azul" },
+    { t: "inverter", rot: "Inverter Y", cam: "inverterY" },
+    { t: "info", texto: () => "Z = X × Y. Sem Y escolhido, Y fica perpendicular a X pelo eixo da peça mais próximo. Face plana vale pela normal; aresta reta, pela direção." },
+  ] }] };
+}
+
+/** Escala (features.md §13): só uniforme (o kernel do navegador não tem a escala por eixo). */
+function escala(d: DadosEsquema): Esquema<FeatureEscala> {
+  return { titulo: "Escala", caixas: [{ titulo: "Parâmetros", campos: [
+    { t: "sel", rot: "Escalar em torno de", cam: "centro", opcoes: [["centroide", "Centroide"], ["origem", "Origem"], ["sistema", "Sistema de coordenadas"]] },
+    { t: "sel", rot: "Sistema", cam: "sistema", opcoes: () => d.sistemasAntes.length ? d.sistemasAntes : [["", "(crie um sistema antes na árvore)"]], vis: (f) => f.centro === "sistema" },
+    { t: "num", rot: "Fator", cam: "fator", min: 0.0001, passo: 0.1 },
+    { t: "info", texto: () => "Escala uniforme da peça inteira (ex.: 1,02 para contração de fundição; 25,4 de polegada para mm)." },
+  ] }] };
+}
+
+/** Domo (features.md §13). */
+function domo(): Esquema<FeatureDomo> {
+  return { titulo: "Domo", caixas: [{ titulo: "Parâmetros", campos: [
+    { t: "refs", rot: "Faces planas", cam: "faces", aceita: ["face"], multiplo: true },
+    { t: "num", rot: "Altura", cam: "altura", un: "mm", min: 0.001, passo: 0.5 },
+    { t: "inverter", rot: "Inverter (côncavo)", cam: "inverter" },
+    { t: "info", texto: () => "Calota esférica que sobe a altura no centro da face e encosta no ponto mais afastado do contorno (em face circular, a calota exata)." },
+  ] }] };
+}
+
+/** Mover/Copiar corpo (features.md §13): sólidos e corpos de malha (STL). */
+function moverCorpo(): Esquema<FeatureMoverCorpo> {
+  return { titulo: "Mover/Copiar corpo", caixas: [
+    { titulo: "Deslocar", campos: [
+      { t: "num", rot: "ΔX", cam: "dx", un: "mm" },
+      { t: "num", rot: "ΔY", cam: "dy", un: "mm" },
+      { t: "num", rot: "ΔZ", cam: "dz", un: "mm" },
+    ] },
+    { titulo: "Girar", campos: [
+      { t: "sel", rot: "Em torno de", cam: "centro", opcoes: [["origem", "Origem"], ["centroide", "Centroide da peça"]] },
+      { t: "num", rot: "Ângulo em X", cam: "rx", un: "°", passo: 15 },
+      { t: "num", rot: "Ângulo em Y", cam: "ry", un: "°", passo: 15 },
+      { t: "num", rot: "Ângulo em Z", cam: "rz", un: "°", passo: 15 },
+      { t: "info", texto: () => "Gira em X, depois Y, depois Z; depois desloca." },
+    ] },
+    { titulo: "Copiar", opcional: "copiar", campos: [
+      { t: "num", rot: "Nº de cópias", cam: "copias", min: 1, max: 50, passo: 1 },
+      { t: "info", texto: () => "Mantém o original e repete o movimento a cada cópia." },
+    ] },
+  ] };
 }
 
 // ---------- chapa metálica (docs/funcional/chapa.md) ----------
