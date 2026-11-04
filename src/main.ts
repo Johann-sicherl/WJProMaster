@@ -1,5 +1,5 @@
 import { atualizarExternas } from "./esboco/externas";
-import { deixar, deixarArquivo, esquecer, pegar } from "./comum/transferir";
+import { deixar, deixarArquivo, esquecer, pegar, pegarArquivo } from "./comum/transferir";
 import { atualizarRefsDeContexto, devolverPeca, itensDoContexto, type PedidoContexto, type VoltaContexto } from "./montagem/contexto";
 import { juntar, localDaEntidade, type Cena } from "./montagem/cena";
 import type { Topologia } from "./kernel/topologia";
@@ -70,6 +70,7 @@ import type { Analise } from "./analises";
 import { absorvidosDe, excluirRecursos, filhosDe } from "./dependencias";
 import { registrarComAtualizacao } from "./comum/atualizacao";
 import { instalarLateralAjustavel } from "./ui/lateral";
+import { abrirEmNovaJanela, gravarNaJanela, lerDaJanela, podarJanelas } from "./comum/janelas";
 
 const CHAVE_AUTOSAVE = "jlscad:documento";
 const CHAVE_PREFS = "jlscad:interface";
@@ -109,6 +110,8 @@ interface Prefs {
   caixaFlutuante?: boolean;
   /** Onde a caixa flutuante foi largada pela última vez (px dentro do viewport). */
   posCaixaFlutuante?: { x: number; y: number };
+  /** já aplicou "planos ocultos por padrão" (04/11/2026) nas preferências antigas */
+  planosOcultosPadrao?: boolean;
 }
 type TipoFiltro = "face" | "aresta" | "vertice" | "plano" | "eixo" | "curva";
 type TipoItem = "planos" | "eixos" | "origem" | "esbocos";
@@ -116,10 +119,17 @@ type Dispositivo = "celular" | "tablet" | "computador";
 const prefs: Prefs = {
   aba: "features",
   estilo: "sombreado-arestas",
-  refsVisiveis: { XZ: true, XY: true, YZ: true, origem: true },
+  // planos padrão começam ocultos (pedido do Johann); a origem fica visível
+  refsVisiveis: { XZ: false, XY: false, YZ: false, origem: true },
   refsOcultas: [],
   ...lerJSON<Partial<Prefs>>(CHAVE_PREFS),
 };
+if (!prefs.planosOcultosPadrao) {
+  // preferências de antes: os planos passam a começar ocultos uma vez (o olho mostra de novo)
+  prefs.refsVisiveis = { ...prefs.refsVisiveis, XZ: false, XY: false, YZ: false };
+  prefs.planosOcultosPadrao = true;
+  gravarJSON(CHAVE_PREFS, prefs);
+}
 const salvarPrefs = () => gravarJSON(CHAVE_PREFS, prefs);
 
 /** O tipo de item está oculto pela barra de vistas (por tipo ou por "ocultar todos os tipos")? */
@@ -4044,13 +4054,13 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
     fazer: () => void salvarPeca(),
   },
   locais: { rotulo: "Cópias do cofre (pendrive, Drive, tablet)…", icone: "pasta", fazer: () => void abrirCopias() },
-  abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("cad") },
+  abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("cad", temDocumento()) },
   step: { rotulo: "Exportar STEP", icone: "exportar", fazer: () => exportar("step") },
   stl: { rotulo: "Exportar STL", icone: "exportar", fazer: () => exportar("stl") },
   fluxo: { rotulo: "Abrir no WJFlow (escoamento de ar)", icone: "exportar", fazer: () => void abrirNoWJFlow() },
   desenho: { rotulo: "Criar desenho desta peça", icone: "desenho", fazer: () => {
     salvarAutosave();
-    location.href = new URL(`${import.meta.env.BASE_URL}cad/desenho/#de-peca`, location.href).href;
+    abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}cad/desenho/#de-peca`, location.href).href);
   } },
   equacoes: { rotulo: "Equações…", icone: "equacoes", fazer: abrirEquacoes },
   material: { rotulo: "Material…", icone: "materialPeca", fazer: () => escolherMaterial($("btn-menu")) },
@@ -4068,7 +4078,7 @@ async function abrirNoWJFlow() {
   try {
     const b = await Armazem.abrir("wjflow", ["estudos"]);
     await b.por("estudos", { id: "do-cad", nome: doc.nome, vertices: ultimaMalha.vertices, triangulos: ultimaMalha.triangulos } as { id: string });
-    location.href = `${import.meta.env.BASE_URL}flow/#peca-do-cad`;
+    abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}flow/#peca-do-cad`, location.href).href);
   } catch (e) {
     avisar(`Não foi possível abrir no WJFlow: ${(e as Error).message}`);
   }
@@ -4165,10 +4175,20 @@ function abrirDialogoNovo() {
     if (escolhido !== "peca") {
       // montagem e desenho: páginas do WJCAD (a peça aberta continua no salvamento automático)
       salvarAutosave();
-      location.href = new URL(`${import.meta.env.BASE_URL}cad/${escolhido}/#novo`, location.href).href;
+      const url = new URL(`${import.meta.env.BASE_URL}cad/${escolhido}/#novo`, location.href).href;
+      // com uma peça aberta, a montagem/desenho abre noutra janela (esta continua)
+      if (temDocumento()) {
+        fechar();
+        abrirEmNovaJanela(url);
+      } else location.href = url;
       return;
     }
-    if (aberto && doc.features.length && !confirm("Fechar a peça atual e começar uma nova? (o que não foi salvo em arquivo se perde)")) return;
+    if (temDocumento()) {
+      // peça nova numa janela nova: a atual continua aberta
+      fechar();
+      abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}cad/#novo`, location.href).href);
+      return;
+    }
     fechar();
     const d = documentoVazio();
     desligar("cad"); // peça nova: o próximo salvar cria um arquivo no cofre
@@ -4379,10 +4399,25 @@ function atualizarAreaDeTrabalho() {
   }
 }
 
+/** Há uma peça aberta com conteúdo: abrir outra vai para uma janela nova. */
+function temDocumento(): boolean {
+  return aberto && doc.features.length > 0;
+}
+
 $<HTMLInputElement>("arquivo").onchange = async (ev) => {
   const arq = (ev.target as HTMLInputElement).files?.[0];
   if (!arq) return;
   (ev.target as HTMLInputElement).value = ""; // o mesmo arquivo pode ser escolhido de novo
+  if (temDocumento()) {
+    // outra peça aberta: o arquivo vai para uma janela nova (esta continua como está)
+    await deixarArquivo(arq.name, new Uint8Array(await arq.arrayBuffer()));
+    abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}cad/#abrir-arquivo`, location.href).href);
+    return;
+  }
+  await abrirArquivoEscolhido(arq);
+};
+
+async function abrirArquivoEscolhido(arq: File) {
   desligar("cad"); // veio do aparelho: ao salvar entra no cofre como arquivo novo
   try {
     // STEP/STL de qualquer CAD: vira peça nova com o corpo importado (salvar grava .wjcad)
@@ -4397,7 +4432,9 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
         const n = pecas.reduce((s, x) => s + x.n, 0);
         if (n && confirm(`Este STEP é uma montagem (${pecas.length} peças, ${n} componentes). Abrir no ambiente Montagem, com cada peça separada?\n\nCancelar: abre tudo como um corpo só nesta peça.`)) {
           await deixarArquivo(arq.name, bytes);
-          location.href = new URL(`${import.meta.env.BASE_URL}cad/montagem/#importar-step`, location.href).href;
+          const url = new URL(`${import.meta.env.BASE_URL}cad/montagem/#importar-step`, location.href).href;
+          if (temDocumento()) abrirEmNovaJanela(url);
+          else location.href = url;
           return;
         }
       }
@@ -4448,7 +4485,7 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
   } catch (e) {
     alert((e as Error).message);
   }
-};
+}
 
 async function exportar(formato: "step" | "stl") {
   if (!aberto) return;
@@ -4550,11 +4587,23 @@ function barraDeAtalhos() {
 function salvarAutosave() {
   if (!aberto) return;
   capturarAtiva(doc);
-  gravarJSON(CHAVE_AUTOSAVE, doc);
+  // cada janela tem o seu salvamento automático (várias peças abertas ao mesmo tempo)
+  try {
+    gravarNaJanela(CHAVE_AUTOSAVE, JSON.stringify(doc));
+  } catch {
+    gravarJSON(CHAVE_AUTOSAVE, doc); // sem espaço: o caminho antigo avisa e limpa
+  }
 }
 
-function carregarAutosave(): Documento | null {
-  const d = lerJSON<unknown>(CHAVE_AUTOSAVE);
+/** `comum`: o documento que outro app deixou para esta janela abrir (#abrir-autosave). */
+function carregarAutosave(comum = false): Documento | null {
+  let d: unknown = null;
+  try {
+    const t = comum ? localStorage.getItem(CHAVE_AUTOSAVE) : lerDaJanela(CHAVE_AUTOSAVE);
+    d = t ? JSON.parse(t) : null;
+  } catch {
+    d = null;
+  }
   try {
     return d ? validarDocumento(d) : null;
   } catch {
@@ -4596,6 +4645,7 @@ if (import.meta.env.DEV) {
 
 // ---------- início ----------
 instalarLateralAjustavel("peca");
+podarJanelas();
 $("btn-lateral").innerHTML = ICONES.arvore;
 $("btn-lateral").onclick = () => abrirGaveta(!document.body.classList.contains("lateral-aberta"));
 aplicarDispositivo();
@@ -4784,8 +4834,14 @@ if (emContexto) {
 // vindo do WJPDM ("Abrir no app"): abre direto o documento que o cofre deixou no salvamento automático
 else if (location.hash === "#abrir-autosave") {
   history.replaceState(null, "", location.pathname + location.search);
-  const doCofre = carregarAutosave();
+  const doCofre = carregarAutosave(true);
   if (doCofre) abrirDocumento(doCofre);
+} else if (location.hash === "#abrir-arquivo") {
+  // arquivo escolhido numa janela que já tinha uma peça aberta
+  history.replaceState(null, "", location.pathname + location.search);
+  void pegarArquivo().then((a) => {
+    if (a) void abrirArquivoEscolhido(new File([a.bytes as BlobPart], a.nome));
+  });
 } else if (location.hash === "#nova-peca") {
   // "Inserir em nova peça" do menu do corpo: peça derivada só com aquele corpo
   history.replaceState(null, "", location.pathname + location.search);

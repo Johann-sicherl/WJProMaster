@@ -5,6 +5,7 @@
 
 import { registrarComAtualizacao } from "../comum/atualizacao";
 import { instalarLateralAjustavel } from "../ui/lateral";
+import { abrirEmNovaJanela, gravarNaJanela, lerDaJanela, podarJanelas } from "../comum/janelas";
 import "../style.css";
 import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
@@ -219,7 +220,7 @@ function registrarPasso() {
 function salvarAutosave() {
   if (!doc) return;
   try {
-    localStorage.setItem(CHAVE, JSON.stringify(doc));
+    gravarNaJanela(CHAVE, JSON.stringify(doc)); // cada janela tem o seu (vários desenhos abertos)
   } catch {
     /* sem espaço (modelos grandes embutidos): segue sem o salvamento automático */
   }
@@ -952,12 +953,11 @@ function limparModelos() {
 
 async function abrirModelo(m: ModeloDesenho) {
   salvarAutosave();
-  sessionStorage.setItem("wjcad:voltarDesenho", "1");
   if (m.arquivo) {
     const r = await lerDoCofre(m.arquivo);
     if (r) {
-      avisar(`Abrindo ${m.nome}. Ao salvar lá e voltar, as vistas se atualizam.`);
-      const erro = await abrirArquivoNoApp(r.arquivo);
+      avisar(`Abrindo ${m.nome} numa janela nova. Ao salvar lá e voltar para esta janela, as vistas se atualizam.`, 6000);
+      const erro = await abrirArquivoNoApp(r.arquivo, undefined, true);
       if (erro) avisar(erro);
       return;
     }
@@ -966,11 +966,11 @@ async function abrirModelo(m: ModeloDesenho) {
   if (m.tipo === "peca") {
     localStorage.setItem("jlscad:documento", JSON.stringify(m.doc));
     desligar("cad");
-    location.href = new URL(`${RAIZ}cad/#abrir-autosave`, location.href).href;
+    abrirEmNovaJanela(new URL(`${RAIZ}cad/#abrir-autosave`, location.href).href);
   } else {
     localStorage.setItem("wjcad:montagem", JSON.stringify(m.doc));
     desligar("asm");
-    location.href = new URL(`${RAIZ}cad/montagem/#abrir-autosave`, location.href).href;
+    abrirEmNovaJanela(new URL(`${RAIZ}cad/montagem/#abrir-autosave`, location.href).href);
   }
 }
 
@@ -1453,6 +1453,15 @@ async function renderizarVistaModelo() {
     };
   }
   if (c.modelo) p.append(Object.assign(document.createElement("p"), { className: "dica", textContent: c.tres ? "✓ coloca as três vistas na folha." : "Toque na folha onde a vista deve ficar. Depois, toque ao lado dela para as vistas projetadas." }));
+}
+
+function lerDaJanelaDesenho(): DocumentoDesenho | null {
+  try {
+    const t = lerDaJanela(CHAVE);
+    return t ? validarDesenho(JSON.parse(t)) : null;
+  } catch {
+    return null;
+  }
 }
 
 function lerJson<T>(chave: string, validar: (d: unknown) => T): T | null {
@@ -2549,6 +2558,11 @@ async function atualizarDoCofre() {
   }
 }
 
+// várias janelas: ao voltar para esta, modelos salvos noutra janela atualizam as vistas
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && doc) void atualizarDoCofre();
+});
+
 function novoDesenho(abrirTres = true) {
   if (doc?.folhas.some((f) => f.vistas.length) && !confirm("Fechar o desenho atual e começar um novo? (o que não foi salvo no cofre se perde)")) return false;
   desligar("drw");
@@ -2569,10 +2583,17 @@ function desenhoDoAberto(tipo: "peca" | "montagem") {
   adicionarModelo(tipo, d, { arquivo: vinculo(tipo === "peca" ? "cad" : "asm") ?? undefined, nome: d.nome });
 }
 
+/** Com um desenho aberto, outro documento abre numa janela nova (este continua). */
+function irPara(caminho: string) {
+  const url = new URL(caminho, location.href).href;
+  if (doc) abrirEmNovaJanela(url);
+  else location.href = url;
+}
+
 function abrirNovo() {
   abrirPopover($("btn-menu"), [
-    { rotulo: "Peça", icone: "peca", acao: () => (location.href = new URL(`${RAIZ}cad/#novo`, location.href).href) },
-    { rotulo: "Montagem", icone: "montagem", acao: () => (location.href = new URL(`${RAIZ}cad/montagem/#novo`, location.href).href) },
+    { rotulo: "Peça", icone: "peca", acao: () => irPara(`${RAIZ}cad/#novo`) },
+    { rotulo: "Montagem", icone: "montagem", acao: () => irPara(`${RAIZ}cad/montagem/#novo`) },
     { rotulo: "Desenho", icone: "desenho", acao: () => void novoDesenho() },
   ]);
 }
@@ -2613,7 +2634,7 @@ $<HTMLInputElement>("arquivo").onchange = async (e) => {
 
 const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => void; doc?: boolean }> = {
   novo: { rotulo: "Novo…", icone: "nova", fazer: abrirNovo },
-  abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("drw") },
+  abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("drw", !!doc) },
   abrir: { rotulo: "Abrir arquivo do aparelho (.wjdrw)…", icone: "abrir", fazer: () => {
     escolhendoArquivoModelo = false;
     $<HTMLInputElement>("arquivo").accept = ".wjdrw";
@@ -2686,6 +2707,7 @@ $("btn-menu").onclick = () => {
   $("btn-menu").setAttribute("aria-expanded", String(!m.hidden));
 };
 instalarLateralAjustavel("desenho");
+podarJanelas();
 $("btn-lateral").innerHTML = ICONES.arvore;
 $("btn-lateral").onclick = () => document.body.classList.toggle("lateral-aberta");
 instalarFecharAoTocarFora(fecharMenu);
@@ -2741,7 +2763,7 @@ function atualizarAreaDeTrabalho() {
   $("ti-abrir").onclick = () => void abrirDoCofre("drw");
   const rec = $("ti-recentes");
   rec.innerHTML = "";
-  const ultimo = lerJson<DocumentoDesenho>(CHAVE, validarDesenho);
+  const ultimo = lerDaJanelaDesenho();
   rec.append(Object.assign(document.createElement("h3"), { textContent: "Recentes" }));
   if (ultimo) {
     const b = document.createElement("button");
@@ -2794,8 +2816,9 @@ renderizarBarraVistas();
 instalarPainelCofre("drw", salvar);
 void sincronizarAoAbrir(kernel.pronto)?.catch(() => {});
 {
-  const inicial = lerJson<DocumentoDesenho>(CHAVE, validarDesenho);
   const hash = location.hash;
+  // #abrir-autosave: o desenho que outro app deixou na chave comum; senão, o desta janela
+  const inicial = hash === "#abrir-autosave" ? lerJson<DocumentoDesenho>(CHAVE, validarDesenho) : lerDaJanelaDesenho();
   const voltando = !!sessionStorage.getItem("wjcad:voltarDesenho");
   sessionStorage.removeItem("wjcad:voltarDesenho");
   if (hash) history.replaceState(null, "", location.pathname + location.search);

@@ -236,3 +236,7 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
   carregá-lo (mensagem `guardar`, reaproveitando o cache HTTP: nada é baixado duas vezes). Não editar
   a versão do cache à mão. Versão nova publicada com o app aberto: faixa "Versão nova do WJProMaster disponível → Atualizar"
   (`src/comum/atualizacao.ts`, `registrarComAtualizacao` em todas as páginas; confere ao voltar para o app e a cada 30 min).
+- **Várias janelas** (`src/comum/janelas.ts`): com um documento aberto, abrir/criar outro (peça, montagem, desenho, do
+  cofre ou do aparelho) vai para uma janela nova. Salvamento automático e vínculo com o cofre ficam por janela
+  (`chave@<id>`, id em `window.name`) além da chave comum (usada para passar documento entre apps, `#abrir-autosave`).
+  Montagem e desenho se atualizam do cofre ao voltar para a janela (`visibilitychange`). Planos padrão começam ocultos.
