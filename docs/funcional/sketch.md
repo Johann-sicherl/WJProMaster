@@ -381,11 +381,20 @@ caneta vira uma linha de 50 mm no esboço; splines, arcos e qualquer ferramenta 
     no esboço). Sem zoom (pinça, roda, Enquadrar só centraliza) e sem girar (tríade/vistas voltam a
     olhar o plano de frente); **um dedo ou o botão do meio arrastam a vista** para alcançar outra
     região. Barra de status: "· Escala real 1:1". Sair do esboço solta a vista.
-  - **Calibrar escala da tela…**: o navegador não sabe o tamanho físico da tela, então a calibração
-    é feita uma vez por aparelho: uma régua de 100 mm (50 mm em tela estreita) desenhada na tela;
-    encostar uma régua de verdade e ajustar com − / + (0,1 mm), a barra, ou digitar quanto a barra
-    mediu ("Corrigir"). Guardado em `localStorage["jlscad:pxPorMm"]` (pixels CSS por mm).
-    Ligar a escala real sem calibração abre a calibração antes.
+  - **Calibrar escala da tela…**: o navegador não informa o tamanho físico da tela (nem o PPI), então a
+    calibração é feita uma vez por aparelho, de dois jeitos:
+    - **Medidas da tela** (recomendado, 05/11/2026, ideia do Johann): página branca em tela cheia com as
+      **bordas da área acesa marcadas** e as setas **Lado A (horizontal ↔)** e **Lado B (vertical ↕)**;
+      **tocar e segurar** (caneta ou dedo) ou "Informar medidas" abre o pop-up: Lado A e/ou Lado B em mm
+      (área acesa, sem a moldura) ou a diagonal em polegadas (ficha técnica). O campo em foco acende a
+      borda do lado medido. Com os dois lados, o app **confere a proporção** com a da tela (desvio > 1,5%
+      = medida errada, ex.: com a moldura → avisa e não aceita). O app já sabe quantos pixels a tela tem
+      (`screen`/tela cheia): pixels por mm = pixels do lado ÷ mm do lado (`pxPorMmDasMedidas`).
+    - **Régua** (também para conferir): régua de 100 mm (50 mm em tela estreita) desenhada na tela;
+      encostar uma régua de verdade e ajustar com − / + (0,1 mm), a barra, ou digitar quanto a barra
+      mediu ("Corrigir").
+    Guardado em `localStorage["jlscad:pxPorMm"]` (pixels CSS por mm). Ligar a escala real sem
+    calibração abre a calibração antes.
 - Código: `src/esboco/escalaReal.ts` (calibração), `Viewport.travarEscala` (zoom = px/mm da
   calibração, controles só de pan), `alternarEscalaReal`/`aplicarEscalaReal` em `src/main.ts`.
 - Encaixes e relações automáticas continuam valendo (ex.: horizontal); as medidas seguem o traço.
