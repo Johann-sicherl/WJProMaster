@@ -240,6 +240,13 @@ export const ABAS: Aba[] = [
         ],
       },
       { id: "construcao", rotulo: "Construção", icone: "construcao", dica: "Alterna geometria de construção (seleção ou próximas entidades)", grupo: 4 },
+      {
+        id: "grupo-escala", rotulo: "Escala 1:1", icone: "escalaReal", dica: "Desenhar no tablet em tamanho real (régua sobre a tela)", grupo: 5,
+        itens: [
+          { id: "escalaReal", rotulo: "Escala real 1:1", icone: "escalaReal", dica: "Liga/desliga: a vista do esboço fica em tamanho real (1 mm na tela = 1 mm no esboço); traços da caneta saem em 1:1", grupo: 5 },
+          { id: "calibrarTela", rotulo: "Calibrar escala da tela…", icone: "regua", dica: "Ajusta a escala real com uma régua sobre a tela (uma vez por aparelho)", grupo: 5 },
+        ],
+      },
     ],
   },
   {

@@ -206,7 +206,6 @@ export class Viewport {
     this.modoEsboco(false);
     this.controles.enableDamping = true;
     this.controles.dampingFactor = 0.12;
-    this.controles.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
     this.controles.addEventListener("change", () => {
       this.precisaRender = true;
       this.aoMudarCamera?.();
@@ -459,9 +458,46 @@ export class Viewport {
    */
   modoEsboco(ativo: boolean) {
     this.emEsboco = ativo;
-    this.controles.mouseButtons = ativo
-      ? { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: null }
+    this.aplicarControles();
+  }
+
+  /** Pixels CSS por mm do modelo com a escala travada (escala real 1:1), ou null. */
+  private escalaTravada: number | null = null;
+  private planoTravado: Referencial | null = null;
+
+  /**
+   * Escala real 1:1 (esboço): zoom fixo em `pxPorMm` (pixels CSS por milímetro físico da tela,
+   * da calibração), sem girar nem aproximar; o dedo/roda do meio só arrastam a vista. null solta.
+   */
+  travarEscala(pxPorMm: number | null, plano: Referencial | null = null) {
+    this.escalaTravada = pxPorMm && pxPorMm > 0 ? pxPorMm : null;
+    this.planoTravado = this.escalaTravada ? plano : null;
+    this.aplicarControles();
+    if (this.escalaTravada) {
+      if (this.animacao) this.animacao.para[2] = this.escalaTravada;
+      else {
+        this.camera.zoom = this.escalaTravada;
+        this.camera.updateProjectionMatrix();
+        this.precisaRender = true;
+        this.aoMudarCamera?.();
+        this.ouvintesCamera.forEach((f) => f());
+      }
+    }
+  }
+
+  get escalaReal(): number | null {
+    return this.escalaTravada;
+  }
+
+  private aplicarControles() {
+    const travada = !!this.escalaTravada;
+    this.controles.enableZoom = !travada;
+    this.controles.enableRotate = !travada;
+    this.controles.mouseButtons = this.emEsboco
+      ? { LEFT: null, MIDDLE: travada ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, RIGHT: null }
       : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: null };
+    // travada: um dedo arrasta a vista; dois dedos também (sem zoom)
+    this.controles.touches = travada ? { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN } : { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
   }
 
   private raio(clientX: number, clientY: number): THREE.Raycaster {
@@ -1466,6 +1502,8 @@ export class Viewport {
   }
 
   definirVista(v: Vista, animado = true) {
+    // escala real: a vista fica de frente para o plano do esboço (outra direção encurtaria o traço)
+    if (this.escalaTravada && this.planoTravado) return this.olharPlano(this.planoTravado);
     const alvo = this.controles.target.clone();
     const dir = new THREE.Vector3(...DIRECOES_VISTA[v]).normalize();
     this.moverCamera(alvo, alvo.clone().add(dir.multiplyScalar(this.distCam)), animado);
@@ -1479,6 +1517,7 @@ export class Viewport {
   private animacao: { de: [THREE.Vector3, THREE.Vector3, number]; para: [THREE.Vector3, THREE.Vector3, number]; t0: number } | null = null;
 
   private moverCamera(alvo: THREE.Vector3, posicao: THREE.Vector3, animado: boolean, zoom = this.camera.zoom) {
+    if (this.escalaTravada) zoom = this.escalaTravada; // escala real 1:1: enquadrar só centraliza
     if (!animado) {
       this.controles.target.copy(alvo);
       this.camera.position.copy(posicao);

@@ -1,4 +1,5 @@
 import { atualizarExternas } from "./esboco/externas";
+import { abrirCalibracao, lerPxPorMm } from "./esboco/escalaReal";
 import { abrirEditorCor } from "./ui/editorCor";
 import { casarFaces } from "./aparencia";
 import { trechosDeCor } from "./aparencia";
@@ -114,6 +115,8 @@ interface Prefs {
   caixaFlutuante?: boolean;
   /** Onde a caixa flutuante foi largada pela última vez (px dentro do viewport). */
   posCaixaFlutuante?: { x: number; y: number };
+  /** Esboço em escala real 1:1 (vista travada em tamanho real, com a calibração da tela). */
+  escalaReal?: boolean;
   /** já aplicou "planos ocultos por padrão" (04/11/2026) nas preferências antigas */
   planosOcultosPadrao?: boolean;
 }
@@ -399,7 +402,7 @@ function atualizarStatus() {
   if (nErros) estado += ` · ${nErros} recurso${nErros > 1 ? "s" : ""} com erro`;
   if (doc.retrocesso !== undefined) estado += " · retrocedido";
   if (aguardando) estado = aguardando.para === "furo" ? "Furo: toque a face plana onde ficam os furos" : "Novo esboço: toque um plano na árvore ou uma face plana";
-  if (editor) estado = `Editando ${editor.esb.nome} · ${editor.textoDefinicao}`;
+  if (editor) estado = `Editando ${editor.esb.nome} · ${editor.textoDefinicao}${viewport.escalaReal ? " · Escala real 1:1" : ""}`;
   const st = $("st-estado");
   st.textContent = estado;
   st.classList.toggle("com-erro", !editor && nErros > 0);
@@ -515,7 +518,7 @@ function renderizarAbas() {
       marcado: it.id === atual.id,
       acao: () => {
         // ações de um toque (Selecionar tudo) não viram o padrão do botão
-        if (!it.emBreve && it.id !== "selecionarTudo") {
+        if (!it.emBreve && it.id !== "selecionarTudo" && it.id !== "calibrarTela") {
           prefs.ultimoMenu = { ...prefs.ultimoMenu, [c.id]: it.id };
           salvarPrefs();
           renderizarAbas();
@@ -545,6 +548,7 @@ function botaoComando(c: Comando, aba: IdAba): HTMLButtonElement {
       || (c.id === "construcao" && editor.construcao);
     b.setAttribute("aria-pressed", String(ativo));
   }
+  if (aba === "sketch" && c.id === "escalaReal") b.setAttribute("aria-pressed", String(!!prefs.escalaReal));
   if (aba === "avaliar" && avaliacao) {
     const ativo = (c.id === "medir" && avaliacao.tipo === "medir") || (c.id === "vista-secao" && avaliacao.tipo === "secao") ||
       (avaliacao.tipo === "analise" && c.id === mapaAnalise[avaliacao.analise.tipo]);
@@ -3103,6 +3107,16 @@ async function comandoEsboco(c: Comando, botao: HTMLElement) {
         renderizarPainelEdicaoEsboco();
       }
       return;
+    case "escalaReal":
+      return void alternarEscalaReal();
+    case "calibrarTela": {
+      const v = await abrirCalibracao();
+      if (v === null) return;
+      aplicarEscalaReal();
+      atualizarStatus();
+      avisar(prefs.escalaReal ? "Calibração salva: a escala real 1:1 já usa o valor novo." : "Calibração salva. Ligue Escala real 1:1 para desenhar em tamanho real.");
+      return;
+    }
     case "selecionarTudo":
       if (!editor) return avisar("Selecionar tudo: abra um esboço primeiro.");
       editor.selecionarTudo();
@@ -3248,6 +3262,7 @@ async function editarEsboco(esb: FeatureEsboco, ferramenta?: Ferramenta) {
   prefs.aba = "sketch";
   salvarPrefs();
   mostrarPainel("esboco");
+  aplicarEscalaReal();
   renderizarAbas();
   renderizarTudo();
 }
@@ -3268,8 +3283,38 @@ function renderizarPainelEdicaoEsboco() {
   );
 }
 
+// ---------- escala real 1:1 ----------
+
+/**
+ * Liga/desliga a escala real: no esboço a vista fica de frente para o plano e travada em tamanho
+ * real (1 mm na tela = 1 mm no esboço, pela calibração da tela); o dedo só arrasta a vista. A
+ * escolha fica guardada e vale para os próximos esboços.
+ */
+async function alternarEscalaReal(ligar = !prefs.escalaReal) {
+  if (ligar && lerPxPorMm() === null) {
+    avisar("Antes, calibre a escala da tela com uma régua (uma vez por aparelho).", 6000);
+    if ((await abrirCalibracao()) === null) return;
+  }
+  prefs.escalaReal = ligar;
+  salvarPrefs();
+  aplicarEscalaReal();
+  renderizarAbas();
+  atualizarStatus();
+  avisar(!ligar ? "Escala real desligada: zoom e rotação livres de novo."
+    : editor ? "Escala real 1:1: 1 mm na tela = 1 mm no esboço. Desenhe com a caneta (a régua pode ficar sobre a tela); um dedo arrasta a vista."
+    : "Escala real 1:1 ligada: vale ao abrir um esboço.", 7000);
+}
+
+/** Aplica a escala real ao esboço aberto (ou solta a vista quando não há esboço/está desligada). */
+function aplicarEscalaReal() {
+  const px = prefs.escalaReal && editor ? lerPxPorMm() : null;
+  if (px && editor) viewport.olharPlano(editor.referencial);
+  viewport.travarEscala(px, editor?.referencial ?? null);
+}
+
 function sairEsboco() {
   if (!editor) return;
+  viewport.travarEscala(null);
   const id = editor.esb.id;
   editor.fechar();
   editor = null;
@@ -3306,6 +3351,7 @@ function sairEsboco() {
 function descartarEsboco() {
   if (!editor || !snapshotEsboco) return;
   if (!confirm("Descartar as alterações deste esboço?")) return;
+  viewport.travarEscala(null);
   const s = snapshotEsboco;
   editor.fechar();
   editor = null;
