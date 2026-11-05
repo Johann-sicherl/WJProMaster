@@ -53,7 +53,7 @@ import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } fr
 import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
 import { ISO } from "./kernel/furos";
-import { abrirCopias, abrirDoCofre, desligar, documentosDoCofre, instalarPainelCofre, lerDoCofre, ligar, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
+import { abrirCopias, abrirDoCofre, desligar, escolherDoCofre, instalarPainelCofre, lerDoCofre, ligar, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
 import { botaoDiagnostico, registrarMetrica } from "./comum/diagnostico";
 import { Armazem } from "./comum/armazem";
 import {
@@ -1480,39 +1480,10 @@ function recursoComCorpo(id: string, i: number, mod: Partial<Record<string, unkn
   }
 }
 
-/** Janela simples para escolher uma peça (.wjcad) do cofre. */
+/** Explorador do cofre para escolher a peça (.wjcad) a inserir. */
 async function escolherPecaDoCofre(): Promise<{ id: string; nome: string } | null> {
-  let docs: Awaited<ReturnType<typeof documentosDoCofre>> = [];
-  try {
-    docs = await documentosDoCofre(["wjcad", "jlscad"]);
-  } catch {
-    docs = [];
-  }
-  if (!docs.length) {
-    avisar("Não há peças no cofre: salve a peça a inserir no cofre primeiro.", 6000);
-    return null;
-  }
-  const fundo = document.createElement("div");
-  fundo.className = "fundo-dialogo";
-  fundo.innerHTML = `<div class="dialogo dialogo-stl" role="dialog" aria-modal="true"><header><strong>Inserir peça do cofre</strong></header>
-    <div class="dialogo-corpo"><div class="lista-simplificar"></div></div><footer><button data-x>Cancelar</button></footer></div>`;
-  const lista = fundo.querySelector(".lista-simplificar")!;
-  for (const d of docs) {
-    const b = document.createElement("button");
-    b.dataset.id = d.arquivo.id;
-    b.textContent = `${d.arquivo.nome} — ${d.caminho}`;
-    lista.appendChild(b);
-  }
-  document.body.appendChild(fundo);
-  return new Promise((ok) => {
-    fundo.onclick = (e) => {
-      const b = (e.target as HTMLElement).closest("button");
-      if (!b) return;
-      fundo.remove();
-      const d = b.dataset.id ? docs.find((x) => x.arquivo.id === b.dataset.id) : undefined;
-      ok(d ? { id: d.arquivo.id, nome: d.arquivo.nome } : null);
-    };
-  });
+  const a = await escolherDoCofre("cad", "Inserir peça do cofre", ["wjcad", "jlscad"], "Peças (WJCAD): .wjcad");
+  return a ? { id: a.id, nome: a.nome } : null;
 }
 
 /** Lê a peça do cofre (árvore até a barra de retrocesso dela) para a Peça inserida. */

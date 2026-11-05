@@ -32,7 +32,7 @@ import { centroDaCaixa, centroDoComponente, componenteDoTriangulo, facesDoCompon
 import type { Topologia } from "../kernel/topologia";
 import { compRel, NOME_TIPO, primitivaLocal, resolverMontagem, tiposPossiveis, transformar, type ResultadoSolver } from "./solver";
 import {
-  abrirArquivoNoApp, abrirCopias, abrirDoCofre, desligar, documentosDoCofre, instalarPainelCofre, lerDoCofre, salvarNoCofre,
+  abrirArquivoNoApp, abrirCopias, abrirDoCofre, desligar, documentosDoCofre, escolherDoCofre, instalarPainelCofre, lerDoCofre, salvarNoCofre,
   sincronizarAoAbrir, vinculo,
 } from "../comum/cofre";
 import { renderizarFormulario, type ContextoFormulario, type Esquema } from "../ui/formulario";
@@ -1225,7 +1225,7 @@ async function renderizarInserir() {
   const corpo = caixa(p, "Peça a inserir");
   corpo.innerHTML = `<input class="campo-busca" type="search" placeholder="Pesquisar no cofre…" aria-label="Pesquisar peças no cofre" />
     <div class="pc-arquivos" data-lista><p class="dica">Lendo o cofre…</p></div>
-    <div class="pc-botoes"><button data-b="aberta" class="largo"></button><button data-b="aparelho" class="largo">Procurar no aparelho…</button></div>`;
+    <div class="pc-botoes"><button data-b="aberta" class="largo"></button><button data-b="cofre" class="largo">Procurar no cofre…</button><button data-b="aparelho" class="largo">Procurar no aparelho…</button></div>`;
   const aberta = (() => {
     try {
       const d = JSON.parse(localStorage.getItem("jlscad:documento") ?? "null");
@@ -1240,6 +1240,10 @@ async function renderizarInserir() {
     bAberta.onclick = () => void inserirDoc(validarDocumento(aberta), { arquivo: vinculo("cad") ?? undefined, nome: aberta.nome });
   } else bAberta.remove();
   corpo.querySelector<HTMLButtonElement>('[data-b="aparelho"]')!.onclick = () => $<HTMLInputElement>("arquivo").click();
+  corpo.querySelector<HTMLButtonElement>('[data-b="cofre"]')!.onclick = async () => {
+    const a = await escolherDoCofre("asm", "Inserir peça do cofre", ["wjcad", "jlscad"], "Peças (WJCAD): .wjcad", "Inserir");
+    if (a) void inserirDoCofre(a.id);
+  };
   const opcoes = caixa(p, "Opções");
   opcoes.innerHTML = `<label class="interruptor"><input type="checkbox" data-manter ${c.manter ? "checked" : ""}/><span>Manter aberto (inserir várias)</span></label>
     <p class="dica">Escolhida a peça, toque no modelo onde ela deve ficar. O primeiro componente da montagem fica fixo na origem.</p>`;

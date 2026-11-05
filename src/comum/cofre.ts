@@ -86,6 +86,18 @@ const usuarioDo = async (db: Armazem) => {
 let ultima: { quando: string; texto: string } | null = null;
 let fila: Promise<unknown> = Promise.resolve();
 
+/** Situação de cada cópia do cofre na última sincronia. */
+export type EstadoCopia = "ok" | "toque" | "desconectado" | "offline" | "nao";
+export interface SituacaoCopias {
+  quando: string;
+  drive: EstadoCopia;
+  tablet: EstadoCopia;
+  pendrive: EstadoCopia;
+}
+let situacao: SituacaoCopias = { quando: "", drive: "nao", tablet: "nao", pendrive: "nao" };
+/** Como estavam o Google Drive, a pasta do dispositivo e o pendrive na última sincronia. */
+export const situacaoDasCopias = (): SituacaoCopias => ({ ...situacao });
+
 export interface OpcoesSincronia {
   /** pode mostrar o "Permitir"/janela do Google (só logo depois de um toque do usuário) */
   pedir?: boolean;
@@ -106,22 +118,45 @@ export function sincronizarCofre(o: OpcoesSincronia = {}): Promise<string> {
     const db = await abrirCofre();
     const repos: Repositorio[] = [new RepositorioAparelho(db)];
     const ausentes: string[] = [];
+    const sit: SituacaoCopias = { ...situacao, quando: agora() };
     const copias = publicar ? ([["tablet", "pasta do dispositivo"], ["pendrive", "pendrive"]] as const) : ([["tablet", "pasta do dispositivo"]] as const);
+    const repoDe = new Map<string, "tablet" | "pendrive" | "drive">();
     for (const [c, rot] of copias) {
       const p = await pastaDa(c);
-      if (!p) continue;
-      if (await permissao(p, pedir).catch(() => false)) repos.push(new RepositorioPasta(rot, p, c === "pendrive"));
-      else ausentes.push(`${rot} sem permissão`);
+      if (!p) {
+        sit[c] = "nao";
+        continue;
+      }
+      if (await permissao(p, pedir).catch(() => false)) {
+        repos.push(new RepositorioPasta(rot, p, c === "pendrive"));
+        repoDe.set(rot, c);
+        sit[c] = "ok";
+      } else {
+        ausentes.push(`${rot} sem permissão`);
+        sit[c] = "toque";
+      }
     }
     if (publicar) {
-      if (nuvem && navigator.onLine && ((await renovacao) || nuvem.conectado())) repos.push(nuvem.repositorio());
-      else if (nuvem && localStorage.getItem("wjgoogle:autorizado") === "1") ausentes.push("Google Drive com acesso vencido (toque em Sincronizar agora)");
+      if (nuvem && navigator.onLine && ((await renovacao) || nuvem.conectado())) {
+        const r = nuvem.repositorio();
+        repos.push(r);
+        repoDe.set(r.nome, "drive");
+        sit.drive = "ok";
+      } else if (nuvem && localStorage.getItem("wjgoogle:autorizado") === "1") {
+        ausentes.push(navigator.onLine ? "Google Drive com acesso vencido (toque em Sincronizar agora)" : "Google Drive sem internet");
+        sit.drive = navigator.onLine ? "toque" : "offline";
+      } else sit.drive = "nao";
     }
+    situacao = sit;
     if (repos.length === 1) {
       const t = ausentes.length ? `Só no banco do app · ${ausentes.join(", ")}.` : publicar ? "Nenhuma cópia conectada: conecte o pendrive ou o Google Drive (📁 Cópias do cofre)." : "Salvo só no banco do app: escolha a pasta padrão do dispositivo (📁 Cópias do cofre).";
       return (ultima = { quando: agora(), texto: t }).texto;
     }
     const r = await sincronizar(repos, agora());
+    for (const f of r.falhas) {
+      const c = repoDe.get(f.repo);
+      if (c) situacao[c] = "desconectado";
+    }
     return (ultima = { quando: agora(), texto: resumo(r, repos, ausentes) }).texto;
   });
   fila = tarefa.catch(() => {});
@@ -144,7 +179,7 @@ export function sincronizarAoAbrir(espera: Promise<unknown> = Promise.resolve())
     .then(() => sincronizarCofre({ pedir: false, publicar: true }))
     .then((m) => {
       avisarMudanca();
-      if (precisaToque(m)) faixaToque(m);
+      faixaConexoes(m);
       return m;
     });
 }
@@ -152,33 +187,49 @@ export function sincronizarAoAbrir(espera: Promise<unknown> = Promise.resolve())
 /** Evento na janela depois de uma sincronia com toque (outras bases, como as tarefas, aproveitam a permissão). */
 export const EVENTO_SINCRONIZADO = "wj-sincronizado";
 
-/** Faixa no topo: a sincronia ao abrir deixou cópias de fora (precisam de um toque do usuário). */
-function faixaToque(m: string) {
-  if (document.querySelector(".wjc-faixa")) return;
+const ROTULO_COPIA: [keyof Omit<SituacaoCopias, "quando">, string][] = [["drive", "Google Drive"], ["tablet", "Pasta do dispositivo"], ["pendrive", "Pendrive"]];
+const TEXTO_ESTADO: Record<EstadoCopia, [string, string]> = {
+  ok: ["✓", "conectado e igual"],
+  toque: ["!", "precisa de um toque para liberar o acesso"],
+  desconectado: ["✕", "não encontrado (desconectado?)"],
+  offline: ["✕", "sem internet"],
+  nao: ["—", "não configurado"],
+};
+
+/**
+ * Faixa no topo ao abrir qualquer app: situação de cada cópia do cofre (Google Drive, pasta do
+ * dispositivo, pendrive). Tudo certo: some sozinha. Cópia configurada que ficou de fora: fica com
+ * "Conectar agora" (um toque libera o acesso e iguala tudo) e "Cópias…" (configurar).
+ */
+function faixaConexoes(m: string) {
+  document.querySelector(".wjc-faixa")?.remove();
   if (!document.getElementById("wjc-css")) document.head.append(Object.assign(document.createElement("style"), { id: "wjc-css", textContent: CSS }));
   const f = document.createElement("div");
   f.className = "wjc-faixa";
   f.setAttribute("role", "status");
-  f.innerHTML = `<span></span><button class="destaque" data-s>Sincronizar agora</button><button data-x title="Fechar">✕</button>`;
-  f.querySelector("span")!.textContent = `Sincronia ao abrir incompleta: ${m}`;
-  f.querySelector<HTMLElement>("[data-x]")!.onclick = () => f.remove();
-  f.querySelector<HTMLButtonElement>("[data-s]")!.onclick = async (e) => {
-    const b = e.currentTarget as HTMLButtonElement;
-    b.disabled = true;
-    f.querySelector("span")!.textContent = "Sincronizando…";
-    // a renovação do Google sai já, dentro do toque (senão o navegador bloqueia a janela)
-    const r = await sincronizarCofre({ pedir: true, publicar: true }).catch((x: Error) => x.message);
-    avisarMudanca();
-    window.dispatchEvent(new Event(EVENTO_SINCRONIZADO));
-    if (precisaToque(r)) {
-      f.querySelector("span")!.textContent = r;
-      b.disabled = false;
-    } else {
-      f.querySelector("span")!.textContent = r;
-      b.remove();
-      setTimeout(() => f.remove(), 5000);
-    }
+  const desenhar = (texto: string) => {
+    const s = situacaoDasCopias();
+    const pendente = ROTULO_COPIA.some(([k]) => s[k] === "toque" || s[k] === "desconectado" || s[k] === "offline") || precisaToque(texto);
+    const nenhuma = ROTULO_COPIA.every(([k]) => s[k] === "nao");
+    f.classList.toggle("ok", !pendente && !nenhuma);
+    f.innerHTML = `<span class="wjc-cops"><b>Cofre:</b> ${ROTULO_COPIA.map(([k, r]) => `<i class="wjc-cop ${s[k]}" title="${r}: ${TEXTO_ESTADO[s[k]][1]}">${TEXTO_ESTADO[s[k]][0]} ${r}</i>`).join("")}${nenhuma ? "<small>Nenhuma cópia: os arquivos ficam só no banco deste navegador.</small>" : ""}</span>
+      ${pendente ? `<button class="destaque" data-s>Conectar agora</button>` : ""}<button data-c>Cópias…</button><button data-x title="Fechar" aria-label="Fechar">✕</button>`;
+    f.querySelector<HTMLElement>("[data-x]")!.onclick = () => f.remove();
+    f.querySelector<HTMLElement>("[data-c]")!.onclick = () => void abrirCopias(() => desenhar(ultima?.texto ?? ""));
+    const b = f.querySelector<HTMLButtonElement>("[data-s]");
+    if (b) b.onclick = async () => {
+      b.disabled = true;
+      b.textContent = "Conectando…";
+      // a renovação do Google sai já, dentro do toque (senão o navegador bloqueia a janela)
+      const r = await sincronizarCofre({ pedir: true, publicar: true }).catch((x: Error) => x.message);
+      avisarMudanca();
+      window.dispatchEvent(new Event(EVENTO_SINCRONIZADO));
+      desenhar(r);
+    };
+    clearTimeout(Number(f.dataset.t));
+    if (!pendente) f.dataset.t = String(setTimeout(() => f.remove(), nenhuma ? 8000 : 5000));
   };
+  desenhar(m);
   document.body.append(f);
 }
 /** A sincronia ou outro salvar mudou o cofre (para recarregar listas). */
@@ -231,97 +282,279 @@ async function pastaDaFace(db: Armazem, app: ChaveApp): Promise<string> {
   return nova.id;
 }
 
+// ---------- explorador do cofre (salvar, abrir, escolher): como o explorador de arquivos ----------
+
+/** Rótulo do tipo de arquivo pela extensão (coluna "Tipo" e filtro). */
+const TIPO_EXT: Record<string, string> = {
+  wjcad: "Peça (WJCAD)", jlscad: "Peça (WJCAD)", wjasm: "Montagem (WJCAD)", wjdrw: "Desenho (WJCAD)", wjpl: "Planilha (WJPlan)", wjdoc: "Documento (WJWrite)",
+  wjapn: "Apresentação (WJApresentation)", wjcron: "Cronograma (WJCronProject)", wjflow: "Estudo (WJFlow)", wjpdm: "Cópia do cofre (WJPDM)", wjerp: "Dados (WJERP)",
+};
+const tipoDe = (nome: string) => TIPO_EXT[extensao(nome)] ?? (extensao(nome) ? `Arquivo ${extensao(nome).toUpperCase()}` : "Arquivo");
+const IC_PASTA = `<svg viewBox="0 0 24 24" width="22" height="22"><path d="M2.5 6.5a1.5 1.5 0 0 1 1.5-1.5h5l2 2.2h9a1.5 1.5 0 0 1 1.5 1.5V18a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 18z" fill="#f2c14e" stroke="#c99a1e"/></svg>`;
+const icArquivo = (ext: string, deste: boolean) => `<svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 2.5h8l4.5 4.5v14.5H6z" fill="${deste ? "#e3effb" : "#f3f5f7"}" stroke="${deste ? "#2f7fd0" : "#9aa6b2"}"/><path d="M14 2.5V7h4.5" fill="none" stroke="${deste ? "#2f7fd0" : "#9aa6b2"}"/><text x="12.2" y="17.5" font-size="5" text-anchor="middle" fill="${deste ? "#1f4e79" : "#5e6b78"}" font-family="system-ui,sans-serif" font-weight="700">${esc(ext.slice(0, 4).toUpperCase())}</text></svg>`;
+
+interface OpcoesExplorador {
+  titulo: string;
+  modo: "salvar" | "abrir";
+  /** extensões do filtro "deste app" (as outras aparecem com "Todos os arquivos") */
+  exts: string[];
+  rotuloFiltro: string;
+  /** pasta inicial (id ou RAIZ) */
+  inicio: string;
+  /** salvar: nome sugerido (sem extensão) e extensão */
+  nome?: string;
+  ext?: string;
+  /** salvar: rodapé com a pasta padrão do dispositivo */
+  infoDispositivo?: boolean;
+  botao?: string;
+}
+type Escolha = { pasta: string; nome: string; arquivo?: Arquivo };
+
 /**
- * Primeiro salvar de um documento: escolhe a pasta do cofre (com "Nova pasta") e o nome. Mostra se
- * a pasta padrão do dispositivo já foi escolhida (e permite escolher). null = cancelado.
+ * Explorador do cofre: barra (Voltar, Pasta acima, caminho clicável, Nova pasta), lista em
+ * detalhes com pastas e arquivos da pasta atual (nome, modificado, tipo, GO-OUT), duplo clique ou
+ * duplo toque entra na pasta ou escolhe o arquivo; embaixo, nome do arquivo (salvar) e filtro de
+ * tipo. Pastas novas vão logo para as cópias do cofre (Drive, pendrive, pasta do dispositivo).
  */
-async function escolherLocal(app: ChaveApp, nomeArquivo: string): Promise<{ pasta: string; nome: string } | null> {
+async function explorarCofre(o: OpcoesExplorador): Promise<Escolha | null> {
   const db = await abrirCofre();
-  if (app === "pdm" || app === "erp") return { pasta: await pastaDaFace(db, app), nome: nomeArquivo };
   const meta = await db.ler<MetaCofre>("meta", "meta");
   let ps = await db.todos<Pasta>("pastas");
-  const lembrada = localStorage.getItem(ULTIMA_PASTA(app));
-  let sel = lembrada && ps.some((p) => p.id === lembrada) ? lembrada : (ps.find((p) => p.pai === null && p.nome === PASTA_DA_FACE[app])?.id ?? RAIZ);
-  const ext = extensao(nomeArquivo);
-  const base = ext ? nomeArquivo.slice(0, -(ext.length + 1)) : nomeArquivo;
+  const arqs = (await db.todos<Arquivo>("arquivos")).filter((a) => !a.lixeira);
+  let atual = o.inicio === RAIZ || ps.some((p) => p.id === o.inicio) ? o.inicio : RAIZ;
+  const historico: string[] = [];
+  let soDeste = true;
+  let sel: string | null = null; // "p:<id>" ou "a:<id>"
+  let novaAberta = false;
+  let msg = "";
   return new Promise((fim) => {
-    const { caixa, fechar } = janela(`Salvar no cofre — ${NOME_APP[app]}`);
+    const { caixa, fechar } = janela(o.titulo);
+    caixa.parentElement!.classList.add("wjc-explorador");
     let feito = false;
-    const terminar = (r: { pasta: string; nome: string } | null) => {
+    const terminar = (r: Escolha | null) => {
       if (feito) return;
       feito = true;
       fechar();
       fim(r);
     };
-    // fechar pelo ✕, Esc ou fora da janela = cancelar
-    new MutationObserver((_, o) => {
+    new MutationObserver((_, ob) => {
       if (!caixa.isConnected) {
-        o.disconnect();
+        ob.disconnect();
         terminar(null);
       }
     }).observe(document.body, { childList: true });
-    const arvore = () => {
-      const filhos = (pai: string | null) => ps.filter((p) => p.pai === pai).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-      const linha = (id: string, nome: string, nivel: number) => `<li><button data-p="${id}" class="${id === sel ? "sel" : ""}" style="padding-left:${12 + nivel * 18}px">📁 ${esc(nome)}</button></li>`;
-      const ramo = (pai: string | null, nivel: number): string => filhos(pai).map((p) => linha(p.id, p.nome, nivel) + ramo(p.id, nivel + 1)).join("");
-      return linha(RAIZ, meta?.nome || "Cofre", 0) + ramo(null, 1);
+    const paiDe = (id: string) => (id === RAIZ ? null : (ps.find((p) => p.id === id)?.pai ?? RAIZ));
+    const trilha = (id: string) => {
+      const out: { id: string; nome: string }[] = [];
+      for (let p = ps.find((x) => x.id === id); p; p = p.pai ? ps.find((x) => x.id === p!.pai) : undefined) out.unshift({ id: p.id, nome: p.nome });
+      return [{ id: RAIZ, nome: meta?.nome || "Cofre" }, ...out];
     };
+    const irPara = (id: string, guardar = true) => {
+      if (id === atual) return;
+      if (guardar) historico.push(atual);
+      atual = id;
+      sel = null;
+      msg = "";
+      void desenhar();
+    };
+    let campoNome = o.nome ?? "";
     const desenhar = async () => {
-      const tab = await pastaDa("tablet");
+      const pai = atual === RAIZ ? null : atual;
+      const pastas = ps.filter((p) => p.pai === pai).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+      const arquivos = arqs.filter((a) => (a.pasta === atual || (atual === RAIZ && !ps.some((p) => p.id === a.pasta))) && (!soDeste || o.exts.includes(extensao(a.nome))))
+        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+      const tab = o.infoDispositivo ? await pastaDa("tablet") : undefined;
+      const linhas = [
+        ...pastas.map((p) => `<li data-k="p:${p.id}" tabindex="0" class="${sel === `p:${p.id}` ? "sel" : ""}"><span class="wje-n">${IC_PASTA}<span>${esc(p.nome)}</span></span><span class="wje-d">${p.mod ? quando(p.mod) : ""}</span><span class="wje-t">Pasta</span></li>`),
+        ...arquivos.map((a) => {
+          const deste = o.exts.includes(extensao(a.nome));
+          return `<li data-k="a:${a.id}" tabindex="0" class="${sel === `a:${a.id}` ? "sel" : ""}${deste ? "" : " outro"}"><span class="wje-n">${icArquivo(extensao(a.nome), deste)}<span>${esc(a.nome)}${a.checkout ? `<small>GO-OUT ${esc(a.checkout.usuario)}</small>` : ""}${a.soLocal ? `<small>só no dispositivo</small>` : ""}</span></span><span class="wje-d">${a.mod ? quando(a.mod) : ""}</span><span class="wje-t">${esc(tipoDe(a.nome))}</span></li>`;
+        }),
+      ];
       caixa.innerHTML = `
-        <section><h3>Pasta do cofre</h3><ul class="wjc-lista wjc-arvore">${arvore()}</ul>
-          <div class="wjc-botoes" style="margin-top:8px"><button data-b="nova">Nova pasta…</button></div></section>
-        <section><h3>Nome</h3><div class="wjc-nome"><input data-nome value="${esc(base)}" aria-label="Nome do arquivo" />${ext ? `<span>.${esc(ext)}</span>` : ""}</div></section>
-        <section><p>O arquivo fica <b>em GO-OUT, só no dispositivo</b> (banco do app${tab ? ` e pasta <b>${esc(tab.name)}</b>/WJPDM` : ""}). O GO-IN publica no pendrive e no Google Drive.</p>
-          ${tab ? "" : `<p class="wjc-nao">Pasta padrão do dispositivo ainda não escolhida.</p>${temPastas() ? `<div class="wjc-botoes"><button data-b="tab">Escolher pasta do dispositivo…</button></div>` : ""}`}</section>
-        <footer><button data-b="cancelar">Cancelar</button><button data-b="ok" class="destaque">Salvar</button></footer>`;
-      const campo = caixa.querySelector<HTMLInputElement>("[data-nome]")!;
-      campo.onkeydown = (e) => {
-        if (e.key === "Enter") ok(); // sem "&&": devolver false cancelaria as outras teclas
-      };
-      caixa.querySelectorAll<HTMLButtonElement>("[data-p]").forEach((b) => (b.onclick = () => {
-        sel = b.dataset.p!;
-        caixa.querySelectorAll("[data-p]").forEach((x) => x.classList.toggle("sel", x === b));
-      }));
-      const ok = () => {
-        const n = campo.value.trim().replace(/[\\/:*?"<>|]/g, "_");
-        if (!n) return campo.focus();
-        localStorage.setItem(ULTIMA_PASTA(app), sel);
-        terminar({ pasta: sel, nome: ext ? `${n}.${ext}` : n });
-      };
-      const acoes: Record<string, () => void | Promise<void>> = {
-        ok,
-        cancelar: () => terminar(null),
-        nova: async () => {
-          const nome = prompt("Nome da nova pasta:")?.trim();
-          if (!nome) return;
-          const pai = sel === RAIZ ? null : sel;
-          if (ps.some((p) => p.pai === pai && p.nome.toLowerCase() === nome.toLowerCase())) return alert("Já existe uma pasta com esse nome aqui.");
-          const p: Pasta = { id: uid(), nome, pai, mod: agora() };
-          await db.por("pastas", p);
-          ps = await db.todos<Pasta>("pastas");
-          sel = p.id;
-          base0 = campo.value;
-          await desenhar();
-        },
-        tab: async () => {
-          try {
-            await guardarPasta("tablet", await (window as Janela).showDirectoryPicker!({ id: "wjpdm-tablet", mode: "readwrite", startIn: "documents" }));
-          } catch {
-            /* desistiu */
-          }
-          base0 = campo.value;
-          await desenhar();
-        },
-      };
-      caixa.querySelectorAll<HTMLButtonElement>("[data-b]").forEach((b) => (b.onclick = () => void acoes[b.dataset.b!]?.()));
-      if (base0 !== null) campo.value = base0;
-      campo.focus();
-      campo.select();
+        <div class="wje-barra">
+          <button data-a="voltar" title="Voltar" aria-label="Voltar" ${historico.length ? "" : "disabled"}>←</button>
+          <button data-a="acima" title="Pasta acima" aria-label="Pasta acima" ${atual === RAIZ ? "disabled" : ""}>↑</button>
+          <nav class="wje-trilha" aria-label="Caminho">${trilha(atual).map((t, k, l) => `<button data-t="${t.id}" ${k === l.length - 1 ? 'aria-current="page"' : ""}>${esc(t.nome)}</button>`).join("<span>›</span>")}</nav>
+          <button data-a="nova" title="Nova pasta">+ Nova pasta</button>
+        </div>
+        ${novaAberta ? `<div class="wje-nova">${IC_PASTA}<input data-nova value="Nova pasta" aria-label="Nome da nova pasta" /><button data-a="criar" class="destaque">Criar</button><button data-a="semNova">Cancelar</button></div>` : ""}
+        <div class="wje-cab"><span>Nome</span><span class="wje-d">Modificado</span><span class="wje-t">Tipo</span></div>
+        <ul class="wje-lista" role="listbox" aria-label="Pastas e arquivos">${linhas.join("") || `<li class="vazia">Esta pasta está vazia.</li>`}</ul>
+        <div class="wje-rodape">
+          ${o.modo === "salvar" ? `<label class="wjc-nome"><span>Nome do arquivo</span><input data-nome value="${esc(campoNome)}" aria-label="Nome do arquivo" />${o.ext ? `<b>.${esc(o.ext)}</b>` : ""}</label>` : ""}
+          <label class="wje-filtro"><span>Tipo</span><select data-filtro><option value="1"${soDeste ? " selected" : ""}>${esc(o.rotuloFiltro)}</option><option value="0"${soDeste ? "" : " selected"}>Todos os arquivos</option></select></label>
+          ${o.infoDispositivo ? `<p>O arquivo fica <b>em GO-OUT</b> no dispositivo (banco do app${tab ? ` e pasta <b>${esc(tab.name)}</b>/WJPDM` : ""}); o primeiro salvar já publica a versão 1 no pendrive e no Google Drive.${tab ? "" : temPastas() ? ` <button data-a="tab">Escolher pasta do dispositivo…</button>` : ""}</p>` : ""}
+          <p class="wje-msg ${/não|Já existe/.test(msg) ? "wjc-nao" : "wjc-ok"}">${esc(msg)}</p>
+        </div>
+        <footer><button data-a="cancelar">Cancelar</button><button data-a="ok" class="destaque">${esc(o.botao ?? (o.modo === "salvar" ? "Salvar" : "Abrir"))}</button></footer>`;
+      const campo = caixa.querySelector<HTMLInputElement>("[data-nome]");
+      if (campo) {
+        campo.oninput = () => (campoNome = campo.value);
+        campo.onkeydown = (e) => {
+          if (e.key === "Enter") void confirmar();
+        };
+      }
+      const nova = caixa.querySelector<HTMLInputElement>("[data-nova]");
+      if (nova) {
+        nova.onkeydown = (e) => {
+          if (e.key === "Enter") void criarPasta();
+          else if (e.key === "Escape") (e.stopPropagation(), (novaAberta = false), void desenhar());
+        };
+        nova.focus();
+        nova.select();
+      } else if (campo && !sel) {
+        campo.focus();
+        campo.select();
+      }
+      caixa.querySelector<HTMLSelectElement>("[data-filtro]")!.onchange = (e) => ((soDeste = (e.target as HTMLSelectElement).value === "1"), void desenhar());
+      caixa.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => (b.onclick = () => irPara(b.dataset.t!)));
+      caixa.querySelectorAll<HTMLButtonElement>("[data-a]").forEach((b) => (b.onclick = () => void acoes[b.dataset.a!]?.()));
+      // um toque/clique seleciona; dois seguidos (duplo clique ou duplo toque) abrem
+      let ultimo = { k: "", t: 0 };
+      caixa.querySelectorAll<HTMLElement>(".wje-lista li[data-k]").forEach((li) => {
+        li.onpointerup = (e) => {
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          const k = li.dataset.k!, t = performance.now();
+          const duplo = ultimo.k === k && t - ultimo.t < 450;
+          ultimo = { k, t };
+          if (duplo) return void ativar(k);
+          selecionar(k);
+        };
+        li.onkeydown = (e) => {
+          if (e.key === "Enter") (e.preventDefault(), void ativar(li.dataset.k!));
+          else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            const alvo = (e.key === "ArrowDown" ? li.nextElementSibling : li.previousElementSibling) as HTMLElement | null;
+            if (alvo?.dataset.k) (selecionar(alvo.dataset.k), alvo.focus());
+          } else if (e.key === "Backspace" && atual !== RAIZ) (e.preventDefault(), irPara(paiDe(atual) ?? RAIZ));
+        };
+      });
     };
-    let base0: string | null = null;
+    const selecionar = (k: string) => {
+      sel = k;
+      caixa.querySelectorAll(".wje-lista li").forEach((x) => x.classList.toggle("sel", (x as HTMLElement).dataset.k === k));
+      const a = k.startsWith("a:") ? arqs.find((x) => x.id === k.slice(2)) : undefined;
+      const campo = caixa.querySelector<HTMLInputElement>("[data-nome]");
+      // salvar: tocar um arquivo usa o nome dele (como no explorador)
+      if (a && campo && o.exts.includes(extensao(a.nome))) campo.value = campoNome = a.nome.replace(/\.[^.]+$/, "");
+    };
+    const ativar = async (k: string) => {
+      if (k.startsWith("p:")) return irPara(k.slice(2));
+      const a = arqs.find((x) => x.id === k.slice(2));
+      if (!a) return;
+      if (o.modo === "abrir") return terminar({ pasta: a.pasta, nome: a.nome, arquivo: a });
+      selecionar(k);
+      await confirmar();
+    };
+    const confirmar = async () => {
+      if (o.modo === "abrir") {
+        if (sel?.startsWith("p:")) return irPara(sel.slice(2));
+        const a = sel ? arqs.find((x) => x.id === sel!.slice(2)) : undefined;
+        if (!a) return ((msg = "Escolha um arquivo (duplo clique abre)."), void desenhar());
+        return terminar({ pasta: a.pasta, nome: a.nome, arquivo: a });
+      }
+      if (sel?.startsWith("p:") && document.activeElement?.closest(".wje-lista")) return irPara(sel.slice(2));
+      const n = campoNome.trim().replace(/[\\/:*?"<>|]/g, "_");
+      if (!n) return ((msg = "Digite o nome do arquivo."), void desenhar());
+      const nome = o.ext ? `${n}.${o.ext}` : n;
+      const irmaos = arqs.filter((a) => a.pasta === atual).map((a) => a.nome);
+      if (irmaos.some((x) => x.toLowerCase() === nome.toLowerCase())) {
+        const livre = nomeLivre(nome, irmaos);
+        if (!confirm(`"${nome}" já existe nesta pasta.\n\nOK: salvar este documento como "${livre}".\nCancelar: escolher outro nome.`)) return;
+      }
+      terminar({ pasta: atual, nome });
+    };
+    const criarPasta = async () => {
+      const nome = caixa.querySelector<HTMLInputElement>("[data-nova]")?.value.trim().replace(/[\\/:*?"<>|]/g, "_");
+      if (!nome) return;
+      const pai = atual === RAIZ ? null : atual;
+      if (ps.some((p) => p.pai === pai && p.nome.toLowerCase() === nome.toLowerCase())) return ((msg = "Já existe uma pasta com esse nome aqui."), void desenhar());
+      // a janela do Google (se o acesso venceu) abre já, dentro do toque
+      const renovacao = renovarNuvem(true);
+      const p: Pasta = { id: uid(), nome, pai, mod: agora() };
+      await db.por("pastas", p);
+      ps = await db.todos<Pasta>("pastas");
+      novaAberta = false;
+      // entra na pasta nova (o comum é criar a pasta para salvar dentro dela)
+      historico.push(atual);
+      atual = p.id;
+      sel = null;
+      msg = `Pasta "${nome}" criada (você está nela). Levando para as cópias do cofre…`;
+      await desenhar();
+      // a pasta nova vai logo para o Drive, o pendrive e a pasta do dispositivo
+      void sincronizarCofre({ pedir: true, publicar: true, renovacao }).then((r) => {
+        avisarMudanca();
+        if (feito) return;
+        msg = `Pasta "${nome}" criada. ${r}`;
+        void desenhar();
+      });
+    };
+    const acoes: Record<string, () => void | Promise<void>> = {
+      ok: confirmar,
+      cancelar: () => terminar(null),
+      voltar: () => {
+        const v = historico.pop();
+        if (v !== undefined) irPara(ps.some((p) => p.id === v) || v === RAIZ ? v : RAIZ, false);
+      },
+      acima: () => {
+        if (atual !== RAIZ) irPara(paiDe(atual) ?? RAIZ);
+      },
+      nova: () => ((novaAberta = true), void desenhar()),
+      semNova: () => ((novaAberta = false), void desenhar()),
+      criar: criarPasta,
+      tab: async () => {
+        try {
+          await guardarPasta("tablet", await (window as Janela).showDirectoryPicker!({ id: "wjpdm-tablet", mode: "readwrite", startIn: "documents" }));
+        } catch {
+          /* desistiu */
+        }
+        await desenhar();
+      },
+    };
     void desenhar();
   });
+}
+
+/** Pasta onde o explorador abre: a última usada neste app, senão a pasta da face. */
+async function pastaInicial(app: ChaveApp): Promise<string> {
+  const db = await abrirCofre();
+  const ps = await db.todos<Pasta>("pastas");
+  const lembrada = localStorage.getItem(ULTIMA_PASTA(app));
+  if (lembrada && (lembrada === RAIZ || ps.some((p) => p.id === lembrada))) return lembrada;
+  return ps.find((p) => p.pai === null && p.nome === PASTA_DA_FACE[app])?.id ?? RAIZ;
+}
+
+const filtroDaFace = (app: ChaveApp) => `${NOME_APP[app].replace(/ \(.*\)$/, "")}: ${EXT_DA_FACE[app].map((e) => `.${e}`).join(", ")}`;
+
+/**
+ * Primeiro salvar de um documento: explorador do cofre para escolher a pasta (com "Nova pasta")
+ * e o nome. null = cancelado.
+ */
+async function escolherLocal(app: ChaveApp, nomeArquivo: string): Promise<{ pasta: string; nome: string } | null> {
+  const db = await abrirCofre();
+  if (app === "pdm" || app === "erp") return { pasta: await pastaDaFace(db, app), nome: nomeArquivo };
+  const ext = extensao(nomeArquivo);
+  const r = await explorarCofre({
+    titulo: `Salvar no cofre — ${NOME_APP[app]}`, modo: "salvar", exts: EXT_DA_FACE[app], rotuloFiltro: filtroDaFace(app),
+    inicio: await pastaInicial(app), nome: ext ? nomeArquivo.slice(0, -(ext.length + 1)) : nomeArquivo, ext, infoDispositivo: true,
+  });
+  if (r) localStorage.setItem(ULTIMA_PASTA(app), r.pasta);
+  return r ? { pasta: r.pasta, nome: r.nome } : null;
+}
+
+/**
+ * Escolhe um arquivo do cofre pelo explorador (ex.: peça a inserir, modelo do desenho).
+ * `exts`: tipos aceitos (o filtro "Todos os arquivos" mostra os outros, sem aceitá-los).
+ */
+export async function escolherDoCofre(app: ChaveApp, titulo: string, exts: string[], rotuloFiltro: string, botao = "Escolher"): Promise<Arquivo | null> {
+  for (;;) {
+    const r = await explorarCofre({ titulo, modo: "abrir", exts, rotuloFiltro, inicio: await pastaInicial(app), botao });
+    if (!r?.arquivo) return null;
+    localStorage.setItem(ULTIMA_PASTA(app), r.pasta);
+    if (exts.includes(extensao(r.arquivo.nome))) return r.arquivo;
+    alert(`${r.arquivo.nome} não serve aqui (aceitos: ${exts.map((e) => `.${e}`).join(", ")}).`);
+  }
 }
 
 /**
@@ -621,7 +854,38 @@ body.disp-celular .wjc-aba{width:26px;min-height:72px;font-size:12px}
 .wjc-faixa{position:fixed;left:50%;top:calc(8px + env(safe-area-inset-top));transform:translateX(-50%);z-index:980;display:flex;align-items:center;gap:8px;width:min(720px,calc(100% - 16px));padding:8px 8px 8px 14px;background:#fff8e6;color:#4a3500;border:1px solid #e0b44a;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);font:14px system-ui,sans-serif}
 .wjc-faixa span{flex:1;min-width:0}
 .wjc-faixa button{flex:none;min-height:40px;padding:0 12px;border:1px solid #c9d3de;border-radius:8px;background:#fff;font:inherit;cursor:pointer}
-.wjc-faixa button.destaque{background:#2f7fd0;border-color:#2f7fd0;color:#fff}`;
+.wjc-faixa button.destaque{background:#2f7fd0;border-color:#2f7fd0;color:#fff}
+.wjc-faixa.ok{background:#eef8f0;border-color:#9fd1ab;color:#1f4d2b}
+.wjc-cops{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}.wjc-cops small{flex-basis:100%;color:#6b5a2a}
+.wjc-cop{font-style:normal;white-space:nowrap;padding:2px 8px;border-radius:12px;background:#fff;border:1px solid #d7dde4}
+.wjc-cop.ok{color:#1e7d34;border-color:#9fd1ab}.wjc-cop.toque{color:#8a5a00;border-color:#e0b44a;background:#fff3dc}
+.wjc-cop.desconectado,.wjc-cop.offline{color:#b3261e;border-color:#e6a49e;background:#fdecea}.wjc-cop.nao{color:#7a8590}
+.wjc-explorador{width:min(880px,100%)}
+.wje-barra{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #dfe5ec;flex-wrap:wrap}
+.wjc-janela .wje-barra>button{min-width:44px;padding:0 10px}
+.wjc-janela .wje-barra>button:disabled{opacity:.4;cursor:default}
+.wje-trilha{flex:1;min-width:160px;display:flex;align-items:center;flex-wrap:wrap;gap:2px;padding:2px 6px;border:1px solid #dfe5ec;border-radius:8px;background:#fafbfc}
+.wjc-janela .wje-trilha button{min-height:36px;padding:0 6px;border:0;background:none;font-weight:500}
+.wjc-janela .wje-trilha button[aria-current]{font-weight:700}
+.wje-trilha span{color:#8a96a3}
+.wje-nova{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fffbea;border-bottom:1px solid #f0e2a8}
+.wje-nova input{flex:1;min-height:40px;padding:0 10px;border:1px solid #c9d3de;border-radius:8px;font:inherit}
+.wje-cab,.wje-lista li{display:grid;grid-template-columns:minmax(0,1fr) 140px 170px;align-items:center;gap:8px;padding:0 12px}
+.wje-cab{min-height:30px;font-size:12px;font-weight:600;color:#55606d;border-bottom:1px solid #dfe5ec;background:#f6f8fa}
+.wje-lista{list-style:none;margin:0;padding:0;height:min(36vh,380px);overflow:auto}
+.wje-lista li{min-height:44px;border-bottom:1px solid #f0f2f5;cursor:default;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.wje-lista li:hover{background:#f3f8fd}.wje-lista li.sel{background:#d8e9fa}.wje-lista li:focus{outline:2px solid #2f7fd0;outline-offset:-2px}
+.wje-lista li.outro{color:#7a8590}.wje-lista li.vazia{display:block;padding:20px 12px;color:#7a8590;text-align:center}
+.wje-n{display:flex;align-items:center;gap:10px;min-width:0}.wje-n svg{flex:none}.wje-n span{min-width:0;overflow-wrap:anywhere}
+.wje-n small{display:block;font-size:11px;color:#8a5a00}
+.wje-d,.wje-t{font-size:13px;color:#55606d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wje-rodape{padding:10px 12px;border-top:1px solid #dfe5ec;display:flex;flex-direction:column;gap:8px}
+.wje-rodape .wjc-nome span,.wje-filtro span{min-width:120px;font-size:13px;color:#55606d}
+.wje-filtro{display:flex;align-items:center;gap:6px}.wje-filtro select{flex:1;min-height:40px;font:inherit;padding:0 8px;border:1px solid #c9d3de;border-radius:8px;background:#fff}
+.wje-rodape p{margin:0;font-size:13px;color:#55606d}.wje-msg:empty{display:none}
+body.disp-celular .wje-cab,body.disp-celular .wje-lista li{grid-template-columns:minmax(0,1fr)}
+body.disp-celular .wje-d,body.disp-celular .wje-t{display:none}
+@media (max-width:600px){.wje-cab,.wje-lista li{grid-template-columns:minmax(0,1fr) 110px}.wje-t{display:none}}`;
 
 function janela(titulo: string): { caixa: HTMLElement; fechar: () => void } {
   if (!document.getElementById("wjc-css")) document.head.append(Object.assign(document.createElement("style"), { id: "wjc-css", textContent: CSS }));
@@ -726,31 +990,17 @@ export async function abrirCopias(aoSincronizar?: () => void, mestre = false) {
   await desenhar();
 }
 
-/** Lista os arquivos da face no cofre (mais recentes primeiro) e abre o escolhido no app. */
-/** `novaJanela`: o app já tem um documento aberto — o escolhido abre noutra janela. */
+/**
+ * Abrir do cofre: explorador na última pasta usada (pastas e arquivos; duplo clique entra/abre).
+ * Arquivo de outro app (filtro "Todos os arquivos") abre no app dele. `novaJanela`: o app já tem
+ * um documento aberto — o escolhido abre noutra janela.
+ */
 export async function abrirDoCofre(app: ChaveApp, novaJanela = false) {
-  const db = await abrirCofre();
-  const ps = await db.todos<Pasta>("pastas");
-  const caminho = (id: string) => {
-    const n: string[] = [];
-    for (let p = ps.find((x) => x.id === id); p; p = p.pai ? ps.find((x) => x.id === p!.pai) : undefined) n.unshift(p.nome);
-    return n.join("/") || "(raiz)";
-  };
-  const lista = (await db.todos<Arquivo>("arquivos"))
-    .filter((a) => !a.lixeira && EXT_DA_FACE[app].includes(extensao(a.nome)))
-    .sort((a, b) => (b.mod ?? "").localeCompare(a.mod ?? ""));
-  const { caixa, fechar } = janela(`Abrir do cofre — ${NOME_APP[app]}`);
-  caixa.innerHTML = lista.length
-    ? `<section><ul class="wjc-lista">${lista.map((a) => `<li><button data-id="${a.id}"><span>${esc(a.nome)}<br><small>${esc(caminho(a.pasta))}${a.checkout ? ` · GO-OUT ${esc(a.checkout.usuario)}` : ""}${a.revisao ? ` · rev. ${esc(a.revisao)}` : ""}</small></span><small>${a.mod ? quando(a.mod) : ""}</small></button></li>`).join("")}</ul></section>`
-    : `<section><p>Nenhum arquivo do ${NOME_APP[app]} no cofre ainda. Salve um documento (💾) e ele entra em ${PASTA_DA_FACE[app]}/.</p></section>`;
-  caixa.querySelectorAll<HTMLButtonElement>("[data-id]").forEach((b) => {
-    b.onclick = async () => {
-      const a = lista.find((x) => x.id === b.dataset.id)!;
-      fechar();
-      const erro = await abrirArquivoNoApp(a, db, novaJanela);
-      if (erro) alert(erro);
-    };
-  });
+  const r = await explorarCofre({ titulo: `Abrir do cofre — ${NOME_APP[app]}`, modo: "abrir", exts: EXT_DA_FACE[app], rotuloFiltro: filtroDaFace(app), inicio: await pastaInicial(app) });
+  if (!r?.arquivo) return;
+  localStorage.setItem(ULTIMA_PASTA(app), r.pasta);
+  const erro = await abrirArquivoNoApp(r.arquivo, await abrirCofre(), novaJanela);
+  if (erro) alert(erro);
 }
 
 // ---------- painel lateral do cofre (GO-OUT / GO-IN em cada app) ----------

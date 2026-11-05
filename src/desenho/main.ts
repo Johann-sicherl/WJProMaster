@@ -22,7 +22,7 @@ import {
   type Folha, type Formato, type ModeloDesenho, type Nota, type Orientacao, type Retangulo, type VistaDesenho,
 } from "./modelo";
 import {
-  abrirArquivoNoApp, abrirCopias, abrirDoCofre, desligar, documentosDoCofre, instalarPainelCofre, lerDoCofre, salvarNoCofre,
+  abrirArquivoNoApp, abrirCopias, abrirDoCofre, desligar, documentosDoCofre, escolherDoCofre, instalarPainelCofre, lerDoCofre, salvarNoCofre,
   sincronizarAoAbrir, vinculo,
 } from "../comum/cofre";
 import {
@@ -1367,7 +1367,7 @@ async function renderizarVistaModelo() {
     corpo.innerHTML = `<input class="campo-busca" type="search" placeholder="Pesquisar no cofre…" aria-label="Pesquisar no cofre" />
       <div class="pc-arquivos" data-lista><p class="dica">Lendo o cofre…</p></div>
       <div class="pc-botoes" data-abertos></div>
-      <div class="pc-botoes"><button data-b="aparelho" class="largo">Procurar no aparelho…</button></div>`;
+      <div class="pc-botoes"><button data-b="cofre" class="largo">Procurar no cofre…</button><button data-b="aparelho" class="largo">Procurar no aparelho…</button></div>`;
     const abertos = corpo.querySelector<HTMLElement>("[data-abertos]")!;
     for (const m of doc!.modelos) {
       const b = document.createElement("button");
@@ -1392,6 +1392,10 @@ async function renderizarVistaModelo() {
       b.onclick = () => void adicionarModelo("montagem", asmAberta, { arquivo: vinculo("asm") ?? undefined, nome: asmAberta.nome });
       abertos.append(b);
     }
+    corpo.querySelector<HTMLButtonElement>('[data-b="cofre"]')!.onclick = async () => {
+      const a = await escolherDoCofre("drw", "Modelo do cofre (peça ou montagem)", ["wjcad", "jlscad", "wjasm"], "Peças e montagens: .wjcad, .wjasm");
+      if (a) void adicionarDoCofre(a.id);
+    };
     corpo.querySelector<HTMLButtonElement>('[data-b="aparelho"]')!.onclick = () => {
       escolhendoArquivoModelo = true;
       const inp = $<HTMLInputElement>("arquivo");

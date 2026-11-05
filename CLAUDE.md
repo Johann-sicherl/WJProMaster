@@ -14,6 +14,10 @@
 > importar e exportar formatos abertos é permitido. Os nomes das faces são decisão do Johann
 > (WJWord → WJWrite e WJAirFlow → WJFlow em 28/10/2026; notas de marca em `docs/global/README.md` §6).
 
+> **Regras consolidadas: `docs/global/regras.md` — ler antes de cada tarefa** (fonte única de tudo o
+> que já foi decidido: como trabalhar, aparelhos, interface, cofre, explorador, CAD, outras faces).
+> Não deduzir além dele; na dúvida, perguntar. Mudou uma regra: atualizar o arquivo no mesmo PR.
+
 ## Regras 001 (definidas pelo Johann, 26/10/2026 — valem sempre)
 
 1. **Postura de otimização e melhor experiência de uso (UX):** propor o caminho mais simples,
@@ -141,8 +145,10 @@ WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulaç
   sem texto, árvore/painéis em gaveta, dedo desenha. Tablet: caneta + dedo, alvos ≥ 44 px, lupa.
   Computador: botões compactos, mouse e atalhos. Classe `disp-*` no `body`.
 - **Cofre único (WJPDM):** todo arquivo de todos os apps vive no cofre do WJPDM (`src/comum/cofre.ts`).
-  **O primeiro salvar** (💾/Ctrl+S) abre a janela "Salvar no cofre" (pasta do cofre, Nova pasta,
-  nome) e **já publica a versão 1** no dispositivo, no pendrive e no Drive (GO-IN automático; o
+  **O primeiro salvar** (💾/Ctrl+S) abre o **explorador do cofre** (estilo explorador de arquivos:
+  Voltar, Pasta acima, caminho clicável, Nova pasta, pastas **e** arquivos em detalhes, duplo clique/toque
+  entra na pasta ou escolhe o arquivo; o mesmo explorador serve para Abrir do cofre e para escolher peça/
+  modelo; `explorarCofre` em `src/comum/cofre.ts`) e **já publica a versão 1** no dispositivo, no pendrive e no Drive (GO-IN automático; o
   arquivo segue em GO-OUT com quem salvou). **Os seguintes gravam só no dispositivo** (cópia de
   trabalho em GO-OUT). **GO-IN** (sem comentário: é só a cópia) cria a versão e publica no pendrive
   e no Drive (cópias `publicado`: só recebem o que passou por GO-IN, `vistaPublicada`); no WJPDM há
@@ -153,9 +159,10 @@ WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulaç
   Desfazer GO-OUT e "Meus arquivos em GO-OUT" (todos os apps) com GO-IN por item ou dos marcados.
   O cofre tem até três cópias além do banco do aparelho: **pendrive** (WJPDM/ na raiz), **Google
   Drive** e **pasta padrão do dispositivo** (mesma estrutura nas três). Ao salvar/publicar e **a cada
-  abertura de um app** (`sincronizarAoAbrir`, também na página inicial e no WJTaskPlan, sem pedir permissão; se o
-  pendrive ou o Drive precisarem de toque, aparece a **faixa "Sincronizar agora"** no topo, e um toque
-  iguala o cofre e as tarefas), as cópias se igualam
+  abertura de um app** (`sincronizarAoAbrir`, também na página inicial e no WJTaskPlan, sem pedir permissão;
+  ao terminar aparece a **faixa "Cofre:"** com a situação de Google Drive, pasta do dispositivo e pendrive
+  — `situacaoDasCopias()`; tudo certo some sozinha; cópia que precisa de toque deixa **"Conectar agora"**,
+  e um toque iguala o cofre e as tarefas), as cópias se igualam
   (`src/pdm/sincronia.ts`, testes em `scripts/teste-sincronia.ts`): o que falta é copiado; registro
   alterado em duas: **a mais recente vence** e a outra vai para a lixeira; exclusões propagam pela
   lixeira (30 dias). Estrutura na cópia: `WJPDM/<pastas>/<arquivo>` legível + `WJPDM/.wjpdm/`

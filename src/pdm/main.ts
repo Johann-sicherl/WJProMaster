@@ -925,6 +925,12 @@ function pedirTexto(titulo: string, rotulo: string, valor: string, ok: (v: strin
   };
 }
 
+/** Pasta criada/renomeada: vai logo para o Drive, o pendrive e a pasta do dispositivo. */
+function levarPastasParaAsCopias(feito: string) {
+  casca.avisar(`${feito}. Sincronizando com as cópias do cofre…`, 20000);
+  void sincronizarCofre({ pedir: false, publicar: true }).then((m) => casca.avisar(`${feito}. ${m}`, 7000), () => {});
+}
+
 function novaPasta(pai = pastaAtual()) {
   pedirTexto("Nova pasta", "Nome da pasta", "Nova pasta", async (nome) => {
     if (subpastas(pai).some((p) => p.nome.toLowerCase() === nome.toLowerCase())) return "Já existe uma pasta com esse nome.";
@@ -934,6 +940,7 @@ function novaPasta(pai = pastaAtual()) {
     local = { tipo: "pasta", id: p.id };
     sel = null;
     renderizar();
+    levarPastasParaAsCopias(`Pasta "${nome}" criada`);
   });
 }
 function renomearPasta(id: string) {
@@ -944,6 +951,7 @@ function renomearPasta(id: string) {
     p.nome = nome;
     await gravar("pastas", p);
     renderizar();
+    levarPastasParaAsCopias(`Pasta renomeada para "${nome}"`);
   });
 }
 /**
