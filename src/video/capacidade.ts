@@ -90,6 +90,11 @@ export interface Medidas {
   exportacao: MedidaExportacao[];
   /** Codificação de vídeo H.264 por resolução. */
   codificaH264: Partial<Record<Alt, Suporte>>;
+  /** Decodificação H.264 por resolução (hardware/software): a amostra sintética é leve, então
+   *  4K por software "passa" no teste mas trava com vídeo de câmera (taxa muitas vezes maior). */
+  decodificaH264?: Partial<Record<Alt, Suporte>>;
+  /** H.265 10 bits (vídeo HDR de celular) abre neste aparelho? */
+  decodificaHevc10?: boolean;
   codificaVp9: Partial<Record<Alt, Suporte>>;
   codificaAac: boolean;
   codificaOpus: boolean;
@@ -130,13 +135,17 @@ export function recomendar(m: Medidas): Recomendacao {
   const fluxos4k = fluxosEmTempoReal(m.decodificacao, 2160);
   const mediu4k = m.decodificacao.some((d) => d.res === 2160);
 
+  const dec4kHw = m.decodificaH264?.[2160] === "hardware";
   let proxyAcima: Alt | null;
-  if (fluxos4k >= 1 && fluxos1080 >= 2) proxyAcima = null;
+  if (fluxos4k >= 1 && fluxos1080 >= 2 && dec4kHw) proxyAcima = null;
   else if (fluxos1080 >= 1) proxyAcima = 1080;
   else proxyAcima = 720;
   if (!mediu4k) avisos.push("Não deu para medir 4K (o codificador não gera amostra 4K): vídeos 4K serão editados por proxy.");
   if (fluxos1080 === 0 && fluxos720 === 0) avisos.push("Nem um vídeo 720p decodifica em tempo real: a prévia vai pular quadros (a exportação continua correta).");
   else if (fluxos1080 < 2) avisos.push("Transições e sobreposições em 1080p não tocam lisas: a prévia usa metade da resolução nesses trechos.");
+  else if (fluxos1080 < 3) avisos.push(`Até ${fluxos1080} vídeos 1080p ao mesmo tempo tocam lisos; com mais camadas a prévia usa metade da resolução nesses trechos.`);
+  if (mediu4k && !dec4kHw) avisos.push("4K só decodifica por software neste aparelho: a amostra de teste é leve e passa, mas vídeo 4K de câmera travaria; ele será editado por proxy.");
+  if (m.decodificaHevc10 === false) avisos.push("Vídeos H.265 10 bits (HDR de celular) não abrem neste aparelho: grave sem HDR ou converta antes.");
 
   let qualidadePrevia: Recomendacao["qualidadePrevia"] = "completa";
   if (fluxos1080 < 1 || (m.composicao1080 !== undefined && m.composicao1080 < FPS_ALVO * FOLGA)) qualidadePrevia = "metade";

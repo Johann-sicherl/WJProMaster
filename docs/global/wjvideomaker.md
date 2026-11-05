@@ -9,8 +9,8 @@ Roda no **celular, tablet e computador** (navegador Chrome/Edge e PWA), tudo **n
   `quadros.ts` (`scripts/teste-video.ts`) · teste do aparelho em `video/aparelho/`
 - Arquivo: **`.wjvid`** (projeto: linha do tempo + vínculos para a mídia) no cofre do WJPDM, pasta
   **"Vídeos"** · autosave no IndexedDB `wjvideo` · cache de mídia, miniaturas e proxies no **OPFS**
-- Status: **V0 ✅** (teste do aparelho em `video/aparelho/`, aberto pela caixa do início; faltam os
-  números do TCL, §8) · **V1** é a próxima (§12). Decisões do §14 tomadas em 05/11/2026.
+- Status: **V0 ✅** (teste do aparelho em `video/aparelho/`, aberto pela caixa do início; números do
+  TCL medidos em 05/11/2026, §8) · **V1** é a próxima (§12). Decisões do §14 tomadas em 05/11/2026.
 
 Legenda: ✅ existe · 🟡 parcial · **V0…V6** fase deste documento · ⏸ registrado, fora do escopo atual ·
 ❓ depende de decisão do Johann (§14).
@@ -23,7 +23,7 @@ Legenda: ✅ existe · 🟡 parcial · **V0…V6** fase deste documento · ⏸ r
 |---|---|
 | Inspiração funcional | **Wondershare Filmora** (editor de vídeo de consumo avançado): biblioteca de mídia → linha do tempo com pistas → títulos, transições, efeitos, cor, áudio → exportar. Fluxo parecido; **nada copiado** (§2). |
 | Dá para editar vídeo no navegador do tablet? | **Sim.** O Chrome tem **WebCodecs** (decodificador e codificador de vídeo/áudio **do próprio aparelho, com aceleração de hardware**), **WebGL2** para compor os quadros e **Web Audio** para mixar. É o mesmo caminho dos editores web atuais. |
-| O que limita no tablet do Johann? | O **TCL Tab A1 Plus** (Snapdragon 4 Gen 2) decodifica/codifica em hardware **até 1080p60**. Vídeo 4K abre, mas a edição usa **proxy** (cópia leve em 720p, §6.3) e a exportação fica em **até 1080p**. Duas ou três pistas de vídeo ao mesmo tempo (transição, sobreposição) em 1080p é o limite prático: o **V0 mede** o número real. |
+| O que limita no tablet do Johann? | O **TCL Tab A1 Plus** (Snapdragon 4 Gen 2) decodifica/codifica em hardware **até 1080p60**. Vídeo 4K abre, mas a edição usa **proxy** (cópia leve em 720p, §6.3) e a exportação fica em **até 1080p**. **Medido no V0: 2 vídeos 1080p ao mesmo tempo** em tempo real (transição, sobreposição), composição a 54 qps, exportação de 1 min em ≈ 1,4 min (§8). |
 | Mídia fica onde? | **Onde já está** (Drive, pasta, pendrive, galeria). O projeto `.wjvid` guarda **vínculos** e a "impressão digital" de cada arquivo, não o vídeo. Assim o cofre não se enche de GB nem duplica vídeos a cada GO-IN (§7). Decidido em 05/11/2026. |
 | Formato de saída padrão | **MP4 (H.264 + AAC)**, que toca em tudo. Também WebM (VP9/AV1 + Opus), GIF, só áudio, quadro em PNG/JPEG (§9). |
 | Dependência nova | **Uma**: `mediabunny` (MPL-2.0, sem dependências, TypeScript) para **ler e gravar contêineres** MP4/MOV/WebM/MKV/MP3/WAV. Codificar/decodificar é do navegador (WebCodecs): não vai codec no app (§10). |
@@ -273,11 +273,30 @@ pasta). O projeto abre e edita normalmente; só a exportação exige tudo presen
 
 ## 8. Requisitos não funcionais (metas, conferidas no V0 no TCL Tab A1 Plus)
 
-**Medições do V0 no TCL Tab A1 Plus:** aguardando o Johann rodar `video/aparelho/` (botão
-"1. Medir desempenho" → "Copiar resultados"). Referência do ambiente de testes (Chromium sem GPU,
-tudo por software, 4 núcleos): H.264 1080p decodifica a 548 qps com 1 vídeo e 180 qps cada com 4;
-composição WebGL2 emulada 5 qps; exportação 1080p ≈ 7,5 min por minuto (limitada pela GPU emulada);
-cache OPFS 223 MB/s de escrita.
+**Medições do V0 no TCL Tab A1 Plus (05/11/2026, Chrome 156, Adreno 613, 8 núcleos, ≈ 4 GB informados
+pelo navegador, 10,2 GB de espaço para o app, armazenamento persistente):**
+
+| Item | Resultado |
+|---|---|
+| Hardware de vídeo | H.264 e H.265 8 bits **abrem e exportam por hardware até 1080p**; VP9 abre por hardware até 1080p; **4K só por software** (H.264/VP9/AV1); **H.265 10 bits (HDR) não abre** |
+| Áudio | AAC, Opus, MP3, FLAC e PCM abrem; **AAC e Opus exportam** |
+| Imagens | JPEG, PNG, WebP, GIF, AVIF; **HEIC não** |
+| Decodificar 1080p (qps de cada vídeo) | 1 → 103 · **2 → 76** · 3 → 35 · 4 → 32 (tempo real = 36) |
+| Decodificar 720p | 1 → 199 · 2 → 107 · 3 → 100 · 4 → 76 |
+| Decodificar 4K (amostra sintética leve, por software) | 1 → 101 · 2 → 65; **não vale para vídeo de câmera** (taxa muito maior) |
+| Composição WebGL2 no Worker, 1080p (2 vídeos + cor + título) | **54 qps** |
+| Exportação 1080p H.264, 10 s | 1 vídeo **22 qps** (1 min em ≈ 1,4 min) · 2 vídeos 20 qps (≈ 1,5 min) |
+| Cache OPFS, 64 MB | escrita 161 MB/s · leitura 1 808 MB/s |
+| Pasta/pendrive | não medido (pasta escolhida estava vazia) |
+
+**Limites adotados para a V1 (tirados daí):**
+- Prévia em **qualidade completa** (1080p) com até **2 vídeos ao mesmo tempo**; a partir do 3º vídeo
+  sobreposto, a prévia daquele trecho cai para metade da resolução (ou pré-renderizar o trecho).
+- Vídeo **4K** entra com **proxy** em 720p/1080p (criado em segundo plano); exportação **até 1080p**.
+- H.265 10 bits (HDR): mensagem clara ao importar ("grave sem HDR ou converta").
+- Exportação padrão **MP4 (H.264 + AAC)** por hardware: ≈ 1,4 min por minuto de vídeo.
+- Correção feita com esses números: o resumo só dispensa o proxy se o 4K decodificar **por hardware**
+  (a amostra sintética 4K é leve demais para representar vídeo de câmera).
 
 | Item | Meta |
 |---|---|
@@ -337,7 +356,7 @@ cache OPFS 223 MB/s de escrita.
 
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
-| **V0** ✅ | **Teste do aparelho** (`video/aparelho/`, como o do WJFlow): lista codecs de decodificação e codificação com aceleração (H.264/HEVC/VP9/AV1/AAC/Opus) e resoluções aceitas; mede decodificação simultânea (1, 2, 3 vídeos 1080p), composição WebGL2 e exportação de 10 s; espaço do OPFS; seletores de pasta/pendrive | números do TCL anotados aqui (§8) e decisões de proxy/limites ajustadas |
+| **V0** ✅ | **Teste do aparelho** (`video/aparelho/`, como o do WJFlow): lista codecs de decodificação e codificação com aceleração (H.264/HEVC/VP9/AV1/AAC/Opus) e resoluções aceitas; mede decodificação simultânea (1, 2, 3 vídeos 1080p), composição WebGL2 e exportação de 10 s; espaço do OPFS; seletores de pasta/pendrive | ✅ números do TCL anotados (§8) e limites da V1 definidos |
 | **V1** | **Núcleo utilizável**: página `video/` e caixa no início; projeto 16:9 ou 9:16; **importar de pasta, pendrive, galeria e Drive (Picker)**; biblioteca com miniaturas; linha do tempo com pista principal magnética + 1 pista de sobreposição + 1 de áudio; mover, aparar, dividir, excluir, fechar vão; fotos com duração; volume e *fade*; visualizador com qualidade automática; **exportar MP4 1080p**; `.wjvid` no cofre; mídia offline/Localizar; autosave e desfazer | caso 4 (fotos + música) e caso 5 (cortes de vídeos do pendrive) feitos no tablet do início ao fim |
 | **V2** | **Montagem completa**: pistas ilimitadas, transformar (posição/escala/rotação/opacidade), recorte, girar/espelhar, sobreposição e tela dividida, pan & zoom em foto, **quadros-chave**, velocidade (constante, inverter, congelar), **títulos** e rótulos com animação, **transições**, marcadores, *roll*/*slip*, agrupar, copiar atributos | caso 1 (vídeo técnico) e caso 3 sem áudio avançado |
 | **V3** | **Áudio**: várias pistas, forma de onda, quadros-chave de volume, normalizar (LUFS), *ducking*, equalizador, redução de ruído simples, **gravar narração**, detectar silêncios (cortar automaticamente), marcar batidas | caso 3 completo (cortes no ritmo) |
@@ -411,4 +430,6 @@ de registrar (README §6). Na UI nunca aparece o nome do software de referência
     qualidade da prévia, resolução e formato de exportação, minutos por minuto exportado.
   - Funções puras em `src/video/tempo.ts` (µs ↔ quadros, fps racional, código de tempo) e
     `capacidade.ts`, testadas em `scripts/teste-video.ts` (no `pnpm teste`).
-- Próximo: números do TCL (§8) e chave do seletor do Drive → **V1**.
+- Números do TCL medidos e limites da V1 definidos (§8).
+- Próximo: **V1**. Pendentes com o Johann: teste de pasta/pendrive com vídeos de verdade (a pasta do
+  primeiro teste estava vazia) e a chave do seletor do Google Drive (§14).
