@@ -14,6 +14,8 @@ interface Face {
   url?: string;
   /** Fase do roteiro global em que chega (docs/global/README.md §4). */
   fase?: string;
+  /** Texto do selo quando não é simplesmente "Abrir". */
+  selo?: string;
   icone: string;
 }
 
@@ -68,8 +70,8 @@ const FACES: Face[] = [
     icone: svg(`<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l1.5 1.5L12 7M8 13l1.5 1.5L12 12" stroke="${C}"/><path d="M14 8h3M14 13h3M8 17.5h9"/>`),
   },
   {
-    // Especificação em docs/global/wjvideomaker.md; a página video/ chega na fase V1.
-    id: "video", nome: "WJVideoMaker", fase: "V1",
+    // Especificação em docs/global/wjvideomaker.md; por enquanto só o teste do aparelho (V0).
+    id: "video", nome: "WJVideoMaker", url: "video/aparelho/", selo: "Teste do aparelho",
     descricao: "Edição de vídeo e fotos: linha do tempo, títulos, transições, cor, áudio; mídia do Drive, pasta ou pendrive.",
     icone: svg(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M3 15h18M7 5v4M12 5v4M17 5v4M7 15v4M12 15v4M17 15v4"/><path d="M10.5 10.5v3l2.5-1.5z" stroke="${C}"/>`),
   },
@@ -100,7 +102,7 @@ function montarCaixas() {
         <span>${f.descricao}</span>
         ${pronto && f.id === "cad" && ultimo ? `<em class="caixa-nota">Continuar: ${ultimo.replace(/[<>&]/g, "")}</em>` : ""}
       </span>
-      <span class="selo ${pronto ? "selo-ok" : ""}">${pronto ? "Abrir" : `Em breve · ${f.fase}`}</span>`;
+      <span class="selo ${pronto ? "selo-ok" : ""}">${pronto ? f.selo ?? "Abrir" : `Em breve · ${f.fase}`}</span>`;
     if (!pronto) el.title = `${f.nome}: em desenvolvimento (fase ${f.fase} do roteiro)`;
     lista.appendChild(el);
   }

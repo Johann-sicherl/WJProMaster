@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/wjpromaster.svg" type="image/svg+xml" />
+    <title>Teste do aparelho — WJVideoMaker</title>
+  </head>
+  <body>
+    <header class="af-topo">
+      <a href="../../" title="Início do WJProMaster"><img src="/wjpromaster.svg" alt="WJProMaster" class="af-logo" /></a>
+      <div>
+        <h1>WJVideoMaker <small class="versao-app">v%WJ_VERSAO%</small> <small>teste do aparelho (V0)</small></h1>
+        <p>Edição de vídeo e fotos. Mede o que este aparelho decodifica, compõe e exporta, antes de construir o editor.</p>
+      </div>
+    </header>
+    <main class="af-principal">
+      <section class="af-cartao">
+        <h2>Aparelho</h2>
+        <dl id="av-aparelho" class="af-dados"></dl>
+      </section>
+      <section class="af-cartao">
+        <h2>Formatos <small>o que o navegador deste aparelho decodifica e codifica</small></h2>
+        <div class="av-tabela-rolo"><table id="av-formatos" class="av-tabela"></table></div>
+        <div class="av-tabela-rolo"><table id="av-audio" class="av-tabela"></table></div>
+        <p id="av-imagens" class="af-nota"></p>
+      </section>
+      <section class="af-cartao">
+        <h2>Testes</h2>
+        <div class="af-botoes">
+          <button id="av-medir" class="destaque">1. Medir desempenho</button>
+          <button id="av-pasta">2. Pasta ou pendrive…</button>
+          <button id="av-arquivos">3. Vídeos e fotos da galeria…</button>
+          <button id="av-copiar">Copiar resultados</button>
+        </div>
+        <input id="av-entrada" type="file" accept="video/*,image/*,audio/*" multiple hidden />
+        <p class="af-nota">A medição leva de 1 a 3 minutos e esquenta o aparelho. Deixe o tablet na tomada e não saia desta tela; ela fica acesa sozinha durante o teste. Os testes 2 e 3 só leem os arquivos escolhidos: nada é enviado nem alterado.</p>
+        <p id="av-progresso" class="af-progresso" hidden></p>
+        <pre id="av-saida" class="af-saida"></pre>
+      </section>
+      <section class="af-cartao" id="av-cartao-resumo" hidden>
+        <h2>Resumo para o editor <small>recomendações calculadas das medições</small></h2>
+        <ul id="av-resumo" class="av-resumo"></ul>
+      </section>
+    </main>
+    <script type="module" src="/src/video/aparelho.ts"></script>
+  </body>
+</html>

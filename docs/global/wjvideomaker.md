@@ -9,8 +9,8 @@ Roda no **celular, tablet e computador** (navegador Chrome/Edge e PWA), tudo **n
   `quadros.ts` (`scripts/teste-video.ts`) · teste do aparelho em `video/aparelho/`
 - Arquivo: **`.wjvid`** (projeto: linha do tempo + vínculos para a mídia) no cofre do WJPDM, pasta
   **"Vídeos"** · autosave no IndexedDB `wjvideo` · cache de mídia, miniaturas e proxies no **OPFS**
-- Status: **especificação** (este documento). Nada implementado ainda. Primeira entrega: **V0**
-  (teste do aparelho), depois **V1** (§12).
+- Status: **V0 ✅** (teste do aparelho em `video/aparelho/`, aberto pela caixa do início; faltam os
+  números do TCL, §8) · **V1** é a próxima (§12). Decisões do §14 tomadas em 05/11/2026.
 
 Legenda: ✅ existe · 🟡 parcial · **V0…V6** fase deste documento · ⏸ registrado, fora do escopo atual ·
 ❓ depende de decisão do Johann (§14).
@@ -24,7 +24,7 @@ Legenda: ✅ existe · 🟡 parcial · **V0…V6** fase deste documento · ⏸ r
 | Inspiração funcional | **Wondershare Filmora** (editor de vídeo de consumo avançado): biblioteca de mídia → linha do tempo com pistas → títulos, transições, efeitos, cor, áudio → exportar. Fluxo parecido; **nada copiado** (§2). |
 | Dá para editar vídeo no navegador do tablet? | **Sim.** O Chrome tem **WebCodecs** (decodificador e codificador de vídeo/áudio **do próprio aparelho, com aceleração de hardware**), **WebGL2** para compor os quadros e **Web Audio** para mixar. É o mesmo caminho dos editores web atuais. |
 | O que limita no tablet do Johann? | O **TCL Tab A1 Plus** (Snapdragon 4 Gen 2) decodifica/codifica em hardware **até 1080p60**. Vídeo 4K abre, mas a edição usa **proxy** (cópia leve em 720p, §6.3) e a exportação fica em **até 1080p**. Duas ou três pistas de vídeo ao mesmo tempo (transição, sobreposição) em 1080p é o limite prático: o **V0 mede** o número real. |
-| Mídia fica onde? | **Onde já está** (Drive, pasta, pendrive, galeria). O projeto `.wjvid` guarda **vínculos** e a "impressão digital" de cada arquivo, não o vídeo. Assim o cofre não se enche de GB nem duplica vídeos a cada GO-IN (§7). ❓ confirmar. |
+| Mídia fica onde? | **Onde já está** (Drive, pasta, pendrive, galeria). O projeto `.wjvid` guarda **vínculos** e a "impressão digital" de cada arquivo, não o vídeo. Assim o cofre não se enche de GB nem duplica vídeos a cada GO-IN (§7). Decidido em 05/11/2026. |
 | Formato de saída padrão | **MP4 (H.264 + AAC)**, que toca em tudo. Também WebM (VP9/AV1 + Opus), GIF, só áudio, quadro em PNG/JPEG (§9). |
 | Dependência nova | **Uma**: `mediabunny` (MPL-2.0, sem dependências, TypeScript) para **ler e gravar contêineres** MP4/MOV/WebM/MKV/MP3/WAV. Codificar/decodificar é do navegador (WebCodecs): não vai codec no app (§10). |
 | Onde fica no ecossistema | **Face separada e local** (como WJFlow e WJTaskPlan): não depende do servidor (G5). Integra com WJPDM (cofre), WJCAD/WJFlow (animações viram clipes) e WJApresentation (vídeo no slide) (§11). |
@@ -67,7 +67,7 @@ Legenda: ✅ existe · 🟡 parcial · **V0…V6** fase deste documento · ⏸ r
 | **Pasta do dispositivo** (Documentos, Câmera, Downloads) | **Procurar pasta** (`showDirectoryPicker`, como o cofre já faz): a biblioteca lista os vídeos, fotos e áudios dela, com miniaturas; ou **Escolher arquivos** (`showOpenFilePicker` / `<input type=file multiple>`) | Pasta escolhida com o seletor: o navegador lembra a permissão (pede um toque ao reabrir). Arquivo escolhido pelo `<input>`: **não** dá para reabrir sozinho → fica "mídia offline" com **Localizar…** (§7.3) | — |
 | **Pendrive** (USB-OTG no tablet/celular; USB no computador) | Igual à pasta (o Android mostra o pendrive no seletor) | Igual à pasta; desconectado → "mídia offline" até religar | Leitura de pendrive é lenta: **Copiar para o aparelho** (cache OPFS) é oferecido para clipes usados na linha do tempo |
 | **Galeria / câmera** (celular e tablet) | **Galeria** (`<input accept="video/*,image/*" multiple>`) e **Gravar agora** (`capture`) | Como arquivo escolhido: guardado no cache OPFS na importação (vídeos da câmera não têm caminho reabrível no Android) | Ocupa espaço do app: mostrar o tamanho do cache e **Limpar cache** |
-| **Google Drive** | **Escolher do Drive** abre o **seletor do Google (Google Picker)**: o usuário navega em todo o Meu Drive / Compartilhados comigo e escolhe vídeos/fotos; o arquivo escolhido passa a ser visível ao app no escopo atual `drive.file` | Pelo ID do arquivo no Drive (acesso renovado como no cofre, §5.3 das regras) | Leitura por partes (HTTP Range) sem baixar tudo; para editar sem internet ou com rede ruim: **Baixar para o aparelho** (OPFS). Precisa de **chave de API do navegador** no projeto Google `wjpromaster` ❓ |
+| **Google Drive** | **Escolher do Drive** abre o **seletor do Google (Google Picker)**: o usuário navega em todo o Meu Drive / Compartilhados comigo e escolhe vídeos/fotos; o arquivo escolhido passa a ser visível ao app no escopo atual `drive.file` | Pelo ID do arquivo no Drive (acesso renovado como no cofre, §5.3 das regras) | Leitura por partes (HTTP Range) sem baixar tudo; para editar sem internet ou com rede ruim: **Baixar para o aparelho** (OPFS). Precisa de **chave de API do navegador** no projeto Google `wjpromaster` (pendente com o Johann; sem ela a V1 sai sem o Drive) |
 | **Cofre do WJPDM** | Explorador do cofre (mesmo de todos os apps): imagens, PDFs (1ª página como imagem ⏸), exportações de outras faces | Pelo URI `wj://pdm/...` | — |
 | **Outras faces** | WJCAD: **Gravar animação da peça** (giro 360°, explosão de montagem ⏸) → clipe; WJFlow: animação do escoamento → clipe; WJApresentation: slides como imagens (§11) | Pelo URI | ⏸ depois da V2 |
 
@@ -227,7 +227,7 @@ Regra do projeto mantida: **nada pesado na thread da UI**; o visualizador recebe
 - Composição no mesmo motor do visualizador, mas **sem pular quadros** e na resolução final.
 - Progresso com tempo restante real; **mantém a tela ligada** (Wake Lock) e avisa que o Android pode
   pausar a exportação se o app for para segundo plano; **retomar** de onde parou ⏸.
-- Destino: cofre (pasta "Vídeos/Exportados", **sem histórico de versões** do arquivo de vídeo ❓),
+- Destino: cofre (pasta "Vídeos/Exportados", **sem histórico de versões** do arquivo de vídeo, decidido),
   pasta do dispositivo, pendrive, Drive (envio em partes, retomável) ou Compartilhar.
 
 ## 7. Projeto `.wjvid` e o cofre
@@ -258,7 +258,7 @@ JSON versionado (como os demais), pequeno — a mídia não vai dentro:
 
 - `.wjvid` salvo no cofre (pasta da face **"Vídeos"**), com o fluxo de sempre: primeiro salvar abre o
   explorador do cofre e publica a versão 1; GO-OUT/GO-IN; cópias no Drive/pendrive/pasta.
-- **Mídia não entra no cofre por padrão** ❓ (recomendação): vídeos têm centenas de MB a GB e cada
+- **Mídia não entra no cofre** (decidido em 05/11/2026): vídeos têm centenas de MB a GB e cada
   GO-IN guarda uma cópia na pasta "(versões)" das três cópias; o Drive e o pendrive se encheriam. A
   mídia continua onde está e o projeto aponta para ela.
 - **Empacotar projeto** (opcional): copia projeto + mídia usada (só os trechos usados, com margem ⏸)
@@ -272,6 +272,12 @@ lembradas. Não achou: o clipe fica com faixa "mídia offline" e a biblioteca mo
 pasta). O projeto abre e edita normalmente; só a exportação exige tudo presente.
 
 ## 8. Requisitos não funcionais (metas, conferidas no V0 no TCL Tab A1 Plus)
+
+**Medições do V0 no TCL Tab A1 Plus:** aguardando o Johann rodar `video/aparelho/` (botão
+"1. Medir desempenho" → "Copiar resultados"). Referência do ambiente de testes (Chromium sem GPU,
+tudo por software, 4 núcleos): H.264 1080p decodifica a 548 qps com 1 vídeo e 180 qps cada com 4;
+composição WebGL2 emulada 5 qps; exportação 1080p ≈ 7,5 min por minuto (limitada pela GPU emulada);
+cache OPFS 223 MB/s de escrita.
 
 | Item | Meta |
 |---|---|
@@ -331,7 +337,7 @@ pasta). O projeto abre e edita normalmente; só a exportação exige tudo presen
 
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
-| **V0** | **Teste do aparelho** (`video/aparelho/`, como o do WJFlow): lista codecs de decodificação e codificação com aceleração (H.264/HEVC/VP9/AV1/AAC/Opus) e resoluções aceitas; mede decodificação simultânea (1, 2, 3 vídeos 1080p), composição WebGL2 e exportação de 10 s; espaço do OPFS; seletores de pasta/pendrive | números do TCL anotados aqui (§8) e decisões de proxy/limites ajustadas |
+| **V0** ✅ | **Teste do aparelho** (`video/aparelho/`, como o do WJFlow): lista codecs de decodificação e codificação com aceleração (H.264/HEVC/VP9/AV1/AAC/Opus) e resoluções aceitas; mede decodificação simultânea (1, 2, 3 vídeos 1080p), composição WebGL2 e exportação de 10 s; espaço do OPFS; seletores de pasta/pendrive | números do TCL anotados aqui (§8) e decisões de proxy/limites ajustadas |
 | **V1** | **Núcleo utilizável**: página `video/` e caixa no início; projeto 16:9 ou 9:16; **importar de pasta, pendrive, galeria e Drive (Picker)**; biblioteca com miniaturas; linha do tempo com pista principal magnética + 1 pista de sobreposição + 1 de áudio; mover, aparar, dividir, excluir, fechar vão; fotos com duração; volume e *fade*; visualizador com qualidade automática; **exportar MP4 1080p**; `.wjvid` no cofre; mídia offline/Localizar; autosave e desfazer | caso 4 (fotos + música) e caso 5 (cortes de vídeos do pendrive) feitos no tablet do início ao fim |
 | **V2** | **Montagem completa**: pistas ilimitadas, transformar (posição/escala/rotação/opacidade), recorte, girar/espelhar, sobreposição e tela dividida, pan & zoom em foto, **quadros-chave**, velocidade (constante, inverter, congelar), **títulos** e rótulos com animação, **transições**, marcadores, *roll*/*slip*, agrupar, copiar atributos | caso 1 (vídeo técnico) e caso 3 sem áudio avançado |
 | **V3** | **Áudio**: várias pistas, forma de onda, quadros-chave de volume, normalizar (LUFS), *ducking*, equalizador, redução de ruído simples, **gravar narração**, detectar silêncios (cortar automaticamente), marcar batidas | caso 3 completo (cortes no ritmo) |
@@ -356,7 +362,19 @@ Tablet) e publicada na hora (regras 6, 7 e 9).
 - O Chromium do Playwright no Linux não tem codificador H.264/AAC: os testes de exportação usam
   VP9/Opus ali e a exportação MP4 é conferida no tablet (V0 e cada entrega).
 
-## 14. Perguntas ao Johann (decisões antes da V1)
+## 14. Decisões (05/11/2026: "seguir as recomendações")
+
+1. Mídia **fora do cofre** (vínculos + cache no aparelho + "Empacotar projeto").
+2. Seletor do Google Drive com **chave de API do navegador**: falta o Johann criar a chave (Google
+   Cloud, projeto `wjpromaster` → APIs e serviços → ativar "Google Picker API" → Credenciais → Criar
+   credencial → Chave de API → restringir a sites `https://johann-sicherl.github.io/*` e à Picker API) e
+   mandar a chave (ela é pública, vai no código). Até lá, a V1 sai com pasta, pendrive e galeria.
+3. Uso principal: sem preferência; fica a ordem do roteiro (V2 montagem → V3 áudio → V4 cor).
+4. **1080p** no tablet; 4K só no computador (ajustado pelas medições do V0).
+5. Exportação no cofre **sem versões**.
+6. Extensão **`.wjvid`** e pasta **"Vídeos"** no cofre.
+
+Texto original das perguntas (para referência):
 
 1. **Mídia no cofre?** Recomendação: **não** (vínculos + cache no aparelho + "Empacotar projeto"
    quando quiser levar tudo). Alternativa: pasta "Vídeos/Mídia" no cofre **sem versões**, copiada só
@@ -380,6 +398,17 @@ de registrar (README §6). Na UI nunca aparece o nome do software de referência
 
 ## 16. Estado (05/11/2026)
 
-- Especificação e levantamento de requisitos: este documento.
-- Caixa **"WJVideoMaker — Em breve · V1"** na página inicial do WJProMaster.
-- Nada do motor implementado. Próximo passo: respostas do §14 → **V0** (teste do aparelho).
+- Especificação e levantamento de requisitos: este documento; decisões no §14.
+- **V0 ✅** — página `video/aparelho/` (caixa **WJVideoMaker → "Teste do aparelho"** no início):
+  - Formatos: tabela de vídeo (H.264, H.265, H.265 10 bits, VP9, VP9 10 bits, AV1, VP8 × 720p/1080p/4K,
+    abre/exporta, hardware ou software), áudio (AAC, Opus, MP3, FLAC, PCM) e imagens (inclusive HEIC).
+  - Medição no Worker (`src/video/aparelho-worker.ts`), sem dependência nova: gera amostra sintética
+    com o codificador do aparelho; decodifica 1–4 vídeos ao mesmo tempo; composição WebGL2 em
+    OffscreenCanvas (2 vídeos + cor + título); exportação de 10 s com 1 e 2 vídeos; cache OPFS.
+  - Pasta/pendrive: lista mídia (3 níveis), leitura contínua e com saltos do maior vídeo, se abre.
+    Galeria: cada arquivo abre ou não (HEIC com aviso).
+  - Resumo com recomendações (`recomendar` em `src/video/capacidade.ts`): vídeos simultâneos, proxy,
+    qualidade da prévia, resolução e formato de exportação, minutos por minuto exportado.
+  - Funções puras em `src/video/tempo.ts` (µs ↔ quadros, fps racional, código de tempo) e
+    `capacidade.ts`, testadas em `scripts/teste-video.ts` (no `pnpm teste`).
+- Próximo: números do TCL (§8) e chave do seletor do Drive → **V1**.

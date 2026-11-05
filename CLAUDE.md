@@ -6,7 +6,7 @@
 > (cronogramas), **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD), **WJFlow** (escoamento de ar nas
 > peças do WJCAD; `docs/global/wjflow.md`), **WJTaskPlan** (tarefas em pastas, escritas à mão;
 > `docs/global/taskplan.md`) e **WJVideoMaker** (edição de vídeo e fotos; especificação em
-> `docs/global/wjvideomaker.md`, ainda sem código: caixa "Em breve" no início). Tudo roda no **celular, tablet e
+> `docs/global/wjvideomaker.md`; por enquanto só o teste do aparelho, V0). Tudo roda no **celular, tablet e
 > notebook/computador**. Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada
 > face estão em **`docs/global/`**; o prompt de trabalho está em `docs/global/prompt-mestre.md`.
 > Até a fase G0 (monorepo), tudo fica neste repositório: o WJCAD (descrito abaixo) e as primeiras
@@ -125,6 +125,7 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 | WJPDM | `pdm/` | `src/pdm/` | `src/pdm/regras.ts` (`teste-pdm.ts`) | IndexedDB `wjpdm`, cópia `.wjpdm` |
 | WJERP | `erp/` | `src/erp/` | `src/erp/regras.ts` (`teste-erp.ts`) | IndexedDB `wjerp`, cópia `.wjerp` |
 | WJTaskPlan | `tarefas/` | `src/tarefas/` | `src/tarefas/regras.ts` (`teste-tarefas.ts`) | IndexedDB `wjtaskplan`; `WJTaskPlan/tarefas.json` + `.csv` (pasta irmã do WJPDM nas cópias) |
+| WJVideoMaker | `video/aparelho/` (V0; editor `video/` na V1) | `src/video/` | `src/video/tempo.ts`, `capacidade.ts` (`teste-video.ts`) | `.wjvid` (vínculos para a mídia, que fica fora do cofre); teste do aparelho em Worker com WebCodecs + WebGL2 |
 | WJFlow | `flow/` (+ `flow/aparelho/`) | `src/flow/` | `src/flow/lbm.ts`, `geometria.ts`, `estudo.ts` (`teste-flow.ts`) | `.wjflow` (estudo + peça), autosave IndexedDB `wjflow`; túnel de vento LBM D3Q19 em WebGPU |
 
 Integrações já feitas: o WJPDM abre arquivos nos apps (grava o autosave do app; o WJCAD abre direto
