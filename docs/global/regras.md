@@ -122,7 +122,13 @@
   pendrive sem permissão ou desconectado): a faixa fica com **"Conectar agora"** (um toque libera e
   iguala tudo) e **"Cópias…"** (configurar). Nenhuma cópia configurada: aviso amarelo de que os arquivos
   estão só no navegador.
-- O login do Google vale 1 h; renovar exige um toque (o navegador bloqueia a janela do Google sem toque).
+- **Tentativas automáticas** (05/11/2026), sem botão: a cada 5 min com o app visível, ao voltar a
+  internet, ao voltar para o app e depois de cada salvar. A faixa volta se aparecer problema e some quando
+  resolve.
+- O acesso do Google vale 1 h e o navegador só deixa abrir a janela do Google durante um gesto do usuário:
+  ele é **renovado sozinho no primeiro toque/tecla** no app quando falta menos de 10 min (ou já venceu) —
+  a janela do Google pisca e fecha, sem botão. Sem nenhum toque (app parado/fechado) só com servidor
+  próprio guardando o token de renovação (G5); a chave secreta nunca vai no app.
 
 ### 5.4 Explorador do cofre — salvar, abrir e escolher (05/11/2026)
 - **Uma tela no estilo do explorador de arquivos do sistema** (não uma árvore em cascata), em todos os

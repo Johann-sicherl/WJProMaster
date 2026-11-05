@@ -162,7 +162,7 @@ WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulaç
   abertura de um app** (`sincronizarAoAbrir`, também na página inicial e no WJTaskPlan, sem pedir permissão;
   ao terminar aparece a **faixa "Cofre:"** com a situação de Google Drive, pasta do dispositivo e pendrive
   — `situacaoDasCopias()`; tudo certo some sozinha; cópia que precisa de toque deixa **"Conectar agora"**,
-  e um toque iguala o cofre e as tarefas), as cópias se igualam
+  e um toque iguala o cofre e as tarefas; depois, tentativas automáticas a cada 5 min / ao voltar a internet ou ao app, e o acesso do Google é renovado sozinho no primeiro toque quando falta < 10 min — `sincroniaAutomatica`), as cópias se igualam
   (`src/pdm/sincronia.ts`, testes em `scripts/teste-sincronia.ts`): o que falta é copiado; registro
   alterado em duas: **a mais recente vence** e a outra vai para a lixeira; exclusões propagam pela
   lixeira (30 dias). Estrutura na cópia: `WJPDM/<pastas>/<arquivo>` legível + `WJPDM/.wjpdm/`
