@@ -25,6 +25,12 @@ export interface DestinoNuvem {
   conectar(): Promise<void>;
   /** Renova o acesso vencido (abre a janela do Google; precisa de um toque recente). */
   renovar(): Promise<boolean>;
+  /** Já autorizado e o acesso vence em menos de `ms` (ou já venceu): vale renovar no próximo toque. */
+  vencendo?(ms: number): boolean;
+  /** Renova já (dentro de um toque), mesmo que ainda não tenha vencido. */
+  renovarAgora?(): Promise<boolean>;
+  /** Carrega antes o que a renovação precisa (a janela abre logo no toque). */
+  preparar?(): void;
   repositorio(): Repositorio;
 }
 
@@ -292,5 +298,10 @@ export const nuvemGoogle: DestinoNuvem = {
     if (!(await pedirAcesso(!autorizado()))) throw new Error("O Google não liberou o acesso (janela fechada, bloqueada ou usuário fora da lista de teste).");
   },
   renovar: () => (valido() ? Promise.resolve(true) : autorizado() ? pedirAcesso(false).catch(() => false) : Promise.resolve(false)),
+  vencendo: (ms) => autorizado() && (lerAcesso()?.expira ?? 0) - Date.now() < ms,
+  renovarAgora: () => (autorizado() ? pedirAcesso(false).catch(() => false) : Promise.resolve(false)),
+  preparar: () => {
+    if (autorizado()) void carregarGoogle().catch(() => {});
+  },
   repositorio: () => new RepositorioDrive(() => lerAcesso()?.token ?? ""),
 };

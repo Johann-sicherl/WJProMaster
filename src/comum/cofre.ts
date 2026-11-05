@@ -180,8 +180,50 @@ export function sincronizarAoAbrir(espera: Promise<unknown> = Promise.resolve())
     .then((m) => {
       avisarMudanca();
       faixaConexoes(m);
+      sincroniaAutomatica();
       return m;
     });
+}
+
+const AUTO_MS = 5 * 60 * 1000; // tentativa automática enquanto o app está aberto
+const RENOVAR_ANTES = 10 * 60 * 1000; // o acesso do Google é renovado no toque 10 min antes de vencer
+let ultimaAuto = 0;
+
+/**
+ * Tentativas automáticas com o Google Drive, o pendrive e a pasta do dispositivo, sem botão:
+ * a cada 5 min com o app visível, ao voltar a internet e ao voltar para o app. O acesso do Google
+ * (vale 1 h) é renovado sozinho no primeiro toque/tecla quando está perto de vencer — o navegador
+ * só deixa abrir a janela do Google durante um gesto do usuário. Sem servidor (G5), não há como
+ * renovar sem nenhum toque.
+ */
+function sincroniaAutomatica() {
+  nuvem?.preparar?.();
+  const tentar = (forcar = false) => {
+    if (document.visibilityState !== "visible" || !navigator.onLine) return;
+    if (!forcar && Date.now() - ultimaAuto < 60000) return;
+    ultimaAuto = Date.now();
+    void sincronizarCofre({ pedir: false, publicar: true }).then((m) => {
+      avisarMudanca();
+      // resolveu o que estava pendente: a faixa some; apareceu problema: ela volta
+      const s = situacaoDasCopias();
+      const pendente = ROTULO_COPIA.some(([k]) => s[k] !== "ok" && s[k] !== "nao");
+      if (pendente) faixaConexoes(m);
+      else document.querySelector(".wjc-faixa")?.remove();
+    }, () => {});
+  };
+  setInterval(() => tentar(), AUTO_MS);
+  addEventListener("online", () => tentar(true));
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && tentar());
+  // renovação do Google no primeiro gesto com o acesso perto de vencer (uma tentativa a cada 10 min)
+  let ultimoPedido = 0;
+  const noGesto = () => {
+    if (!nuvem?.vencendo?.(RENOVAR_ANTES) || !navigator.onLine || Date.now() - ultimoPedido < RENOVAR_ANTES) return;
+    ultimoPedido = Date.now();
+    void nuvem.renovarAgora?.().then((ok) => ok && tentar(true));
+  };
+  // eventos que o navegador aceita como gesto para abrir a janela do Google
+  addEventListener("pointerup", noGesto, true);
+  addEventListener("keydown", noGesto, true);
 }
 
 /** Evento na janela depois de uma sincronia com toque (outras bases, como as tarefas, aproveitam a permissão). */
