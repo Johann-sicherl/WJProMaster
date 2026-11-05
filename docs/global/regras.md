@@ -172,6 +172,11 @@
   folha com vão entre elas; o parágrafo continua na folha seguinte **linha a linha**; cabeçalho, rodapé e
   "Página X de Y" em cada folha; quebra de página manual leva o texto à folha seguinte. Pendente:
   viúvas/órfãs e "manter com o próximo".
+- **WJVideoMaker** (05/11/2026): nova face de edição de vídeo e fotos, inspirada funcionalmente num
+  editor de vídeo de consumo avançado (nome do produto de referência nunca na UI; predefinições de
+  exportação sem nomes de redes sociais). Mídia do Google Drive (seletor do Google, mantendo o escopo
+  `drive.file`), pasta do dispositivo, pendrive e galeria. Especificação e roteiro V0–V6 em
+  `docs/global/wjvideomaker.md`; decisões pendentes no §14 de lá.
 - Especificação e estado de cada face: `docs/global/<face>.md`.
 
 ## 8. Hospedagem, versão e offline
@@ -186,3 +191,5 @@
 - PORTA_CANETA (exportação com arestas não-manifold, extrusão que não funde, corpo que some no corte):
   aguardando o ZIP com o STL original e o `.wjcad`.
 - Estados de exibição (aparência por estado): ainda não pedido para implementar.
+- WJVideoMaker: respostas do §14 de `docs/global/wjvideomaker.md` (mídia no cofre, chave de API do
+  seletor do Drive, uso principal, resolução máxima, versões da exportação, extensão `.wjvid`).

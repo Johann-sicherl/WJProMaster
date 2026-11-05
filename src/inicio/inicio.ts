@@ -67,6 +67,12 @@ const FACES: Face[] = [
     descricao: "Tarefas em pastas, escritas à mão com a caneta: estados, prazos com alerta e painel.",
     icone: svg(`<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l1.5 1.5L12 7M8 13l1.5 1.5L12 12" stroke="${C}"/><path d="M14 8h3M14 13h3M8 17.5h9"/>`),
   },
+  {
+    // Especificação em docs/global/wjvideomaker.md; a página video/ chega na fase V1.
+    id: "video", nome: "WJVideoMaker", fase: "V1",
+    descricao: "Edição de vídeo e fotos: linha do tempo, títulos, transições, cor, áudio; mídia do Drive, pasta ou pendrive.",
+    icone: svg(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M3 15h18M7 5v4M12 5v4M17 5v4M7 15v4M12 15v4M17 15v4"/><path d="M10.5 10.5v3l2.5-1.5z" stroke="${C}"/>`),
+  },
 ];
 
 /** Nome do último documento do WJCAD guardado neste aparelho (autosave). */

@@ -17,6 +17,7 @@ e identidade de objetos.
 | **WJERP** | gestão empresarial SaaS ligada ao WJPDM/WJCAD | ERP brasileiro de mercado | banco no servidor | [erp.md](erp.md) |
 | **WJFlow** | escoamento de ar nas peças do WJCAD (túnel de vento virtual, dutos, EDF) | ferramentas de CFD | `.wjflow` | [wjflow.md](wjflow.md) |
 | **WJTaskPlan** | tarefas em pastas, escritas à mão com a caneta, estados, prazos com alerta e painel | lista de tarefas com quadro de indicadores | `WJTaskPlan/tarefas.json` (+ `.csv`) ao lado do cofre | [taskplan.md](taskplan.md) |
+| **WJVideoMaker** | edição de vídeo e fotos em linha do tempo (títulos, transições, cor, áudio), mídia do Drive, pasta ou pendrive | editor de vídeo de consumo avançado | `.wjvid` (projeto com vínculos para a mídia) | [wjvideomaker.md](wjvideomaker.md) |
 | Integrações entre as faces | — | — | [integracoes.md](integracoes.md) |
 | Prompt-mestre para desenvolver | — | — | [prompt-mestre.md](prompt-mestre.md) |
 
@@ -140,6 +141,9 @@ WJProMaster/
 | **G6** WJCronProject | EAP, CPM, recursos, linhas de base, valor agregado, MSPDI | usa servidor (recursos compartilhados) e fórmulas |
 | **G7** WJERP (núcleo) | cadastros, estoque/custos, compras, vendas, PCP/MRP, financeiro, CRM simples | usa PDM (estrutura) e Cronograma (capacidade/projetos) |
 | **G8** WJERP fiscal e contábil | NF-e/NFS-e (via provedor homologado), SPED, contabilidade, conciliação bancária, boletos/PIX | exige conformidade legal; por último |
+
+Faces locais fora desta sequência, com roteiro próprio: **WJFlow** (A0–A6), **WJTaskPlan** e
+**WJVideoMaker** (V0–V6, `wjvideomaker.md` §12; não dependem do servidor).
 
 A ordem pode mudar por decisão do Johann (por exemplo, antecipar o WJPDM se o uso no trabalho pedir).
 
