@@ -4,8 +4,9 @@
 > **WJCAD** (este app, antigo JLSCAD), **WJPDM** (diretório/cofre do WJCAD), **WJPlan**
 > (planilhas), **WJWrite** (documentos), **WJApresentation** (apresentações), **WJCronProject**
 > (cronogramas), **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD), **WJFlow** (escoamento de ar nas
-> peças do WJCAD; `docs/global/wjflow.md`) e **WJTaskPlan** (tarefas em pastas, escritas à mão;
-> `docs/global/taskplan.md`). Tudo roda no **celular, tablet e
+> peças do WJCAD; `docs/global/wjflow.md`), **WJTaskPlan** (tarefas em pastas, escritas à mão;
+> `docs/global/taskplan.md`) e **WJVideoMaker** (edição de vídeo e fotos; especificação em
+> `docs/global/wjvideomaker.md`, ainda sem código: caixa "Em breve" no início). Tudo roda no **celular, tablet e
 > notebook/computador**. Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada
 > face estão em **`docs/global/`**; o prompt de trabalho está em `docs/global/prompt-mestre.md`.
 > Até a fase G0 (monorepo), tudo fica neste repositório: o WJCAD (descrito abaixo) e as primeiras
