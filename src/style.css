@@ -1150,6 +1150,7 @@ body.disp-celular .painel-cor { left: 0; right: 0; width: auto; top: auto; botto
 .status-escala { padding: 1px 8px; border-radius: 10px; background: #e3effb; color: #1f4e79; font-weight: 600; }
 .er-opcao { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 10px; background: #eef5fc; border: 1px solid #c9dcef; font-size: 14px; }
 .er-opcao div { flex: 1; }
+.er-opcao[hidden] { display: none; }
 .er-ok { color: #1e7d34 !important; font-weight: 600; }
 /* medidas da tela: página branca em tela cheia com as bordas da área acesa */
 .er-tela { position: fixed; inset: 0; z-index: 1100; background: #fff; color: #1d2733; touch-action: none; user-select: none; -webkit-user-select: none; font: 15px system-ui, sans-serif; }
