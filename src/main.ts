@@ -1,5 +1,5 @@
 import { atualizarExternas } from "./esboco/externas";
-import { abrirCalibracao, lerPxPorMm } from "./esboco/escalaReal";
+import { abrirCalibracao, lerPxPorMm, pxPorMmAutomatico } from "./esboco/escalaReal";
 import { abrirEditorCor } from "./ui/editorCor";
 import { casarFaces } from "./aparencia";
 import { trechosDeCor } from "./aparencia";
@@ -3291,9 +3291,15 @@ function renderizarPainelEdicaoEsboco() {
  * escolha fica guardada e vale para os próximos esboços.
  */
 async function alternarEscalaReal(ligar = !prefs.escalaReal) {
+  let fonte = "";
   if (ligar && lerPxPorMm() === null) {
-    avisar("Antes, calibre a escala da tela com uma régua (uma vez por aparelho).", 6000);
-    if ((await abrirCalibracao()) === null) return;
+    // aparelho conhecido: calibra sozinho pela ficha da tela; senão, calibração com o usuário
+    const auto = await pxPorMmAutomatico();
+    if (auto) fonte = auto.fonte;
+    else {
+      avisar("Antes, calibre a escala da tela (uma vez por aparelho).", 6000);
+      if ((await abrirCalibracao()) === null) return;
+    }
   }
   prefs.escalaReal = ligar;
   salvarPrefs();
@@ -3301,8 +3307,7 @@ async function alternarEscalaReal(ligar = !prefs.escalaReal) {
   renderizarAbas();
   atualizarStatus();
   avisar(!ligar ? "Escala real desligada: zoom e rotação livres de novo."
-    : editor ? "Escala real 1:1: 1 mm na tela = 1 mm no esboço. Desenhe com a caneta (a régua pode ficar sobre a tela); um dedo arrasta a vista."
-    : "Escala real 1:1 ligada: vale ao abrir um esboço.", 7000);
+    : `${fonte ? `Escala calibrada pela ficha do ${fonte}. ` : ""}${editor ? "Escala real 1:1: 1 mm na tela = 1 mm no esboço. Desenhe com a caneta (a régua pode ficar sobre a tela); um dedo arrasta a vista." : "Escala real 1:1 ligada: vale ao abrir um esboço."}`, 8000);
 }
 
 /** Aplica a escala real ao esboço aberto (ou solta a vista quando não há esboço/está desligada). */

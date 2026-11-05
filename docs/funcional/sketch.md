@@ -382,7 +382,15 @@ caneta vira uma linha de 50 mm no esboço; splines, arcos e qualquer ferramenta 
     olhar o plano de frente); **um dedo ou o botão do meio arrastam a vista** para alcançar outra
     região. Barra de status: "· Escala real 1:1". Sair do esboço solta a vista.
   - **Calibrar escala da tela…**: o navegador não informa o tamanho físico da tela (nem o PPI), então a
-    calibração é feita uma vez por aparelho, de dois jeitos:
+    calibração é feita uma vez por aparelho:
+    - **Automática pela ficha do aparelho** (05/11/2026): o Chrome do Android informa o modelo
+      (`userAgentData.getHighEntropyValues(["model"])`); para os modelos da tabela `FICHAS`
+      (`src/esboco/escalaReal.ts`: **TCL TAB A1 Plus 9445X — 12,2", 2400×1600**, o tablet do Johann;
+      Samsung Galaxy Tab S6 Lite, S8, S9, S9+, S9 FE), pixels por mm = pixels CSS do lado maior ÷ mm do
+      lado maior (da diagonal e da resolução), conferindo antes que a resolução informada pelo navegador
+      bate com a ficha (±3%) e a proporção (±2%). Ligar a escala real num aparelho conhecido calibra
+      sozinho, sem janela; a janela de calibração mostra "Aparelho reconhecido" com "Usar a ficha do
+      aparelho". Modelo fora da lista ou dados que não batem: um dos dois jeitos abaixo.
     - **Medidas da tela** (recomendado, 05/11/2026, ideia do Johann): página branca em tela cheia com as
       **bordas da área acesa marcadas** e as setas **Lado A (horizontal ↔)** e **Lado B (vertical ↕)**;
       **tocar e segurar** (caneta ou dedo) ou "Informar medidas" abre o pop-up: Lado A e/ou Lado B em mm

@@ -42,6 +42,71 @@ function regua(pxPorMm: number, mm: number): string {
 }
 
 const num = (v: number, c = 1) => v.toFixed(c).replace(".", ",");
+
+// ---------- detecção pelo modelo do aparelho (ficha técnica da tela) ----------
+
+/** Ficha da tela: diagonal (polegadas) e resolução nativa (lado maior × menor). */
+interface FichaTela {
+  nome: string;
+  /** começo do código do modelo informado pelo Android (ex.: "9445X", "SM-X710") */
+  modelos: string[];
+  pol: number;
+  res: [number, number];
+}
+/** Aparelhos conferidos (fichas técnicas). Modelo fora da lista: calibração pelas medidas ou régua. */
+export const FICHAS: FichaTela[] = [
+  { nome: "TCL TAB A1 Plus", modelos: ["9445X"], pol: 12.2, res: [2400, 1600] },
+  { nome: "Samsung Galaxy Tab S9", modelos: ["SM-X710", "SM-X716"], pol: 11, res: [2560, 1600] },
+  { nome: "Samsung Galaxy Tab S8", modelos: ["SM-X700", "SM-X706"], pol: 11, res: [2560, 1600] },
+  { nome: "Samsung Galaxy Tab S9+", modelos: ["SM-X810", "SM-X816"], pol: 12.4, res: [2800, 1752] },
+  { nome: "Samsung Galaxy Tab S9 FE", modelos: ["SM-X510", "SM-X516"], pol: 10.9, res: [2304, 1440] },
+  { nome: "Samsung Galaxy Tab S6 Lite", modelos: ["SM-P610", "SM-P613", "SM-P615", "SM-P619", "SM-P620", "SM-P625"], pol: 10.4, res: [2000, 1200] },
+];
+
+type NavegadorComDicas = Navigator & { userAgentData?: { getHighEntropyValues(h: string[]): Promise<{ model?: string }> } };
+
+/** Código do modelo do aparelho (Chrome do Android: dicas do agente; senão o texto do agente). */
+export async function modeloDoAparelho(): Promise<string> {
+  try {
+    const v = await (navigator as NavegadorComDicas).userAgentData?.getHighEntropyValues(["model"]);
+    if (v?.model) return v.model.trim();
+  } catch {
+    /* sem dicas do agente */
+  }
+  const m = /Android [^;]*;\s*([^;)]+?)(?:\s+Build[^;)]*)?\)/.exec(navigator.userAgent);
+  return m && m[1] !== "K" ? m[1].trim() : "";
+}
+
+/**
+ * Pixels CSS por mm pela ficha do aparelho. Confere se a resolução que o navegador informa bate com
+ * a da ficha (aparelho certo, tela inteira); pixels CSS do lado maior ÷ mm do lado maior — vale com
+ * qualquer "tamanho da exibição" do Android. null = aparelho fora da lista ou dados que não batem.
+ */
+export async function detectarPelaFicha(): Promise<{ nome: string; px: number; ficha: FichaTela } | null> {
+  const modelo = (await modeloDoAparelho()).toUpperCase();
+  const ficha = modelo ? FICHAS.find((f) => f.modelos.some((m) => modelo.startsWith(m.toUpperCase()))) : undefined;
+  if (!ficha) return null;
+  const maior = Math.max(screen.width, screen.height), menor = Math.min(screen.width, screen.height);
+  const dpr = window.devicePixelRatio || 1;
+  // proporção da tela e resolução física (CSS × dpr) devem bater com a ficha
+  if (Math.abs(maior / menor / (ficha.res[0] / ficha.res[1]) - 1) > 0.02) return null;
+  if (Math.abs((maior * dpr) / ficha.res[0] - 1) > 0.03) return null;
+  const mmMaior = (ficha.pol * 25.4 * ficha.res[0]) / Math.hypot(ficha.res[0], ficha.res[1]);
+  return { nome: ficha.nome, px: maior / mmMaior, ficha };
+}
+
+/**
+ * Valor para usar sem perguntar nada: a calibração salva ou, se não houver, a ficha do aparelho
+ * (já salva). null = precisa calibrar.
+ */
+export async function pxPorMmAutomatico(): Promise<{ px: number; fonte: string } | null> {
+  const salvo = lerPxPorMm();
+  if (salvo) return { px: salvo, fonte: "" };
+  const d = await detectarPelaFicha();
+  if (!d) return null;
+  gravarPxPorMm(d.px);
+  return { px: d.px, fonte: d.nome };
+}
 const lerNum = (el: HTMLInputElement | null) => parseFloat((el?.value ?? "").replace(",", "."));
 
 /** Tamanho da tela inteira em pixels CSS, na orientação atual (horizontal × vertical). */
@@ -167,6 +232,7 @@ export function abrirCalibracao(): Promise<number | null> {
     fundo.className = "er-fundo";
     fundo.innerHTML = `<div class="er-janela" role="dialog" aria-modal="true" aria-label="Calibrar escala da tela">
       <header><b>Calibrar escala da tela</b><button data-a="x" title="Cancelar" aria-label="Cancelar">✕</button></header>
+      <div class="er-opcao" data-ficha hidden></div>
       <div class="er-opcao"><div><b>Pelas medidas da tela</b> (recomendado): a tela fica branca com as bordas marcadas e você informa o tamanho da área acesa (lados em mm ou diagonal).</div>
         <button data-a="tela" class="destaque">Medidas da tela…</button></div>
       <p data-ok class="er-ok" hidden></p>
@@ -237,6 +303,20 @@ export function abrirCalibracao(): Promise<number | null> {
       },
     };
     fundo.querySelectorAll<HTMLButtonElement>("[data-a]").forEach((b) => (b.onclick = () => acoes[b.dataset.a!]?.()));
+    // aparelho reconhecido: a ficha da tela dá o valor com um toque
+    void detectarPelaFicha().then((d) => {
+      if (!d) return;
+      const caixa = $<HTMLElement>("[data-ficha]");
+      caixa.hidden = false;
+      caixa.innerHTML = `<div><b>Aparelho reconhecido: ${d.nome}</b> — tela de ${num(d.ficha.pol)}" (${d.ficha.res[0]}×${d.ficha.res[1]}): ${num(d.px, 3)} pixels por mm, sem medir nada.</div><button class="destaque">Usar a ficha do aparelho</button>`;
+      caixa.querySelector("button")!.onclick = () => {
+        px = d.px;
+        desenhar();
+        const ok = $<HTMLElement>("[data-ok]");
+        ok.hidden = false;
+        ok.textContent = `Pela ficha do ${d.nome}: ${num(px, 3)} pixels por mm. Se quiser, confira com a régua abaixo; depois toque em Salvar calibração.`;
+      };
+    });
     barra.oninput = () => ((px = Number(barra.value)), desenhar());
     $<HTMLInputElement>("[data-medido]").onkeydown = (e) => {
       if (e.key === "Enter") acoes.corrigir();

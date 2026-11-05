@@ -160,7 +160,7 @@
   material. "Usar as cores do arquivo importado" liga/desliga. Estados de exibição: pendente.
 - **Multicorpo**: pasta "Corpos sólidos"; menu do corpo pelo botão direito ou toque longo (dedo/caneta).
 - **Escala real 1:1 no esboço** (05/11/2026): aba Sketch → Escala 1:1 ▾ (liga/desliga + Calibrar escala da
-  tela…). Calibração uma vez por aparelho pelas **medidas da área acesa da tela** (tela cheia com bordas marcadas, toque longo abre o pop-up dos lados A/B ou diagonal; proporção conferida) ou com régua; no esboço a vista fica de frente para o plano, travada
+  tela…). Aparelho conhecido (tablet do Johann: **TCL TAB A1 Plus 9445X, 12,2", 2400×1600**) calibra sozinho pela ficha da tela; senão, calibração uma vez por aparelho pelas **medidas da área acesa da tela** (tela cheia com bordas marcadas, toque longo abre o pop-up dos lados A/B ou diagonal; proporção conferida) ou com régua; no esboço a vista fica de frente para o plano, travada
   em tamanho real (sem zoom nem rotação; dedo/meio arrastam). Traço da caneta = medida real. Detalhes em
   `docs/funcional/sketch.md` §7.
 - **Montagem** (04/11/2026): fora de comando, **mouse (esquerdo) ou caneta arrastam o componente
