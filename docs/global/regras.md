@@ -159,6 +159,10 @@
   hexadecimal, Remover aparência, prévia, desfazer. A face vence o corpo, que vence a peça, que vence o
   material. "Usar as cores do arquivo importado" liga/desliga. Estados de exibição: pendente.
 - **Multicorpo**: pasta "Corpos sólidos"; menu do corpo pelo botão direito ou toque longo (dedo/caneta).
+- **Escala real 1:1 no esboço** (05/11/2026): aba Sketch → Escala 1:1 ▾ (liga/desliga + Calibrar escala da
+  tela…). Calibração uma vez por aparelho com régua; no esboço a vista fica de frente para o plano, travada
+  em tamanho real (sem zoom nem rotação; dedo/meio arrastam). Traço da caneta = medida real. Detalhes em
+  `docs/funcional/sketch.md` §7.
 - **Montagem** (04/11/2026): fora de comando, **mouse (esquerdo) ou caneta arrastam o componente
   flutuante**; clique sem arrastar seleciona; caneta parada abre o menu; **o dedo gira a vista** (mover com
   o dedo = comando Mover componente). Componente fixo não se move por arraste. Componentes de malha (STL)

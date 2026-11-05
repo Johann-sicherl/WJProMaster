@@ -221,6 +221,10 @@ export class EditorEsboco {
   private conflito = new Set<string>();
 
   private ref: Referencial;
+  /** Plano do esboço (origem, eixos e normal), para olhar de frente / escala real. */
+  get referencial(): Referencial {
+    return this.ref;
+  }
   private camada: THREE.Group | null = null;
   private cliques: Encaixe[] = [];
   private cursor: Encaixe | null = null;

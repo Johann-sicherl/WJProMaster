@@ -369,3 +369,23 @@ Botão **Selecionar ▾** na aba Sketch (a seta escolhe o modo; o botão repete 
 - Tecla S → barra de atalhos ✅ · menu de contexto do botão direito ✅
 - Gestos de mouse/caneta (guia radial): **fora do projeto** (decisão do Johann)
   (ver `referencia-introducao.md` §7)
+
+## 7. Escala real 1:1 (desenhar em tamanho real no tablet) — ✅ (05/11/2026)
+
+Função própria do WJCAD (pedido do Johann): com uma régua sobre a tela, um traço de 50 mm com a
+caneta vira uma linha de 50 mm no esboço; splines, arcos e qualquer ferramenta saem em 1:1.
+
+- Aba **Sketch → Escala 1:1 ▾**:
+  - **Escala real 1:1** (liga/desliga, fica pressionado; a escolha vale para os próximos esboços):
+    no esboço, a vista olha o plano de frente e fica **travada em tamanho real** (1 mm na tela = 1 mm
+    no esboço). Sem zoom (pinça, roda, Enquadrar só centraliza) e sem girar (tríade/vistas voltam a
+    olhar o plano de frente); **um dedo ou o botão do meio arrastam a vista** para alcançar outra
+    região. Barra de status: "· Escala real 1:1". Sair do esboço solta a vista.
+  - **Calibrar escala da tela…**: o navegador não sabe o tamanho físico da tela, então a calibração
+    é feita uma vez por aparelho: uma régua de 100 mm (50 mm em tela estreita) desenhada na tela;
+    encostar uma régua de verdade e ajustar com − / + (0,1 mm), a barra, ou digitar quanto a barra
+    mediu ("Corrigir"). Guardado em `localStorage["jlscad:pxPorMm"]` (pixels CSS por mm).
+    Ligar a escala real sem calibração abre a calibração antes.
+- Código: `src/esboco/escalaReal.ts` (calibração), `Viewport.travarEscala` (zoom = px/mm da
+  calibração, controles só de pan), `alternarEscalaReal`/`aplicarEscalaReal` em `src/main.ts`.
+- Encaixes e relações automáticas continuam valendo (ex.: horizontal); as medidas seguem o traço.

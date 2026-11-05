@@ -1126,3 +1126,25 @@ body.disp-tablet .painel-cor .pc-niveis button, body.disp-tablet .painel-cor .pc
 body.disp-tablet .painel-cor .pc-topo button { width: 44px; height: 44px; }
 body.disp-tablet .painel-cor .pc-barras input[type=range] { height: 32px; }
 body.disp-celular .painel-cor { left: 0; right: 0; width: auto; top: auto; bottom: 0; max-height: 70vh; border-radius: 12px 12px 0 0; }
+
+/* ---------- escala real 1:1: calibração da tela ---------- */
+.er-fundo { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: rgba(20, 30, 40, .35); padding: 8px; }
+.er-janela { width: min(860px, 100%); max-height: calc(100% - 16px); overflow: auto; background: #fff; color: #1d2733; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.25); padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; }
+.er-janela header { display: flex; align-items: center; justify-content: space-between; font-size: 16px; }
+.er-janela p { margin: 0; color: #45515d; font-size: 14px; }
+.er-janela button { min-height: 44px; padding: 0 14px; border: 1px solid #c9d3de; border-radius: 8px; background: #f6f8fa; font: inherit; cursor: pointer; }
+.er-janela button.destaque { background: #2f7fd0; border-color: #2f7fd0; color: #fff; }
+.er-area { padding: 14px 0 6px 24px; overflow-x: auto; border: 1px dashed #c9d3de; border-radius: 8px; background: #fafcff; }
+.er-regua { display: block; }
+.er-regua text { font: 11px system-ui, sans-serif; fill: #1e2730; }
+.er-ajuste { display: flex; align-items: center; gap: 10px; }
+.er-ajuste input { flex: 1; min-height: 44px; }
+.er-ajuste button { width: 56px; font-size: 22px; padding: 0; }
+.er-medida { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; color: #45515d; }
+.er-medida span { display: flex; align-items: center; gap: 6px; }
+.er-medida input { width: 96px; min-height: 40px; padding: 0 8px; border: 1px solid #c9d3de; border-radius: 8px; font: inherit; }
+.er-valor { font-variant-numeric: tabular-nums; }
+.er-janela footer { display: flex; gap: 8px; align-items: center; }
+.er-janela footer span { flex: 1; }
+/* indicador na barra de status */
+.status-escala { padding: 1px 8px; border-radius: 10px; background: #e3effb; color: #1f4e79; font-weight: 600; }
