@@ -16,7 +16,9 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const saida = $<HTMLPreElement>("av-saida");
 const relatorio: string[] = [];
 let ocupado = false;
-const codecs: Pick<Medidas, "codificaH264" | "codificaVp9" | "codificaAac" | "codificaOpus"> = { codificaH264: {}, codificaVp9: {}, codificaAac: false, codificaOpus: false };
+const codecs: Pick<Medidas, "codificaH264" | "codificaVp9" | "codificaAac" | "codificaOpus" | "decodificaH264" | "decodificaHevc10"> = {
+  codificaH264: {}, codificaVp9: {}, codificaAac: false, codificaOpus: false, decodificaH264: {}, decodificaHevc10: false,
+};
 
 const fmt = (v: number, d = 0) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const esc = (s: string) => s.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]!);
@@ -124,7 +126,11 @@ async function mostrarFormatos() {
       const [d, c] = await Promise.all([suporteVideo("dec", p.codec[r.alt], r.w, r.h), suporteVideo("cod", p.codec[r.alt], r.w, r.h)]);
       cels.push(celula(d), celula(c));
       txt.push(`${r.nome} abre ${simboloSuporte(d)} / exporta ${simboloSuporte(c)}`);
-      if (p.nome === "H.264") codecs.codificaH264[r.alt as Alt] = c;
+      if (p.nome === "H.264") {
+        codecs.codificaH264[r.alt as Alt] = c;
+        codecs.decodificaH264![r.alt as Alt] = d;
+      }
+      if (p.nome === "H.265 10 bits" && d !== "nao") codecs.decodificaHevc10 = true;
       if (p.nome === "VP9") codecs.codificaVp9[r.alt as Alt] = c;
     }
     linhas.push(`<tr><th>${p.nome}</th>${cels.join("")}</tr>`);

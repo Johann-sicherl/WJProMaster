@@ -77,6 +77,8 @@ const pc: Medidas = {
   composicao1080: 400,
   exportacao: [{ res: 1080, fluxos: 1, fps: 150 }],
   codificaH264: { 720: "hardware", 1080: "hardware", 2160: "hardware" },
+  decodificaH264: { 720: "hardware", 1080: "hardware", 2160: "hardware" },
+  decodificaHevc10: true,
   codificaVp9: {},
   codificaAac: true,
   codificaOpus: true,
@@ -96,6 +98,33 @@ const fraco = recomendar({ decodificacao: [{ res: 720, fluxos: 1, fpsPorFluxo: 2
 igual("fraco: prévia em um quarto", fraco.qualidadePrevia, "um quarto");
 igual("fraco: proxy acima de 720p", fraco.proxyAcima, 720);
 igual("fraco: não exporta", fraco.formatoSaida, "nenhum");
+
+// números reais do TCL Tab A1 Plus (V0, 05/11/2026): 4K decodifica só por software
+const tcl: Medidas = {
+  decodificacao: [
+    { res: 720, fluxos: 1, fpsPorFluxo: 199 }, { res: 720, fluxos: 2, fpsPorFluxo: 107 }, { res: 720, fluxos: 3, fpsPorFluxo: 100 }, { res: 720, fluxos: 4, fpsPorFluxo: 76 },
+    { res: 1080, fluxos: 1, fpsPorFluxo: 103 }, { res: 1080, fluxos: 2, fpsPorFluxo: 76 }, { res: 1080, fluxos: 3, fpsPorFluxo: 35 }, { res: 1080, fluxos: 4, fpsPorFluxo: 32 },
+    { res: 2160, fluxos: 1, fpsPorFluxo: 101 }, { res: 2160, fluxos: 2, fpsPorFluxo: 65 }, { res: 2160, fluxos: 3, fpsPorFluxo: 40 }, { res: 2160, fluxos: 4, fpsPorFluxo: 30 },
+  ],
+  composicao1080: 54,
+  exportacao: [{ res: 1080, fluxos: 1, fps: 22 }, { res: 1080, fluxos: 2, fps: 20 }],
+  codificaH264: { 720: "hardware", 1080: "hardware", 2160: "software" },
+  decodificaH264: { 720: "hardware", 1080: "hardware", 2160: "software" },
+  decodificaHevc10: false,
+  codificaVp9: { 720: "software", 1080: "software", 2160: "software" },
+  codificaAac: true,
+  codificaOpus: true,
+};
+const rt = recomendar(tcl);
+igual("TCL: 2 vídeos 1080p juntos", rt.fluxos1080, 2);
+igual("TCL: 4K por software → proxy acima de 1080p", rt.proxyAcima, 1080);
+igual("TCL: prévia completa", rt.qualidadePrevia, "completa");
+igual("TCL: exporta até 1080p (4K só por software)", rt.exportarAte, 1080);
+igual("TCL: MP4 H.264 + AAC", rt.formatoSaida, "MP4 (H.264 + AAC)");
+igual("TCL: 1 min exporta em ≈ 1,36 min", Math.round(rt.minutosPorMinuto1! * 100) / 100, 1.36);
+igual("TCL: avisa 4K por software", rt.avisos.some((a) => a.includes("4K só decodifica por software")), true);
+igual("TCL: avisa HDR 10 bits", rt.avisos.some((a) => a.includes("10 bits")), true);
+igual("TCL: avisa a 3ª camada", rt.avisos.some((a) => a.includes("Até 2 vídeos")), true);
 
 if (falhas) {
   console.error(`\n${falhas} falha(s) no teste do WJVideoMaker`);

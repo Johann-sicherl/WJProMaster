@@ -178,7 +178,8 @@
   `drive.file`), pasta do dispositivo, pendrive e galeria. Especificação e roteiro V0–V6 em
   `docs/global/wjvideomaker.md`. Decisões (05/11/2026): mídia **fora do cofre** (o `.wjvid` guarda
   vínculos), **1080p** no tablet (4K só no computador), exportação no cofre **sem versões**, extensão
-  `.wjvid`, pasta "Vídeos". V0 (teste do aparelho, `video/aparelho/`) entregue.
+  `.wjvid`, pasta "Vídeos". V0 (teste do aparelho, `video/aparelho/`) entregue e medido no TCL: até 1080p por hardware,
+  2 vídeos 1080p simultâneos, 4K com proxy, exportação MP4 H.264 + AAC (≈ 1,4 min por minuto).
 - Especificação e estado de cada face: `docs/global/<face>.md`.
 
 ## 8. Hospedagem, versão e offline
@@ -193,5 +194,5 @@
 - PORTA_CANETA (exportação com arestas não-manifold, extrusão que não funde, corpo que some no corte):
   aguardando o ZIP com o STL original e o `.wjcad`.
 - Estados de exibição (aparência por estado): ainda não pedido para implementar.
-- WJVideoMaker: rodar o teste do aparelho no TCL (`video/aparelho/` → Copiar resultados) e criar a
-  chave de API do seletor do Google Drive (passos no §14 de `docs/global/wjvideomaker.md`).
+- WJVideoMaker: teste de pasta/pendrive com vídeos de verdade no TCL (o desempenho já foi medido,
+  §8 de `docs/global/wjvideomaker.md`) e a chave de API do seletor do Google Drive (passos no §14).
