@@ -252,61 +252,116 @@ async function testarImagem(f: File): Promise<string> {
   }
 }
 
-async function testarPasta() {
-  const sdp = (window as Janela).showDirectoryPicker;
-  if (!sdp) {
-    escrever("Pasta/pendrive: este navegador não tem o seletor de pastas. Use o teste 3 (escolher arquivos).");
-    return;
-  }
-  let pasta: PastaDisco;
+// Os arquivos do WJVideoMaker ficam no cofre do WJPDM (decisão do Johann, 06/11/2026): o teste lê
+// as cópias do cofre já configuradas (pasta do dispositivo e pendrive), sem perguntar outra pasta.
+// O módulo do cofre só carrega depois dos formatos, para a página abrir leve.
+let modCofreP: Promise<[typeof import("../comum/cofre"), typeof import("../comum/repositorios")]> | null = null;
+const modCofre = () => (modCofreP ??= Promise.all([import("../comum/cofre"), import("../comum/repositorios")]));
+
+/** Lista a mídia do cofre e mede leitura (maior vídeo) e escrita (arquivo temporário de 64 MB). */
+async function medirPastaCofre(nome: string, raiz: FileSystemDirectoryHandle) {
+  escrever(`== ${nome}: WJPDM ==`);
+  let cofre: FileSystemDirectoryHandle;
   try {
-    pasta = await sdp({ id: "wjvideo-teste", mode: "read" });
+    cofre = await raiz.getDirectoryHandle("WJPDM");
   } catch {
-    escrever("Pasta/pendrive: nenhuma pasta escolhida.");
+    escrever("  a pasta WJPDM ainda não existe aqui: salve algum arquivo no cofre e sincronize.");
     return;
   }
-  await exclusivo("Teste da pasta", async () => {
-    escrever(`== Pasta "${pasta.name}" ==`);
-    const conta: Record<TipoMidia | "outros", number> = { video: 0, imagem: 0, audio: 0, legenda: 0, lut: 0, outros: 0 };
-    let bytes = 0;
-    let vistos = 0;
-    let maior: File | null = null;
-    const t0 = performance.now();
-    const andar = async (p: PastaDisco, nivel: number) => {
-      for await (const e of p.values()) {
-        if (vistos >= 3000) return;
-        if (e.kind === "directory") {
-          if (nivel < 3 && !e.name.startsWith(".")) await andar(e, nivel + 1);
-          continue;
-        }
-        vistos++;
-        const tipo = classificarArquivo(e.name);
-        conta[tipo ?? "outros"]++;
-        if (!tipo) continue;
-        const f = await e.getFile();
-        bytes += f.size;
-        if (tipo === "video" && (!maior || f.size > maior.size)) maior = f;
+  const conta: Record<TipoMidia | "outros", number> = { video: 0, imagem: 0, audio: 0, legenda: 0, lut: 0, outros: 0 };
+  let bytes = 0;
+  let vistos = 0;
+  let maior: File | null = null;
+  const t0 = performance.now();
+  // pastas do sistema do cofre (.wjpdm) e cópias de versões ficam de fora
+  const andar = async (p: PastaDisco, nivel: number) => {
+    for await (const e of p.values()) {
+      if (vistos >= 5000) return;
+      if (e.kind === "directory") {
+        if (nivel < 6 && !e.name.startsWith(".") && !e.name.endsWith(" (versões)")) await andar(e, nivel + 1);
+        continue;
       }
-    };
-    await andar(pasta, 0);
-    escrever(`  ${vistos} arquivos (até 3 níveis) listados em ${fmt((performance.now() - t0) / 1000, 1)} s: ${conta.video} vídeos, ${conta.imagem} fotos, ${conta.audio} áudios, ${conta.legenda} legendas, ${conta.outros} outros · mídia ${mb(bytes)}`);
-    const v = maior as File | null;
-    if (!v) return;
-    const n = Math.min(v.size, 64 << 20);
-    let t = performance.now();
-    await v.slice(0, n).arrayBuffer();
-    const seq = n / 1048576 / ((performance.now() - t) / 1000);
-    // acesso salteado: é o que o editor faz ao pular pela linha do tempo
-    const saltos = 16;
-    t = performance.now();
-    for (let i = 0; i < saltos; i++) {
-      const pos = Math.floor(((i * 7919) % saltos) / saltos * Math.max(0, v.size - (1 << 20)));
-      await v.slice(pos, pos + (1 << 20)).arrayBuffer();
+      vistos++;
+      const tipo = classificarArquivo(e.name);
+      conta[tipo ?? "outros"]++;
+      if (!tipo) continue;
+      const f = await e.getFile();
+      bytes += f.size;
+      if (tipo === "video" && (!maior || f.size > maior.size)) maior = f;
     }
-    const salto = (performance.now() - t) / saltos;
-    escrever(`  maior vídeo: ${v.name} (${mb(v.size)}) · leitura contínua ${fmt(seq, 0)} MB/s · salto de 1 MB em ${fmt(salto, 0)} ms`);
-    escrever(`  ${await testarReproducao(v, "video")}`);
-    if (seq < 15) escrever("  ! leitura lenta: no editor, use \"Copiar para o aparelho\" para os vídeos desta pasta.");
+  };
+  await andar(cofre as unknown as PastaDisco, 0);
+  escrever(`  ${vistos} arquivos listados em ${fmt((performance.now() - t0) / 1000, 1)} s: ${conta.video} vídeos, ${conta.imagem} fotos, ${conta.audio} áudios, ${conta.outros} outros · mídia ${mb(bytes)}`);
+
+  // escrita: é o que importar e exportar fazem no cofre
+  const sis = await cofre.getDirectoryHandle(".wjpdm", { create: true });
+  const nomeTeste = "teste-velocidade-wjvideo.bin";
+  const bloco = new Uint8Array(4 << 20);
+  for (let i = 0; i < bloco.length; i++) bloco[i] = (i * 2654435761) >>> 24;
+  try {
+    const h = await sis.getFileHandle(nomeTeste, { create: true });
+    let t = performance.now();
+    const w = await h.createWritable();
+    for (let i = 0; i < 16; i++) await w.write(bloco);
+    await w.close();
+    const escrita = 64 / ((performance.now() - t) / 1000);
+    t = performance.now();
+    await (await h.getFile()).arrayBuffer();
+    const releitura = 64 / ((performance.now() - t) / 1000);
+    escrever(`  escrita de 64 MB: ${fmt(escrita, 0)} MB/s · releitura ${fmt(releitura, 0)} MB/s (pode vir do cache do sistema)`);
+    if (escrita < 10) escrever("  ! escrita lenta: importar um vídeo de 1 GB levaria mais de 1 min e meio.");
+  } catch (e) {
+    escrever(`  escrita não medida: ${(e as Error).message}`);
+  } finally {
+    await sis.removeEntry(nomeTeste).catch(() => {});
+  }
+
+  const v = maior as File | null;
+  if (!v) {
+    escrever("  sem vídeo no cofre: leitura de vídeo não medida (coloque um vídeo em qualquer pasta do WJPDM e repita).");
+    return;
+  }
+  const n = Math.min(v.size, 64 << 20);
+  let t = performance.now();
+  await v.slice(0, n).arrayBuffer();
+  const seq = n / 1048576 / ((performance.now() - t) / 1000);
+  // acesso salteado: é o que o editor faz ao pular pela linha do tempo
+  const saltos = 16;
+  t = performance.now();
+  for (let i = 0; i < saltos; i++) {
+    const pos = Math.floor((((i * 7919) % saltos) / saltos) * Math.max(0, v.size - (1 << 20)));
+    await v.slice(pos, pos + (1 << 20)).arrayBuffer();
+  }
+  const salto = (performance.now() - t) / saltos;
+  escrever(`  maior vídeo: ${v.name} (${mb(v.size)}) · leitura contínua ${fmt(seq, 0)} MB/s · salto de 1 MB em ${fmt(salto, 0)} ms`);
+  escrever(`  ${await testarReproducao(v, "video")}`);
+  if (seq < 15) escrever("  ! leitura lenta: o editor vai usar cópia leve (proxy) dos vídeos desta cópia do cofre.");
+}
+
+async function testarPasta() {
+  const [{ pastaDa }, { permissao }] = await modCofre();
+  const copias = [["tablet", "Pasta do dispositivo"], ["pendrive", "Pendrive"]] as const;
+  const raizes: { nome: string; raiz: FileSystemDirectoryHandle }[] = [];
+  let faltaToque = false;
+  for (const [c, nome] of copias) {
+    const p = await pastaDa(c);
+    if (!p) {
+      escrever(`${nome}: não configurada (⚙ Configurações do WJProMaster → cópias do cofre).`);
+      continue;
+    }
+    if (!(await permissao(p, true).catch(() => false))) {
+      escrever(`${nome}: sem permissão ou desconectado. Toque de novo em "2." e escolha Permitir.`);
+      faltaToque = true;
+      continue;
+    }
+    raizes.push({ nome, raiz: p });
+  }
+  if (!raizes.length) {
+    if (!faltaToque) escrever("Nenhuma cópia do cofre em pasta configurada neste aparelho.\n");
+    return;
+  }
+  await exclusivo("Teste da pasta do WJPDM", async () => {
+    for (const r of raizes) await medirPastaCofre(r.nome, r.raiz);
     escrever("");
   });
 }
@@ -349,6 +404,7 @@ void (async () => {
   await mostrarAparelho();
   await mostrarFormatos().catch((e) => escrever(`!! formatos: ${(e as Error).message}`));
   $<HTMLButtonElement>("av-medir").disabled = typeof VideoDecoder !== "function";
+  void modCofre().catch(() => {});
 })();
 {
   const b = botaoDiagnostico();
