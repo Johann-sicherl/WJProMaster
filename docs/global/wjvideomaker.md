@@ -7,7 +7,7 @@ Roda no **celular, tablet e computador** (navegador Chrome/Edge e PWA), tudo **n
 
 - Página: `video/` · código: `src/video/` · motor puro testado: `src/video/linha.ts`, `tempo.ts`,
   `quadros.ts` (`scripts/teste-video.ts`) · teste do aparelho em `video/aparelho/`
-- Arquivo: **`.wjvid`** (projeto: linha do tempo + vínculos para a mídia) no cofre do WJPDM, pasta
+- Arquivos: **tudo no cofre do WJPDM** — projeto **`.wjvid`** (linha do tempo + ids da mídia do cofre), mídia e exportações, pasta
   **"Vídeos"** · autosave no IndexedDB `wjvideo` · cache de mídia, miniaturas e proxies no **OPFS**
 - Status: **V0 ✅** (teste do aparelho em `video/aparelho/`, aberto pela caixa do início; números do
   TCL medidos em 05/11/2026, §8) · **V1** é a próxima (§12). Decisões do §14 tomadas em 05/11/2026.
@@ -24,7 +24,7 @@ Legenda: ✅ existe · 🟡 parcial · **V0…V6** fase deste documento · ⏸ r
 | Inspiração funcional | **Wondershare Filmora** (editor de vídeo de consumo avançado): biblioteca de mídia → linha do tempo com pistas → títulos, transições, efeitos, cor, áudio → exportar. Fluxo parecido; **nada copiado** (§2). |
 | Dá para editar vídeo no navegador do tablet? | **Sim.** O Chrome tem **WebCodecs** (decodificador e codificador de vídeo/áudio **do próprio aparelho, com aceleração de hardware**), **WebGL2** para compor os quadros e **Web Audio** para mixar. É o mesmo caminho dos editores web atuais. |
 | O que limita no tablet do Johann? | O **TCL Tab A1 Plus** (Snapdragon 4 Gen 2) decodifica/codifica em hardware **até 1080p60**. Vídeo 4K abre, mas a edição usa **proxy** (cópia leve em 720p, §6.3) e a exportação fica em **até 1080p**. **Medido no V0: 2 vídeos 1080p ao mesmo tempo** em tempo real (transição, sobreposição), composição a 54 qps, exportação de 1 min em ≈ 1,4 min (§8). |
-| Mídia fica onde? | **Onde já está** (Drive, pasta, pendrive, galeria). O projeto `.wjvid` guarda **vínculos** e a "impressão digital" de cada arquivo, não o vídeo. Assim o cofre não se enche de GB nem duplica vídeos a cada GO-IN (§7). Decidido em 05/11/2026. |
+| Mídia fica onde? | **No cofre do WJPDM**, como todos os arquivos do WJProMaster (decisão do Johann, 06/11/2026): projetos, vídeos, fotos, áudios e exportações. Importar da galeria, do pendrive ou do Drive **copia para o cofre**. Para caber, vídeo/foto/áudio entra como **arquivo de mídia**: uma cópia só em cada lugar, sem pasta "(versões)" e sem duplicar no banco do aparelho (§7.2). |
 | Formato de saída padrão | **MP4 (H.264 + AAC)**, que toca em tudo. Também WebM (VP9/AV1 + Opus), GIF, só áudio, quadro em PNG/JPEG (§9). |
 | Dependência nova | **Uma**: `mediabunny` (MPL-2.0, sem dependências, TypeScript) para **ler e gravar contêineres** MP4/MOV/WebM/MKV/MP3/WAV. Codificar/decodificar é do navegador (WebCodecs): não vai codec no app (§10). |
 | Onde fica no ecossistema | **Face separada e local** (como WJFlow e WJTaskPlan): não depende do servidor (G5). Integra com WJPDM (cofre), WJCAD/WJFlow (animações viram clipes) e WJApresentation (vídeo no slide) (§11). |
@@ -64,10 +64,10 @@ Legenda: ✅ existe · 🟡 parcial · **V0…V6** fase deste documento · ⏸ r
 
 | Fonte | Como entra | Abrir de novo depois | Limites |
 |---|---|---|---|
-| **Pasta do dispositivo** (Documentos, Câmera, Downloads) | **Procurar pasta** (`showDirectoryPicker`, como o cofre já faz): a biblioteca lista os vídeos, fotos e áudios dela, com miniaturas; ou **Escolher arquivos** (`showOpenFilePicker` / `<input type=file multiple>`) | Pasta escolhida com o seletor: o navegador lembra a permissão (pede um toque ao reabrir). Arquivo escolhido pelo `<input>`: **não** dá para reabrir sozinho → fica "mídia offline" com **Localizar…** (§7.3) | — |
-| **Pendrive** (USB-OTG no tablet/celular; USB no computador) | Igual à pasta (o Android mostra o pendrive no seletor) | Igual à pasta; desconectado → "mídia offline" até religar | Leitura de pendrive é lenta: **Copiar para o aparelho** (cache OPFS) é oferecido para clipes usados na linha do tempo |
-| **Galeria / câmera** (celular e tablet) | **Galeria** (`<input accept="video/*,image/*" multiple>`) e **Gravar agora** (`capture`) | Como arquivo escolhido: guardado no cache OPFS na importação (vídeos da câmera não têm caminho reabrível no Android) | Ocupa espaço do app: mostrar o tamanho do cache e **Limpar cache** |
-| **Google Drive** | **Escolher do Drive** abre o **seletor do Google (Google Picker)**: o usuário navega em todo o Meu Drive / Compartilhados comigo e escolhe vídeos/fotos; o arquivo escolhido passa a ser visível ao app no escopo atual `drive.file` | Pelo ID do arquivo no Drive (acesso renovado como no cofre, §5.3 das regras) | Leitura por partes (HTTP Range) sem baixar tudo; para editar sem internet ou com rede ruim: **Baixar para o aparelho** (OPFS). Precisa de **chave de API do navegador** no projeto Google `wjpromaster` (pendente com o Johann; sem ela a V1 sai sem o Drive) |
+| **Cofre do WJPDM** (lugar de todos os arquivos) | Biblioteca do projeto = explorador do cofre filtrado por mídia (pastas do WJPDM, padrão **Vídeos/Mídia**) | Pelo arquivo do cofre (URI `wj://pdm/...`): o editor lê o vídeo **direto da pasta do dispositivo** (cópia do cofre no tablet), por partes, sem carregar o arquivo inteiro | Pendrive e Drive recebem pela sincronia do cofre |
+| **Galeria / câmera** (celular e tablet) | **Importar da galeria** (`<input accept="video/*,image/*" multiple>`) e **Gravar agora** (`capture`): **copia para o cofre** (pasta escolhida, padrão Vídeos/Mídia) | Já está no cofre | Tempo de cópia ≈ tamanho ÷ escrita da pasta do dispositivo (teste 2 do V0) |
+| **Pendrive ou outra pasta fora do WJPDM** | **Importar arquivos** (`showOpenFilePicker`/`<input>`) ou **Importar pasta** (`showDirectoryPicker`): **copia para o cofre**, mantendo as subpastas | Já está no cofre | Vídeo que já está no WJPDM do pendrive não precisa importar: a sincronia traz para o tablet |
+| **Google Drive** | **Importar do Drive** abre o **seletor do Google (Google Picker)**: escolher vídeos/fotos em todo o Meu Drive / Compartilhados comigo; o arquivo é **copiado para o cofre** (no Drive ele vai para Meu Drive/WJPDM/…) | Já está no cofre | Precisa de **chave de API do navegador** no projeto Google `wjpromaster` (pendente com o Johann). **Atenção:** com o escopo `drive.file`, um vídeo colocado à mão (pelo app do Drive) dentro de Meu Drive/WJPDM **não aparece** no cofre; é preciso usar "Importar do Drive" |
 | **Cofre do WJPDM** | Explorador do cofre (mesmo de todos os apps): imagens, PDFs (1ª página como imagem ⏸), exportações de outras faces | Pelo URI `wj://pdm/...` | — |
 | **Outras faces** | WJCAD: **Gravar animação da peça** (giro 360°, explosão de montagem ⏸) → clipe; WJFlow: animação do escoamento → clipe; WJApresentation: slides como imagens (§11) | Pelo URI | ⏸ depois da V2 |
 
@@ -128,7 +128,7 @@ fotografias, autosave, várias janelas, faixa "Cofre:" ao abrir.
 
 | Aba | Comandos | Fase |
 |---|---|---|
-| **Mídia** | Importar (pasta, arquivos, pendrive, galeria, Drive, cofre), Gravar (câmera, microfone, tela no computador), pastas da biblioteca, filtros (vídeo/foto/áudio/em uso), ordenar, Localizar mídia offline, Copiar para o aparelho, Criar proxy | V1 (gravar V3) |
+| **Mídia** | Biblioteca = pastas de mídia do cofre; Importar para o cofre (galeria, arquivos, pasta/pendrive, Drive), Gravar (câmera, microfone, tela no computador), filtros (vídeo/foto/áudio/em uso), ordenar, Localizar no cofre, Criar proxy | V1 (gravar V3) |
 | **Editar** | Dividir no cursor, Aparar início/fim até o cursor, Excluir, Excluir e fechar o vão, Duplicar, Congelar quadro, Separar áudio, Agrupar, Velocidade, Inverter, Cortar e ampliar (recorte), Girar/espelhar, Transformar (posição, escala, rotação, opacidade), Sobreposição (imagem sobre imagem), Tela dividida, Pan & zoom em foto, Estabilizar ⏸, Rastrear movimento ⏸ | V1–V2 |
 | **Texto** | Título, Subtítulo/legenda, Rótulo inferior (nome/cargo), Créditos rolando, Texto com contorno/sombra/fundo, animação de entrada/saída, Legendas (importar/exportar SRT/VTT), Seta e cota (para vídeo técnico) | V2 (legendas V5) |
 | **Áudio** | Volume, *fade* in/out, quadros-chave de volume, Normalizar (LUFS), Abafar música sob a voz (*ducking*), Equalizador, Redução de ruído simples, Mudo/solo da pista, Narração (gravar no cursor), Marcar batidas, Detectar silêncios | V3 |
@@ -218,8 +218,8 @@ Regra do projeto mantida: **nada pesado na thread da UI**; o visualizador recebe
 - **Proxy**: cópia em 720p (ou 540p no celular) H.264 com quadros-chave frequentes, criada em
   segundo plano para vídeos acima do que o aparelho edita liso (4K, HEVC 10 bits, taxa muito alta).
   A edição usa o proxy; **a exportação sempre usa o original**. Liga/desliga por projeto.
-- Tudo no **OPFS** (`wjvideo/cache/<impressão digital>/`): proxies, miniaturas, formas de onda,
-  cópias de mídia do Drive/pendrive/galeria, trechos pré-renderizados. Tela "Cache" com tamanho por
+- Cache descartável no **OPFS** (`wjvideo/cache/<impressão digital>/`): proxies, miniaturas, formas de
+  onda e trechos pré-renderizados (os originais ficam só no cofre). Tela "Cache" com tamanho por
   projeto e **Limpar**. Pedir armazenamento persistente (`navigator.storage.persist`).
 
 ### 6.4 Exportação
@@ -227,8 +227,9 @@ Regra do projeto mantida: **nada pesado na thread da UI**; o visualizador recebe
 - Composição no mesmo motor do visualizador, mas **sem pular quadros** e na resolução final.
 - Progresso com tempo restante real; **mantém a tela ligada** (Wake Lock) e avisa que o Android pode
   pausar a exportação se o app for para segundo plano; **retomar** de onde parou ⏸.
-- Destino: cofre (pasta "Vídeos/Exportados", **sem histórico de versões** do arquivo de vídeo, decidido),
-  pasta do dispositivo, pendrive, Drive (envio em partes, retomável) ou Compartilhar.
+- Destino: **o cofre** (padrão "Vídeos/Exportados", como arquivo de mídia, sem versões), gravado
+  direto na pasta do dispositivo enquanto exporta; depois a sincronia leva ao pendrive e ao Drive.
+  **Compartilhar** (enviar para outros apps) continua disponível.
 
 ## 7. Projeto `.wjvid` e o cofre
 
@@ -239,8 +240,7 @@ JSON versionado (como os demais), pequeno — a mídia não vai dentro:
 ```
 { versao, nome,
   config: { largura, altura, fps: [num, den], amostragemAudio, corFundo },
-  midias: [ { id, nome, tipo, origem: { kind: "drive"|"pasta"|"pendrive"|"cofre"|"cache"|"face",
-             idDrive?, caminho?, uri? }, digital: { tamanho, duracaoUs, hashInicioFim },
+  midias: [ { id, nome, tipo, arquivo: "<id do arquivo no cofre>", digital: { tamanho, duracaoUs, hashInicioFim },
              largura, altura, fps, temAudio } ],
   pistas: [ { id, tipo: "video"|"audio", nome, mudo, travada, oculta } ],
   clipes: [ { id, pista, midia?, inicioUs, duracaoUs, entradaUs, velocidade, preso?,
@@ -254,22 +254,40 @@ JSON versionado (como os demais), pequeno — a mídia não vai dentro:
 - **Impressão digital** (tamanho + duração + hash do primeiro e do último MB): reencontra a mídia se
   ela mudar de lugar, e recusa trocar por outro arquivo com o mesmo nome.
 
-### 7.2 Cofre
+### 7.2 Cofre — tudo no WJPDM (decisão do Johann, 06/11/2026)
 
-- `.wjvid` salvo no cofre (pasta da face **"Vídeos"**), com o fluxo de sempre: primeiro salvar abre o
-  explorador do cofre e publica a versão 1; GO-OUT/GO-IN; cópias no Drive/pendrive/pasta.
-- **Mídia não entra no cofre** (decidido em 05/11/2026): vídeos têm centenas de MB a GB e cada
-  GO-IN guarda uma cópia na pasta "(versões)" das três cópias; o Drive e o pendrive se encheriam. A
-  mídia continua onde está e o projeto aponta para ela.
-- **Empacotar projeto** (opcional): copia projeto + mídia usada (só os trechos usados, com margem ⏸)
-  para uma pasta escolhida — para levar o projeto para outro aparelho ou arquivar.
+- Pasta da face **"Vídeos"** no cofre: projetos `.wjvid` (fluxo de sempre: primeiro salvar abre o
+  explorador e publica a versão 1; GO-OUT/GO-IN), **Vídeos/Mídia** (originais importados) e
+  **Vídeos/Exportados** (vídeos prontos). O usuário pode criar outras pastas.
+- O `.wjvid` guarda o **id do arquivo do cofre** de cada mídia; a tabela de referências do WJPDM
+  registra "projeto usa mídia" (**Usado em**: excluir um vídeo usado por um projeto avisa).
+
+**Por que "arquivo de mídia" (mudança no cofre, primeira parte da V1).** Hoje cada arquivo do cofre
+fica no banco do aparelho (IndexedDB), na pasta do dispositivo duas vezes (`.wjpdm/blobs/` e o
+arquivo visível) e mais uma vez em "(versões)"; o mesmo no pendrive e no Drive. Para um documento
+de 50 kB isso não importa; um vídeo de 1 GB ocuparia ≈ 4 GB no tablet e de novo no pendrive e no
+Drive, e o banco do navegador tem só ≈ 10 GB. O arquivo de mídia muda isso:
+
+| Item | Documento (como hoje) | Arquivo de mídia (vídeo, foto, áudio, exportação) |
+|---|---|---|
+| Banco do aparelho (IndexedDB) | conteúdo + registro | **só o registro** (nome, pasta, tamanho, impressão digital, duração) |
+| Pasta do dispositivo / pendrive | `.wjpdm/blobs/` + arquivo visível + "(versões)" | **só o arquivo visível** (o conteúdo é ele mesmo) |
+| Google Drive | idem, envio em uma requisição | **só o arquivo**, envio **retomável** em partes de 8 MB (o envio atual em uma requisição é para até 5 MB) |
+| Versões | uma por GO-IN | **sem versões** (vídeo não se edita no lugar; o projeto `.wjvid` é que tem versões) |
+| GO-OUT/GO-IN | sim | não (entra publicado; excluir vai para a lixeira, 30 dias) |
+| Sincronia | a mais recente vence | igual; conferência por tamanho + impressão digital (não relê GB à toa) |
+
+- **Sem pasta do dispositivo configurada** (ex.: computador sem cópia em pasta): a mídia fica no
+  OPFS do app, com aviso de espaço.
+- **Drive**: o espaço gratuito é 15 GB; a faixa "Cofre:" avisa quando o Drive estiver perto do fim.
+  Opção por cópia "levar vídeos ao Drive" (ligada por padrão, pode ser desligada para economizar).
+- **Pendrive**: vídeos copiam na primeira sincronia com progresso (MB/s medido no teste 2 do V0).
 
 ### 7.3 Mídia offline
 
-Ao abrir o projeto, cada mídia é procurada: cache OPFS → origem (Drive/pasta/pendrive) → pastas
-lembradas. Não achou: o clipe fica com faixa "mídia offline" e a biblioteca mostra **Localizar…**
-(escolher o arquivo ou a pasta; a impressão digital confere; achar uma reencontra as outras da mesma
-pasta). O projeto abre e edita normalmente; só a exportação exige tudo presente.
+Ao abrir o projeto, cada mídia é procurada no cofre: pasta do dispositivo → pendrive → Drive (baixa
+para a pasta do dispositivo). Não achou (arquivo ainda não sincronizado ou excluído): o clipe fica com
+faixa "mídia offline" e a biblioteca mostra **Localizar no cofre…** (a impressão digital confere). O projeto abre e edita normalmente; só a exportação exige tudo presente.
 
 ## 8. Requisitos não funcionais (metas, conferidas no V0 no TCL Tab A1 Plus)
 
@@ -287,7 +305,7 @@ pelo navegador, 10,2 GB de espaço para o app, armazenamento persistente):**
 | Composição WebGL2 no Worker, 1080p (2 vídeos + cor + título) | **54 qps** |
 | Exportação 1080p H.264, 10 s | 1 vídeo **22 qps** (1 min em ≈ 1,4 min) · 2 vídeos 20 qps (≈ 1,5 min) |
 | Cache OPFS, 64 MB | escrita 161 MB/s · leitura 1 808 MB/s |
-| Pasta/pendrive | não medido (pasta escolhida estava vazia) |
+| Pasta do WJPDM (dispositivo/pendrive) | a medir: o teste 2 agora lê as cópias do cofre e mede escrita (64 MB temporários) e leitura do maior vídeo |
 
 **Limites adotados para a V1 (tirados daí):**
 - Prévia em **qualidade completa** (1080p) com até **2 vídeos ao mesmo tempo**; a partir do 3º vídeo
@@ -357,7 +375,7 @@ pelo navegador, 10,2 GB de espaço para o app, armazenamento persistente):**
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
 | **V0** ✅ | **Teste do aparelho** (`video/aparelho/`, como o do WJFlow): lista codecs de decodificação e codificação com aceleração (H.264/HEVC/VP9/AV1/AAC/Opus) e resoluções aceitas; mede decodificação simultânea (1, 2, 3 vídeos 1080p), composição WebGL2 e exportação de 10 s; espaço do OPFS; seletores de pasta/pendrive | ✅ números do TCL anotados (§8) e limites da V1 definidos |
-| **V1** | **Núcleo utilizável**: página `video/` e caixa no início; projeto 16:9 ou 9:16; **importar de pasta, pendrive, galeria e Drive (Picker)**; biblioteca com miniaturas; linha do tempo com pista principal magnética + 1 pista de sobreposição + 1 de áudio; mover, aparar, dividir, excluir, fechar vão; fotos com duração; volume e *fade*; visualizador com qualidade automática; **exportar MP4 1080p**; `.wjvid` no cofre; mídia offline/Localizar; autosave e desfazer | caso 4 (fotos + música) e caso 5 (cortes de vídeos do pendrive) feitos no tablet do início ao fim |
+| **V1** | **Núcleo utilizável**: página `video/` e caixa no início; projeto 16:9 ou 9:16; **arquivo de mídia no cofre** (§7.2: sem versões, uma cópia só, envio retomável ao Drive); **importar para o cofre** da galeria, arquivos/pendrive e Drive (Picker); biblioteca com miniaturas; linha do tempo com pista principal magnética + 1 pista de sobreposição + 1 de áudio; mover, aparar, dividir, excluir, fechar vão; fotos com duração; volume e *fade*; visualizador com qualidade automática; **exportar MP4 1080p**; `.wjvid` no cofre; mídia offline/Localizar; autosave e desfazer | caso 4 (fotos + música) e caso 5 (cortes de vídeos do pendrive) feitos no tablet do início ao fim |
 | **V2** | **Montagem completa**: pistas ilimitadas, transformar (posição/escala/rotação/opacidade), recorte, girar/espelhar, sobreposição e tela dividida, pan & zoom em foto, **quadros-chave**, velocidade (constante, inverter, congelar), **títulos** e rótulos com animação, **transições**, marcadores, *roll*/*slip*, agrupar, copiar atributos | caso 1 (vídeo técnico) e caso 3 sem áudio avançado |
 | **V3** | **Áudio**: várias pistas, forma de onda, quadros-chave de volume, normalizar (LUFS), *ducking*, equalizador, redução de ruído simples, **gravar narração**, detectar silêncios (cortar automaticamente), marcar batidas | caso 3 completo (cortes no ritmo) |
 | **V4** | **Cor e efeitos**: correção básica, curvas, HSL, **LUT `.cube`**, croma, máscaras (inclusive desenhadas com a caneta), desfoque/mosaico de área com quadros-chave, vinheta, modos de mesclagem, antes/depois | croma e LUT conferidos com imagem de referência |
@@ -383,7 +401,8 @@ Tablet) e publicada na hora (regras 6, 7 e 9).
 
 ## 14. Decisões (05/11/2026: "seguir as recomendações")
 
-1. Mídia **fora do cofre** (vínculos + cache no aparelho + "Empacotar projeto").
+1. ~~Mídia fora do cofre~~ → **trocado pelo Johann em 06/11/2026: "use a mesma pasta do WJPDM,
+   centralize todos os arquivos lá"**. Tudo no cofre, com o arquivo de mídia do §7.2.
 2. Seletor do Google Drive com **chave de API do navegador**: falta o Johann criar a chave (Google
    Cloud, projeto `wjpromaster` → APIs e serviços → ativar "Google Picker API" → Credenciais → Criar
    credencial → Chave de API → restringir a sites `https://johann-sicherl.github.io/*` e à Picker API) e
@@ -424,12 +443,15 @@ de registrar (README §6). Na UI nunca aparece o nome do software de referência
   - Medição no Worker (`src/video/aparelho-worker.ts`), sem dependência nova: gera amostra sintética
     com o codificador do aparelho; decodifica 1–4 vídeos ao mesmo tempo; composição WebGL2 em
     OffscreenCanvas (2 vídeos + cor + título); exportação de 10 s com 1 e 2 vídeos; cache OPFS.
-  - Pasta/pendrive: lista mídia (3 níveis), leitura contínua e com saltos do maior vídeo, se abre.
+  - Teste 2 (06/11/2026): lê as cópias do cofre (pasta do dispositivo e pendrive, `WJPDM/` sem
+    `.wjpdm` e "(versões)"), lista a mídia, mede escrita de 64 MB (arquivo temporário apagado) e a
+    leitura contínua e com saltos do maior vídeo.
     Galeria: cada arquivo abre ou não (HEIC com aviso).
   - Resumo com recomendações (`recomendar` em `src/video/capacidade.ts`): vídeos simultâneos, proxy,
     qualidade da prévia, resolução e formato de exportação, minutos por minuto exportado.
   - Funções puras em `src/video/tempo.ts` (µs ↔ quadros, fps racional, código de tempo) e
     `capacidade.ts`, testadas em `scripts/teste-video.ts` (no `pnpm teste`).
 - Números do TCL medidos e limites da V1 definidos (§8).
-- Próximo: **V1**. Pendentes com o Johann: teste de pasta/pendrive com vídeos de verdade (a pasta do
-  primeiro teste estava vazia) e a chave do seletor do Google Drive (§14).
+- Próximo: **V1**, começando pelo **arquivo de mídia no cofre** (§7.2), depois o editor. Pendentes
+  com o Johann: teste 2 (pasta do WJPDM) com um vídeo dentro do cofre e a chave do seletor do
+  Google Drive (§14).

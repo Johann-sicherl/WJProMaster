@@ -125,7 +125,7 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 | WJPDM | `pdm/` | `src/pdm/` | `src/pdm/regras.ts` (`teste-pdm.ts`) | IndexedDB `wjpdm`, cópia `.wjpdm` |
 | WJERP | `erp/` | `src/erp/` | `src/erp/regras.ts` (`teste-erp.ts`) | IndexedDB `wjerp`, cópia `.wjerp` |
 | WJTaskPlan | `tarefas/` | `src/tarefas/` | `src/tarefas/regras.ts` (`teste-tarefas.ts`) | IndexedDB `wjtaskplan`; `WJTaskPlan/tarefas.json` + `.csv` (pasta irmã do WJPDM nas cópias) |
-| WJVideoMaker | `video/aparelho/` (V0; editor `video/` na V1) | `src/video/` | `src/video/tempo.ts`, `capacidade.ts` (`teste-video.ts`) | `.wjvid` (vínculos para a mídia, que fica fora do cofre); teste do aparelho em Worker com WebCodecs + WebGL2 |
+| WJVideoMaker | `video/aparelho/` (V0; editor `video/` na V1) | `src/video/` | `src/video/tempo.ts`, `capacidade.ts` (`teste-video.ts`) | `.wjvid` + mídia e exportações, **tudo no cofre do WJPDM** (vídeo/foto = arquivo de mídia, sem versões); teste do aparelho em Worker com WebCodecs + WebGL2 |
 | WJFlow | `flow/` (+ `flow/aparelho/`) | `src/flow/` | `src/flow/lbm.ts`, `geometria.ts`, `estudo.ts` (`teste-flow.ts`) | `.wjflow` (estudo + peça), autosave IndexedDB `wjflow`; túnel de vento LBM D3Q19 em WebGPU |
 
 Integrações já feitas: o WJPDM abre arquivos nos apps (grava o autosave do app; o WJCAD abre direto
