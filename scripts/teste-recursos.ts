@@ -1083,6 +1083,39 @@ verdade("nome repetido ganha o próximo número", nomeUnico(["Extrusão1", "Cort
   verdade("peça inserida: corpo separado com o volume do pino", rI.corpos?.length === 2 && Math.abs((rI.volume ?? 0) - (rp.volume ?? 0) - V) < 1e-3);
 }
 
+// ---------- recurso fino em perfil aberto com spline e canto agudo (escala real 1:1) ----------
+{
+  // volume pela malha da tela (com o sinal dos triângulos): face virada para dentro muda a conta
+  const volumeDaMalha = (m: NonNullable<ReturnType<typeof regenerar>["malha"]>) => {
+    let v = 0;
+    for (let t = 0; t < m.faces.length; t += 3) {
+      const ini = m.faces[t], qtd = m.faces[t + 1];
+      for (let k = ini; k < ini + qtd; k += 3) {
+        const p = (i: number) => [m.vertices[i * 3], m.vertices[i * 3 + 1], m.vertices[i * 3 + 2]];
+        const [a, b, c] = [p(m.triangulos[k]), p(m.triangulos[k + 1]), p(m.triangulos[k + 2])];
+        v += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+      }
+    }
+    return v;
+  };
+  for (const [nome, fim] of [["spline voltando em V sobre a base", [60, 85]], ["spline encostando no começo da cadeia (anel)", [100, 100.1]]] as const) {
+    const e = novoEsboco(1, { tipo: "plano", plano: "XY", deslocamento: 0 }) as FeatureEsboco;
+    const P = (id: string, x: number, y: number) => e.pontos.push({ id, x, y });
+    P("a", 100, 100); P("b", 0, 100); P("c", 0, 0); P("d", 80, 0);
+    P("s1", 60, 5); P("s2", 25, 20); P("s3", 30, 60); P("s4", 70, 92); P("s5", fim[0], fim[1]);
+    e.geos.push({ id: "l1", tipo: "linha", p1: "a", p2: "b" }, { id: "l2", tipo: "linha", p1: "b", p2: "c" }, { id: "l3", tipo: "linha", p1: "c", p2: "d" });
+    e.geos.push({ id: "sp", tipo: "spline", pontos: ["d", "s1", "s2", "s3", "s4", "s5"] } as never);
+    const x = novaFeature("extrusao", 1) as FeatureExtrusao;
+    x.esboco = e.id;
+    x.condicao = { tipo: "cego", dist: 10 };
+    x.profundidade = 10;
+    x.fino = { ativo: true, tipo: "uma", t1: 2, t2: 2, inverter: false };
+    const r = regenerar([e, x]);
+    const vm = r.malha ? volumeDaMalha(r.malha) : NaN;
+    confere(`fino com ${nome}: sem erro, volume da malha = volume do sólido (nenhuma face virada)`, r.erros.length ? NaN : vm / (r.volume ?? NaN), 1, 0.02);
+  }
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);

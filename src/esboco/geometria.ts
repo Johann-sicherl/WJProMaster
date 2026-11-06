@@ -738,3 +738,39 @@ export function cadeiaAberta(esb: Pick<FeatureEsboco, "pontos" | "geos">): P2[] 
   }
   return out;
 }
+
+/**
+ * Tira os laços de uma polilinha deslocada (offset): onde ela cruza a si mesma — curva mais fechada
+ * que o deslocamento, pontos muito juntos de spline —, o trecho entre os cruzamentos é cortado e
+ * fica o ponto de cruzamento. Sem isso a faixa do recurso fino sai com autointerseção e o sólido
+ * fica com faces viradas (somem na tela).
+ */
+export function limparLacos(pl: P2[], maxLaco = Infinity): P2[] {
+  // pontos repetidos/colados atrapalham o teste de cruzamento
+  const pts: P2[] = [];
+  for (const p of pl) if (!pts.length || dist(pts[pts.length - 1], p) > 1e-7) pts.push(p);
+  const cruza = (a: P2, b: P2, c: P2, d: P2): P2 | null => {
+    const r = { x: b.x - a.x, y: b.y - a.y }, s = { x: d.x - c.x, y: d.y - c.y };
+    const den = r.x * s.y - r.y * s.x;
+    if (Math.abs(den) < 1e-14) return null;
+    const qp = { x: c.x - a.x, y: c.y - a.y };
+    const t = (qp.x * s.y - qp.y * s.x) / den, u = (qp.x * r.y - qp.y * r.x) / den;
+    const e = 1e-9;
+    return t > e && t < 1 - e && u > e && u < 1 - e ? { x: a.x + t * r.x, y: a.y + t * r.y } : null;
+  };
+  for (let i = 0; i < pts.length - 3; i++) {
+    // o cruzamento mais distante dentro do limite corta o laço inteiro (laços aninhados saem juntos);
+    // laço maior que `maxLaco` (comprimento) é o perfil cruzando a si mesmo de verdade: fica
+    let comp = dist(pts[i], pts[i + 1]);
+    let corte = -1;
+    let x: P2 | null = null;
+    for (let j = i + 2; j < pts.length - 1; j++) {
+      comp += dist(pts[j - 1], pts[j]);
+      if (comp > maxLaco) break;
+      const y = cruza(pts[i], pts[i + 1], pts[j], pts[j + 1]);
+      if (y) (corte = j), (x = y);
+    }
+    if (x) pts.splice(i + 1, corte - i, x);
+  }
+  return pts;
+}

@@ -142,7 +142,7 @@ export interface Arquivo {
   lixeira?: boolean;
   /** quando foi para a lixeira (destruído sozinho após 30 dias) */
   lixeiraData?: string;
-  /** arquivo novo que nunca teve GO-IN: existe só no dispositivo (não vai para pendrive/Drive) */
+  /** arquivo que nunca teve GO-IN: vai para as cópias do cofre (índice interno), mas não aparece publicado */
   soLocal?: boolean;
   /** cópia de trabalho (o que o app salvou desde o último GO-IN); ausente = igual à última versão */
   trabalho?: { blob: string; tamanho: number; data: string; autor: string };

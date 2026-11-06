@@ -54,7 +54,12 @@ export class RepositorioDrive implements Repositorio {
   constructor(private token: () => string, private buscar: Buscar = (...a) => fetch(...a)) {}
 
   private async req(url: string, init: RequestInit = {}): Promise<Response> {
-    const r = await this.buscar(url, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${this.token()}` } });
+    // rede "pendurada" (Wi-Fi sem internet): desiste a tempo, em vez de travar a sincronia e o salvar
+    const envio = !!init.body;
+    const limite = typeof AbortSignal !== "undefined" && "timeout" in AbortSignal ? AbortSignal.timeout(envio ? 120000 : 15000) : undefined;
+    const r = await this.buscar(url, { ...init, ...(limite && !init.signal ? { signal: limite } : {}), headers: { ...(init.headers ?? {}), Authorization: `Bearer ${this.token()}` } }).catch((e: Error) => {
+      throw new ErroDrive(0, e?.name === "TimeoutError" || e?.name === "AbortError" ? "sem resposta do Google (sem internet?)" : "sem conexão com o Google");
+    });
     if (!r.ok) {
       const t = await r.text().catch(() => "");
       throw new ErroDrive(r.status, r.status === 401 ? "acesso ao Google vencido (reconecte)" : r.status === 403 ? "o Google recusou o acesso (confira o usuário de teste e o escopo drive.file)" : `Drive respondeu ${r.status} ${t.slice(0, 120)}`);

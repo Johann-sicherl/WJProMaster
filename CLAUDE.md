@@ -151,9 +151,11 @@ WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulaç
   Voltar, Pasta acima, caminho clicável, Nova pasta, pastas **e** arquivos em detalhes, duplo clique/toque
   entra na pasta ou escolhe o arquivo; o mesmo explorador serve para Abrir do cofre e para escolher peça/
   modelo; `explorarCofre` em `src/comum/cofre.ts`) e **já publica a versão 1** no dispositivo, no pendrive e no Drive (GO-IN automático; o
-  arquivo segue em GO-OUT com quem salvou). **Os seguintes gravam só no dispositivo** (cópia de
-  trabalho em GO-OUT). **GO-IN** (sem comentário: é só a cópia) cria a versão e publica no pendrive
-  e no Drive (cópias `publicado`: só recebem o que passou por GO-IN, `vistaPublicada`); no WJPDM há
+  arquivo segue em GO-OUT com quem salvou). **Todo salvar vai também para todas as cópias** (06/11/2026:
+  cópia de trabalho e arquivo nunca publicado no índice interno `.wjpdm`, para abrir em qualquer aparelho;
+  a mensagem diz onde chegou). **GO-IN** (sem comentário: é só a cópia) cria a versão e publica: os
+  **arquivos visíveis** do pendrive e do Drive só mostram o que passou por GO-IN (`vistaPublicada` só nos
+  visíveis; o índice e os conteúdos vão inteiros); no WJPDM há
   **GO-IN da pasta** inteira (com as subpastas). Nas três cópias, ao lado de cada arquivo fica a pasta
   `<nome> (versões)/<nome> v<n>[ rev X].<ext>` com uma cópia de cada GO-IN (`visiveisDoIndice`); o app
   mostra só os arquivos. Arquivos antigos `soLocal` ("só no dispositivo") continuam até o GO-IN. Aba **Cofre** na lateral direita de cada app
@@ -243,7 +245,7 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
 - **Versão** ao lado do WJProMaster na página inicial e do nome de cada app (`%WJ_VERSAO%` no HTML, `__VERSAO__` no código): `<version do package.json>.<GITHUB_RUN_NUMBER>`
   (`__VERSAO__` em `vite.config.ts`; em desenvolvimento termina em `.dev`). O último número sobe sozinho a cada
   publicação; os três primeiros só mudam editando `version` no `package.json` (entregas grandes).
-- Offline: o build gera `precache.json` (todos os arquivos) e carimba a versão do cache no `sw.js`
+- Offline: **cache primeiro também nas páginas** (abrir não espera a rede; versão nova pela faixa). O build gera `precache.json` (todos os arquivos) e carimba a versão do cache no `sw.js`
   (plugin `offline` em `vite.config.ts`). O service worker guarda na instalação só as páginas e os
   arquivos pequenos; o kernel `.wasm` (~23 MB, 7 MB comprimido) é guardado quando o WJCAD termina de
   carregá-lo (mensagem `guardar`, reaproveitando o cache HTTP: nada é baixado duas vezes). Não editar

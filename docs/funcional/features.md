@@ -45,6 +45,11 @@ Seleção inicial: se nada estiver selecionado, pede um **esboço** (ou plano/fa
 - Espessura T1 (e T2)
 - **Filete nos cantos** (contorno aberto) → raio
 - **Tampar extremidades** (contorno fechado) → espessura da tampa
+- Perfil **aberto** (linhas, arcos, splines): a faixa é montada pelos deslocamentos da cadeia; laços
+  pequenos do deslocamento são cortados e, se a faixa se sobrepõe (canto agudo em "V", spline voltando
+  sobre a linha, perfil encostando em si mesmo), ela é feita por pedaços unidos pelo kernel — sem isso o
+  sólido saía com faces viradas, que sumiam na tela (corrigido em 06/11/2026; `faixaAberta` em
+  `src/kernel/regenerar.ts`, teste em `teste-recursos.ts`).
 
 **Caixa "Contornos selecionados"** (Selected Contours)
 - Lista de regiões/contornos do esboço a usar (clicar nas regiões no viewport)

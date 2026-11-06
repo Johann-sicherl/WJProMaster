@@ -144,7 +144,7 @@ const AGORA = "2026-10-28T12:00:00.000Z";
   igual("pendrive tem a cópia de trabalho", [pen.blobs.get("w1"), pen.visiveis.get("CAD/Eixo.wjcad")], ["trabalho", "w1"]);
 }
 
-// 9. GO-OUT fica no dispositivo: pendrive (publicação) não recebe arquivo novo nem cópia de trabalho
+// 9. pendrive (publicação): guarda tudo no índice (abre em outro aparelho), mas MOSTRA só o publicado
 {
   const ap = new Memoria("aparelho"), tab = new Memoria("tablet"), pen = new Memoria("pendrive");
   pen.publicado = true;
@@ -154,8 +154,8 @@ const AGORA = "2026-10-28T12:00:00.000Z";
   ], { n1: "novo", b1: "v1", w1: "trabalho" });
   await sincronizar([ap, tab, pen], AGORA);
   igual("pasta do dispositivo recebe tudo", [tab.indice!.arquivos.length, tab.blobs.has("n1"), tab.blobs.has("w1")], [2, true, true]);
-  igual("pendrive só recebe o publicado", [pen.indice!.arquivos.map((a) => a.id), pen.blobs.has("n1"), pen.blobs.has("w1")], [["Eixo"], false, false]);
-  igual("pendrive mostra a versão publicada", [pen.indice!.arquivos[0].trabalho, pen.visiveis.get("CAD/Eixo.wjcad")], [undefined, "b1"]);
+  igual("pendrive guarda tudo no índice (outro aparelho abre o último salvar)", [pen.indice!.arquivos.map((a) => a.id).sort(), pen.blobs.has("n1"), pen.blobs.has("w1"), pen.indice!.arquivos.find((a) => a.id === "Eixo")!.trabalho?.blob], [["Eixo", "Novo"], true, true, "w1"]);
+  igual("pendrive MOSTRA só o publicado (Eixo na v1; Novo, nunca publicado, não aparece)", [pen.visiveis.get("CAD/Eixo.wjcad"), [...pen.visiveis.keys()].some((k) => k.includes("Novo"))], ["b1", false]);
   const r2 = await sincronizar([ap, tab, pen], AGORA);
   igual("cópia de trabalho continua no aparelho (sem conflito)", [ap.indice!.arquivos.find((a) => a.id === "Eixo")!.trabalho?.blob, r2.conflitos.length], ["w1", 0]);
   // GO-IN: vira versão 2, sai do "só no dispositivo" e chega ao pendrive
@@ -168,6 +168,23 @@ const AGORA = "2026-10-28T12:00:00.000Z";
   eixo.mod = "2026-10-28T11:30:00.000Z";
   await sincronizar([ap, tab, pen], AGORA);
   igual("depois do GO-IN o pendrive tem os dois", [pen.indice!.arquivos.map((a) => a.id).sort(), pen.blobs.has("n1"), pen.blobs.has("w1")], [["Eixo", "Novo"], true, true]);
+}
+
+// 9b. dois aparelhos (computador e tablet) com a mesma cópia de publicação (Drive/pendrive):
+//     o que se salva num (cópia de trabalho, ou arquivo nunca publicado) abre no outro
+{
+  const pc = new Memoria("aparelho"), tablet = new Memoria("aparelho"), drive = new Memoria("Google Drive");
+  drive.publicado = true;
+  com(pc, [
+    arq("Eixo", ["b1"], "2026-11-05T10:00:00.000Z", { trabalho: { blob: "w9", tamanho: 1, data: "2026-11-05T10:00:00.000Z", autor: "J" }, checkout: { usuario: "J", data: "x" } }),
+    arq("Rascunho", ["r1"], "2026-11-05T10:00:00.000Z", { soLocal: true, checkout: { usuario: "J", data: "x" } }),
+  ], { b1: "v1", w9: "salvo no computador", r1: "rascunho do computador" });
+  await sincronizar([pc, drive], AGORA);
+  await sincronizar([tablet, drive], AGORA);
+  const eixo = tablet.indice!.arquivos.find((a) => a.id === "Eixo");
+  igual("tablet recebe o último salvar do computador (cópia de trabalho e conteúdo)", [eixo?.trabalho?.blob, tablet.blobs.get("w9")], ["w9", "salvo no computador"]);
+  igual("tablet recebe também o arquivo nunca publicado", [tablet.indice!.arquivos.some((a) => a.id === "Rascunho"), tablet.blobs.get("r1")], [true, "rascunho do computador"]);
+  igual("no Drive visível continua só o publicado", [drive.visiveis.get("CAD/Eixo.wjcad"), [...drive.visiveis.keys()].some((k) => k.includes("Rascunho"))], ["b1", false]);
 }
 
 // 10. salvar de novo (cópia de trabalho ou rascunho nunca publicado substituídos) não é conflito
@@ -197,10 +214,10 @@ const AGORA = "2026-10-28T12:00:00.000Z";
     { id: "Rasc>Eixo>", pai: "Rasc", filho: "Eixo", tipo: "componente", quantidade: 1, mod: "2026-10-29T10:00:00.000Z" },
   ];
   await sincronizar([ap, pen], AGORA);
-  igual("pendrive recebe só a referência do arquivo publicado", pen.indice!.referencias.map((r) => r.id), ["Mont>Eixo>"]);
+  igual("pendrive guarda as referências (também do arquivo nunca publicado)", pen.indice!.referencias.map((r) => r.id).sort(), ["Mont>Eixo>", "Rasc>Eixo>"]);
   ap.indice = { ...ap.indice!, referencias: ap.indice!.referencias.filter((r) => r.pai !== "Mont"), exclusoes: [{ id: "Mont>Eixo>", tipo: "referencia", data: "2026-10-29T11:00:00.000Z" }] };
   await sincronizar([ap, pen], AGORA);
-  igual("referência excluída some do pendrive", pen.indice!.referencias.length, 0);
+  igual("referência excluída some do pendrive (a outra fica)", pen.indice!.referencias.map((r) => r.id), ["Rasc>Eixo>"]);
   const velho = new Memoria("antigo");
   velho.indice = { ...indiceVazio(), referencias: undefined } as unknown as Indice;
   const r = await sincronizar([ap, velho], AGORA);
