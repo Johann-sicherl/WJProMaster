@@ -45,8 +45,10 @@ export const indiceVazio = (): Indice => ({ formato: "wjpdm-indice", versao: 1, 
 export interface Repositorio {
   nome: string;
   /**
-   * Cópia de publicação (pendrive, Drive): recebe só o que passou por GO-IN — sem cópias de
-   * trabalho e sem arquivos que nunca foram publicados. A pasta do dispositivo recebe tudo.
+   * Cópia de publicação (pendrive, Drive): os arquivos VISÍVEIS (pastas legíveis e "(versões)")
+   * mostram só o que passou por GO-IN. O índice interno (.wjpdm) e os conteúdos recebem tudo,
+   * inclusive a cópia de trabalho e o que nunca foi publicado (06/11/2026): o que se salva num
+   * aparelho abre em qualquer outro.
    */
   publicado?: boolean;
   lerIndice(): Promise<Indice | null>;
@@ -254,8 +256,10 @@ export async function sincronizar(repos: Repositorio[], agora: string): Promise<
     }
   }
   const { indice, conflitos } = mesclar(indices, agora);
-  const vista = (r: Repositorio) => (r.publicado ? vistaPublicada(indice) : indice);
-  const precisaDe = new Map(repos.map((r) => [r, blobsDoIndice(vista(r))]));
+  // todas as cópias guardam o índice inteiro (salvar em um aparelho abre no outro); as de
+  // publicação só MOSTRAM o publicado nos arquivos visíveis
+  const visiveis = (r: Repositorio) => (r.publicado ? vistaPublicada(indice) : indice);
+  const precisaDe = new Map(repos.map((r) => [r, blobsDoIndice(indice)]));
   const tem = new Map<Repositorio, Set<string>>();
   for (const r of [...vivos]) {
     try {
@@ -290,9 +294,8 @@ export async function sincronizar(repos: Repositorio[], agora: string): Promise<
   for (const r of vivos) {
     if (falhas.some((f) => f.repo === r.nome)) continue;
     try {
-      const v = vista(r);
-      await r.gravarVisiveis?.(v, (id) => r.lerBlob(id));
-      await r.gravarIndice(v);
+      await r.gravarVisiveis?.(visiveis(r), (id) => r.lerBlob(id));
+      await r.gravarIndice(indice);
       // blobs que nenhum arquivo usa mais (destruídos): liberam espaço
       const precisa = precisaDe.get(r)!;
       if (r.apagarBlob) for (const id of tem.get(r)!) if (!precisa.has(id)) await r.apagarBlob(id).catch(() => {});

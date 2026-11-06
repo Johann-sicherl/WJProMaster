@@ -373,12 +373,22 @@ async function explorarCofre(o: OpcoesExplorador): Promise<Escolha | null> {
     const { caixa, fechar } = janela(o.titulo);
     caixa.parentElement!.classList.add("wjc-explorador");
     let feito = false;
+    // a sincronia trouxe arquivos de outro aparelho: a lista se atualiza sozinha
+    const recarregar = async () => {
+      if (feito) return;
+      ps = await db.todos<Pasta>("pastas");
+      arqs.splice(0, arqs.length, ...(await db.todos<Arquivo>("arquivos")).filter((a) => !a.lixeira));
+      if (!novaAberta && !feito) void desenhar();
+    };
+    ouvintes.add(recarregar);
     const terminar = (r: Escolha | null) => {
       if (feito) return;
       feito = true;
+      ouvintes.delete(recarregar);
       fechar();
       fim(r);
     };
+    if (o.modo === "abrir") void sincronizarCofre({ pedir: false, publicar: true }).then(() => avisarMudanca(), () => {});
     new MutationObserver((_, ob) => {
       if (!caixa.isConnected) {
         ob.disconnect();
@@ -410,7 +420,7 @@ async function explorarCofre(o: OpcoesExplorador): Promise<Escolha | null> {
         ...pastas.map((p) => `<li data-k="p:${p.id}" tabindex="0" class="${sel === `p:${p.id}` ? "sel" : ""}"><span class="wje-n">${IC_PASTA}<span>${esc(p.nome)}</span></span><span class="wje-d">${p.mod ? quando(p.mod) : ""}</span><span class="wje-t">Pasta</span></li>`),
         ...arquivos.map((a) => {
           const deste = o.exts.includes(extensao(a.nome));
-          return `<li data-k="a:${a.id}" tabindex="0" class="${sel === `a:${a.id}` ? "sel" : ""}${deste ? "" : " outro"}"><span class="wje-n">${icArquivo(extensao(a.nome), deste)}<span>${esc(a.nome)}${a.checkout ? `<small>GO-OUT ${esc(a.checkout.usuario)}</small>` : ""}${a.soLocal ? `<small>só no dispositivo</small>` : ""}</span></span><span class="wje-d">${a.mod ? quando(a.mod) : ""}</span><span class="wje-t">${esc(tipoDe(a.nome))}</span></li>`;
+          return `<li data-k="a:${a.id}" tabindex="0" class="${sel === `a:${a.id}` ? "sel" : ""}${deste ? "" : " outro"}"><span class="wje-n">${icArquivo(extensao(a.nome), deste)}<span>${esc(a.nome)}${a.checkout ? `<small>GO-OUT ${esc(a.checkout.usuario)}</small>` : ""}${a.soLocal ? `<small>não publicado</small>` : ""}</span></span><span class="wje-d">${a.mod ? quando(a.mod) : ""}</span><span class="wje-t">${esc(tipoDe(a.nome))}</span></li>`;
         }),
       ];
       caixa.innerHTML = `
@@ -602,7 +612,7 @@ export async function escolherDoCofre(app: ChaveApp, titulo: string, exts: strin
 /**
  * Salva o documento do app no cofre, no dispositivo. Arquivo ligado: atualiza a cópia de trabalho
  * (faz o GO-OUT se o arquivo estiver livre). Primeira vez: pergunta a pasta do cofre e o nome; o
- * arquivo entra em GO-OUT e "só no dispositivo" até o primeiro GO-IN (publicação).
+ * arquivo entra em GO-OUT e já publica a versão 1; todo salvar vai também para as cópias do cofre.
  */
 export interface ExtrasSalvar {
   /** o que o arquivo usa (componentes da montagem, modelo do desenho): tabela de referências */
@@ -688,11 +698,27 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
   if (extras.referencias) await gravarReferencias(db, a.id, extras.referencias);
   if (!extras.arquivo) ligar(app, a.id);
   avisarMudanca();
-  // primeiro salvar: a versão 1 vai para o dispositivo, o pendrive e o Drive (GO-IN automático)
-  const sinc = await sincronizarCofre({ pedir: true, publicar: primeiro });
+  // todo salvar vai para todas as cópias (06/11/2026): abre em qualquer aparelho. Os arquivos
+  // visíveis do pendrive/Drive só mudam no GO-IN (o primeiro salvar já publica a versão 1)
+  const sinc = await sincronizarCofre({ pedir: true, publicar: true });
   const onde = caminhoDaPasta(await db.todos<Pasta>("pastas"), a.pasta);
-  if (primeiro) return `Salvo e publicado (versão 1): ${onde ? `${onde}/` : ""}${a.nome}. ${sinc} Segue em GO-OUT com você: os próximos salvamentos ficam no dispositivo até o GO-IN.${aviso}`;
-  return `Salvo no dispositivo, em GO-OUT: ${onde ? `${onde}/` : ""}${a.nome}. ${sinc} Faça o GO-IN para publicar no pendrive e no Drive.${aviso}`;
+  const destino = ondeChegou(sinc);
+  if (destino.faltou) faixaConexoes(sinc); // fica à vista até chegar (tenta de novo sozinho)
+  const caminho = `${onde ? `${onde}/` : ""}${a.nome}`;
+  if (primeiro) return `✓ Salvo e publicado (versão 1): ${caminho}. ${destino.texto} Segue em GO-OUT com você; o GO-IN publica as próximas versões.${aviso}`;
+  return `✓ Salvo: ${caminho} (cópia de trabalho, em GO-OUT). ${destino.texto} O GO-IN publica a versão.${aviso}`;
+}
+
+/** Onde o último salvar chegou (pela situação das cópias na sincronia que acabou de rodar). */
+function ondeChegou(sinc: string): { texto: string; faltou: boolean } {
+  const s = situacaoDasCopias();
+  const chegou = ["este aparelho", ...ROTULO_COPIA.filter(([k]) => s[k] === "ok").map(([, r]) => r)];
+  const faltou = ROTULO_COPIA.filter(([k]) => s[k] === "toque" || s[k] === "desconectado" || s[k] === "offline").map(([, r]) => r);
+  let texto = `Chegou em: ${chegou.join(", ")}.`;
+  if (faltou.length) texto += ` ⚠ Ainda NÃO chegou em: ${faltou.join(", ")} — vai sozinho quando a conexão voltar (ou toque em Conectar agora).`;
+  else if (s.drive === "nao") texto += " Google Drive não conectado: para abrir em outros aparelhos, conecte em Cópias do cofre.";
+  if (/conflito/.test(sinc)) texto += ` ${sinc}`;
+  return { texto, faltou: faltou.length > 0 };
 }
 
 /** Troca as referências do arquivo (montagem/desenho) na tabela; as que saíram viram exclusão. */
@@ -762,7 +788,7 @@ export async function goOut(id: string): Promise<string> {
 
 /**
  * GO-IN: a cópia de trabalho vira a próxima versão (uma cópia do arquivo, sem comentário), o
- * arquivo deixa de ser "só no dispositivo" e tudo é publicado no pendrive e no Drive. `manter`:
+ * arquivo nunca publicado ganha a versão e tudo aparece publicado no pendrive e no Drive. `manter`:
  * continua em GO-OUT. `renovacao`: pedida no toque (janela do Google).
  */
 export async function goIn(ids: string[], manter: boolean, renovacao?: Promise<boolean>): Promise<string> {
@@ -1096,8 +1122,8 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
           <dt>Revisão</dt><dd>${esc(atual.revisao || "—")}</dd>
           <dt>Versão</dt><dd>${atual.soLocal ? "nunca publicado" : `${ultimaV?.n ?? "—"}${ultimaV ? ` (${quando(ultimaV.data)})` : ""}`}</dd>
           <dt>GO-OUT</dt><dd>${atual.checkout ? (meu ? `com você desde ${quando(atual.checkout.data)}` : `com ${esc(atual.checkout.usuario)}`) : "livre (publicado)"}</dd>
-          <dt>Trabalho</dt><dd>${atual.trabalho ? `salvo em ${quando(atual.trabalho.data)} (não publicado)` : atual.soLocal ? "só no dispositivo" : "igual à última versão"}</dd></dl>
-        ${atual.soLocal ? `<p><span class="wjc-tag">só no dispositivo</span> faça o GO-IN para publicar no pendrive e no Drive.</p>` : ""}
+          <dt>Trabalho</dt><dd>${atual.trabalho ? `salvo em ${quando(atual.trabalho.data)} (não publicado)` : atual.soLocal ? "nunca publicado" : "igual à última versão"}</dd></dl>
+        ${atual.soLocal ? `<p><span class="wjc-tag">não publicado</span> já está nas cópias do cofre (abre em outros aparelhos); o GO-IN publica a versão.</p>` : ""}
         <div class="wjc-botoes">
           ${!atual.checkout ? `<button data-b="goout" class="destaque">GO-OUT</button>` : ""}
           ${meu ? `<button data-b="goin" class="destaque">GO-IN (publicar)</button>` : ""}
@@ -1109,7 +1135,7 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
         <div class="wjc-botoes"><button data-b="salvar" class="destaque">Salvar no cofre…</button></div>`}
       </section>
       <section><h3>Meus arquivos em GO-OUT (${lista.length})</h3>
-        ${lista.length ? `<ul class="wjc-go">${lista.map((x) => `<li><input type="checkbox" data-x="${x.id}" checked aria-label="Marcar ${esc(x.nome)}" /><span>${esc(x.nome)}${x.id === atual?.id ? " <small>(aberto)</small>" : ""}<br><small>${esc(appDe(x))} · ${esc(onde(x))}${x.trabalho ? ` · salvo ${quando(x.trabalho.data)}` : ""}</small> ${x.soLocal ? `<span class="wjc-tag">só no dispositivo</span>` : ""}</span><button data-i="${x.id}">GO-IN</button></li>`).join("")}</ul>
+        ${lista.length ? `<ul class="wjc-go">${lista.map((x) => `<li><input type="checkbox" data-x="${x.id}" checked aria-label="Marcar ${esc(x.nome)}" /><span>${esc(x.nome)}${x.id === atual?.id ? " <small>(aberto)</small>" : ""}<br><small>${esc(appDe(x))} · ${esc(onde(x))}${x.trabalho ? ` · salvo ${quando(x.trabalho.data)}` : ""}</small> ${x.soLocal ? `<span class="wjc-tag">não publicado</span>` : ""}</span><button data-i="${x.id}">GO-IN</button></li>`).join("")}</ul>
           <div class="wjc-botoes"><button data-b="goinMarcados" class="destaque">GO-IN dos marcados</button></div>
           <p>O GO-IN cria a versão e publica no pendrive e no Google Drive.</p>`
         : "<p>Nenhum arquivo em GO-OUT com você.</p>"}

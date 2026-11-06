@@ -6,6 +6,7 @@ import { casarFaces, type CorDeFace } from "../aparencia";
 import { coresDoStep } from "./coresImportadas";
 import {
   draw,
+  drawFaceOutline,
   drawCircle,
   drawEllipse,
   drawPolysides,
@@ -20,6 +21,7 @@ import {
   type Edge,
   type Face,
   type Shape3D,
+  type Sketch,
   cast,
   getOC,
   makeCompound,
@@ -32,7 +34,7 @@ import { assinaturaDados, deBase64, PREFIXO_ENVIADO } from "../model";
 import { distanciaAtePlano, excluirFace, moverCilindro, moverFacePlana } from "./edicaoDireta";
 import { malhaDoStl, type MalhaStl } from "./stl";
 import { centroDeMassa, dividirFaces, domo, eixosDoSistema, escalar, ferramentaRosca, projetarNoPlano, retaComPlano, retaComReta } from "./recursosExtras";
-import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
+import { aninhamento, cadeiaAberta, encontrarLacos, limparLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
 import { medidasFuro } from "./furos";
 import { RastreadorFaces } from "./facesRecurso";
@@ -342,6 +344,11 @@ function poligonoDesenho(pts: P2[]): Drawing {
 
 /** Desloca uma polilinha aberta para a esquerda (d > 0) ou direita, com cantos em meia-esquadria. */
 function deslocarPolilinha(pl: P2[], d: number): P2[] {
+  return limparLacos(deslocarBruto(pl, d), Math.max(1, Math.abs(d)) * 12); // laço de offset é da ordem da espessura
+}
+
+/** Deslocamento ponto a ponto (mesmo índice da polilinha original), sem limpar laços. */
+function deslocarBruto(pl: P2[], d: number): P2[] {
   const n = (a: P2, b: P2) => {
     const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
     return { x: -(b.y - a.y) / l, y: (b.x - a.x) / l };
@@ -354,6 +361,95 @@ function deslocarPolilinha(pl: P2[], d: number): P2[] {
     const cos = Math.max(0.2, (m.x * n1.x + m.y * n1.y) / lm);
     return { x: p.x + (m.x / lm) * (d / cos), y: p.y + (m.y / lm) * (d / cos) };
   });
+}
+
+/** O polígono fechado cruza a si mesmo? */
+function poligonoSeCruza(pts: P2[]): boolean {
+  const N = pts.length;
+  const cruza = (a: P2, b: P2, c: P2, d: P2) => {
+    const r = { x: b.x - a.x, y: b.y - a.y }, s = { x: d.x - c.x, y: d.y - c.y };
+    const den = r.x * s.y - r.y * s.x;
+    if (Math.abs(den) < 1e-14) return false;
+    const q = { x: c.x - a.x, y: c.y - a.y };
+    const t = (q.x * s.y - q.y * s.x) / den, u = (q.x * r.y - q.y * r.x) / den;
+    return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9;
+  };
+  for (let i = 0; i < N; i++)
+    for (let j = i + 2; j < N; j++) {
+      if (i === 0 && j === N - 1) continue;
+      if (cruza(pts[i], pts[(i + 1) % N], pts[j], pts[(j + 1) % N])) return true;
+    }
+  return false;
+}
+
+/**
+ * Faixa de um perfil aberto (recurso fino) entre os deslocamentos `fora` (esquerda) e `dentro`.
+ * Faixa simples: um polígono. Faixa que se sobrepõe (canto agudo em "V", curva voltando sobre a
+ * linha, pontos de spline muito juntos): pedaços simples — partidos nos cantos agudos e a cada
+ * poucos segmentos — unidos pelo kernel, o que dá a região certa sem autointerseção (com o
+ * polígono único o sólido saía com faces viradas, que somem na tela).
+ */
+function faixaAberta(pl: P2[], fora: number, dentro: number): Drawing {
+  const esq = deslocarPolilinha(pl, fora), dir = deslocarPolilinha(pl, -dentro);
+  const simples = [...esq, ...dir.slice().reverse()];
+  if (!poligonoSeCruza(simples)) return poligonoDesenho(simples);
+  const e = deslocarBruto(pl, fora), d = deslocarBruto(pl, -dentro);
+  // cortes: cantos agudos (> 60°) e a cada 12 segmentos
+  const cortes = [0];
+  for (let i = 1; i < pl.length - 1; i++) {
+    const u = { x: pl[i].x - pl[i - 1].x, y: pl[i].y - pl[i - 1].y }, v = { x: pl[i + 1].x - pl[i].x, y: pl[i + 1].y - pl[i].y };
+    const cos = (u.x * v.x + u.y * v.y) / ((Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y)) || 1);
+    if (cos < 0.5 || i - cortes[cortes.length - 1] >= 12) cortes.push(i);
+  }
+  cortes.push(pl.length - 1);
+  const pedacos: Drawing[] = [];
+  const pedaco = (a: number, b: number) => {
+    const pts = [...e.slice(a, b + 1), ...d.slice(a, b + 1).reverse()];
+    if (b - a > 1 && poligonoSeCruza(pts)) {
+      // ainda se cruza (laço local): segmento a segmento
+      for (let k = a; k < b; k++) pedaco(k, k + 1);
+      return;
+    }
+    if (poligonoSeCruza(pts)) return; // segmento degenerado: os vizinhos cobrem
+    // anti-horário (área positiva): pedaço "ao avesso" estraga a união
+    let area = 0;
+    for (let k = 0; k < pts.length; k++) {
+      const p = pts[k], q = pts[(k + 1) % pts.length];
+      area += p.x * q.y - q.x * p.y;
+    }
+    if (Math.abs(area) < 1e-9) return;
+    pedacos.push(poligonoDesenho(area > 0 ? pts : pts.slice().reverse()));
+  };
+  for (let k = 0; k < cortes.length - 1; k++) pedaco(cortes[k], cortes[k + 1]);
+  if (!pedacos.length) throw new Error("O perfil aberto não forma uma faixa válida para o recurso fino.");
+  // união robusta em 3D (a booleana 2D falha com arestas coincidentes entre pedaços vizinhos):
+  // prismas de 1 mm unidos em árvore, faces coplanares fundidas; a face de cima volta a ser desenho
+  let nivel = pedacos.map((D) => (D.sketchOnPlane("XY") as Sketch).extrude(1) as Shape3D);
+  while (nivel.length > 1) {
+    const prox: Shape3D[] = [];
+    for (let k = 0; k < nivel.length; k += 2) prox.push(k + 1 < nivel.length ? nivel[k].fuse(nivel[k + 1]) : nivel[k]);
+    nivel = prox;
+  }
+  const uniao = nivel[0].simplify();
+  const topo = (listarTopo(uniao, "face") as Face[]).filter((f) => f.geomType === "PLANE" && Math.abs(f.center.z - 1) < 1e-6);
+  if (topo.length !== 1) throw new Error("O perfil aberto não forma uma faixa válida para o recurso fino.");
+  // contorno externo; anéis (a faixa fechando sobre si) deixam furos: contornos internos saem
+  let D = drawFaceOutline(topo[0]);
+  const oc = getOC() as never as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const externo = oc.BRepTools.OuterWire(topo[0].wrapped);
+  const exp = new oc.TopExp_Explorer(topo[0].wrapped, oc.TopAbs_ShapeEnum.TopAbs_WIRE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  try {
+    for (; exp.More(); exp.Next()) {
+      const w = oc.TopoDS.Wire(exp.Current());
+      if (w.IsSame(externo)) continue;
+      const mf = new oc.BRepBuilderAPI_MakeFace(w, true);
+      D = D.cut(drawFaceOutline(cast(mf.Face()) as unknown as Face));
+      mf.delete();
+    }
+  } finally {
+    exp.delete();
+  }
+  return D;
 }
 
 /** Região do recurso fino: anel em contorno fechado, faixa em perfil aberto. */
@@ -378,9 +474,7 @@ function desenhoFino(esb: FeatureEsboco | null, base: Drawing | null, fino: Recu
   const pl = esb && cadeiaAberta(esb);
   if (!pl) throw new Error("O esboço não tem contorno fechado nem um perfil aberto contínuo.");
   // perfil aberto: esquerda = "fora"
-  const esq = deslocarPolilinha(pl, fora);
-  const dir = deslocarPolilinha(pl, -dentro);
-  return poligonoDesenho([...esq, ...dir.reverse()]);
+  return faixaAberta(pl, fora, dentro);
 }
 
 // ---------- raio contra a malha (até o próximo) ----------

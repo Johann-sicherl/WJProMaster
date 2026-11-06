@@ -93,9 +93,16 @@
 - **Primeiro salvar** (💾/Ctrl+S) de um documento: abre o **explorador do cofre** (§5.4) para escolher a
   pasta e o nome; o arquivo **já publica a versão 1** no dispositivo, no pendrive e no Google Drive (GO-IN
   automático) e segue em GO-OUT com quem salvou.
-- **Salvamentos seguintes gravam só no dispositivo** (banco do app + pasta padrão do dispositivo): é a
-  cópia de trabalho em GO-OUT. **O pendrive e o Drive só recebem o que passou por GO-IN** (cada GO-IN cria
-  a versão). No WJPDM há GO-IN da pasta inteira (com subpastas).
+- **Todo salvar vai para todas as cópias** (06/11/2026, garantia pedida pelo Johann: o que se salva no
+  computador abre no tablet e vice-versa): a cópia de trabalho em GO-OUT (e o arquivo nunca publicado)
+  vai para o dispositivo, a pasta do dispositivo, o pendrive e o Google Drive, no **índice interno do cofre**
+  (`WJPDM/.wjpdm`). Os **arquivos visíveis** do pendrive e do Drive (`WJPDM/<pastas>/<arquivo>` e as pastas
+  "(versões)") **continuam mudando só no GO-IN** — o GO-IN é a publicação e cria a versão. No WJPDM há
+  GO-IN da pasta inteira (com subpastas).
+- Depois de salvar, a mensagem diz **onde o arquivo chegou** ("Chegou em: este aparelho, Pasta do
+  dispositivo, Google Drive…"); se uma cópia ficou de fora ("⚠ Ainda NÃO chegou em: Google Drive"), a faixa
+  "Cofre:" fica à vista e a sincronia automática tenta de novo sozinha. O explorador "Abrir do cofre"
+  sincroniza ao abrir e atualiza a lista quando chegam arquivos de outro aparelho.
 - Aba **Cofre** na lateral direita de cada app: dados do documento (pasta, estado, revisão, versão, GO-OUT),
   GO-OUT / GO-IN / Desfazer GO-OUT e "Meus arquivos em GO-OUT" (todos os apps) com GO-IN por item ou dos
   marcados.
@@ -194,6 +201,9 @@
   GitHub Actions a cada merge no `main` (check, teste, build). Cloudflare Pages fica para depois.
 - Kernel de uma thread (`replicad_single`): não precisa de `crossOriginIsolated`.
 - Offline: service worker com precache; o kernel `.wasm` é guardado quando o WJCAD termina de carregá-lo.
+  **Páginas e arquivos vêm do cache primeiro** (06/11/2026): abrir não espera a rede (Wi-Fi sem internet
+  deixava o app pendurado); versão nova continua chegando pela faixa "Atualizar". Chamadas ao Google Drive
+  têm limite de tempo (15 s; envio 2 min): rede pendurada não trava a sincronia nem o salvar.
 
 ## 9. Pendências que dependem do Johann
 

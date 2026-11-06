@@ -25,9 +25,10 @@ Drive, da pasta do dispositivo e do pendrive (✓ / ! precisa de toque / ✕ / �
 clicável, Nova pasta, duplo clique/toque entra na pasta; nome e tipo embaixo; lembra a última pasta de
 cada app — o mesmo explorador abre e escolhe arquivos) e **já publica a versão 1** no
 dispositivo, no pendrive e no Drive (GO-IN automático, 29/10/2026); o arquivo segue em GO-OUT com
-quem salvou. Depois, **salvar grava só no dispositivo** a **cópia de trabalho** (✎). **GO-IN** — sem
-comentário nem escolha de conteúdo: é só a cópia — cria a versão e **publica no pendrive e no
-Drive**, que só recebem o que passou por GO-IN. **GO-IN da pasta** (menu da pasta no WJPDM e botão
+quem salvou. Depois, **salvar grava a cópia de trabalho** (✎) e a leva também para todas as cópias
+(pendrive, Drive, pasta do dispositivo) no índice interno `.wjpdm` (06/11/2026: abre em qualquer
+aparelho). **GO-IN** — sem comentário nem escolha de conteúdo: é só a cópia — cria a versão e
+**publica**: os arquivos visíveis do pendrive e do Drive só mostram o que passou por GO-IN. **GO-IN da pasta** (menu da pasta no WJPDM e botão
 "GO-IN da pasta"): todos os arquivos da pasta e das subpastas em GO-OUT com você; os de outras
 pessoas ficam de fora com aviso.
 ✅ **Pastas de versões nas cópias**: ao lado de cada arquivo, `<nome> (versões)/<nome> v1.wjcad`,

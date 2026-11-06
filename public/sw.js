@@ -77,8 +77,10 @@ self.addEventListener("fetch", (e) => {
       chave = u.href.replace(/index\.html$/, "");
     }
     const emCache = await cache.match(chave, { ignoreSearch: true });
-    // Página: rede primeiro (pega versão nova). Arquivos com hash: cache primeiro.
-    if (emCache && !ehPagina) return emCache;
+    // Cache primeiro, também nas páginas: abrir não espera a rede (Wi-Fi sem internet deixava a
+    // página pendurada dezenas de segundos). Versão nova: o navegador confere o sw.js sozinho, o
+    // service worker novo guarda as páginas dele na instalação e a faixa "Atualizar" aparece.
+    if (emCache) return emCache;
     try {
       const resp = await fetch(e.request);
       if (resp.ok && !ehPagina) cache.put(e.request, resp.clone());
