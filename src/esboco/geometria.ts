@@ -553,7 +553,7 @@ export type Laco =
 export class ErroPerfil extends Error {}
 
 /** Trechos orientados de uma geometria, do ponto `de` ao outro extremo. */
-function trechosDe(g: GeoEsboco, pts: MapaPontos, invertido: boolean): Trecho[] {
+export function trechosDe(g: GeoEsboco, pts: MapaPontos, invertido: boolean): Trecho[] {
   let t: Trecho[];
   if (g.tipo === "linha") {
     t = [{ tipo: "linha", a: pts.get(g.p1)!, b: pts.get(g.p2)! }];

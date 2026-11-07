@@ -201,10 +201,12 @@
   `.wjvid`, pasta "Vídeos". V0 (teste do aparelho, `video/aparelho/`) entregue e medido no TCL: até 1080p por hardware,
   2 vídeos 1080p simultâneos, 4K com proxy, exportação MP4 H.264 + AAC (≈ 1,4 min por minuto).
 - **WJCalcEng** (07/11/2026): face para guardar as formas de calcular do curso de engenharia do Johann.
-  Uma calculadora por módulo (lista à esquerda); a primeira é o **centro de gravidade em 2D**: esboço de
-  figuras (sólidas ou furos), **cotas dirigidas** de distância/raio/diâmetro, massa pelo **mesmo material**
-  (densidade × espessura) **ou informada por figura**, CG de cada figura e do conjunto, momentos de inércia
-  de área e de massa e memória de cálculo. Próximas (pedidas): equações de 1º e 2º grau, sistemas,
+  Uma calculadora por módulo; a primeira é o **centro de gravidade em 2D**. **O desenho é o esboço do
+  WJCAD** (07/11/2026: "exatamente igual ao Sketch do CAD 3D, com os mesmos recursos e relações com os
+  objetos e com a origem"): o mesmo editor, faixa Sketch, painel à esquerda, relações, cotas e solver,
+  numa vista só 2D. A diferença é o **painel lateral direito**: **massa única** (um material: densidade
+  × espessura) **ou massa de cada figura**, com o CG de cada figura (região fechada; contorno dentro de
+  outro = furo) e do conjunto, momentos de inércia de área e de massa e memória de cálculo. Próximas (pedidas): equações de 1º e 2º grau, sistemas,
   inequações, matrizes 3×3 por Cramer e Gauss, multiplicação de matrizes, leis de Newton, plano
   inclinado, atrito e trabalho. Detalhes em `docs/global/wjcalceng.md`.
 - Especificação e estado de cada face: `docs/global/<face>.md`.
