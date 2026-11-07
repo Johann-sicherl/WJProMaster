@@ -16,6 +16,8 @@ import { EditorEsboco, type Ferramenta, type Hospedeiro } from "../esboco/editor
 import { renderizarPainelEsboco } from "../esboco/painel";
 import { SolverEsboco } from "../esboco/solver";
 import { abrirCalibracao, lerPxPorMm, pxPorMmAutomatico } from "../esboco/escalaReal";
+import { IC } from "../comum/icones";
+import { buscarCalculadoras, calculadora } from "./modulos";
 import { calcularDoc, docNovo, validarDoc, type DocCalc, type P2, type ResultadoCg } from "./cg2d";
 
 const CHAVE = "wjcalc:documento";
@@ -583,32 +585,62 @@ async function copiarTabela() {
 // ---------------------------------------------------------------------------------------------
 // calculadoras (módulos)
 
-const MODULOS: { id: string; nome: string; pronto?: boolean }[] = [
-  { id: "cg2d", nome: "Centro de gravidade 2D", pronto: true },
-  { id: "eq1", nome: "Equação do 1º grau" },
-  { id: "eq2", nome: "Equação do 2º grau" },
-  { id: "sistemas", nome: "Sistemas com várias variáveis" },
-  { id: "inequacoes", nome: "Inequações" },
-  { id: "newton", nome: "Leis de Newton" },
-  { id: "plano", nome: "Plano inclinado" },
-  { id: "atrito", nome: "Força de atrito" },
-  { id: "trabalho", nome: "Trabalho" },
-  { id: "cramer", nome: "Matriz 3×3 — Cramer" },
-  { id: "gauss", nome: "Matriz 3×3 — Gauss" },
-  { id: "mult", nome: "Multiplicação de matrizes" },
-];
+/** Botão "Calculadora": abre o seletor por matéria com a lupa de pesquisa. */
 function montarCalculadoras() {
   const b = $("#ce-calc");
-  b.innerHTML = `<small>Calculadora</small><span>${escapar(MODULOS.find((m) => m.id === doc.modulo)?.nome ?? "")} ▾</span>`;
-  b.onclick = () => {
-    const r = b.getBoundingClientRect();
-    menu(r.left, r.bottom + 4, MODULOS.map((m) => ({
-      rotulo: `${m.id === doc.modulo ? "● " : ""}${m.nome}${m.pronto ? "" : " (em breve)"}`,
-      acao: () => {
-        if (!m.pronto) casca.avisar(`${m.nome}: em breve.`);
-      },
-    })));
+  b.innerHTML = `<small>Calculadora</small><span>${escapar(calculadora(doc.modulo)?.nome ?? "")} ▾</span>`;
+  b.onclick = () => abrirSeletor(b);
+}
+
+function abrirSeletor(ancora: HTMLElement) {
+  document.querySelector(".ce-seletor")?.remove();
+  const caixa = document.createElement("div");
+  caixa.className = "ce-seletor";
+  caixa.setAttribute("role", "dialog");
+  caixa.setAttribute("aria-label", "Calculadoras por matéria");
+  caixa.innerHTML = `<label class="ce-busca">${IC.localizar}<input type="search" placeholder="Pesquisar (ex.: bhaskara, 3x3)" aria-label="Pesquisar calculadora" autocomplete="off" /></label><div class="ce-materias"></div>`;
+  const campoBusca = caixa.querySelector("input")!;
+  const lista = caixa.querySelector<HTMLElement>(".ce-materias")!;
+  const fechar = () => {
+    caixa.remove();
+    document.removeEventListener("pointerdown", fora, true);
   };
+  const fora = (e: PointerEvent) => {
+    if (!caixa.contains(e.target as Node) && e.target !== ancora && !ancora.contains(e.target as Node)) fechar();
+  };
+  const escolher = (id: string) => {
+    const c = calculadora(id);
+    if (!c) return;
+    if (!c.pronto) return casca.avisar(`${c.nome}: em breve.`);
+    fechar();
+  };
+  const desenhar = () => {
+    const achadas = buscarCalculadoras(campoBusca.value);
+    lista.innerHTML = achadas.length
+      ? achadas.map((m) => `<section><h4>${escapar(m.nome)}</h4>${m.calculadoras.map((c) => `
+          <button data-id="${c.id}" class="${c.id === doc.modulo ? "atual" : ""}" ${c.pronto ? "" : 'aria-disabled="true"'}>
+            <span>${escapar(c.nome)}</span>${c.pronto ? (c.id === doc.modulo ? "<em>aberta</em>" : "") : "<em>em breve</em>"}
+          </button>`).join("")}</section>`).join("")
+      : `<p class="ce-nota">Nenhuma calculadora com "${escapar(campoBusca.value)}".</p>`;
+    lista.querySelectorAll<HTMLElement>("[data-id]").forEach((x) => (x.onclick = () => escolher(x.dataset.id!)));
+  };
+  campoBusca.oninput = desenhar;
+  campoBusca.onkeydown = (e) => {
+    if (e.key === "Escape") fechar();
+    else if (e.key === "Enter") {
+      // Enter abre a primeira calculadora pronta do resultado
+      const primeira = buscarCalculadoras(campoBusca.value).flatMap((m) => m.calculadoras).find((c) => c.pronto);
+      if (primeira) escolher(primeira.id);
+    }
+  };
+  desenhar();
+  document.body.append(caixa);
+  const r = ancora.getBoundingClientRect();
+  caixa.style.left = `${Math.max(4, Math.min(r.left, innerWidth - caixa.offsetWidth - 4))}px`;
+  caixa.style.top = `${r.bottom + 4}px`;
+  setTimeout(() => document.addEventListener("pointerdown", fora, true));
+  // no computador o cursor já fica na lupa; no toque, só se a pessoa tocar (o teclado não sobe sozinho)
+  if (!matchMedia("(pointer: coarse)").matches) campoBusca.focus();
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -208,7 +208,7 @@
   objetos e com a origem"): o mesmo editor, faixa Sketch, painel à esquerda, relações, cotas e solver,
   numa vista só 2D. A diferença é o **painel lateral direito**: **massa única** (um material: densidade
   × espessura) **ou massa de cada figura**, com o CG de cada figura (região fechada; contorno dentro de
-  outro = furo) e do conjunto, momentos de inércia de área e de massa e memória de cálculo. Próximas (pedidas): equações de 1º e 2º grau, sistemas,
+  outro = furo) e do conjunto, momentos de inércia de área e de massa e memória de cálculo. Calculadoras **organizadas por matéria** com **lupa de pesquisa** no seletor (07/11/2026). Próximas (pedidas): equações de 1º e 2º grau, sistemas,
   inequações, matrizes 3×3 por Cramer e Gauss, multiplicação de matrizes, leis de Newton, plano
   inclinado, atrito e trabalho. Detalhes em `docs/global/wjcalceng.md`.
 - **WJGoldDiamond** (07/11/2026): face de **modelagem 3D de joias** (nome do Johann). Construtores
