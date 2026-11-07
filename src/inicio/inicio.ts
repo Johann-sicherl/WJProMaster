@@ -76,6 +76,12 @@ const FACES: Face[] = [
     icone: svg(`<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M7.5 7h9M7.5 11h3M13.5 11h3M7.5 15h3"/><circle cx="15" cy="16" r="2.6" stroke="${C}"/><path d="M15 13.4V16h2.6" stroke="${C}"/>`),
   },
   {
+    // Especificação em docs/global/wjgolddiamond.md; construtores paramétricos de joias (J0–J6).
+    id: "joia", nome: "WJGoldDiamond", url: "joia/",
+    descricao: "Modelagem 3D de joias: aro por tamanho, gemas, garras, inglesa, pavé, gravação, peso em ouro e STL para fundição.",
+    icone: svg(`<path d="M5 9l3-4h8l3 4-7 8z"/><path d="M5 9h14M9.5 5L12 9l2.5-4" stroke="${C}"/><ellipse cx="12" cy="17.5" rx="6" ry="3"/>`),
+  },
+  {
     // Especificação em docs/global/wjvideomaker.md; por enquanto só o teste do aparelho (V0).
     id: "video", nome: "WJVideoMaker", url: "video/aparelho/", selo: "Teste do aparelho",
     descricao: "Edição de vídeo e fotos: linha do tempo, títulos, transições, cor, áudio; mídia do Drive, pasta ou pendrive.",

@@ -19,6 +19,7 @@ e identidade de objetos.
 | **WJTaskPlan** | tarefas em pastas, escritas à mão com a caneta, estados, prazos com alerta e painel | lista de tarefas com quadro de indicadores | `WJTaskPlan/tarefas.json` (+ `.csv`) ao lado do cofre | [taskplan.md](taskplan.md) |
 | **WJVideoMaker** | edição de vídeo e fotos em linha do tempo (títulos, transições, cor, áudio), mídia do Drive, pasta ou pendrive | editor de vídeo de consumo avançado | `.wjvid` + mídia e exportações, tudo no cofre do WJPDM | [wjvideomaker.md](wjvideomaker.md) |
 | **WJCalcEng** | cálculos de engenharia do curso: centro de gravidade e momento de inércia de figuras desenhadas com cotas; depois equações, matrizes e física | calculadoras de engenharia | `.wjcalc` | [wjcalceng.md](wjcalceng.md) |
+| **WJGoldDiamond** | modelagem 3D de joias: aro por tamanho, gemas, garras, inglesa, pavé, gravação, peso por liga, ficha e STL para fundição | CADs de joalheria e configuradores de anéis | `.wjgd` | [wjgolddiamond.md](wjgolddiamond.md) |
 | Integrações entre as faces | — | — | [integracoes.md](integracoes.md) |
 | Prompt-mestre para desenvolver | — | — | [prompt-mestre.md](prompt-mestre.md) |
 
@@ -144,7 +145,7 @@ WJProMaster/
 | **G8** WJERP fiscal e contábil | NF-e/NFS-e (via provedor homologado), SPED, contabilidade, conciliação bancária, boletos/PIX | exige conformidade legal; por último |
 
 Faces locais fora desta sequência, com roteiro próprio: **WJFlow** (A0–A6), **WJTaskPlan** e
-**WJVideoMaker** (V0–V6, `wjvideomaker.md` §12) e **WJCalcEng** (C1–C4, `wjcalceng.md` §1); não dependem do servidor.
+**WJVideoMaker** (V0–V6, `wjvideomaker.md` §12) **WJCalcEng** (C1–C4, `wjcalceng.md` §1) e **WJGoldDiamond** (J0–J7, `wjgolddiamond.md` §2); não dependem do servidor.
 
 A ordem pode mudar por decisão do Johann (por exemplo, antecipar o WJPDM se o uso no trabalho pedir).
 

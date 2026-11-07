@@ -1,6 +1,6 @@
 ---
 name: wjpromaster-mapa
-description: Mapa do código do WJProMaster (WJCAD, WJPDM, WJPlan, WJWrite, WJApresentation, WJCronProject, WJERP, WJTaskPlan, WJVideoMaker, WJCalcEng, WJFlow) — qual arquivo abrir para cada tipo de tarefa, onde está cada motor e teste, como validar no tablet e publicar. Usar ANTES de procurar com grep/find em qualquer tarefa de código ou documentação deste repositório, para ir direto aos arquivos certos e gastar menos contexto.
+description: Mapa do código do WJProMaster (WJCAD, WJPDM, WJPlan, WJWrite, WJApresentation, WJCronProject, WJERP, WJTaskPlan, WJVideoMaker, WJCalcEng, WJGoldDiamond, WJFlow) — qual arquivo abrir para cada tipo de tarefa, onde está cada motor e teste, como validar no tablet e publicar. Usar ANTES de procurar com grep/find em qualquer tarefa de código ou documentação deste repositório, para ir direto aos arquivos certos e gastar menos contexto.
 ---
 
 # Mapa do WJProMaster (consultar antes de explorar)
@@ -59,6 +59,7 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | WJTaskPlan | `src/tarefas/main.ts`, `regras.ts`, `escrita.ts`, `copias.ts` | `docs/global/taskplan.md` |
 | WJVideoMaker (V0) | `src/video/aparelho.ts`, `aparelho-worker.ts`, `capacidade.ts`, `tempo.ts` | `docs/global/wjvideomaker.md` |
 | WJCalcEng | `src/calceng/main.ts` · motor `src/calceng/cg2d.ts` | `docs/global/wjcalceng.md` |
+| WJGoldDiamond (joias) | `src/joia/main.ts`, `vista.ts`, `malhaGema.ts`, `worker.ts` · motor `src/joia/regras.ts` · sólido `src/joia/geometria.ts` (booleana `segura`) | `docs/global/wjgolddiamond.md` |
 | WJFlow | `src/flow/main.ts`, `gpu.ts` (WebGPU), `lbm.ts`, `geometria.ts`, `estudo.ts`, `campo.ts`, `vista3d.ts`, `aparelho.ts`, workers `cpu-worker.ts`, `pos-worker.ts`, `preparo-worker.ts` | `docs/global/wjflow.md` |
 | Integrações entre faces | — | `docs/global/integracoes.md` |
 | Status geral do CAD / lacunas priorizadas | — | `docs/funcional/README.md`, `referencia-introducao.md` |
@@ -74,7 +75,7 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 | `teste-importar.ts` | STEP/STL, montagem STEP |
 | `teste-montagem.ts` / `teste-desenho.ts` | solver de mates / projeção e desenho |
 | `teste-pdm.ts`, `teste-sincronia.ts`, `teste-drive.ts` | regras do cofre, sincronia das cópias, Drive simulado |
-| `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts` | motores das outras faces |
+| `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts`, `teste-joia.ts` | motores das outras faces |
 | `teste-mapa.ts` | este mapa em dia com `src/` e `scripts/` |
 | `estresse-*.{ts,cjs}`, `roteiro-ui.cjs` | estresse e roteiro de interface com Playwright (não entram no `pnpm teste`) |
 
