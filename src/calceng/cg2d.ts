@@ -1,71 +1,24 @@
 // WJCalcEng — Centro de gravidade em 2D (motor puro, testado em scripts/teste-calceng.ts).
-// Figuras planas (retângulo, círculo, setor circular, polígono/triângulo), sólidas ou furos.
-// A massa vem do material único (densidade × espessura × área) ou é informada por figura.
-// Saída: área, massa, centroide e momentos de inércia de cada figura e do conjunto
-// (teorema dos eixos paralelos), com a memória de cálculo. Unidades: mm, kg.
+// O desenho é um esboço do WJCAD (mesmas entidades, relações e cotas). Cada REGIÃO fechada do
+// esboço é uma figura: as regiões saem das curvas que não são de construção, ligadas pelas pontas
+// (como as regiões de contorno de um CAD); figuras encostadas e linhas que dividem uma área formam
+// regiões separadas; contorno dentro de contorno é furo (pode virar sólido). Integrais de área
+// exatas pelo teorema de Green em cada trecho (linha, arco, elipse, Bézier) com Gauss-Legendre.
+// Saída: CG de cada figura e do conjunto, momentos de inércia de área e de massa, memória de
+// cálculo no método das figuras compostas. Unidades: mm, kg.
 
-export interface Ponto {
-  x: number;
-  y: number;
-}
+import type { FeatureEsboco } from "../model";
+import { novoEsboco } from "../model";
+import {
+  angulo, areaAssinada, centroTresPontos, contornosDoTexto, dist, elipseDe, extremidades, intersecoes, mapaPontos, norm, pontoElipse, pontoNoPoligono,
+  rot90, trechosDe, type Elipse2, type P2, type Trecho,
+} from "../esboco/geometria";
+import * as op from "../esboco/operacoes";
 
-interface FiguraBase {
-  id: string;
-  nome: string;
-  /** Furo (área vazia): entra com área e massa negativas. */
-  furo?: boolean;
-  /** Massa informada (kg), usada no modo "massa por figura". */
-  massa?: number;
-}
-export interface Retangulo extends FiguraBase {
-  tipo: "retangulo";
-  /** Canto inferior esquerdo. */
-  x: number;
-  y: number;
-  /** Largura (em x) e altura (em y), > 0. */
-  l: number;
-  a: number;
-}
-export interface Circulo extends FiguraBase {
-  tipo: "circulo";
-  cx: number;
-  cy: number;
-  r: number;
-}
-export interface Setor extends FiguraBase {
-  tipo: "setor";
-  cx: number;
-  cy: number;
-  r: number;
-  /** Ângulo inicial (graus, anti-horário a partir de +x). */
-  a0: number;
-  /** Abertura (graus, 0 < varre ≤ 360). 180 = semicírculo, 90 = quarto de círculo. */
-  varre: number;
-}
-export interface Poligono extends FiguraBase {
-  tipo: "poligono";
-  pts: Ponto[];
-}
-export type Figura = Retangulo | Circulo | Setor | Poligono;
+export type { P2 };
 
-/** Ponto de uma figura para cotas: fig null = origem. "c" = centro; "v0".. = vértices; "p0"/"p1" = extremos do arco. */
-export interface RefPonto {
-  fig: string | null;
-  p: string;
-}
-export type TipoCota = "horizontal" | "vertical" | "alinhada" | "raio" | "diametro";
-export interface Cota {
-  id: string;
-  tipo: TipoCota;
-  a: RefPonto;
-  /** Segundo ponto (cotas de distância). */
-  b?: RefPonto;
-  valor: number;
-  /** Dirigida = comanda a geometria; senão, só mostra a medida (referência). */
-  dirigida: boolean;
-  /** Afastamento da linha de cota (mm), com sinal. */
-  desloc: number;
-}
+// ---------------------------------------------------------------------------------------------
+// documento
 
 export type ModoMassa = "densidade" | "massa";
 export interface Material {
@@ -75,67 +28,101 @@ export interface Material {
   /** mm */
   espessura: number;
 }
+/** O que o usuário define em cada região (pela chave da região). */
+export interface DadosRegiao {
+  nome: string;
+  /** Força furo (true) ou sólido (false); ausente = pela posição (dentro de outra = furo). */
+  furo?: boolean;
+  /** Massa informada (kg), no modo "massa de cada figura". */
+  massa?: number;
+}
 export interface DocCg2d {
-  figuras: Figura[];
-  cotas: Cota[];
+  esboco: FeatureEsboco;
+  regioes: Record<string, DadosRegiao>;
   material: Material;
 }
-
-/** Documento do WJCalcEng (.wjcalc): um módulo ativo e os dados de cada módulo. */
+/** Documento do WJCalcEng (.wjcalc). */
 export interface DocCalc {
-  versao: 1;
+  versao: 2;
   nome: string;
   modulo: "cg2d";
   cg2d: DocCg2d;
 }
 
-export const docNovo = (): DocCalc => ({
-  versao: 1,
-  nome: "Cálculo",
-  modulo: "cg2d",
-  cg2d: { figuras: [], cotas: [], material: { modo: "densidade", densidade: 7850, espessura: 1 } },
-});
+const SUPORTE = { tipo: "plano", plano: "XY", deslocamento: 0 } as const;
+
+export function docNovo(): DocCalc {
+  const esb = novoEsboco(1, { ...SUPORTE });
+  esb.nome = "Esboço";
+  return { versao: 2, nome: "Cálculo", modulo: "cg2d", cg2d: { esboco: esb, regioes: {}, material: { modo: "densidade", densidade: 7850, espessura: 1 } } };
+}
 
 const num = (v: unknown, padrao: number) => (typeof v === "number" && Number.isFinite(v) ? v : padrao);
 
-/** Confere e completa um documento lido de arquivo (lança erro se não for do WJCalcEng). */
+/** Confere um documento lido (lança erro se não for do WJCalcEng). Arquivos da versão 1 são convertidos. */
 export function validarDoc(d: unknown): DocCalc {
-  const o = d as Partial<DocCalc> | null;
-  if (!o || typeof o !== "object" || !o.cg2d || !Array.isArray(o.cg2d.figuras)) throw new Error("Arquivo não é um cálculo do WJCalcEng.");
+  const o = d as { versao?: number; nome?: string; cg2d?: Record<string, unknown> } | null;
+  if (!o || typeof o !== "object" || !o.cg2d || typeof o.cg2d !== "object") throw new Error("Arquivo não é um cálculo do WJCalcEng.");
   const base = docNovo();
-  const m = o.cg2d.material ?? base.cg2d.material;
-  const figuras: Figura[] = [];
-  for (const f of o.cg2d.figuras as Figura[]) {
-    if (!f || typeof f !== "object" || typeof f.id !== "string") continue;
-    const comum: FiguraBase = { id: f.id, nome: String(f.nome ?? "Figura") };
-    if (f.furo) comum.furo = true;
-    if (typeof f.massa === "number" && Number.isFinite(f.massa)) comum.massa = f.massa;
-    if (f.tipo === "retangulo") figuras.push({ ...comum, tipo: "retangulo", x: num(f.x, 0), y: num(f.y, 0), l: Math.abs(num(f.l, 10)), a: Math.abs(num(f.a, 10)) });
-    else if (f.tipo === "circulo") figuras.push({ ...comum, tipo: "circulo", cx: num(f.cx, 0), cy: num(f.cy, 0), r: Math.abs(num(f.r, 10)) });
-    else if (f.tipo === "setor") figuras.push({ ...comum, tipo: "setor", cx: num(f.cx, 0), cy: num(f.cy, 0), r: Math.abs(num(f.r, 10)), a0: num(f.a0, 0), varre: Math.min(360, Math.max(1e-6, num(f.varre, 180))) });
-    else if (f.tipo === "poligono" && Array.isArray(f.pts) && f.pts.length >= 3) figuras.push({ ...comum, tipo: "poligono", pts: f.pts.map((p) => ({ x: num(p?.x, 0), y: num(p?.y, 0) })) });
+  const m = (o.cg2d.material ?? {}) as Partial<Material>;
+  const material: Material = { modo: m.modo === "massa" ? "massa" : "densidade", densidade: Math.max(0, num(m.densidade, 7850)), espessura: Math.max(0, num(m.espessura, 1)) };
+  const nome = String(o.nome ?? base.nome);
+  if (o.versao !== 2) {
+    if (!Array.isArray(o.cg2d.figuras)) throw new Error("Arquivo não é um cálculo do WJCalcEng.");
+    return { ...base, nome, cg2d: { esboco: esbocoDaVersao1(o.cg2d.figuras as FiguraV1[]), regioes: {}, material } };
   }
-  const ids = new Set(figuras.map((f) => f.id));
-  const refOk = (r: RefPonto | undefined) => !!r && (r.fig === null || ids.has(r.fig)) && typeof r.p === "string";
-  const cotas = (Array.isArray(o.cg2d.cotas) ? o.cg2d.cotas : []).filter((c) => c && refOk(c.a) && (c.tipo === "raio" || c.tipo === "diametro" || refOk(c.b))).map((c) => ({
-    id: String(c.id), tipo: c.tipo, a: c.a, b: c.b, valor: num(c.valor, 0), dirigida: c.dirigida !== false, desloc: num(c.desloc, 10),
-  }));
-  return {
-    versao: 1,
-    nome: String(o.nome ?? base.nome),
-    modulo: "cg2d",
-    cg2d: {
-      figuras,
-      cotas,
-      material: { modo: m.modo === "massa" ? "massa" : "densidade", densidade: Math.max(0, num(m.densidade, 7850)), espessura: Math.max(0, num(m.espessura, 1)) },
-    },
-  };
+  const e = o.cg2d.esboco as FeatureEsboco | undefined;
+  if (!e || !Array.isArray(e.pontos) || !Array.isArray(e.geos) || !Array.isArray(e.restricoes)) throw new Error("Esboço do cálculo ilegível.");
+  const regioes: Record<string, DadosRegiao> = {};
+  for (const [k, v] of Object.entries((o.cg2d.regioes ?? {}) as Record<string, Partial<DadosRegiao>>)) {
+    if (!v || typeof v !== "object") continue;
+    const r: DadosRegiao = { nome: String(v.nome ?? "Figura") };
+    if (typeof v.furo === "boolean") r.furo = v.furo;
+    if (typeof v.massa === "number" && Number.isFinite(v.massa)) r.massa = v.massa;
+    regioes[k] = r;
+  }
+  return { versao: 2, nome, modulo: "cg2d", cg2d: { esboco: { ...e, tipo: "esboco", suporte: { ...SUPORTE } }, regioes, material } };
+}
+
+/** Figuras da versão 1 (antes do esboço do WJCAD) viram entidades de esboço. */
+type FiguraV1 =
+  | { tipo: "retangulo"; x: number; y: number; l: number; a: number }
+  | { tipo: "circulo"; cx: number; cy: number; r: number }
+  | { tipo: "setor"; cx: number; cy: number; r: number; a0: number; varre: number }
+  | { tipo: "poligono"; pts: P2[] };
+function esbocoDaVersao1(figs: FiguraV1[]): FeatureEsboco {
+  const esb = docNovo().cg2d.esboco;
+  const RAD = Math.PI / 180;
+  for (const f of figs) {
+    if (!f || typeof f !== "object") continue;
+    if (f.tipo === "retangulo") op.retangulo(esb, op.ponto(esb, { x: f.x, y: f.y }), op.ponto(esb, { x: f.x + f.l, y: f.y + f.a }));
+    else if (f.tipo === "circulo") op.circulo(esb, op.ponto(esb, { x: f.cx, y: f.cy }), f.r);
+    else if (f.tipo === "setor") {
+      const c = op.ponto(esb, { x: f.cx, y: f.cy });
+      if (f.varre >= 360) {
+        op.circulo(esb, c, f.r);
+        continue;
+      }
+      const ini = op.ponto(esb, { x: f.cx + f.r * Math.cos(f.a0 * RAD), y: f.cy + f.r * Math.sin(f.a0 * RAD) });
+      const fim = op.ponto(esb, { x: f.cx + f.r * Math.cos((f.a0 + f.varre) * RAD), y: f.cy + f.r * Math.sin((f.a0 + f.varre) * RAD) });
+      op.arco(esb, c, ini, fim);
+      if (Math.abs(f.varre - 180) < 1e-9) op.linha(esb, fim, ini);
+      else {
+        op.linha(esb, c, ini);
+        op.linha(esb, fim, c);
+      }
+    } else if (f.tipo === "poligono" && Array.isArray(f.pts) && f.pts.length >= 3) {
+      const ids = f.pts.map((p) => op.ponto(esb, p));
+      ids.forEach((id, i) => op.linha(esb, id, ids[(i + 1) % ids.length]));
+    }
+  }
+  return esb;
 }
 
 // ---------------------------------------------------------------------------------------------
-// integrais de área em relação à origem
+// integrais de área pelo teorema de Green
 
-/** Integrais de área (sinal sempre positivo): A, Qx = ∫y dA, Qy = ∫x dA, Ixx = ∫y² dA, Iyy = ∫x² dA, Ixy = ∫xy dA. */
+/** A, Qx = ∫y dA, Qy = ∫x dA, Ixx = ∫y² dA, Iyy = ∫x² dA, Ixy = ∫xy dA (eixos da origem). */
 export interface Integrais {
   A: number;
   Qx: number;
@@ -144,88 +131,349 @@ export interface Integrais {
   Iyy: number;
   Ixy: number;
 }
+const zero = (): Integrais => ({ A: 0, Qx: 0, Qy: 0, Ixx: 0, Iyy: 0, Ixy: 0 });
+const somar = (a: Integrais, b: Integrais, k = 1): Integrais => ({ A: a.A + k * b.A, Qx: a.Qx + k * b.Qx, Qy: a.Qy + k * b.Qy, Ixx: a.Ixx + k * b.Ixx, Iyy: a.Iyy + k * b.Iyy, Ixy: a.Ixy + k * b.Ixy });
 
-/** Vértices de um retângulo, anti-horário a partir do canto inferior esquerdo. */
-export const verticesRet = (r: Retangulo): Ponto[] => [
-  { x: r.x, y: r.y },
-  { x: r.x + r.l, y: r.y },
-  { x: r.x + r.l, y: r.y + r.a },
-  { x: r.x, y: r.y + r.a },
-];
-
-/** Polígono simples (fórmula de Green), qualquer sentido. */
-export function integraisPoligono(pts: Ponto[]): Integrais {
-  let A = 0, Qx = 0, Qy = 0, Ixx = 0, Iyy = 0, Ixy = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i], q = pts[(i + 1) % pts.length];
-    const c = p.x * q.y - q.x * p.y;
-    A += c;
-    Qy += (p.x + q.x) * c;
-    Qx += (p.y + q.y) * c;
-    Iyy += (p.x * p.x + p.x * q.x + q.x * q.x) * c;
-    Ixx += (p.y * p.y + p.y * q.y + q.y * q.y) * c;
-    Ixy += (p.x * q.y + 2 * p.x * p.y + 2 * q.x * q.y + q.x * p.y) * c;
-  }
-  const s = A < 0 ? -1 : 1;
-  return { A: (s * A) / 2, Qx: (s * Qx) / 6, Qy: (s * Qy) / 6, Ixx: (s * Ixx) / 12, Iyy: (s * Iyy) / 12, Ixy: (s * Ixy) / 24 };
+/** Curva paramétrica em t ∈ [0, 1], dividida em `partes` para a quadratura. */
+interface Curva {
+  p: (t: number) => P2;
+  d: (t: number) => P2;
+  partes: number;
 }
 
-/** Setor circular de raio r centrado em (cx, cy), de θ1 a θ2 (radianos, θ2 > θ1). */
-export function integraisSetor(cx: number, cy: number, r: number, t1: number, t2: number): Integrais {
-  const d = t2 - t1, r3 = r ** 3 / 3, r4 = r ** 4 / 8;
-  // em relação ao centro
-  const A = (r * r * d) / 2;
-  const Qu = r3 * (Math.sin(t2) - Math.sin(t1)); // ∫u dA
-  const Qv = r3 * (Math.cos(t1) - Math.cos(t2)); // ∫v dA
-  const s2 = Math.sin(2 * t2) - Math.sin(2 * t1);
-  const Ivv = r4 * (d - s2 / 2); // ∫v²
-  const Iuu = r4 * (d + s2 / 2); // ∫u²
-  const Iuv = r4 * (Math.sin(t2) ** 2 - Math.sin(t1) ** 2);
-  // translada para a origem: x = u + cx, y = v + cy
+const PARTE_ANG = Math.PI / 8;
+
+function curvaArco(c: P2, r: number, a0: number, varre: number): Curva {
   return {
-    A,
-    Qx: Qv + cy * A,
-    Qy: Qu + cx * A,
-    Ixx: Ivv + 2 * cy * Qv + cy * cy * A,
-    Iyy: Iuu + 2 * cx * Qu + cx * cx * A,
-    Ixy: Iuv + cx * Qv + cy * Qu + cx * cy * A,
+    p: (t) => ({ x: c.x + r * Math.cos(a0 + varre * t), y: c.y + r * Math.sin(a0 + varre * t) }),
+    d: (t) => ({ x: -r * varre * Math.sin(a0 + varre * t), y: r * varre * Math.cos(a0 + varre * t) }),
+    partes: Math.max(1, Math.ceil(Math.abs(varre) / PARTE_ANG)),
+  };
+}
+function curvaElipse(e: Elipse2, t0: number, t1: number): Curva {
+  const v = rot90(e.u), k = t1 - t0;
+  return {
+    p: (t) => pontoElipse(e, t0 + k * t),
+    d: (t) => {
+      const s = t0 + k * t;
+      return { x: k * (-e.a * Math.sin(s) * e.u.x + e.b * Math.cos(s) * v.x), y: k * (-e.a * Math.sin(s) * e.u.y + e.b * Math.cos(s) * v.y) };
+    },
+    partes: Math.max(1, Math.ceil(Math.abs(k) / PARTE_ANG)),
   };
 }
 
-const RAD = Math.PI / 180;
-
-export function integraisDe(f: Figura): Integrais {
-  switch (f.tipo) {
-    case "retangulo":
-      return integraisPoligono(verticesRet(f));
-    case "circulo":
-      return integraisSetor(f.cx, f.cy, f.r, 0, 2 * Math.PI);
-    case "setor":
-      return integraisSetor(f.cx, f.cy, f.r, f.a0 * RAD, (f.a0 + f.varre) * RAD);
-    case "poligono":
-      return integraisPoligono(f.pts);
+function curvaDoTrecho(t: Trecho): Curva {
+  switch (t.tipo) {
+    case "linha": {
+      const { a, b } = t;
+      return { p: (s) => ({ x: a.x + (b.x - a.x) * s, y: a.y + (b.y - a.y) * s }), d: () => ({ x: b.x - a.x, y: b.y - a.y }), partes: 1 };
+    }
+    case "arco": {
+      const c = centroTresPontos(t.a, t.meio, t.b);
+      if (!c) return curvaDoTrecho({ tipo: "linha", a: t.a, b: t.b });
+      const a0 = angulo(c, t.a);
+      const ccw = norm(angulo(c, t.b) - a0) || 2 * Math.PI;
+      // sentido: o que passa pelo ponto do meio
+      const varre = norm(angulo(c, t.meio) - a0) < ccw ? ccw : ccw - 2 * Math.PI;
+      return curvaArco(c, dist(c, t.a), a0, varre);
+    }
+    case "elipse":
+      return curvaElipse(t.e, t.t0, t.t1);
+    case "quad": {
+      const { a, c1, b } = t;
+      return {
+        p: (s) => {
+          const u = 1 - s;
+          return { x: u * u * a.x + 2 * u * s * c1.x + s * s * b.x, y: u * u * a.y + 2 * u * s * c1.y + s * s * b.y };
+        },
+        d: (s) => ({ x: 2 * (1 - s) * (c1.x - a.x) + 2 * s * (b.x - c1.x), y: 2 * (1 - s) * (c1.y - a.y) + 2 * s * (b.y - c1.y) }),
+        partes: 1,
+      };
+    }
+    case "bezier": {
+      const { a, c1, c2, b } = t;
+      return {
+        p: (s) => {
+          const u = 1 - s;
+          const k0 = u * u * u, k1 = 3 * u * u * s, k2 = 3 * u * s * s, k3 = s * s * s;
+          return { x: k0 * a.x + k1 * c1.x + k2 * c2.x + k3 * b.x, y: k0 * a.y + k1 * c1.y + k2 * c2.y + k3 * b.y };
+        },
+        d: (s) => {
+          const u = 1 - s;
+          return {
+            x: 3 * u * u * (c1.x - a.x) + 6 * u * s * (c2.x - c1.x) + 3 * s * s * (b.x - c2.x),
+            y: 3 * u * u * (c1.y - a.y) + 6 * u * s * (c2.y - c1.y) + 3 * s * s * (b.y - c2.y),
+          };
+        },
+        partes: 1,
+      };
+    }
   }
 }
 
-// ---------------------------------------------------------------------------------------------
-// resultados
+// Gauss-Legendre de 8 pontos: exata para polinômios até o grau 15 (Bézier) e, por partes de
+// 22,5°, com erro desprezível para arcos e elipses.
+const GL_X = [-0.9602898564975363, -0.7966664774136267, -0.525532409916329, -0.1834346424956498, 0.1834346424956498, 0.525532409916329, 0.7966664774136267, 0.9602898564975363];
+const GL_W = [0.1012285362903763, 0.2223810344533745, 0.3137066458778873, 0.362683783378362, 0.362683783378362, 0.3137066458778873, 0.2223810344533745, 0.1012285362903763];
 
-export interface ResultadoFigura {
-  id: string;
-  nome: string;
-  furo: boolean;
-  /** Área com sinal (mm²; negativa no furo). */
-  A: number;
-  /** Massa com sinal (kg; negativa no furo). NaN = não informada. */
-  m: number;
-  /** Centroide (= CG da figura, material uniforme). */
-  x: number;
-  y: number;
-  /** Momentos de inércia de área em relação aos eixos do próprio centroide (mm⁴, com o sinal da área). */
-  Ix: number;
-  Iy: number;
-  Ixy: number;
+/** Integrais de área do contorno fechado formado pelas curvas (anti-horário = área positiva). */
+function integrarCurvas(cs: Curva[]): Integrais {
+  const r = zero();
+  for (const c of cs) {
+    for (let k = 0; k < c.partes; k++) {
+      const t0 = k / c.partes, h = 1 / c.partes;
+      for (let i = 0; i < 8; i++) {
+        const t = t0 + (h * (GL_X[i] + 1)) / 2, w = (GL_W[i] * h) / 2;
+        const { x, y } = c.p(t), d = c.d(t);
+        // Green: ∬∂M/∂x dA = ∮M dy; ∬-∂L/∂y dA = ∮L dx
+        r.A += w * x * d.y;
+        r.Qy += (w * x * x * d.y) / 2;
+        r.Qx -= (w * y * y * d.x) / 2;
+        r.Iyy += (w * x * x * x * d.y) / 3;
+        r.Ixx -= (w * y * y * y * d.x) / 3;
+        r.Ixy += (w * x * x * y * d.y) / 2;
+      }
+    }
+  }
+  return r;
 }
+
+/** Integrais de um polígono (vértices em qualquer sentido; área sempre positiva). */
+export function integraisPoligono(pts: P2[]): Integrais {
+  const I = integrarCurvas(pts.map((a, i) => curvaDoTrecho({ tipo: "linha", a, b: pts[(i + 1) % pts.length] })));
+  return I.A < 0 ? somar(zero(), I, -1) : I;
+}
+/** Integrais de um círculo. */
+export const integraisCirculo = (c: P2, r: number) => integrarCurvas([curvaArco(c, r, 0, 2 * Math.PI)]);
+
+function amostrarCurvas(cs: Curva[]): P2[] {
+  const out: P2[] = [];
+  for (const c of cs) {
+    const n = Math.max(2, c.partes * 16);
+    for (let i = 0; i < n; i++) out.push(c.p(i / n));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// regiões do esboço
+
+export interface Regiao {
+  /** Identidade estável: as entidades do contorno. */
+  chave: string;
+  /** Integrais do contorno externo (área cheia, sem descontar o que está dentro). */
+  contorno: Integrais;
+  /** Integrais líquidas (contorno menos as regiões de dentro). */
+  liquida: Integrais;
+  poligono: P2[];
+  /** 0 = externa; 1 = dentro de outra (furo por padrão); 2 = ilha num furo… */
+  profundidade: number;
+  /** Índice da região que a contém diretamente (-1 = nenhuma). */
+  pai: number;
+}
+
+interface MeiaAresta {
+  de: number;
+  para: number;
+  curva: Curva;
+  geo: string;
+  ang: number;
+  usada: boolean;
+}
+
+/** Trecho [t0, t1] de uma curva (t1 pode passar de 1 nas curvas periódicas: círculo, elipse). */
+function subCurva(c: Curva, t0: number, t1: number): Curva {
+  const k = t1 - t0;
+  return { p: (t) => c.p(t0 + k * t), d: (t) => { const v = c.d(t0 + k * t); return { x: v.x * k, y: v.y * k }; }, partes: Math.max(1, Math.ceil(c.partes * Math.abs(k))) };
+}
+const inverter = (c: Curva): Curva => ({ p: (t) => c.p(1 - t), d: (t) => { const v = c.d(1 - t); return { x: -v.x, y: -v.y }; }, partes: c.partes });
+
+/** Parâmetro do ponto q sobre a curva (null se não estiver nela). */
+function parametroNaCurva(c: Curva, q: P2, tol: number): number | null {
+  const n = 24 * c.partes;
+  let t = 0, dm = Infinity;
+  for (let i = 0; i <= n; i++) {
+    const p = c.p(i / n), d = Math.hypot(p.x - q.x, p.y - q.y);
+    if (d < dm) {
+      dm = d;
+      t = i / n;
+    }
+  }
+  for (let k = 0; k < 30; k++) {
+    const p = c.p(t), d = c.d(t), dd = d.x * d.x + d.y * d.y;
+    if (dd < 1e-30) break;
+    const passo = ((p.x - q.x) * d.x + (p.y - q.y) * d.y) / dd;
+    t = Math.min(1, Math.max(0, t - passo));
+    if (Math.abs(passo) < 1e-15) break;
+  }
+  return dist(c.p(t), q) < tol ? t : null;
+}
+
+/** Ponto interior de um polígono anti-horário (um pouco à esquerda do meio da aresta mais longa). */
+function pontoInterior(pol: P2[]): P2 {
+  let melhor = 0, lmax = -1;
+  for (let i = 0; i < pol.length; i++) {
+    const l = dist(pol[i], pol[(i + 1) % pol.length]);
+    if (l > lmax) {
+      lmax = l;
+      melhor = i;
+    }
+  }
+  const a = pol[melhor], b = pol[(melhor + 1) % pol.length];
+  const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const n = { x: -(b.y - a.y) / (lmax || 1), y: (b.x - a.x) / (lmax || 1) };
+  const tam = Math.sqrt(Math.abs(areaAssinada(pol))) || 1;
+  for (const k of [1e-4, 1e-3, 1e-2, 1e-1]) {
+    const p = { x: m.x + n.x * k * tam, y: m.y + n.y * k * tam };
+    if (pontoNoPoligono(p, pol)) return p;
+  }
+  return m;
+}
+
+const positiva = (I: Integrais, pol: P2[]) => (I.A < 0 ? { I: somar(zero(), I, -1), pol: pol.reverse() } : { I, pol });
+
+/**
+ * Regiões fechadas do esboço (entidades de construção, pontos e referências ficam de fora). As
+ * curvas são cortadas onde se tocam ou se cruzam (ponta sobre outra curva, cruzamento de linhas,
+ * arcos e círculos): figuras sobrepostas e linhas que dividem uma área formam regiões sozinhas.
+ */
+export function regioesDoEsboco(esb: Pick<FeatureEsboco, "pontos" | "geos">): { regioes: Regiao[]; avisos: string[] } {
+  const avisos: string[] = [];
+  const pts = mapaPontos(esb);
+  const geos = esb.geos.filter((g) => !g.construcao && g.tipo !== "ponto" && !g.externa);
+  const faces: { chave: string; I: Integrais; pol: P2[] }[] = [];
+
+  // curvas de cada entidade: abertas (pontas) ou fechadas (círculo, elipse, spline fechada)
+  const cadeias: { geo: string; curvas: Curva[]; fechada: boolean }[] = [];
+  let escala = 1;
+  for (const g of geos) {
+    if (g.tipo === "circulo") cadeias.push({ geo: g.id, curvas: [curvaArco(pts.get(g.c)!, g.r, 0, 2 * Math.PI)], fechada: true });
+    else if (g.tipo === "elipse") cadeias.push({ geo: g.id, curvas: [curvaElipse(elipseDe(g, pts), 0, 2 * Math.PI)], fechada: true });
+    else if (g.tipo === "texto") {
+      contornosDoTexto(g, pts).forEach((ts, i) => {
+        const cs = ts.map(curvaDoTrecho);
+        const r = positiva(integrarCurvas(cs), amostrarCurvas(cs));
+        faces.push({ chave: `${g.id}#${i}`, ...r });
+      });
+    } else {
+      const e = extremidades(g);
+      const cs = trechosDe(g, pts, false).map(curvaDoTrecho);
+      if (!e || !cs.length) continue;
+      if (dist(pts.get(e[0])!, pts.get(e[1])!) < 1e-9) {
+        // spline fechada sobre si mesma: contorno próprio
+        const r = positiva(integrarCurvas(cs), amostrarCurvas(cs));
+        if (r.I.A > 1e-12) faces.push({ chave: g.id, ...r });
+        continue;
+      }
+      cadeias.push({ geo: g.id, curvas: cs, fechada: false });
+    }
+  }
+  for (const p of pts.values()) escala = Math.max(escala, Math.abs(p.x), Math.abs(p.y));
+  const tol = 1e-7 * escala;
+
+  // pontos de corte: pontas de todas as curvas e cruzamentos entre elas
+  const cortes: P2[] = [];
+  for (const c of cadeias) if (!c.fechada) cortes.push(c.curvas[0].p(0), c.curvas[c.curvas.length - 1].p(1));
+  for (let i = 0; i < geos.length; i++) for (let j = i + 1; j < geos.length; j++) cortes.push(...intersecoes(geos[i], geos[j], pts));
+
+  // nós por posição e meias-arestas (cada pedaço de curva entre dois nós, nos dois sentidos)
+  const nos: P2[] = [];
+  const noDe = (p: P2) => {
+    let i = nos.findIndex((n) => dist(n, p) < tol * 10);
+    if (i < 0) {
+      nos.push(p);
+      i = nos.length - 1;
+    }
+    return i;
+  };
+  const meias: MeiaAresta[] = [];
+  const direcao = (c: Curva) => {
+    const a = c.p(0), b = c.p(1e-5 / c.partes);
+    return Math.atan2(b.y - a.y, b.x - a.x);
+  };
+  const aresta = (geo: string, c: Curva) => {
+    const a = noDe(c.p(0)), b = noDe(c.p(1));
+    // trecho sobreposto a outro já existente (ex.: corda deitada sobre a borda): fica só um
+    const meio = c.p(0.5);
+    if (meias.some((h) => h.de === a && h.para === b && dist(h.curva.p(0.5), meio) < tol * 10)) return;
+    if (a === b && dist(c.p(0.5), c.p(0)) < tol * 10) return;
+    const v = inverter(c);
+    meias.push({ de: a, para: b, curva: c, geo, ang: direcao(c), usada: false });
+    meias.push({ de: b, para: a, curva: v, geo, ang: direcao(v), usada: false });
+  };
+  for (const cad of cadeias) {
+    if (cad.fechada) {
+      const c = cad.curvas[0];
+      const ts = [...new Set(cortes.map((q) => parametroNaCurva(c, q, tol * 10)).filter((t): t is number => t !== null).map((t) => (t >= 1 - 1e-12 ? 0 : t)))].sort((a, b) => a - b);
+      const unicos = ts.filter((t, i) => i === 0 || t - ts[i - 1] > 1e-9);
+      if (!unicos.length) {
+        faces.push({ chave: cad.geo, ...positiva(integrarCurvas([c]), amostrarCurvas([c])) });
+        continue;
+      }
+      // curva periódica: os pedaços dão a volta (o último passa de 1)
+      unicos.forEach((t, i) => aresta(cad.geo, subCurva(c, t, i + 1 < unicos.length ? unicos[i + 1] : unicos[0] + 1)));
+      continue;
+    }
+    for (const c of cad.curvas) {
+      const ts = cortes.map((q) => parametroNaCurva(c, q, tol * 10)).filter((t): t is number => t !== null && t > 1e-9 && t < 1 - 1e-9).sort((a, b) => a - b);
+      const lim = [0, ...ts.filter((t, i) => i === 0 || t - ts[i - 1] > 1e-9), 1];
+      for (let i = 0; i + 1 < lim.length; i++) aresta(cad.geo, lim.length === 2 ? c : subCurva(c, lim[i], lim[i + 1]));
+    }
+  }
+  // as pontas de uma mesma entidade com vários trechos (spline) também viram nós: tudo bem
+
+  // saídas de cada nó em ordem anti-horária
+  const saidas = new Map<number, number[]>();
+  meias.forEach((h, i) => saidas.set(h.de, [...(saidas.get(h.de) ?? []), i]));
+  for (const l of saidas.values()) l.sort((i, j) => meias[i].ang - meias[j].ang);
+  const gemea = (i: number) => (i % 2 === 0 ? i + 1 : i - 1);
+  // percorre as faces mantendo a face à esquerda: em cada nó, a saída logo depois da gêmea no sentido horário
+  for (let i0 = 0; i0 < meias.length; i0++) {
+    if (meias[i0].usada) continue;
+    const ciclo: number[] = [];
+    let i = i0;
+    for (let passos = 0; passos <= meias.length && !meias[i].usada; passos++) {
+      meias[i].usada = true;
+      ciclo.push(i);
+      const l = saidas.get(meias[i].para)!;
+      const k = l.indexOf(gemea(i));
+      i = l[(k - 1 + l.length) % l.length];
+    }
+    const cs = ciclo.map((k) => meias[k].curva);
+    const I = integrarCurvas(cs);
+    // positiva = região limitada; negativa = lado de fora de um conjunto de curvas
+    if (I.A > 1e-9 * escala * escala) faces.push({ chave: [...new Set(ciclo.map((k) => meias[k].geo))].sort().join("+"), I, pol: amostrarCurvas(cs) });
+  }
+  if (geos.some((g) => g.tipo === "spline" || g.tipo === "elipse" || g.tipo === "arcoElipse" || g.tipo === "parabola") && geos.length > 1) {
+    // cruzamentos de splines e cônicas não são cortados sozinhos
+    const pols = faces.map((f) => f.pol);
+    const cruzam = pols.some((a, i) => pols.some((b, j) => j > i && a.some((p) => pontoNoPoligono(p, b)) && b.some((p) => !pontoNoPoligono(p, a)) && a.some((p) => !pontoNoPoligono(p, b))));
+    if (cruzam) avisos.push("Há contornos com spline, elipse ou parábola que se cruzam: use Aparar no cruzamento para separar as regiões.");
+  }
+
+  // aninhamento: quem está dentro de quem
+  const amostras = faces.map((f) => pontoInterior(f.pol));
+  const regioes: Regiao[] = faces.map((f, i) => {
+    const pais = faces.map((_, j) => j).filter((j) => j !== i && faces[j].I.A > f.I.A && pontoNoPoligono(amostras[i], faces[j].pol));
+    const pai = pais.sort((a, b) => faces[a].I.A - faces[b].I.A)[0] ?? -1;
+    return { chave: f.chave, contorno: f.I, liquida: f.I, poligono: f.pol, profundidade: pais.length, pai };
+  });
+  for (let i = 0; i < regioes.length; i++) {
+    const p = regioes[i].pai;
+    if (p >= 0) regioes[p].liquida = somar(regioes[p].liquida, regioes[i].contorno, -1);
+  }
+  // chaves repetidas (mesma entidade em duas regiões) ganham sufixo
+  const vistas = new Map<string, number>();
+  for (const r of regioes) {
+    const n = vistas.get(r.chave) ?? 0;
+    vistas.set(r.chave, n + 1);
+    if (n) r.chave += `#${n}`;
+  }
+  return { regioes, avisos };
+}
+
+// ---------------------------------------------------------------------------------------------
+// cálculo
 
 export interface Inercia {
   Ix: number;
@@ -233,32 +481,61 @@ export interface Inercia {
   Ixy: number;
   /** Polar (Ix + Iy). */
   J: number;
-  /** Principais e ângulo do eixo principal 1 (graus, a partir de +x). */
   I1: number;
   I2: number;
+  /** Ângulo do eixo principal 1 (graus, a partir de +x). */
   theta: number;
 }
 
-export interface ResultadoCg {
-  figuras: ResultadoFigura[];
-  /** Área líquida (mm²). */
+/** Linha da memória de cálculo (figura composta: contorno cheio + recortes com sinal −). */
+export interface LinhaCg {
+  nome: string;
+  /** Região de origem. */
+  chave: string;
+  recorte: boolean;
   A: number;
-  /** Centroide geométrico do conjunto. */
-  centroide: Ponto | null;
-  /** Massa total (kg); NaN se faltar a massa de alguma figura. */
   m: number;
-  /** Centro de gravidade (média ponderada pela massa). */
-  cg: Ponto | null;
-  /** Inércia de área nos eixos centroidais do conjunto (mm⁴). */
+  x: number;
+  y: number;
+  /** Momentos de área nos eixos do próprio centroide (com o sinal da área). */
+  Ix: number;
+  Iy: number;
+  Ixy: number;
+}
+
+export interface FiguraCg {
+  chave: string;
+  nome: string;
+  furo: boolean;
+  /** Furo por estar dentro de outra (padrão). */
+  furoPadrao: boolean;
+  profundidade: number;
+  /** Área líquida e o centroide dela (CG da figura). */
+  A: number;
+  m: number;
+  x: number;
+  y: number;
+  Ix: number;
+  Iy: number;
+  Ixy: number;
+  poligono: P2[];
+}
+
+export interface ResultadoCg {
+  figuras: FiguraCg[];
+  linhas: LinhaCg[];
+  A: number;
+  centroide: P2 | null;
+  m: number;
+  cg: P2 | null;
   areaCentroide: Inercia | null;
-  /** Inércia de área nos eixos da origem (mm⁴). */
   areaOrigem: Inercia | null;
-  /** Inércia de massa da placa fina nos eixos pelo CG (kg·mm²; Iz = polar, perpendicular ao plano). */
+  /** Placa fina; Iz = polar, perpendicular ao plano, pelo CG (kg·mm²). */
   massaCg: (Inercia & { Iz: number }) | null;
   avisos: string[];
 }
 
-/** Zera o resíduo numérico (ex.: Ixy = 1e-10 num círculo) em relação à escala dos momentos. */
+const RAD = Math.PI / 180;
 const limpo = (v: number, escala: number) => (Math.abs(v) <= 1e-12 * Math.abs(escala) ? 0 : v);
 
 export function principais(Ix: number, Iy: number, Ixy: number): Inercia {
@@ -266,240 +543,112 @@ export function principais(Ix: number, Iy: number, Ixy: number): Inercia {
   const med = (Ix + Iy) / 2, raio = Math.hypot((Ix - Iy) / 2, Ixy);
   let theta = (0.5 * Math.atan2(-2 * Ixy, Ix - Iy)) / RAD;
   if (Math.abs(theta) < 1e-9) theta = 0;
+  if (theta <= -90 + 1e-9) theta += 180; // ângulo em (−90°, 90°]
   return { Ix, Iy, Ixy, J: Ix + Iy, I1: med + raio, I2: med - raio, theta };
+}
+
+/** Centroide e momentos próprios de integrais (área positiva). */
+function proprios(I: Integrais) {
+  const x = limpo(I.Qy / I.A, Math.sqrt(Math.abs(I.A)) + Math.abs(I.Qy / I.A));
+  const y = limpo(I.Qx / I.A, Math.sqrt(Math.abs(I.A)) + Math.abs(I.Qx / I.A));
+  return { x, y, Ix: I.Ixx - I.A * y * y, Iy: I.Iyy - I.A * x * x, Ixy: limpo(I.Ixy - I.A * x * y, I.Ixx + I.Iyy) };
 }
 
 /** Massa (kg) de uma área (mm²) no material único. */
 export const massaDoMaterial = (A: number, mat: Material) => mat.densidade * mat.espessura * A * 1e-9;
 
-export function calcular(doc: DocCg2d): ResultadoCg {
-  const avisos: string[] = [];
-  const figuras: ResultadoFigura[] = [];
-  const ints: Integrais[] = [];
-  for (const f of doc.figuras) {
-    const I = integraisDe(f);
-    if (!(I.A > 1e-12)) {
-      avisos.push(`${f.nome}: área nula (ignorada).`);
-      continue;
-    }
-    const s = f.furo ? -1 : 1;
-    const x = limpo(I.Qy / I.A, Math.sqrt(I.A) + Math.abs(I.Qy / I.A)), y = limpo(I.Qx / I.A, Math.sqrt(I.A) + Math.abs(I.Qx / I.A));
-    const m = doc.material.modo === "densidade" ? massaDoMaterial(I.A, doc.material) : typeof f.massa === "number" && f.massa >= 0 ? f.massa : NaN;
-    figuras.push({
-      id: f.id, nome: f.nome, furo: !!f.furo, A: s * I.A, m: s * m, x, y,
-      Ix: s * (I.Ixx - I.A * y * y), Iy: s * (I.Iyy - I.A * x * x), Ixy: s * limpo(I.Ixy - I.A * x * y, I.Ixx + I.Iyy),
-    });
-    ints.push(I);
+/** Nome padrão das regiões novas ("Figura 1", "Figura 2"…), guardado em `dados`. */
+export function nomearRegioes(regioes: Regiao[], dados: Record<string, DadosRegiao>) {
+  const usados = new Set(Object.values(dados).map((d) => d.nome));
+  let n = 1;
+  for (const r of [...regioes].sort((a, b) => b.liquida.A - a.liquida.A)) {
+    if (dados[r.chave]) continue;
+    while (usados.has(`Figura ${n}`)) n++;
+    dados[r.chave] = { nome: `Figura ${n}` };
+    usados.add(`Figura ${n}`);
   }
-  const vazio: ResultadoCg = { figuras, A: 0, centroide: null, m: NaN, cg: null, areaCentroide: null, areaOrigem: null, massaCg: null, avisos };
-  if (!figuras.length) return vazio;
-  const A = figuras.reduce((s, f) => s + f.A, 0);
-  if (!(A > 1e-9)) {
-    avisos.push("A área líquida é zero ou negativa: os furos são maiores que as figuras sólidas.");
-    return { ...vazio, A };
-  }
-  const centroide = { x: figuras.reduce((s, f) => s + f.A * f.x, 0) / A, y: figuras.reduce((s, f) => s + f.A * f.y, 0) / A };
-  const soma = (fn: (f: ResultadoFigura) => number) => figuras.reduce((s, f) => s + fn(f), 0);
-  const areaCentroide = principais(
-    soma((f) => f.Ix + f.A * (f.y - centroide.y) ** 2),
-    soma((f) => f.Iy + f.A * (f.x - centroide.x) ** 2),
-    soma((f) => f.Ixy + f.A * (f.x - centroide.x) * (f.y - centroide.y)),
-  );
-  const areaOrigem = principais(soma((f) => f.Ix + f.A * f.y * f.y), soma((f) => f.Iy + f.A * f.x * f.x), soma((f) => f.Ixy + f.A * f.x * f.y));
+}
 
-  let m = soma((f) => f.m);
-  let cg: Ponto | null = null;
+export function calcular(regioes: Regiao[], dados: Record<string, DadosRegiao>, mat: Material, avisosRegioes: string[] = []): ResultadoCg {
+  const avisos = [...avisosRegioes];
+  const nome = (r: Regiao) => dados[r.chave]?.nome ?? "Figura";
+  const furoDe = (r: Regiao) => dados[r.chave]?.furo ?? r.profundidade % 2 === 1;
+  const figuras: FiguraCg[] = [];
+  const linhas: LinhaCg[] = [];
+  const faltam: string[] = [];
+  regioes.forEach((r, i) => {
+    const furo = furoDe(r);
+    const A = r.liquida.A;
+    const pr = A > 1e-12 ? proprios(r.liquida) : { x: NaN, y: NaN, Ix: 0, Iy: 0, Ixy: 0 };
+    let m = 0;
+    if (!furo) {
+      if (mat.modo === "densidade") m = massaDoMaterial(A, mat);
+      else {
+        const dm = dados[r.chave]?.massa;
+        m = typeof dm === "number" && dm >= 0 ? dm : NaN;
+        if (Number.isNaN(m)) faltam.push(nome(r));
+      }
+    }
+    figuras.push({ chave: r.chave, nome: nome(r), furo, furoPadrao: r.profundidade % 2 === 1, profundidade: r.profundidade, A, m, ...pr, poligono: r.poligono });
+    if (furo) return;
+    if (!(A > 1e-12)) {
+      avisos.push(`${nome(r)}: área nula.`);
+      return;
+    }
+    // método das figuras compostas: contorno cheio (+) e cada região de dentro recortada (−)
+    const sigma = m / A;
+    const pc = proprios(r.contorno);
+    linhas.push({ nome: nome(r), chave: r.chave, recorte: false, A: r.contorno.A, m: sigma * r.contorno.A, ...pc });
+    regioes.forEach((f) => {
+      if (f.pai !== i) return;
+      const pf = proprios(f.contorno);
+      linhas.push({
+        nome: `${nome(f)} (${furoDe(f) ? "furo" : "recorte"})`, chave: f.chave, recorte: true,
+        A: -f.contorno.A, m: -sigma * f.contorno.A, x: pf.x, y: pf.y, Ix: -pf.Ix, Iy: -pf.Iy, Ixy: -pf.Ixy,
+      });
+    });
+  });
+  const vazio: ResultadoCg = { figuras, linhas, A: 0, centroide: null, m: NaN, cg: null, areaCentroide: null, areaOrigem: null, massaCg: null, avisos };
+  if (!linhas.length) {
+    if (!regioes.length) avisos.push("Desenhe um contorno fechado (as curvas precisam se ligar pelas pontas).");
+    return vazio;
+  }
+  const soma = (fn: (l: LinhaCg) => number) => linhas.reduce((s, l) => s + fn(l), 0);
+  const A = soma((l) => l.A);
+  if (!(A > 1e-12)) return { ...vazio, A };
+  const centroide = { x: soma((l) => l.A * l.x) / A, y: soma((l) => l.A * l.y) / A };
+  const areaCentroide = principais(
+    soma((l) => l.Ix + l.A * (l.y - centroide.y) ** 2),
+    soma((l) => l.Iy + l.A * (l.x - centroide.x) ** 2),
+    soma((l) => l.Ixy + l.A * (l.x - centroide.x) * (l.y - centroide.y)),
+  );
+  const areaOrigem = principais(soma((l) => l.Ix + l.A * l.y * l.y), soma((l) => l.Iy + l.A * l.x * l.x), soma((l) => l.Ixy + l.A * l.x * l.y));
+  let m = soma((l) => l.m);
+  let cg: P2 | null = null;
   let massaCg: ResultadoCg["massaCg"] = null;
-  const faltam = figuras.filter((f) => Number.isNaN(f.m));
   if (faltam.length) {
-    avisos.push(`Falta a massa de: ${faltam.map((f) => f.nome).join(", ")}.`);
+    avisos.push(`Falta a massa de: ${faltam.join(", ")}.`);
     m = NaN;
   } else if (!(m > 1e-15)) {
-    avisos.push(doc.material.modo === "densidade" ? "Massa total zero: confira a densidade e a espessura." : "A massa total é zero ou negativa.");
+    avisos.push(mat.modo === "densidade" ? "Massa total zero: confira a densidade e a espessura." : "A massa total é zero.");
   } else {
-    cg = { x: soma((f) => f.m * f.x) / m, y: soma((f) => f.m * f.y) / m };
-    // massa distribuída uniformemente em cada figura: densidade superficial σ = m/A
-    const sig = (f: ResultadoFigura) => f.m / f.A;
+    const c = { x: soma((l) => l.m * l.x) / m, y: soma((l) => l.m * l.y) / m };
+    cg = c;
+    // massa uniforme em cada figura: densidade superficial σ = m/A
+    const sig = (l: LinhaCg) => (l.A ? l.m / l.A : 0);
     const p = principais(
-      soma((f) => sig(f) * f.Ix + f.m * (f.y - cg!.y) ** 2),
-      soma((f) => sig(f) * f.Iy + f.m * (f.x - cg!.x) ** 2),
-      soma((f) => sig(f) * f.Ixy + f.m * (f.x - cg!.x) * (f.y - cg!.y)),
+      soma((l) => sig(l) * l.Ix + l.m * (l.y - c.y) ** 2),
+      soma((l) => sig(l) * l.Iy + l.m * (l.x - c.x) ** 2),
+      soma((l) => sig(l) * l.Ixy + l.m * (l.x - c.x) * (l.y - c.y)),
     );
     massaCg = { ...p, Iz: p.J };
   }
-  return { figuras, A, centroide, m, cg, areaCentroide, areaOrigem, massaCg, avisos };
+  return { figuras, linhas, A, centroide, m, cg, areaCentroide, areaOrigem, massaCg, avisos };
 }
 
-// ---------------------------------------------------------------------------------------------
-// pontos das figuras e cotas
-
-const ORIGEM: Ponto = { x: 0, y: 0 };
-
-/** Pontos notáveis de uma figura (para cotas e ajuste). */
-export function pontosDe(f: Figura): Record<string, Ponto> {
-  switch (f.tipo) {
-    case "retangulo": {
-      const v = verticesRet(f);
-      return { v0: v[0], v1: v[1], v2: v[2], v3: v[3], c: { x: f.x + f.l / 2, y: f.y + f.a / 2 } };
-    }
-    case "circulo":
-      return { c: { x: f.cx, y: f.cy } };
-    case "setor":
-      return {
-        c: { x: f.cx, y: f.cy },
-        p0: { x: f.cx + f.r * Math.cos(f.a0 * RAD), y: f.cy + f.r * Math.sin(f.a0 * RAD) },
-        p1: { x: f.cx + f.r * Math.cos((f.a0 + f.varre) * RAD), y: f.cy + f.r * Math.sin((f.a0 + f.varre) * RAD) },
-      };
-    case "poligono":
-      return Object.fromEntries(f.pts.map((p, i) => [`v${i}`, { ...p }]));
-  }
+/** Atalho: regiões do esboço + nomes + cálculo. */
+export function calcularDoc(d: DocCg2d): ResultadoCg & { regioes: Regiao[] } {
+  const { regioes, avisos } = regioesDoEsboco(d.esboco);
+  nomearRegioes(regioes, d.regioes);
+  return { ...calcular(regioes, d.regioes, d.material, avisos), regioes };
 }
-
-export function posicao(doc: DocCg2d, r: RefPonto): Ponto | null {
-  if (r.fig === null) return ORIGEM;
-  const f = doc.figuras.find((x) => x.id === r.fig);
-  return f ? pontosDe(f)[r.p] ?? null : null;
-}
-
-/** Translada a figura. */
-export function transladar(f: Figura, dx: number, dy: number) {
-  if (f.tipo === "retangulo") {
-    f.x += dx;
-    f.y += dy;
-  } else if (f.tipo === "poligono") {
-    for (const p of f.pts) {
-      p.x += dx;
-      p.y += dy;
-    }
-  } else {
-    f.cx += dx;
-    f.cy += dy;
-  }
-}
-
-/** Leva um ponto da figura até `alvo` deformando-a (vértice) ou transladando-a (centro). */
-export function moverPonto(f: Figura, p: string, alvo: Ponto) {
-  const atual = pontosDe(f)[p];
-  if (!atual) return;
-  if (p === "c") return transladar(f, alvo.x - atual.x, alvo.y - atual.y);
-  if (f.tipo === "retangulo") {
-    // o canto oposto fica parado
-    const k = Number(p.slice(1));
-    const op = verticesRet(f)[(k + 2) % 4];
-    f.x = Math.min(op.x, alvo.x);
-    f.y = Math.min(op.y, alvo.y);
-    f.l = Math.abs(alvo.x - op.x);
-    f.a = Math.abs(alvo.y - op.y);
-  } else if (f.tipo === "poligono") {
-    const k = Number(p.slice(1));
-    if (f.pts[k]) f.pts[k] = { ...alvo };
-  } else if (f.tipo === "setor") {
-    const r = Math.hypot(alvo.x - f.cx, alvo.y - f.cy);
-    if (r < 1e-9) return;
-    const ang = Math.atan2(alvo.y - f.cy, alvo.x - f.cx) / RAD;
-    f.r = r;
-    if (p === "p0") {
-      const fim = f.a0 + f.varre;
-      f.a0 = ang;
-      f.varre = ((((fim - ang) % 360) + 360) % 360) || 360;
-    } else f.varre = ((((ang - f.a0) % 360) + 360) % 360) || 360;
-  }
-}
-
-/** Medida atual de uma cota (mm). */
-export function medir(doc: DocCg2d, c: Cota): number {
-  if (c.tipo === "raio" || c.tipo === "diametro") {
-    const f = doc.figuras.find((x) => x.id === c.a.fig);
-    const r = f && (f.tipo === "circulo" || f.tipo === "setor") ? f.r : NaN;
-    return c.tipo === "raio" ? r : 2 * r;
-  }
-  const pa = posicao(doc, c.a), pb = c.b ? posicao(doc, c.b) : null;
-  if (!pa || !pb) return NaN;
-  if (c.tipo === "horizontal") return Math.abs(pb.x - pa.x);
-  if (c.tipo === "vertical") return Math.abs(pb.y - pa.y);
-  return Math.hypot(pb.x - pa.x, pb.y - pa.y);
-}
-
-/** Aplica uma cota dirigida (move o ponto b; se b for a origem, move o ponto a). */
-function aplicarCota(doc: DocCg2d, c: Cota) {
-  const fig = (id: string | null) => doc.figuras.find((x) => x.id === id);
-  if (c.tipo === "raio" || c.tipo === "diametro") {
-    const f = fig(c.a.fig);
-    if (f && (f.tipo === "circulo" || f.tipo === "setor") && c.valor > 0) f.r = c.tipo === "raio" ? c.valor : c.valor / 2;
-    return;
-  }
-  if (!c.b) return;
-  let a = c.a, b = c.b;
-  if (b.fig === null) [a, b] = [b, a];
-  const fb = fig(b.fig);
-  const pa = posicao(doc, a), pb = posicao(doc, b);
-  if (!fb || !pa || !pb) return;
-  let alvo: Ponto;
-  if (c.tipo === "horizontal") alvo = { x: pa.x + (pb.x - pa.x < 0 ? -1 : 1) * c.valor, y: pb.y };
-  else if (c.tipo === "vertical") alvo = { x: pb.x, y: pa.y + (pb.y - pa.y < 0 ? -1 : 1) * c.valor };
-  else {
-    const d = Math.hypot(pb.x - pa.x, pb.y - pa.y);
-    const u = d > 1e-12 ? { x: (pb.x - pa.x) / d, y: (pb.y - pa.y) / d } : { x: 1, y: 0 };
-    alvo = { x: pa.x + u.x * c.valor, y: pa.y + u.y * c.valor };
-  }
-  if (a.fig !== null && a.fig === b.fig) moverPonto(fb, b.p, alvo);
-  else transladar(fb, alvo.x - pb.x, alvo.y - pb.y);
-}
-
-/**
- * Aplica as cotas dirigidas na ordem em que foram criadas (algumas passadas, para cotas que
- * dependem de outras); as de referência só atualizam o valor. Devolve os ids das cotas que não
- * puderam ser satisfeitas juntas (conflito).
- */
-export function aplicarCotas(doc: DocCg2d): Set<string> {
-  const dirigidas = doc.cotas.filter((c) => c.dirigida);
-  for (let passo = 0; passo < 4; passo++) {
-    for (const c of dirigidas) aplicarCota(doc, c);
-    if (dirigidas.every((c) => Math.abs(medir(doc, c) - c.valor) < 1e-6)) break;
-  }
-  const conflito = new Set<string>();
-  for (const c of doc.cotas) {
-    const v = medir(doc, c);
-    if (!c.dirigida) c.valor = Number.isFinite(v) ? v : c.valor;
-    else if (!(Math.abs(v - c.valor) < 1e-6)) conflito.add(c.id);
-  }
-  return conflito;
-}
-
-/** Tipo automático de uma cota pela direção dos dois pontos. */
-export function tipoAutomatico(pa: Ponto, pb: Ponto): TipoCota {
-  const dx = Math.abs(pb.x - pa.x), dy = Math.abs(pb.y - pa.y);
-  if (dy <= dx * Math.tan(10 * RAD)) return "horizontal";
-  if (dx <= dy * Math.tan(10 * RAD)) return "vertical";
-  return "alinhada";
-}
-
-/** Remove a figura e as cotas que dependem dela. */
-export function excluirFigura(doc: DocCg2d, id: string) {
-  doc.figuras = doc.figuras.filter((f) => f.id !== id);
-  doc.cotas = doc.cotas.filter((c) => c.a.fig !== id && c.b?.fig !== id);
-}
-
-// ---------------------------------------------------------------------------------------------
-// teste de pertença (seleção na tela)
-
-export function contem(f: Figura, p: Ponto): boolean {
-  if (f.tipo === "retangulo") return p.x >= f.x && p.x <= f.x + f.l && p.y >= f.y && p.y <= f.y + f.a;
-  if (f.tipo === "circulo") return Math.hypot(p.x - f.cx, p.y - f.cy) <= f.r;
-  if (f.tipo === "setor") {
-    const d = Math.hypot(p.x - f.cx, p.y - f.cy);
-    if (d > f.r) return false;
-    if (f.varre >= 360 || d < 1e-12) return true;
-    const ang = ((((Math.atan2(p.y - f.cy, p.x - f.cx) / RAD - f.a0) % 360) + 360) % 360);
-    return ang <= f.varre;
-  }
-  let dentro = false;
-  const v = f.pts;
-  for (let i = 0, j = v.length - 1; i < v.length; j = i++) {
-    if (v[i].y > p.y !== v[j].y > p.y && p.x < ((v[j].x - v[i].x) * (p.y - v[i].y)) / (v[j].y - v[i].y) + v[i].x) dentro = !dentro;
-  }
-  return dentro;
-}
-
-/** Nome do tipo para a interface. */
-export const NOME_TIPO: Record<Figura["tipo"], string> = { retangulo: "Retângulo", circulo: "Círculo", setor: "Setor circular", poligono: "Polígono" };

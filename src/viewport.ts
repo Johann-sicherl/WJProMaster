@@ -489,15 +489,23 @@ export class Viewport {
     return this.escalaTravada;
   }
 
+  /** Vista só 2D (WJCalcEng): sem girar; dedo e botão do meio arrastam, roda e pinça aproximam. */
+  private so2D = false;
+  definir2D(ativo: boolean) {
+    this.so2D = ativo;
+    this.aplicarControles();
+  }
+
   private aplicarControles() {
     const travada = !!this.escalaTravada;
+    const semGiro = travada || this.so2D;
     this.controles.enableZoom = !travada;
-    this.controles.enableRotate = !travada;
+    this.controles.enableRotate = !semGiro;
     this.controles.mouseButtons = this.emEsboco
-      ? { LEFT: null, MIDDLE: travada ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, RIGHT: null }
+      ? { LEFT: null, MIDDLE: semGiro ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, RIGHT: null }
       : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: null };
-    // travada: um dedo arrasta a vista; dois dedos também (sem zoom)
-    this.controles.touches = travada ? { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN } : { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+    // sem giro: um dedo arrasta a vista; dois dedos também (com zoom, se não estiver travada)
+    this.controles.touches = semGiro ? { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN } : { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
   }
 
   private raio(clientX: number, clientY: number): THREE.Raycaster {
