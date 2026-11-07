@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 05/11/2026.
+> Última consolidação: 07/11/2026.
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -35,6 +35,13 @@
 12. Segurança: nunca usar nem versionar a chave secreta do cliente OAuth do Google; nunca force-push;
     o PDF do guia do CAD de referência fica só no Drive dele (não versionar); arquivos de instalação e de
     terceiros não entram no repositório.
+13. **Aprimorar todo pedido antes de agir** (07/11/2026): a resposta começa com um bloco curto
+    **"Pedido aprimorado"** (objetivo, escopo, arquivos/especificação, critério de pronto, riscos ou
+    alternativa melhor); depois o Claude repensa em cima dele (caminho mais simples? contradiz estas
+    regras? dúvida real?) e só então executa. Pergunta simples: uma linha basta.
+14. **Mapa do código** (07/11/2026): skill `wjpromaster-mapa` em `.claude/skills/` — qual arquivo abrir
+    por tipo de pedido, testes, validação no tablet, publicação e armadilhas. Consultar antes de
+    explorar; manter atualizado no mesmo PR quando arquivos mudarem.
 
 ## 2. Inspiração sem cópia (vale para todas as faces)
 

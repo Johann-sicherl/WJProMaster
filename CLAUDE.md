@@ -40,6 +40,17 @@
    é publicada na hora (PR → merge → deploy conferido), sem esperar pedido; ele só abre o app e toca
    "Atualizar". Entregas são testadas simulando o **tablet** (toque, 1280×800, perfil Tablet).
 8. **Tudo em português**, inclusive as descrições dos comandos que o Claude executa.
+9. **Aprimorar todo pedido antes de agir** (07/11/2026): a cada mensagem do Johann, a primeira coisa
+   da resposta é um bloco curto **"Pedido aprimorado"** (até ~8 linhas): objetivo em uma frase;
+   escopo (o que entra e o que fica de fora); arquivos/especificação envolvidos (pela skill
+   `wjpromaster-mapa`); critério de pronto (como será validado, inclusive no tablet); riscos ou
+   alternativa melhor (regra 2). Depois **repensar em cima do pedido aprimorado** — se ele mostrar
+   um caminho mais simples, uma contradição com `regras.md` ou uma dúvida real, ajustar o plano ou
+   perguntar (regra 3) — e só então executar o pedido aprimorado. Pergunta simples ou conversa:
+   uma linha só basta.
+10. **Mapa do código: skill `wjpromaster-mapa`** (`.claude/skills/`): consultar antes de procurar com
+   grep/find; ler só o trecho necessário dos arquivos grandes. Arquivo criado, renomeado ou removido:
+   atualizar o mapa no mesmo PR.
 
 Responda sempre em **português (Brasil)**. O dono do projeto é o Johann, engenheiro mecânico
 que usa CAD paramétrico profissionalmente; trate-o como usuário avançado de CAD.

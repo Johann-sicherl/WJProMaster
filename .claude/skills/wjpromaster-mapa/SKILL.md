@@ -1,0 +1,99 @@
+---
+name: wjpromaster-mapa
+description: Mapa do código do WJProMaster (WJCAD, WJPDM, WJPlan, WJWrite, WJApresentation, WJCronProject, WJERP, WJTaskPlan, WJVideoMaker, WJCalcEng, WJFlow) — qual arquivo abrir para cada tipo de tarefa, onde está cada motor e teste, como validar no tablet e publicar. Usar ANTES de procurar com grep/find em qualquer tarefa de código ou documentação deste repositório, para ir direto aos arquivos certos e gastar menos contexto.
+---
+
+# Mapa do WJProMaster (consultar antes de explorar)
+
+Objetivo: ir **direto** aos arquivos certos. Ler só o trecho necessário (`grep -n` + `sed -n a,bp`),
+nunca o arquivo inteiro quando ele for grande (tamanhos abaixo). Regras de produto: `CLAUDE.md` (já
+carregado) e `docs/global/regras.md` (fonte única das decisões). Se este mapa ficar desatualizado
+(arquivo novo, renomeado ou removido), corrigir aqui no mesmo PR.
+
+## 1. Onde mexer, por tipo de pedido
+
+| Pedido sobre… | Abrir primeiro | Especificação |
+|---|---|---|
+| Comando de Features (extrusão, filete, padrão, furo…) | `src/ui/esquemas.ts` (painel campo a campo) → `src/kernel/regenerar.ts` (geometria, 3 000 l) → `src/model.ts` (tipo do recurso) | `docs/funcional/features.md` |
+| Varredura / loft / curvas 3D / recursos do menu Inserir | `src/kernel/varredura.ts`, `loft.ts`, `curvas.ts`, `recursosExtras.ts` | `features.md` §13, §15 |
+| Furo assistido (tabelas ISO) | `src/kernel/furos.ts` | `features.md` |
+| Edição direta (mover/excluir/substituir face) | `src/kernel/edicaoDireta.ts` | `features.md` §18 |
+| Esboço: ferramenta, encaixe, seleção, arrasto | `src/esboco/editor.ts` (2 600 l) | `docs/funcional/sketch.md` |
+| Esboço: entidades compostas, aparar, offset, espelhar | `src/esboco/operacoes.ts` + `geometria.ts` | `sketch.md` |
+| Cotas/relações do esboço, solver | `src/esboco/cotas.ts`, `solver.ts` (PlaneGCS) | `sketch.md` |
+| Painel do esboço (definição, opções) | `src/esboco/painel.ts` | `sketch.md` |
+| Escala 1:1 / calibrar tela | `src/esboco/escalaReal.ts` | `sketch.md` §7 |
+| Converter entidades / interseção / silhueta / texto | `src/esboco/externas.ts`, `malhaPlano.ts`, `texto.ts` | `sketch.md` |
+| Chapa metálica, planificar, DXF | `src/kernel/chapa.ts`, `src/kernel/dxf.ts` | `docs/funcional/chapa.md` |
+| Avaliar (medir, massa, seção, análises) | `src/kernel/avaliar.ts` (exato) · `src/analises.ts` (sobre a malha) | `docs/funcional/avaliar.md` |
+| Importar STEP/STL, cores do STEP | `src/kernel/importar.ts`, `stl.ts`, `coresStep.ts`, `coresImportadas.ts` | `CLAUDE.md` (Modelo) |
+| Seleção de faces/arestas, referências persistentes | `src/kernel/topologia.ts`, `facesRecurso.ts` | — |
+| Vista 3D, câmera, mouse/toque no modelo | `src/viewport.ts` (1 600 l) | `regras.md` §3 |
+| Peça: barra, árvore, menus, atalhos, abrir/salvar | `src/main.ts` (5 000 l — sempre buscar por `grep -n`) | `regras.md` §4 |
+| Abas e botões de comando | `src/comandos.ts` · ícones `src/icones.ts` | — |
+| Painel de comando ✓/✕ genérico | `src/ui/formulario.ts` | — |
+| Aparência (cor) | `src/aparencia.ts`, `src/ui/editorCor.ts` | `regras.md` §6 |
+| Configurações / equações / pai-filho | `src/configuracoes.ts`, `src/equacoes.ts`, `src/dependencias.ts` | — |
+| Montagem (mates, arrastar, cotas, contexto, STEP) | `src/montagem/main.ts` (2 700 l), `solver.ts`, `modelo.ts`, `cena.ts`, `cotas.ts`, `contexto.ts`, `step.ts` | `docs/funcional/montagem.md` |
+| Desenho (folha ABNT, vistas, cotas) | `src/desenho/main.ts` (2 800 l), `modelo.ts`, `anotacoes.ts` · projeção `src/kernel/projecao.ts` | `docs/funcional/desenho.md` |
+| Kernel/worker, mensagens entre UI e kernel | `src/kernel/worker.ts`, `src/kernel/cliente.ts` | — |
+| Cofre: salvar, explorador, GO-OUT/GO-IN, faixa "Cofre:" | `src/comum/cofre.ts` (1 200 l) | `regras.md` §5 |
+| Cópias (aparelho, pasta, pendrive) e sincronia | `src/comum/repositorios.ts`, `src/pdm/sincronia.ts` | `regras.md` §5.2 |
+| Google Drive | `src/comum/drive.ts` | `regras.md` §5.3 |
+| WJPDM (app) | `src/pdm/main.ts`, regras puras `src/pdm/regras.ts` | `docs/global/pdm.md` |
+| Casca comum dos apps (barra, faixa, janelas, desfazer, autosave) | `src/comum/casca.ts`, `icones.ts`, `armazem.ts`, `janelas.ts` | — |
+| Atualização/versão/offline | `src/comum/atualizacao.ts`, `public/sw.js`, `vite.config.ts` (plugin `offline`) | `regras.md` §8 |
+| Página inicial / ⚙ Configurações | `src/inicio/inicio.ts` | — |
+| WJPlan | `src/planilha/main.ts`, `grade.ts` (canvas) · motor `src/formulas/*` | `docs/global/planilha.md` |
+| WJWrite | `src/documento/main.ts` | `docs/global/documentos.md` |
+| WJApresentation | `src/apresentacao/main.ts` | `docs/global/apresentacoes.md` |
+| WJCronProject | `src/cronograma/main.ts` · motor `src/agenda/agenda.ts` | `docs/global/cronograma.md` |
+| WJERP | `src/erp/main.ts` · regras `src/erp/regras.ts` | `docs/global/erp.md` |
+| WJTaskPlan | `src/tarefas/main.ts`, `regras.ts`, `escrita.ts`, `copias.ts` | `docs/global/taskplan.md` |
+| WJVideoMaker (V0) | `src/video/aparelho.ts`, `aparelho-worker.ts`, `capacidade.ts`, `tempo.ts` | `docs/global/wjvideomaker.md` |
+| WJCalcEng | `src/calceng/main.ts` · motor `src/calceng/cg2d.ts` | `docs/global/wjcalceng.md` |
+| WJFlow | `src/flow/main.ts`, `gpu.ts` (WebGPU), `lbm.ts`, `geometria.ts`, `estudo.ts`, `campo.ts`, workers | `docs/global/wjflow.md` |
+| Integrações entre faces | — | `docs/global/integracoes.md` |
+| Status geral do CAD / lacunas priorizadas | — | `docs/funcional/README.md`, `referencia-introducao.md` |
+
+## 2. Testes (Node, sem DOM) — `pnpm teste` roda todos
+
+Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.ts`) e o conjunto inteiro antes do commit.
+
+| Teste | Cobre |
+|---|---|
+| `teste-kernel.ts`, `teste-recursos.ts` | regeneração, features, chapa (kernel em Node) |
+| `teste-esboco.ts` | geometria e operações do esboço |
+| `teste-importar.ts` | STEP/STL, montagem STEP |
+| `teste-montagem.ts` / `teste-desenho.ts` | solver de mates / projeção e desenho |
+| `teste-pdm.ts`, `teste-sincronia.ts`, `teste-drive.ts` | regras do cofre, sincronia das cópias, Drive simulado |
+| `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts` | motores das outras faces |
+| `estresse-*.{ts,cjs}`, `roteiro-ui.cjs` | estresse e roteiro de interface com Playwright (não entram no `pnpm teste`) |
+
+## 3. Validar no navegador (tablet simulado)
+
+1. `pnpm dev --port 5199 --strictPort` em segundo plano (início em `/`, WJCAD em `/cad/`, demais em `/<pagina>/`).
+2. Playwright do ambiente (`require("playwright")`, `chromium.launch({ args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader"] })`):
+   viewport 1280×800, `hasTouch: true`, `isMobile: true`, e antes de abrir
+   `localStorage.setItem("jlscad:interface", JSON.stringify({ dispositivo: "tablet", caixaFlutuante: false }))`.
+3. Modelo pronto: `scripts/roteiro-ui.cjs [computador|tablet|celular]` (localizadores da faixa/abas, espera do
+   "Reconstruindo", leitura do volume no rodapé). Na Peça, `window.__cad.doc()` expõe o documento.
+4. Capturas para o Johann: `deviceScaleFactor: 2`; capturas só para conferência: 1.
+
+## 4. Publicar (regra 6) — sequência sem pausa
+
+`pnpm check && pnpm teste && pnpm build` → commit em português → `git push -u origin <branch>` → PR para
+`main` (ferramentas `mcp__github__*`) → acompanhar o CI (`deploy.yml`: install, check, teste, build com
+`BASE_PATH=/WJProMaster/`) → corrigir → merge → conferir `https://johann-sicherl.github.io/WJProMaster/`.
+
+## 5. Armadilhas já conhecidas
+
+- Página nova: entrada em `vite.config.ts` (`rollupOptions.input`), em `PAGINAS` do `public/sw.js` e caixa em `src/inicio/inicio.ts`.
+- Erro do OpenCascade = `WebAssembly.Exception` sem texto: traduzir e marcar a feature com erro, sem parar as outras.
+- Sólidos grandes: listar faces/arestas com `listarTopo` (linear), não `forma.faces/edges` do replicad (quadrático).
+- Conteúdo importado > 1 MB vai ao kernel uma vez (`PREFIXO_ENVIADO`); fora das fotografias do desfazer.
+- Y para cima (Frontal = XY, Superior = XZ, Lateral = YZ); arquivos até a versão 2 são migrados em `validarDocumento`.
+- Chaves `jlscad:` (localStorage) e cache `jlscad-` não mudam de nome. Versão do cache do `sw.js` não se edita à mão.
+- Autosave por janela: `chave@<id>` (id em `window.name`) + a chave comum usada para passar documento entre apps (`#abrir-autosave`).
+- COOP `same-origin` quebra o login do Google: usar `same-origin-allow-popups` quando for para o Cloudflare.
+- Nunca o nome de produto de terceiros na interface; o fluxo segue o CAD de referência, os nomes são nossos.
