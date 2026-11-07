@@ -3,6 +3,7 @@
 // contra as fórmulas de tabela; modo massa por figura; inércia de massa; arquivo da versão 1.
 import { calcular, calcularDoc, docNovo, integraisPoligono, nomearRegioes, regioesDoEsboco, validarDoc, type DocCg2d } from "../src/calceng/cg2d";
 import * as op from "../src/esboco/operacoes";
+import { buscarCalculadoras, MATERIAS } from "../src/calceng/modulos";
 import type { FeatureEsboco } from "../src/model";
 
 let falhas = 0;
@@ -195,6 +196,19 @@ function poli(e: FeatureEsboco, pts: [number, number][]) {
     erro = (z as Error).message;
   }
   igual("arquivo inválido recusado", /não é um cálculo/.test(erro), true);
+}
+
+// --- catálogo por matéria e busca da lupa ---
+{
+  const nomes = (t: string) => buscarCalculadoras(t).flatMap((m) => m.calculadoras.map((c) => c.id)).join();
+  igual("busca vazia: as quatro matérias", buscarCalculadoras("").length, 4);
+  igual("busca sem acento acha 'Equação do 2º grau'", nomes("equacao 2"), "eq2");
+  igual("busca por palavra-chave (bhaskara)", nomes("Bhaskara"), "eq2");
+  igual("busca por 'centroide'", nomes("centróide"), "cg2d");
+  igual("busca por 3x3 acha Cramer e Gauss", nomes("3x3"), "cramer,gauss,mult");
+  igual("busca pelo nome da matéria", nomes("dinâmica"), "newton,plano,atrito,trabalho");
+  igual("busca sem resultado", buscarCalculadoras("xyzw").length, 0);
+  igual("todas as calculadoras pedidas no catálogo", MATERIAS.flatMap((m) => m.calculadoras).length, 12);
 }
 
 if (falhas) {

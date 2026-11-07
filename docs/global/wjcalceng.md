@@ -24,6 +24,13 @@ arquivos de todos os apps. Página `calceng/`, código em `src/calceng/`, motor 
 
 A ordem C2–C4 é sugestão (álgebra → matrizes → física); muda quando o Johann pedir.
 
+**Seletor de calculadoras** (07/11/2026, pedido do Johann: "organização das matérias por grupo, e uma
+lupa de pesquisa"): o botão **Calculadora ▾** abre a lista agrupada por matéria — Estática e geometria
+de massas · Álgebra · Álgebra linear — matrizes · Física — dinâmica — com a **lupa** no topo. A busca
+ignora acentos e maiúsculas, aceita várias palavras e acha também por palavras-chave (ex.: "bhaskara",
+"determinante", "3x3", "centroide"); Enter abre a primeira calculadora pronta. Catálogo e busca em
+`src/calceng/modulos.ts` (testados em `teste-calceng.ts`); calculadora nova entra lá com `pronto: true`.
+
 ## 2. Centro de gravidade em 2D (C1)
 
 ### 2.1 Esboço = o esboço do WJCAD (07/11/2026, pedido do Johann)

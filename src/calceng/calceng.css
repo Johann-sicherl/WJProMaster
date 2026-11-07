@@ -58,3 +58,17 @@ body.disp-celular .ce-painel { grid-row: 3; border-left: 0; border-top: 1px soli
 @media (max-width: 1000px) {
   body:not(.disp-celular) .ce-principal { grid-template-columns: minmax(220px, 250px) minmax(0, 1fr) minmax(250px, 280px); }
 }
+/* seletor de calculadoras por matéria, com lupa */
+.ce-seletor { position: fixed; z-index: 950; width: min(380px, calc(100vw - 8px)); max-height: min(70vh, 560px); display: flex; flex-direction: column; background: var(--painel); border: 1px solid var(--linha); border-radius: 12px; box-shadow: 0 10px 30px rgba(30, 45, 60, 0.22); overflow: hidden; }
+.ce-busca { display: flex; align-items: center; gap: 8px; margin: 10px; padding: 0 10px; border: 1px solid var(--linha-forte); border-radius: 10px; background: var(--painel-2); }
+.ce-busca:focus-within { border-color: var(--acento); background: var(--painel); }
+.ce-busca svg { width: 20px; height: 20px; flex: none; color: var(--texto-2); }
+.ce-busca input { flex: 1; min-width: 0; min-height: 40px; border: 0; background: transparent; outline: none; font-size: 15px; }
+.ce-materias { overflow: auto; padding: 0 6px 10px; }
+.ce-materias h4 { margin: 10px 6px 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--acento); }
+.ce-materias button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; text-align: left; border-color: transparent; background: transparent; }
+.ce-materias button:hover { background: var(--painel-2); }
+.ce-materias button.atual { background: var(--acento-suave); border-color: var(--acento); font-weight: 600; }
+.ce-materias button[aria-disabled="true"] span { color: var(--texto-2); }
+.ce-materias em { font-style: normal; font-size: 11.5px; color: var(--texto-2); white-space: nowrap; }
+body.disp-tablet .ce-busca input, body.disp-tablet .ce-materias button { min-height: 44px; }
