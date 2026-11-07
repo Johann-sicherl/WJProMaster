@@ -34,7 +34,7 @@ import { assinaturaDados, deBase64, PREFIXO_ENVIADO } from "../model";
 import { distanciaAtePlano, excluirFace, moverCilindro, moverFacePlana } from "./edicaoDireta";
 import { malhaDoStl, type MalhaStl } from "./stl";
 import { centroDeMassa, dividirFaces, domo, eixosDoSistema, escalar, ferramentaRosca, projetarNoPlano, retaComPlano, retaComReta } from "./recursosExtras";
-import { aninhamento, cadeiaAberta, encontrarLacos, limparLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
+import { aninhamento, cadeiaAberta, cruzamentoDoLaco, encontrarLacos, limparLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
 import { medidasFuro } from "./furos";
 import { RastreadorFaces } from "./facesRecurso";
@@ -321,6 +321,11 @@ export function desenhoDoEsboco(esb: FeatureEsboco, contornos?: (string | number
   let lacos = encontrarLacos(esb);
   if (contornos?.length) lacos = lacos.filter((_, i) => contornos.map(Number).includes(i));
   if (!lacos.length) throw new Error("Nenhum contorno selecionado.");
+  // contorno que cruza a si mesmo daria sólido inválido (sem as tampas na tela): avisa onde
+  for (const l of lacos) {
+    const x = cruzamentoDoLaco(l);
+    if (x) throw new Error(`O contorno do esboço cruza a si mesmo perto de (${x.x.toFixed(1)}; ${x.y.toFixed(1)}) mm — por exemplo, uma spline passando por cima de uma linha. Ajuste a curva para não cruzar (o ponto aparece com ✕ vermelho no esboço).`);
+  }
   const prof = aninhamento(lacos);
   // cada região (laço externo ou ilha) menos os seus furos diretos; depois une as regiões.
   // Cortar furos de um desenho com várias regiões separadas perde regiões no replicad.
