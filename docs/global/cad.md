@@ -46,3 +46,20 @@ Aqui fica só o que o CAD precisa **expor ou receber** para fazer parte do ecoss
   cantos, desdobrar/dobrar, converter em chapa.
 - Fase 5: propriedades de seção.
 - Fase 3: filete variável/de face, furo avançado.
+
+## 5. Imagem → modelo 3D (pedido do Johann em 07/11/2026) — ⏸ fase G5
+
+- **O que é:** aba nova no WJCAD (muda a regra das "só quatro áreas de comando" quando for feita) para
+  gerar um modelo 3D a partir de **até 8 imagens das vistas** (frente, trás, esquerda, direita, cima,
+  baixo, frente-esquerda, frente-direita), com escolha da **quantidade de faces: 1,5 M, 1 M, 500 mil e
+  50 mil**. O resultado entra como **corpo de malha** (o mesmo caminho do STL grande: mede, simplifica,
+  vira sólido editável quando couber).
+- **Referência funcional:** o gerador de 3D por imagens da Tencent (Hunyuan3D). Fatos levantados em
+  07/11/2026: pesos abertos só até a versão **2.1** (licença Tencent Hunyuan **não comercial**; o 2.x
+  aceita até 4 vistas); as **8 vistas** e a faixa de **40 mil a 1,5 M faces** são do **3.x**, só como
+  serviço pago por API. Precisa de placa de vídeo NVIDIA (6–24 GB): **não roda no tablet nem no
+  navegador**, e o Johann **não tem NVIDIA** no computador.
+- **Decisão (07/11/2026):** deixar para a **G5**, junto com o servidor do WJProMaster. Caminho previsto:
+  serviço por API com a chave guardada no servidor (nunca no app); o app envia as imagens e recebe a
+  malha (GLB/OBJ/STL), reduzida à quantidade de faces escolhida. Revisar a licença/termos do serviço e
+  o custo por geração antes de implementar.
