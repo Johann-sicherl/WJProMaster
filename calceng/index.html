@@ -10,12 +10,16 @@
   </head>
   <body>
     <main class="ce-principal">
-      <nav id="ce-modulos" class="ce-modulos" aria-label="Calculadoras"></nav>
-      <section class="ce-vista">
-        <div id="ce-dica" class="ce-dica" role="status"></div>
-        <canvas id="ce-tela" class="ce-tela"></canvas>
+      <aside class="ce-esq" aria-label="Esboço">
+        <button id="ce-calc" class="ce-calc" title="Escolher a calculadora"></button>
+        <div id="painel-comando" class="painel-comando"></div>
+      </aside>
+      <section class="ce-vista viewport-wrap">
+        <div id="ce-viewport" class="viewport"></div>
+        <svg id="ce-cg" class="ce-cg" aria-hidden="true"></svg>
+        <div id="overlay-esboco" class="overlay-esboco"></div>
       </section>
-      <aside id="ce-painel" class="ce-painel" aria-label="Propriedades e resultados"></aside>
+      <aside id="ce-painel" class="ce-painel" aria-label="Massa e resultados"></aside>
     </main>
     <script type="module" src="/src/calceng/main.ts"></script>
   </body>

@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 05/11/2026.
+> Última consolidação: 07/11/2026.
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -35,6 +35,15 @@
 12. Segurança: nunca usar nem versionar a chave secreta do cliente OAuth do Google; nunca force-push;
     o PDF do guia do CAD de referência fica só no Drive dele (não versionar); arquivos de instalação e de
     terceiros não entram no repositório.
+13. **Aprimorar todo pedido antes de agir** (07/11/2026): a resposta começa com um bloco curto
+    **"Pedido aprimorado"** (objetivo, escopo, arquivos/especificação, critério de pronto, riscos ou
+    alternativa melhor); depois o Claude repensa em cima dele (caminho mais simples? contradiz estas
+    regras? dúvida real?) e só então executa. Pergunta simples: uma linha basta.
+14. **Mapa do código** (07/11/2026): skill `wjpromaster-mapa` em `.claude/skills/` — `SKILL.md` (qual
+    arquivo abrir por tipo de pedido, testes, validação no tablet, publicação, armadilhas) e `tecnico.md`
+    (detalhes técnicos que saíram do `CLAUDE.md`). Invocar em toda tarefa antes de explorar. Manter viva
+    no mesmo PR; `scripts/teste-mapa.ts` (no `pnpm teste` e no CI) barra arquivo de `src/` ou teste fora
+    do mapa e caminho citado que não existe.
 
 ## 2. Inspiração sem cópia (vale para todas as faces)
 
@@ -194,10 +203,12 @@
   `.wjvid`, pasta "Vídeos". V0 (teste do aparelho, `video/aparelho/`) entregue e medido no TCL: até 1080p por hardware,
   2 vídeos 1080p simultâneos, 4K com proxy, exportação MP4 H.264 + AAC (≈ 1,4 min por minuto).
 - **WJCalcEng** (07/11/2026): face para guardar as formas de calcular do curso de engenharia do Johann.
-  Uma calculadora por módulo (lista à esquerda); a primeira é o **centro de gravidade em 2D**: esboço de
-  figuras (sólidas ou furos), **cotas dirigidas** de distância/raio/diâmetro, massa pelo **mesmo material**
-  (densidade × espessura) **ou informada por figura**, CG de cada figura e do conjunto, momentos de inércia
-  de área e de massa e memória de cálculo. Próximas (pedidas): equações de 1º e 2º grau, sistemas,
+  Uma calculadora por módulo; a primeira é o **centro de gravidade em 2D**. **O desenho é o esboço do
+  WJCAD** (07/11/2026: "exatamente igual ao Sketch do CAD 3D, com os mesmos recursos e relações com os
+  objetos e com a origem"): o mesmo editor, faixa Sketch, painel à esquerda, relações, cotas e solver,
+  numa vista só 2D. A diferença é o **painel lateral direito**: **massa única** (um material: densidade
+  × espessura) **ou massa de cada figura**, com o CG de cada figura (região fechada; contorno dentro de
+  outro = furo) e do conjunto, momentos de inércia de área e de massa e memória de cálculo. Próximas (pedidas): equações de 1º e 2º grau, sistemas,
   inequações, matrizes 3×3 por Cramer e Gauss, multiplicação de matrizes, leis de Newton, plano
   inclinado, atrito e trabalho. Detalhes em `docs/global/wjcalceng.md`.
 - **WJGoldDiamond** (07/11/2026): face de **modelagem 3D de joias** (nome do Johann). Construtores
