@@ -39,9 +39,11 @@
     **"Pedido aprimorado"** (objetivo, escopo, arquivos/especificação, critério de pronto, riscos ou
     alternativa melhor); depois o Claude repensa em cima dele (caminho mais simples? contradiz estas
     regras? dúvida real?) e só então executa. Pergunta simples: uma linha basta.
-14. **Mapa do código** (07/11/2026): skill `wjpromaster-mapa` em `.claude/skills/` — qual arquivo abrir
-    por tipo de pedido, testes, validação no tablet, publicação e armadilhas. Consultar antes de
-    explorar; manter atualizado no mesmo PR quando arquivos mudarem.
+14. **Mapa do código** (07/11/2026): skill `wjpromaster-mapa` em `.claude/skills/` — `SKILL.md` (qual
+    arquivo abrir por tipo de pedido, testes, validação no tablet, publicação, armadilhas) e `tecnico.md`
+    (detalhes técnicos que saíram do `CLAUDE.md`). Invocar em toda tarefa antes de explorar. Manter viva
+    no mesmo PR; `scripts/teste-mapa.ts` (no `pnpm teste` e no CI) barra arquivo de `src/` ou teste fora
+    do mapa e caminho citado que não existe.
 
 ## 2. Inspiração sem cópia (vale para todas as faces)
 

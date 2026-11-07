@@ -7,8 +7,12 @@ description: Mapa do código do WJProMaster (WJCAD, WJPDM, WJPlan, WJWrite, WJAp
 
 Objetivo: ir **direto** aos arquivos certos. Ler só o trecho necessário (`grep -n` + `sed -n a,bp`),
 nunca o arquivo inteiro quando ele for grande (tamanhos abaixo). Regras de produto: `CLAUDE.md` (já
-carregado) e `docs/global/regras.md` (fonte única das decisões). Se este mapa ficar desatualizado
-(arquivo novo, renomeado ou removido), corrigir aqui no mesmo PR.
+carregado) e `docs/global/regras.md` (fonte única das decisões). **Detalhes técnicos, stack, tabela das
+faces, roteiro e observações: [tecnico.md](tecnico.md)** (ler só a seção da tarefa).
+
+**Manter vivo no mesmo PR:** arquivo criado/renomeado/removido → linha aqui; decisão técnica, armadilha
+ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do Johann). `scripts/teste-mapa.ts`
+(no `pnpm teste` e no CI) falha se um arquivo de `src/` ou um teste ficar fora deste mapa.
 
 ## 1. Onde mexer, por tipo de pedido
 
@@ -21,9 +25,10 @@ carregado) e `docs/global/regras.md` (fonte única das decisões). Se este mapa 
 | Esboço: ferramenta, encaixe, seleção, arrasto | `src/esboco/editor.ts` (2 600 l) | `docs/funcional/sketch.md` |
 | Esboço: entidades compostas, aparar, offset, espelhar | `src/esboco/operacoes.ts` + `geometria.ts` | `sketch.md` |
 | Cotas/relações do esboço, solver | `src/esboco/cotas.ts`, `solver.ts` (PlaneGCS) | `sketch.md` |
+| Camada 3D do esboço, referencial do plano | `src/esboco/visual.ts`, `src/esboco/referencial.ts` | — |
 | Painel do esboço (definição, opções) | `src/esboco/painel.ts` | `sketch.md` |
 | Escala 1:1 / calibrar tela | `src/esboco/escalaReal.ts` | `sketch.md` §7 |
-| Converter entidades / interseção / silhueta / texto | `src/esboco/externas.ts`, `malhaPlano.ts`, `texto.ts` | `sketch.md` |
+| Converter entidades / interseção / silhueta / texto | `src/esboco/externas.ts`, `malhaPlano.ts`, `texto.ts`, `fontesTexto.ts`, `opentype.d.ts` | `sketch.md` |
 | Chapa metálica, planificar, DXF | `src/kernel/chapa.ts`, `src/kernel/dxf.ts` | `docs/funcional/chapa.md` |
 | Avaliar (medir, massa, seção, análises) | `src/kernel/avaliar.ts` (exato) · `src/analises.ts` (sobre a malha) | `docs/funcional/avaliar.md` |
 | Importar STEP/STL, cores do STEP | `src/kernel/importar.ts`, `stl.ts`, `coresStep.ts`, `coresImportadas.ts` | `CLAUDE.md` (Modelo) |
@@ -32,6 +37,7 @@ carregado) e `docs/global/regras.md` (fonte única das decisões). Se este mapa 
 | Peça: barra, árvore, menus, atalhos, abrir/salvar | `src/main.ts` (5 000 l — sempre buscar por `grep -n`) | `regras.md` §4 |
 | Abas e botões de comando | `src/comandos.ts` · ícones `src/icones.ts` | — |
 | Painel de comando ✓/✕ genérico | `src/ui/formulario.ts` | — |
+| Peças de UI de Montagem/Desenho, árvore ajustável, ícone do recurso, cotas sobre o modelo | `src/ui/basico.ts`, `src/ui/lateral.ts`, `src/ui/iconeRecurso.ts`, `src/ui/cotasModelo.ts` | — |
 | Aparência (cor) | `src/aparencia.ts`, `src/ui/editorCor.ts` | `regras.md` §6 |
 | Configurações / equações / pai-filho | `src/configuracoes.ts`, `src/equacoes.ts`, `src/dependencias.ts` | — |
 | Montagem (mates, arrastar, cotas, contexto, STEP) | `src/montagem/main.ts` (2 700 l), `solver.ts`, `modelo.ts`, `cena.ts`, `cotas.ts`, `contexto.ts`, `step.ts` | `docs/funcional/montagem.md` |
@@ -42,9 +48,10 @@ carregado) e `docs/global/regras.md` (fonte única das decisões). Se este mapa 
 | Google Drive | `src/comum/drive.ts` | `regras.md` §5.3 |
 | WJPDM (app) | `src/pdm/main.ts`, regras puras `src/pdm/regras.ts` | `docs/global/pdm.md` |
 | Casca comum dos apps (barra, faixa, janelas, desfazer, autosave) | `src/comum/casca.ts`, `icones.ts`, `armazem.ts`, `janelas.ts` | — |
-| Atualização/versão/offline | `src/comum/atualizacao.ts`, `public/sw.js`, `vite.config.ts` (plugin `offline`) | `regras.md` §8 |
+| Arquivo grande passado entre páginas · diagnóstico do aparelho | `src/comum/transferir.ts`, `src/comum/diagnostico.ts` | — |
+| Atualização/versão/offline | `src/comum/atualizacao.ts`, `public/sw.js`, `vite.config.ts` (plugin `offline`), `src/versao.d.ts` | `regras.md` §8 |
 | Página inicial / ⚙ Configurações | `src/inicio/inicio.ts` | — |
-| WJPlan | `src/planilha/main.ts`, `grade.ts` (canvas) · motor `src/formulas/*` | `docs/global/planilha.md` |
+| WJPlan | `src/planilha/main.ts`, `grade.ts` (canvas), `formatar.ts` · motor de fórmulas `src/formulas/`: `sintaxe.ts`, `avaliar.ts`, `funcoes.ts`, `conversao.ts`, `pasta.ts`, `tipos.ts` | `docs/global/planilha.md` |
 | WJWrite | `src/documento/main.ts` | `docs/global/documentos.md` |
 | WJApresentation | `src/apresentacao/main.ts` | `docs/global/apresentacoes.md` |
 | WJCronProject | `src/cronograma/main.ts` · motor `src/agenda/agenda.ts` | `docs/global/cronograma.md` |
@@ -52,7 +59,7 @@ carregado) e `docs/global/regras.md` (fonte única das decisões). Se este mapa 
 | WJTaskPlan | `src/tarefas/main.ts`, `regras.ts`, `escrita.ts`, `copias.ts` | `docs/global/taskplan.md` |
 | WJVideoMaker (V0) | `src/video/aparelho.ts`, `aparelho-worker.ts`, `capacidade.ts`, `tempo.ts` | `docs/global/wjvideomaker.md` |
 | WJCalcEng | `src/calceng/main.ts` · motor `src/calceng/cg2d.ts` | `docs/global/wjcalceng.md` |
-| WJFlow | `src/flow/main.ts`, `gpu.ts` (WebGPU), `lbm.ts`, `geometria.ts`, `estudo.ts`, `campo.ts`, workers | `docs/global/wjflow.md` |
+| WJFlow | `src/flow/main.ts`, `gpu.ts` (WebGPU), `lbm.ts`, `geometria.ts`, `estudo.ts`, `campo.ts`, `vista3d.ts`, `aparelho.ts`, workers `cpu-worker.ts`, `pos-worker.ts`, `preparo-worker.ts` | `docs/global/wjflow.md` |
 | Integrações entre faces | — | `docs/global/integracoes.md` |
 | Status geral do CAD / lacunas priorizadas | — | `docs/funcional/README.md`, `referencia-introducao.md` |
 
@@ -68,6 +75,7 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 | `teste-montagem.ts` / `teste-desenho.ts` | solver de mates / projeção e desenho |
 | `teste-pdm.ts`, `teste-sincronia.ts`, `teste-drive.ts` | regras do cofre, sincronia das cópias, Drive simulado |
 | `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts` | motores das outras faces |
+| `teste-mapa.ts` | este mapa em dia com `src/` e `scripts/` |
 | `estresse-*.{ts,cjs}`, `roteiro-ui.cjs` | estresse e roteiro de interface com Playwright (não entram no `pnpm teste`) |
 
 ## 3. Validar no navegador (tablet simulado)
