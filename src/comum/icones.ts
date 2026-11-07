@@ -139,6 +139,18 @@ export const IC = {
   nota: svg(`<path d="M5 3h10l4 4v14H5z"/><path d="M15 3v4h4"/><path d="M8 11h8M8 14.5h8M8 18h5" stroke="${C}"/>`),
   lista: svg(`<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h1M4 12h1M4 18h1" stroke="${C}" stroke-width="2.6"/>`),
   vento: svg(`<path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7" stroke="${C}"/>`),
+  // WJCalcEng (esboço 2D)
+  selecionar: svg(`<path d="M5 3l13 8-6 1.5L9 19z"/><path d="M12.5 12.5l4 6" stroke="${C}"/>`),
+  retangulo: svg(`<rect x="3.5" y="6" width="17" height="12" rx=".5"/><circle cx="3.5" cy="18" r="1.4" stroke="${C}"/><circle cx="20.5" cy="6" r="1.4" stroke="${C}"/>`),
+  circulo: svg(`<circle cx="12" cy="12" r="8.5"/><path d="M12 12l6 6" stroke="${C}"/><circle cx="12" cy="12" r="1" stroke="${C}"/>`),
+  setor: svg(`<path d="M3.5 16a8.5 8.5 0 0 1 17 0z"/><path d="M12 16V8" stroke="${C}"/>`),
+  triangulo: svg(`<path d="M4 19L12 5l8 14z"/><circle cx="12" cy="14.3" r="1" stroke="${C}"/>`),
+  poligono: svg(`<path d="M5 18l-1.5-8L10 4l9 3 1.5 8-7 4z"/><circle cx="10" cy="4" r="1.3" stroke="${C}"/>`),
+  cota: svg(`<path d="M4 6v12M20 6v12"/><path d="M4 12h16M7 9.5L4 12l3 2.5M17 9.5l3 2.5-3 2.5" stroke="${C}"/>`),
+  centroGravidade: svg(`<circle cx="12" cy="12" r="7"/><path d="M12 5a7 7 0 0 1 7 7h-7zM12 19a7 7 0 0 1-7-7h7z" fill="${C}" stroke="${C}"/>`),
+  enquadrar: svg(`<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><rect x="8" y="8" width="8" height="8" stroke="${C}"/>`),
+  ima: svg(`<path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z"/><path d="M6 7h4M14 7h4" stroke="${C}"/>`),
+  calculo: svg(`<rect x="5" y="3" width="14" height="18" rx="2"/><rect x="8" y="6" width="8" height="3.5" stroke="${C}"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01" stroke-width="2.4"/>`),
 };
 
 export type NomeIc = keyof typeof IC;

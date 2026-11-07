@@ -258,7 +258,11 @@ export interface ResultadoCg {
   avisos: string[];
 }
 
+/** Zera o resíduo numérico (ex.: Ixy = 1e-10 num círculo) em relação à escala dos momentos. */
+const limpo = (v: number, escala: number) => (Math.abs(v) <= 1e-12 * Math.abs(escala) ? 0 : v);
+
 export function principais(Ix: number, Iy: number, Ixy: number): Inercia {
+  Ixy = limpo(Ixy, Math.abs(Ix) + Math.abs(Iy));
   const med = (Ix + Iy) / 2, raio = Math.hypot((Ix - Iy) / 2, Ixy);
   let theta = (0.5 * Math.atan2(-2 * Ixy, Ix - Iy)) / RAD;
   if (Math.abs(theta) < 1e-9) theta = 0;
@@ -279,11 +283,11 @@ export function calcular(doc: DocCg2d): ResultadoCg {
       continue;
     }
     const s = f.furo ? -1 : 1;
-    const x = I.Qy / I.A, y = I.Qx / I.A;
+    const x = limpo(I.Qy / I.A, Math.sqrt(I.A) + Math.abs(I.Qy / I.A)), y = limpo(I.Qx / I.A, Math.sqrt(I.A) + Math.abs(I.Qx / I.A));
     const m = doc.material.modo === "densidade" ? massaDoMaterial(I.A, doc.material) : typeof f.massa === "number" && f.massa >= 0 ? f.massa : NaN;
     figuras.push({
       id: f.id, nome: f.nome, furo: !!f.furo, A: s * I.A, m: s * m, x, y,
-      Ix: s * (I.Ixx - I.A * y * y), Iy: s * (I.Iyy - I.A * x * x), Ixy: s * (I.Ixy - I.A * x * y),
+      Ix: s * (I.Ixx - I.A * y * y), Iy: s * (I.Iyy - I.A * x * x), Ixy: s * limpo(I.Ixy - I.A * x * y, I.Ixx + I.Iyy),
     });
     ints.push(I);
   }

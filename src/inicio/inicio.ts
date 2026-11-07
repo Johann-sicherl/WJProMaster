@@ -70,6 +70,12 @@ const FACES: Face[] = [
     icone: svg(`<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l1.5 1.5L12 7M8 13l1.5 1.5L12 12" stroke="${C}"/><path d="M14 8h3M14 13h3M8 17.5h9"/>`),
   },
   {
+    // Especificação em docs/global/wjcalceng.md; primeiro módulo: centro de gravidade em 2D.
+    id: "calceng", nome: "WJCalcEng", url: "calceng/",
+    descricao: "Cálculos de engenharia do curso: centro de gravidade e momento de inércia de figuras desenhadas, com cotas.",
+    icone: svg(`<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M7.5 7h9M7.5 11h3M13.5 11h3M7.5 15h3"/><circle cx="15" cy="16" r="2.6" stroke="${C}"/><path d="M15 13.4V16h2.6" stroke="${C}"/>`),
+  },
+  {
     // Especificação em docs/global/wjvideomaker.md; por enquanto só o teste do aparelho (V0).
     id: "video", nome: "WJVideoMaker", url: "video/aparelho/", selo: "Teste do aparelho",
     descricao: "Edição de vídeo e fotos: linha do tempo, títulos, transições, cor, áudio; mídia do Drive, pasta ou pendrive.",

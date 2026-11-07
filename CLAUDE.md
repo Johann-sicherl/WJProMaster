@@ -3,7 +3,7 @@
 > **Ecossistema WJProMaster** (nome oficial do conjunto, definido pelo Johann). Faces:
 > **WJCAD** (este app, antigo JLSCAD), **WJPDM** (diretório/cofre do WJCAD), **WJPlan**
 > (planilhas), **WJWrite** (documentos), **WJApresentation** (apresentações), **WJCronProject**
-> (cronogramas), **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD), **WJFlow** (escoamento de ar nas
+> (cronogramas), **WJCalcEng** (cálculos de engenharia do curso; `docs/global/wjcalceng.md`), **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD), **WJFlow** (escoamento de ar nas
 > peças do WJCAD; `docs/global/wjflow.md`), **WJTaskPlan** (tarefas em pastas, escritas à mão;
 > `docs/global/taskplan.md`) e **WJVideoMaker** (edição de vídeo e fotos; especificação em
 > `docs/global/wjvideomaker.md`; por enquanto só o teste do aparelho, V0). Tudo roda no **celular, tablet e
@@ -126,6 +126,7 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 | WJERP | `erp/` | `src/erp/` | `src/erp/regras.ts` (`teste-erp.ts`) | IndexedDB `wjerp`, cópia `.wjerp` |
 | WJTaskPlan | `tarefas/` | `src/tarefas/` | `src/tarefas/regras.ts` (`teste-tarefas.ts`) | IndexedDB `wjtaskplan`; `WJTaskPlan/tarefas.json` + `.csv` (pasta irmã do WJPDM nas cópias) |
 | WJVideoMaker | `video/aparelho/` (V0; editor `video/` na V1) | `src/video/` | `src/video/tempo.ts`, `capacidade.ts` (`teste-video.ts`) | `.wjvid` + mídia e exportações, **tudo no cofre do WJPDM** (vídeo/foto = arquivo de mídia, sem versões); teste do aparelho em Worker com WebCodecs + WebGL2 |
+| WJCalcEng | `calceng/` | `src/calceng/` | `src/calceng/cg2d.ts` (`teste-calceng.ts`) | `.wjcalc` (pasta Cálculos do cofre), autosave `wjcalc:documento`; calculadora 1 = centro de gravidade 2D (esboço, cotas dirigidas, massa, inércia) |
 | WJFlow | `flow/` (+ `flow/aparelho/`) | `src/flow/` | `src/flow/lbm.ts`, `geometria.ts`, `estudo.ts` (`teste-flow.ts`) | `.wjflow` (estudo + peça), autosave IndexedDB `wjflow`; túnel de vento LBM D3Q19 em WebGPU |
 
 Integrações já feitas: o WJPDM abre arquivos nos apps (grava o autosave do app; o WJCAD abre direto
