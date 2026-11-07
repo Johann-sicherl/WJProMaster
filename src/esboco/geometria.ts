@@ -774,3 +774,30 @@ export function limparLacos(pl: P2[], maxLaco = Infinity): P2[] {
   }
   return pts;
 }
+
+/**
+ * Primeiro ponto onde o contorno fechado cruza a si mesmo (null se for simples). Ex.: spline que
+ * volta quase em cima de uma linha e passa décimos de mm para o outro lado: a região sai inválida
+ * (o sólido fica sem as tampas na tela). Usa o polígono já amostrado das curvas.
+ */
+export function cruzamentoDoLaco(l: Laco): P2 | null {
+  const p = l.poligono;
+  const n = p.length;
+  if (n < 4) return null;
+  const cruza = (a: P2, b: P2, c: P2, d: P2): P2 | null => {
+    const r = { x: b.x - a.x, y: b.y - a.y }, s = { x: d.x - c.x, y: d.y - c.y };
+    const den = r.x * s.y - r.y * s.x;
+    if (Math.abs(den) < 1e-14) return null;
+    const q = { x: c.x - a.x, y: c.y - a.y };
+    const t = (q.x * s.y - q.y * s.x) / den, u = (q.x * r.y - q.y * r.x) / den;
+    const e = 1e-9;
+    return t > e && t < 1 - e && u > e && u < 1 - e ? { x: a.x + t * r.x, y: a.y + t * r.y } : null;
+  };
+  for (let i = 0; i < n; i++)
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue; // vizinhos pelo fechamento
+      const x = cruza(p[i], p[(i + 1) % n], p[j], p[(j + 1) % n]);
+      if (x) return x;
+    }
+  return null;
+}

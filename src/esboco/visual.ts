@@ -9,7 +9,7 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import type { CotaEsboco, FeatureEsboco } from "../model";
 import { ehCota } from "../model";
 import { desenharCota } from "./cotas";
-import { aninhamento, EIXO_H, EIXO_V, encontrarLacos, mapaPontos, ORIGEM, pontoNoPoligono, pontosDaGeo, tracosDaGeo, type P2 } from "./geometria";
+import { aninhamento, cruzamentoDoLaco, EIXO_H, EIXO_V, encontrarLacos, mapaPontos, ORIGEM, pontoNoPoligono, pontosDaGeo, tracosDaGeo, type P2 } from "./geometria";
 import type { Referencial } from "./referencial";
 
 export const CORES = {
@@ -104,6 +104,16 @@ export function construirCamada(esb: FeatureEsboco, o: OpcoesCamada): THREE.Grou
   if (o.editando) {
     try {
       const lacos = encontrarLacos(esb);
+      // contorno que cruza a si mesmo (ex.: spline passando por cima de uma linha): ✕ vermelho no
+      // ponto — a região não vira sólido válido até a curva ser ajustada
+      for (const l of lacos) {
+        const x = cruzamentoDoLaco(l);
+        if (!x) continue;
+        const r = 9 * o.mmPx;
+        adicionar({ cor: CORES.conflito, largura: 3, tracejado: false }, [
+          { x: x.x - r, y: x.y - r }, { x: x.x + r, y: x.y + r }, { x: x.x - r, y: x.y + r }, { x: x.x + r, y: x.y - r },
+        ]);
+      }
       const prof = aninhamento(lacos);
       const mat = new THREE.MeshBasicMaterial({ color: 0x7fa9dc, transparent: true, opacity: 0.16, depthTest: false, side: THREE.DoubleSide });
       lacos.forEach((l, i) => {

@@ -406,3 +406,15 @@ caneta vira uma linha de 50 mm no esboço; splines, arcos e qualquer ferramenta 
 - Código: `src/esboco/escalaReal.ts` (calibração), `Viewport.travarEscala` (zoom = px/mm da
   calibração, controles só de pan), `alternarEscalaReal`/`aplicarEscalaReal` em `src/main.ts`.
 - Encaixes e relações automáticas continuam valendo (ex.: horizontal); as medidas seguem o traço.
+
+## 8. Contorno que cruza a si mesmo — ✅ (07/11/2026)
+
+- Um contorno fechado que cruza a si mesmo (ex.: spline que volta quase em cima de uma linha e passa
+  décimos de mm para o outro lado) não vira sólido válido. Antes, o sólido saía sem as tampas e a peça
+  aparecia "oca" na tela; agora o recurso fica com **erro na árvore**, com o ponto: "O contorno do esboço
+  cruza a si mesmo perto de (x; y) mm…", e o esboço mostra um **✕ vermelho** no ponto do cruzamento.
+  Ajustar a curva (arrastar o ponto da spline, aparar a linha) resolve.
+- Código: `cruzamentoDoLaco` (`src/esboco/geometria.ts`, sobre o polígono amostrado das curvas); aviso em
+  `desenhoDoEsboco` (kernel) e marca em `src/esboco/visual.ts`. Teste em `teste-recursos.ts` com a
+  geometria da peça do Johann.
+

@@ -1116,6 +1116,25 @@ verdade("nome repetido ganha o próximo número", nomeUnico(["Extrusão1", "Cort
   }
 }
 
+// ---------- contorno fechado que cruza a si mesmo (peça do Johann, 06/11/2026) ----------
+{
+  // spline que volta quase em cima da linha de baixo e a cruza por décimos de mm: antes o sólido
+  // saía sem as tampas na tela; agora o recurso dá erro dizendo onde, e a curva ajustada funciona
+  const montar = (y2: number) => {
+    const e = novoEsboco(1, { tipo: "plano", plano: "YZ", deslocamento: 0 }) as FeatureEsboco;
+    e.pontos = ([{"id": "7y2fm83j", "x": 25.740559931286185, "y": -55.27609505434064}, {"id": "9sgbnhlb", "x": 8.712657591414672, "y": -55.07185952660236}, {"id": "omux7h4c", "x": -9.647333150525494, "y": -52.986998910712835}, {"id": "qeeqkykc", "x": -19.5847524971382, "y": -46.613926872491064}, {"id": "a62krhal", "x": -22.614343486075445, "y": -38.70415565793635}, {"id": "7qnp5xcj", "x": -21.249941684948983, "y": -28.494478300084204}, {"id": "3o955cl0", "x": -16.608877288452927, "y": -14.458900670818185}, {"id": "7f1b9nvn", "x": -9.20690571791273, "y": 0}, {"id": "n6twi90u", "x": 2.2667639611793895, "y": 13.838110114791323}, {"id": "6mnovzwc", "x": 15.126342736225428, "y": 23.123480025166035}, {"id": "lwc0o1j6", "x": 25.751366035516558, "y": 28.808700239751257}, {"id": "yw77ieyg", "x": 37.10690296350769, "y": 32.677630606937335}, {"id": "o6f33qee", "x": 46.57158147844984, "y": 34.1606995907347}, {"id": "3rjqgcya", "x": -44.259440068713815, "y": 34.1606995907347}, {"id": "hhmihypp", "x": -44.259440068713815, "y": -55.27609505434064}, {"id": "qim5be8a", "x": 25.740559931286185, "y": -55.27609505434064}] as { id: string; x: number; y: number }[]).map((q) => (q.id === "9sgbnhlb" ? { ...q, y: y2 } : q));
+    e.geos = [{"id": "dz9f0qis", "tipo": "spline", "pontos": ["7y2fm83j", "9sgbnhlb", "omux7h4c", "qeeqkykc", "a62krhal", "7qnp5xcj", "3o955cl0", "7f1b9nvn", "n6twi90u", "6mnovzwc", "lwc0o1j6", "yw77ieyg", "o6f33qee"]}, {"id": "mfrx9ki2", "tipo": "linha", "p1": "o6f33qee", "p2": "3rjqgcya"}, {"id": "cavz9tqh", "tipo": "linha", "p1": "3rjqgcya", "p2": "hhmihypp"}, {"id": "t6gp4yzr", "tipo": "linha", "p1": "hhmihypp", "p2": "qim5be8a"}] as never;
+    const x = novaFeature("extrusao", 1) as FeatureExtrusao;
+    x.esboco = e.id;
+    x.condicao = { tipo: "planoMedio", dist: 10 };
+    return regenerar([e, x]);
+  };
+  const ruim = montar(-55.071859526602);
+  verdade("contorno que se cruza: erro com o ponto do cruzamento", ruim.erros.length === 1 && /cruza a si mesmo perto de \(20\.4; -55\.3\)/.test(ruim.erros[0].mensagem));
+  const bom = montar(-50);
+  confere("curva ajustada: sem erro e 17 faces desenhadas (com as tampas)", bom.erros.length ? NaN : (bom.malha?.faces.length ?? 0) / 3, 17, 1e-9);
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);
