@@ -200,6 +200,12 @@
   de área e de massa e memória de cálculo. Próximas (pedidas): equações de 1º e 2º grau, sistemas,
   inequações, matrizes 3×3 por Cramer e Gauss, multiplicação de matrizes, leis de Newton, plano
   inclinado, atrito e trabalho. Detalhes em `docs/global/wjcalceng.md`.
+- **WJGoldDiamond** (07/11/2026): face de **modelagem 3D de joias** (nome do Johann). Construtores
+  paramétricos no mesmo kernel do WJCAD: aro por tamanho (BR/ISO/EUA), perfis e afunilado, cabeça
+  "gema primeiro" (garras ou inglesa), pavé (graduado, fileiras, eternidade, contas ou trilho),
+  gravação interna/externa, torção, facetado/frisos, ocar, contração e canais de fundição, ficha
+  técnica e preço. Booleanas sempre conferidas pelo volume (`segura`). Arquivo `.wjgd`, pasta "Joias".
+  Detalhes e roteiro (J7: escultura, halo, brinco/pingente) em `docs/global/wjgolddiamond.md`.
 - Especificação e estado de cada face: `docs/global/<face>.md`.
 
 ## 8. Hospedagem, versão e offline

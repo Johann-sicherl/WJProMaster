@@ -151,6 +151,16 @@ export const IC = {
   enquadrar: svg(`<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><rect x="8" y="8" width="8" height="8" stroke="${C}"/>`),
   ima: svg(`<path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z"/><path d="M6 7h4M14 7h4" stroke="${C}"/>`),
   calculo: svg(`<rect x="5" y="3" width="14" height="18" rx="2"/><rect x="8" y="6" width="8" height="3.5" stroke="${C}"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01" stroke-width="2.4"/>`),
+  // WJGoldDiamond (joias)
+  anel: svg(`<ellipse cx="12" cy="14" rx="7.5" ry="6.5"/><ellipse cx="12" cy="14" rx="5" ry="4.2" stroke="${C}"/>`),
+  gema: svg(`<path d="M4 9l3-4h10l3 4-8 11z"/><path d="M4 9h16M9 5l3 4 3-4M12 9v11" stroke="${C}"/>`),
+  garras: svg(`<path d="M7 20c0-6-3-8-3-12M17 20c0-6 3-8 3-12M12 20V9"/><path d="M6 8l2-3h8l2 3-6 7z" stroke="${C}"/>`),
+  pave: svg(`<path d="M3 17c4-5 14-5 18 0"/><circle cx="7" cy="12.5" r="1.8" stroke="${C}"/><circle cx="12" cy="11" r="1.8" stroke="${C}"/><circle cx="17" cy="12.5" r="1.8" stroke="${C}"/>`),
+  inglesa: svg(`<ellipse cx="12" cy="12" rx="7.5" ry="6"/><path d="M8 10l2-2h4l2 2-4 5z" stroke="${C}"/>`),
+  gravar: svg(`<ellipse cx="12" cy="12" rx="9" ry="7"/><path d="M7 14l2-5 2 5M8 12.5h2M14 9v5h2.5" stroke="${C}"/>`),
+  textura: svg(`<ellipse cx="12" cy="12" rx="9" ry="7"/><path d="M7 6.5l2 11M11 5l1 14M15 5.5l0 13M18.5 7.5l-1.5 9" stroke="${C}"/>`),
+  fundir: svg(`<path d="M6 3h12l-3 6H9z"/><path d="M12 9v5"/><circle cx="12" cy="17.5" r="3.5" stroke="${C}"/>`),
+  girar: svg(`<path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v5h-5" stroke="${C}"/>`),
 };
 
 export type NomeIc = keyof typeof IC;

@@ -1,0 +1,55 @@
+/* WJGoldDiamond: construtores à esquerda, vista 3D no centro, propriedades e resultados à direita. Tema claro. */
+.gd-principal { display: grid; grid-template-columns: 180px minmax(0, 1fr) minmax(290px, 340px); min-height: 0; overflow: hidden; padding-right: 30px; }
+.gd-arvore { overflow: auto; padding: 10px 8px; border-right: 1px solid var(--linha); background: var(--painel); display: flex; flex-direction: column; gap: 4px; }
+.gd-arvore h3, .gd-props h3 { display: flex; align-items: center; gap: 6px; margin: 10px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--acento); }
+.gd-arvore h3:first-child, .gd-props section > h3:first-child { margin-top: 0; }
+.gd-props h3 svg { width: 18px; height: 18px; }
+.gd-item { display: flex; align-items: center; gap: 4px; border: 1px solid transparent; border-radius: 8px; }
+.gd-item[aria-current="true"] { background: var(--acento-suave); border-color: var(--acento); }
+.gd-item button { flex: 1; display: flex; align-items: center; gap: 8px; text-align: left; min-height: 40px; border: 0; background: transparent; font-size: 14px; padding: 4px 8px; }
+.gd-item[aria-current="true"] button { font-weight: 600; }
+.gd-item button svg { width: 22px; height: 22px; flex: none; }
+.gd-item input { width: 20px; height: 20px; margin-right: 6px; }
+.gd-vista { position: relative; min-width: 0; min-height: 0; overflow: hidden; touch-action: none; }
+.gd-vista canvas { position: absolute; inset: 0; display: block; }
+.gd-props { overflow: auto; padding: 10px 12px 16px; border-left: 1px solid var(--linha); background: var(--painel); }
+.gd-props section { padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--linha); }
+.gd-props section:last-child { border-bottom: 0; }
+.gd-campo { display: grid; grid-template-columns: 1fr minmax(0, 130px) 38px; gap: 6px; align-items: center; margin: 4px 0; }
+.gd-campo span { color: var(--texto-2); font-size: 14px; }
+.gd-campo input, .gd-campo select { width: 100%; min-height: 36px; font-variant-numeric: tabular-nums; }
+.gd-campo em { font-style: normal; font-size: 13px; color: var(--texto-2); }
+.gd-check { display: flex; gap: 8px; align-items: center; margin: 6px 0; font-size: 14px; }
+.gd-check input { width: 20px; height: 20px; }
+.gd-nota { margin: 6px 0; font-size: 13px; color: var(--texto-2); }
+.gd-aviso { margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: #fff4e0; color: #8a5300; font-size: 13px; }
+.gd-botoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.gd-botoes button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; }
+.gd-botoes svg { width: 20px; height: 20px; }
+.gd-destaque { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; background: #1e2730; color: #fff; margin-bottom: 6px; }
+.gd-destaque small { font-size: 12px; opacity: 0.8; }
+.gd-destaque b { font-size: 19px; font-variant-numeric: tabular-nums; }
+.gd-res { display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px; margin: 6px 0; font-size: 13.5px; }
+.gd-res dt { color: var(--texto-2); }
+.gd-res dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.gd-tabela { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.gd-tabela th, .gd-tabela td { padding: 5px 6px; border-bottom: 1px solid var(--linha); text-align: right; white-space: nowrap; }
+.gd-tabela th:first-child, .gd-tabela td:first-child, .gd-esq td { text-align: left; white-space: normal; }
+.gd-tabela th { color: var(--texto-2); font-weight: 600; background: var(--painel-2); }
+.gd-tabela tbody tr[data-c] { cursor: pointer; }
+.gd-tabela tbody tr[data-c]:hover td { background: var(--acento-suave); }
+.gd-rolar { overflow: auto; max-height: 55vh; border: 1px solid var(--linha); border-radius: 8px; }
+.gd-lib { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.gd-lib select { min-height: 36px; margin-left: 4px; }
+.gd-modelos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.gd-modelos button { display: flex; align-items: center; gap: 8px; min-height: 48px; text-align: left; }
+.gd-modelos svg { width: 24px; height: 24px; flex: none; }
+body.disp-tablet .gd-campo input, body.disp-tablet .gd-campo select, body.disp-tablet .gd-botoes button, body.disp-tablet .gd-item button { min-height: 44px; }
+/* celular: construtores somem (abas da faixa), vista em cima e painel embaixo */
+body.disp-celular .gd-principal { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(260px, 55%) minmax(0, 1fr); padding-right: 26px; }
+body.disp-celular .gd-arvore { display: none; }
+body.disp-celular .gd-props { border-left: 0; border-top: 1px solid var(--linha); }
+@media (max-width: 900px) {
+  body:not(.disp-celular) .gd-principal { grid-template-columns: minmax(0, 1fr) minmax(260px, 300px); }
+  body:not(.disp-celular) .gd-arvore { display: none; }
+}
