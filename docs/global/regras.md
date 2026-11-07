@@ -193,6 +193,13 @@
   cópia só por lugar, sem versões nem duplicata no banco do aparelho), **1080p** no tablet (4K só no computador), exportação no cofre **sem versões**, extensão
   `.wjvid`, pasta "Vídeos". V0 (teste do aparelho, `video/aparelho/`) entregue e medido no TCL: até 1080p por hardware,
   2 vídeos 1080p simultâneos, 4K com proxy, exportação MP4 H.264 + AAC (≈ 1,4 min por minuto).
+- **WJCalcEng** (07/11/2026): face para guardar as formas de calcular do curso de engenharia do Johann.
+  Uma calculadora por módulo (lista à esquerda); a primeira é o **centro de gravidade em 2D**: esboço de
+  figuras (sólidas ou furos), **cotas dirigidas** de distância/raio/diâmetro, massa pelo **mesmo material**
+  (densidade × espessura) **ou informada por figura**, CG de cada figura e do conjunto, momentos de inércia
+  de área e de massa e memória de cálculo. Próximas (pedidas): equações de 1º e 2º grau, sistemas,
+  inequações, matrizes 3×3 por Cramer e Gauss, multiplicação de matrizes, leis de Newton, plano
+  inclinado, atrito e trabalho. Detalhes em `docs/global/wjcalceng.md`.
 - Especificação e estado de cada face: `docs/global/<face>.md`.
 
 ## 8. Hospedagem, versão e offline

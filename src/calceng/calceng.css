@@ -1,0 +1,62 @@
+/* WJCalcEng: calculadoras à esquerda, esboço no centro, propriedades e resultados à direita. Tema claro. */
+.ce-principal { display: grid; grid-template-columns: 190px minmax(0, 1fr) minmax(290px, 340px); min-height: 0; overflow: hidden; padding-right: 30px; }
+.ce-modulos { overflow: auto; padding: 10px 8px; border-right: 1px solid var(--linha); background: var(--painel); display: flex; flex-direction: column; gap: 4px; }
+.ce-modulos h3, .ce-painel h3 { margin: 10px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--acento); }
+.ce-modulos h3:first-child, .ce-painel section > h3:first-child { margin-top: 0; }
+.ce-modulos button { display: flex; align-items: center; gap: 8px; text-align: left; min-height: 40px; border-color: transparent; background: transparent; font-size: 14px; padding: 4px 8px; }
+.ce-modulos button svg { width: 22px; height: 22px; flex: none; }
+.ce-modulos button small { display: block; font-size: 11px; color: var(--texto-2); }
+.ce-modulos button[aria-current="true"] { background: var(--acento-suave); border-color: var(--acento); font-weight: 600; }
+.ce-modulos button:disabled { opacity: 0.55; }
+.ce-vista { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.ce-tela { position: absolute; inset: 0; display: block; touch-action: none; cursor: crosshair; }
+.ce-dica { position: absolute; left: 10px; right: 10px; top: 8px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; pointer-events: none; }
+.ce-dica span { background: rgba(255, 255, 255, 0.92); border: 1px solid var(--linha); border-radius: 8px; padding: 4px 10px; font-size: 13px; color: var(--texto-2); box-shadow: var(--sombra); }
+.ce-dica button { pointer-events: auto; box-shadow: var(--sombra); }
+.ce-painel { overflow: auto; padding: 10px 12px 16px; border-left: 1px solid var(--linha); background: var(--painel); }
+.ce-painel section { padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--linha); }
+.ce-painel section:last-child { border-bottom: 0; }
+.ce-campo { display: grid; grid-template-columns: 1fr minmax(0, 130px) 42px; gap: 6px; align-items: center; margin: 4px 0; }
+.ce-campo span { color: var(--texto-2); font-size: 14px; }
+.ce-campo input, .ce-campo select { width: 100%; min-height: 36px; font-variant-numeric: tabular-nums; }
+.ce-campo input.falta { border-color: #c98a12; background: #fff8ea; }
+.ce-campo em { font-style: normal; font-size: 13px; color: var(--texto-2); }
+.ce-check { display: flex; gap: 8px; align-items: center; margin: 6px 0; font-size: 14px; }
+.ce-check input { width: 20px; height: 20px; }
+.ce-modo { display: flex; border: 1px solid var(--linha); border-radius: 8px; overflow: hidden; margin-bottom: 6px; }
+.ce-modo button { flex: 1; border: 0; border-radius: 0; min-height: 40px; font-size: 14px; }
+.ce-modo button[aria-pressed="true"] { background: var(--acento); color: #fff; font-weight: 600; }
+.ce-rapidos { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; font-size: 14px; color: var(--texto-2); }
+.ce-rapidos button[aria-pressed="true"] { background: var(--acento-suave); border-color: var(--acento); }
+.ce-vertices > span { display: block; color: var(--texto-2); font-size: 14px; margin: 4px 0; }
+.ce-vertices div { display: grid; grid-template-columns: 22px 1fr 1fr; gap: 6px; align-items: center; margin: 3px 0; }
+.ce-vertices input { width: 100%; min-height: 34px; }
+.ce-res { display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px; margin: 6px 0; font-size: 13.5px; }
+.ce-res dt { color: var(--texto-2); }
+.ce-res dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.ce-res small { color: var(--texto-2); }
+.ce-destaque { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; background: #1e2730; color: #fff; margin-bottom: 6px; }
+.ce-destaque small { font-size: 12px; opacity: 0.8; }
+.ce-destaque b { font-size: 19px; font-variant-numeric: tabular-nums; }
+.ce-tabela { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.ce-tabela th, .ce-tabela td { padding: 4px 6px; border-bottom: 1px solid var(--linha); text-align: right; white-space: nowrap; }
+.ce-tabela th:first-child, .ce-tabela td:first-child, .ce-memoria th:nth-child(2), .ce-memoria td:nth-child(2) { text-align: left; }
+.ce-tabela th { color: var(--texto-2); font-weight: 600; background: var(--painel-2); }
+.ce-tabela tr[data-f] { cursor: pointer; }
+.ce-tabela tr.sel td { background: #fff1e0; }
+.ce-tabela tbody tr:last-child td { font-weight: 600; }
+.ce-painel .ce-tabela tbody tr:last-child td { font-weight: normal; }
+.ce-memoria { overflow: auto; max-height: 50vh; border: 1px solid var(--linha); border-radius: 8px; }
+.ce-nota { margin: 6px 0; font-size: 13px; color: var(--texto-2); }
+.ce-aviso { margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: #fff4e0; color: #8a5300; font-size: 13px; }
+.ce-botoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+body.disp-tablet .ce-campo input, body.disp-tablet .ce-campo select, body.disp-tablet .ce-botoes button, body.disp-tablet .ce-rapidos button, body.disp-tablet .ce-dica button { min-height: 44px; }
+body.disp-tablet .ce-modulos button { min-height: 44px; }
+/* celular: calculadoras somem, esboço em cima e painel embaixo */
+body.disp-celular .ce-principal { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(260px, 55%) minmax(0, 1fr); padding-right: 26px; }
+body.disp-celular .ce-modulos { display: none; }
+body.disp-celular .ce-painel { border-left: 0; border-top: 1px solid var(--linha); }
+@media (max-width: 900px) {
+  body:not(.disp-celular) .ce-principal { grid-template-columns: minmax(0, 1fr) minmax(260px, 300px); }
+  body:not(.disp-celular) .ce-modulos { display: none; }
+}
