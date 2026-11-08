@@ -8,7 +8,7 @@ import type { InfoReferencia, ResultadoRegeneracao } from "./regenerar";
 import type { Corte, Projecao } from "./projecao";
 import type { Camera, Orientacao } from "../desenho/modelo";
 import type { ResumoPlanificado } from "./dxf";
-import type { PropriedadesMassa, ResultadoMedida, ResultadoVerificacao } from "./avaliar";
+import type { PropriedadesMassa, PropriedadesSecao, ResultadoMedida, ResultadoVerificacao } from "./avaliar";
 
 type SemSeq<T> = T extends unknown ? Omit<T, "seq"> : never;
 
@@ -95,6 +95,9 @@ export class ClienteKernel {
   }
   massa() {
     return this.pedir<PropriedadesMassa>({ tipo: "massa" });
+  }
+  propSecao(ref: Referencia) {
+    return this.pedir<PropriedadesSecao>({ tipo: "propSecao", ref });
   }
   verificar() {
     return this.pedir<ResultadoVerificacao>({ tipo: "verificar" });

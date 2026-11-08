@@ -1,5 +1,6 @@
 // Confere se a skill de mapa do código (.claude/skills/wjpromaster-mapa/SKILL.md) está em dia:
 // todo arquivo de src/ e todo scripts/teste-*.ts aparece no mapa, e todo caminho citado no mapa existe.
+// Também confere as listas que várias sessões editam juntas (páginas no Vite e no sw.js, testes no pnpm teste).
 // Um arquivo conta como citado quando alguma linha tem o caminho completo, ou o nome do arquivo junto
 // com a pasta dele (ex.: "`src/montagem/main.ts`, `solver.ts`").
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -34,8 +35,33 @@ for (const m of texto.matchAll(/`((?:src|docs|scripts|public)\/[^`*<\s]+?\.(?:ts
   if (!existsSync(m[1])) falhas.push(`mapa cita arquivo inexistente: ${m[1]}`);
 }
 
+// Listas que várias sessões editam ao mesmo tempo (uma linha cada): ao juntar trabalhos, nenhuma
+// entrada pode sumir. Toda página (pasta com index.html) precisa estar no Vite e no service worker,
+// e todo scripts/teste-*.ts precisa rodar no "pnpm teste".
+const FORA = new Set(["node_modules", "dist", "public", ".git", ".github", ".claude", "docs", "scripts", "src"]);
+const paginas: string[] = [];
+const procurarPaginas = (pasta: string, nivel: number) => {
+  for (const n of readdirSync(pasta || ".")) {
+    const c = pasta ? `${pasta}/${n}` : n;
+    if (n === "index.html") paginas.push(pasta ? `${pasta}/` : "./");
+    else if (nivel < 3 && !FORA.has(n) && !n.startsWith(".") && statSync(c).isDirectory()) procurarPaginas(c, nivel + 1);
+  }
+};
+procurarPaginas("", 0);
+const vite = readFileSync("vite.config.ts", "utf8");
+const sw = readFileSync("public/sw.js", "utf8").match(/const PAGINAS = \[([^\]]*)\]/)?.[1] ?? "";
+for (const p of paginas) {
+  const html = p === "./" ? "index.html" : `${p}index.html`;
+  if (!vite.includes(`"${html}"`)) falhas.push(`página fora do vite.config.ts (rollupOptions.input): ${html}`);
+  if (!sw.includes(`"${p}"`)) falhas.push(`página fora de PAGINAS em public/sw.js: ${p}`);
+}
+const scriptTeste = (JSON.parse(readFileSync("package.json", "utf8")) as { scripts: Record<string, string> }).scripts.teste;
+for (const n of readdirSync("scripts").filter((n) => /^teste-.*\.ts$/.test(n))) {
+  if (!scriptTeste.includes(`scripts/${n}`)) falhas.push(`teste fora do "pnpm teste" (package.json): scripts/${n}`);
+}
+
 if (falhas.length) {
-  console.error(`Mapa do código desatualizado (${MAPA}):\n  ` + falhas.join("\n  "));
+  console.error(`Mapa do código ou listas do projeto desatualizados (${MAPA}, vite.config.ts, public/sw.js, package.json):\n  ` + falhas.join("\n  "));
   process.exit(1);
 }
 console.log("mapa do código: ok");

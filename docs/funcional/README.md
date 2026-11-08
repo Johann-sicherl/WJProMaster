@@ -66,12 +66,12 @@ Arquivos:
 - **Features** ✅ extrusão/corte e revolução completos, furo assistido ISO, filete, chanfro, casca,
   nervura, inclinação, padrões linear/circular, espelhar, plano e eixo de referência, retrocesso,
   equações/variáveis globais, material, varredura, loft, curvas 3D (hélice, XYZ, pontos,
-  composta, projetada). Pendentes: filete variável/de face,
-  furo avançado, combinar/excluir corpo, rosca cosmética, Instant3D.
+  composta, projetada), filete de tamanho variável e chanfro de vértice (08/11/2026), furo avançado,
+  combinar/excluir corpo e rosca (Inserir E2/E3). Pendentes: filete de face, Instant3D.
 - **Sketch** ✅ Fase 2 + ponto, variantes de retângulo/círculo/arco/rasgo/polígono, filete e chanfro
   de esboço, estender, mover/copiar/girar, padrões de esboço, contornos sombreados.
 - **Avaliar** ✅ medir, massa, vista de seção, verificar, inclinação, espessura, zebra, curvatura,
-  desempenho. Pendente: propriedades de seção.
+  desempenho, **propriedades de seção** ✅ (08/11/2026).
 - **Sheet Metal** 🟡 Fase 4 (núcleo): flange base (placa ou perfil aberto), aba, flange de aresta,
   bainha (fechada, aberta, enrolada), corte na chapa, dobra esboçada, junta, flange de meia-esquadria, canto automático,
   fechar canto, alívio de canto, quebrar canto, converter em chapa (com rasgos), desdobrar/dobrar
@@ -80,7 +80,7 @@ Arquivos:
 - **Barra de vistas** (topo do viewport) ✅ recolhida numa setinha; aberta mostra: ampliar para caber,
   zoom por área (arrastar retângulo; Esc cancela), vista de seção, orientação ▾ (vistas padrão e
   normal a), ocultar/mostrar itens ▾ (ocultar todos os tipos; planos, eixos, origem, esboços) e
-  configurações de vista ▾ (estilo de exibição). Aparência (cor de face/corpo/peça/componente) ✅. Pendentes: vista anterior, cena, estados de exibição.
+  configurações de vista ▾ (estilo de exibição). Aparência (cor de face/corpo/peça/componente) ✅. **Vista anterior** ✅ (08/11/2026, volta o último giro/zoom/troca de vista, até 20). Pendentes: cena, estados de exibição.
 
 Legenda de status em cada campo/comando:
 

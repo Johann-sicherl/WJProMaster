@@ -402,7 +402,7 @@ export function construir(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 
 }
 
 /** Peça para fabricar: contração (escala a partir do centro) e canais de fundição na base. */
-export function paraFabricar(d: DocJoia, forma: Shape3D, comCanais: boolean): Shape3D {
+export function paraFabricar(d: DocJoia, forma: Shape3D, comCanais: boolean, escalar = true): Shape3D {
   let s = forma;
   const f = d.fabricacao;
   if (comCanais && f.canais > 0) {
@@ -412,7 +412,7 @@ export function paraFabricar(d: DocJoia, forma: Shape3D, comCanais: boolean): Sh
       return makeCylinder(f.diamCanal / 2, f.compCanal + 0.4, esc(dir, R + tb - 0.4), dir);
     }));
   }
-  if (f.contracao) s = s.scale(1 + f.contracao / 100, [0, 0, 0]);
+  if (f.contracao && escalar) s = s.scale(1 + f.contracao / 100, [0, 0, 0]);
   return s;
 }
 

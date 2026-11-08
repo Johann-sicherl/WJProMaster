@@ -60,7 +60,7 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | WJTaskPlan | `src/tarefas/main.ts`, `regras.ts`, `escrita.ts`, `copias.ts` | `docs/global/taskplan.md` |
 | WJVideoMaker (V0) | `src/video/aparelho.ts`, `aparelho-worker.ts`, `capacidade.ts`, `tempo.ts` | `docs/global/wjvideomaker.md` |
 | WJCalcEng | `src/calceng/main.ts` · motor `src/calceng/cg2d.ts` · calculadoras por matéria e busca `src/calceng/modulos.ts` · álgebra, matrizes e física (campos + passos) `src/calceng/calculadoras.ts` | `docs/global/wjcalceng.md` |
-| WJGoldDiamond (joias) | `src/joia/main.ts`, `vista.ts`, `malhaGema.ts`, `worker.ts` · motor `src/joia/regras.ts` · ornamentos (esboço → fios) `src/joia/ornamento.ts` + editor `src/joia/editorOrnamento.ts` (esboço do WJCAD, import dinâmico) · sólido `src/joia/geometria.ts` (booleana `segura`, `fioSolido`) | `docs/global/wjgolddiamond.md` |
+| WJGoldDiamond (joias) | `src/joia/main.ts`, `vista.ts`, `malhaGema.ts`, `worker.ts` · motor `src/joia/regras.ts` · ornamentos (esboço → fios) `src/joia/ornamento.ts` + editor `src/joia/editorOrnamento.ts` (esboço do WJCAD, import dinâmico) · escultura em malha `src/joia/escultura.ts` (pincéis, icosfera) + união de malhas `src/joia/uniao.ts` (`manifold-3d`) · sólido `src/joia/geometria.ts` (booleana `segura`, `fioSolido`) | `docs/global/wjgolddiamond.md` |
 | WJSlicer3D (tempo e material de impressão 3D) | `src/slicer/main.ts` (tela), `vista.ts` (mesa 3D), `worker.ts`, `slicer.css` · motor `src/slicer/fatiar.ts` (fatiamento, cascas, suporte, planejador de velocidade) · perfis das impressoras e materiais `src/slicer/perfis.ts` · STL, giro e apoio `src/slicer/malha.ts` | `docs/global/wjslicer3d.md` |
 | WJFlow | `src/flow/main.ts`, `gpu.ts` (WebGPU), `lbm.ts`, `geometria.ts`, `estudo.ts`, `campo.ts`, `vista3d.ts`, `aparelho.ts`, workers `cpu-worker.ts`, `pos-worker.ts`, `preparo-worker.ts` | `docs/global/wjflow.md` |
 | Integrações entre faces | — | `docs/global/integracoes.md` |
@@ -94,9 +94,11 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 
 ## 4. Publicar (regra 6) — sequência sem pausa
 
-`pnpm check && pnpm teste && pnpm build` → commit em português → `git push -u origin <branch>` → PR para
-`main` (ferramentas `mcp__github__*`) → acompanhar o CI (`deploy.yml`: install, check, teste, build com
-`BASE_PATH=/WJProMaster/`) → corrigir → merge → conferir `https://johann-sicherl.github.io/WJProMaster/`.
+`git fetch origin main` + mesclar `origin/main` no ramo (outras sessões publicam ao mesmo tempo, `regras.md`
+regra 16) → `pnpm check && pnpm teste && pnpm build` → commit em português → `git push -u origin <branch>` →
+PR para `main` (ferramentas `mcp__github__*`) → esperar **"Verificar PR"** verde (`verificar.yml`: check,
+teste, build sobre o PR juntado com o `main`) → corrigir → merge **pelo número devolvido ao criar o PR**, com
+`expectedHeadSha` → acompanhar `deploy.yml` → conferir `https://johann-sicherl.github.io/WJProMaster/`.
 
 ## 5. Armadilhas já conhecidas
 

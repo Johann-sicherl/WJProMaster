@@ -14,6 +14,8 @@ import {
   drawRectangle,
   makeBox,
   makeOffset,
+  makePolygon,
+  makeSolid,
   measureShapeVolumeProperties,
   measureVolume,
   Plane,
@@ -1974,6 +1976,41 @@ export function ehFatal(e: unknown): boolean {
   return (!!W?.RuntimeError && e instanceof W.RuntimeError) || (e instanceof Error && FATAL.test(e.message));
 }
 
+/**
+ * Chanfro de vértice: em cada canto escolhido, tira o tetraedro entre o vértice e os pontos a D1,
+ * D2 e D3 dele ao longo das três arestas retas que chegam ali (plano de corte pelos três pontos).
+ */
+function chanfroDeVertice(peca: Shape3D, f: Extract<Feature, { tipo: "chanfro" }>): Shape3D {
+  const vs = (f.itens ?? []).filter((r) => r.tipo === "vertice") as Extract<Referencia, { tipo: "vertice" }>[];
+  if (!vs.length) throw new Error("Selecione os vértices (cantos) a chanfrar.");
+  const ds = f.distanciasIguais ? [f.distancia, f.distancia, f.distancia] : [f.distancia, f.distancia2 ?? f.distancia, f.distancia3 ?? f.distancia];
+  if (ds.some((d) => !(d > 0))) throw new Error("As distâncias devem ser positivas.");
+  let res = peca;
+  for (const v of vs) {
+    const p = v.p;
+    const perto = (q: number[]) => Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) < 1e-5;
+    const direcoes: { d: Vec3; comp: number }[] = [];
+    for (const e of peca.edges) {
+      if (e.geomType !== "LINE") continue;
+      const a = e.startPoint.toTuple(), b = e.endPoint.toTuple();
+      const outro = perto(a) ? b : perto(b) ? a : null;
+      if (!outro) continue;
+      const d = sub3(outro as Vec3, p), comp = Math.hypot(...d);
+      if (!direcoes.some((x) => esc3(x.d, d) / (Math.hypot(...x.d) * comp) > 1 - 1e-9)) direcoes.push({ d, comp });
+    }
+    if (direcoes.length !== 3)
+      throw new Error(`Chanfro de vértice: o canto em (${p.map((x) => x.toFixed(1)).join("; ")}) precisa ter exatamente 3 arestas retas (tem ${direcoes.length}).`);
+    const pts = direcoes.map((x, i) => {
+      if (ds[i] >= x.comp - 1e-6) throw new Error(`Chanfro de vértice: D${i + 1} = ${ds[i]} mm não cabe na aresta de ${x.comp.toFixed(2)} mm.`);
+      return soma3(p, mul3(x.d, ds[i] / x.comp));
+    });
+    const [a, b, c] = pts;
+    const tetra = makeSolid([makePolygon([p, a, b]), makePolygon([p, b, c]), makePolygon([p, c, a]), makePolygon([a, b, c])]);
+    res = res.cut(tetra as unknown as Shape3D);
+  }
+  return res;
+}
+
 export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { planificar?: boolean; previa?: string } = {}): ResultadoRegeneracao {
   try {
     return regenerarBruto(features, tolerancia, opcoes);
@@ -2664,7 +2701,10 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       };
       ctx.peca = peca.fillet((e) => {
         if (!arestas.some((x) => x.isSame(e))) return null;
-        return f.assimetrico ? [raio(e), f.raio2 ?? raio(e)] : raio(e);
+        if (!f.assimetrico) return raio(e);
+        // raio variável: linear do início ao fim da aresta (BRepFilletAPI_MakeFillet.Add(r1, r2, aresta))
+        const r2 = f.raio2 ?? raio(e);
+        return f.inverterSentido ? [r2, raio(e)] : [raio(e), r2];
       });
       return;
     }
@@ -2672,6 +2712,10 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
     case "chanfro": {
       const peca = exigirPeca(ctx, "O chanfro");
       if (!(f.distancia > 0)) throw new Error("Distância deve ser positiva.");
+      if (f.modo === "vertice") {
+        ctx.peca = chanfroDeVertice(peca, f);
+        return;
+      }
       if (!f.itens?.length) throw new Error("Selecione as arestas (ou faces) a chanfrar.");
       let arestas = arestasDosItens(peca, f.itens);
       if (f.propagarTangente) arestas = propagarTangente(peca, arestas);

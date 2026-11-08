@@ -206,6 +206,8 @@ export class Viewport {
     this.modoEsboco(false);
     this.controles.enableDamping = true;
     this.controles.dampingFactor = 0.12;
+    // vista anterior: guarda a câmera antes de cada giro/zoom/arrasto
+    this.controles.addEventListener("start", () => this.guardarVista());
     this.controles.addEventListener("change", () => {
       this.precisaRender = true;
       this.aoMudarCamera?.();
@@ -1524,7 +1526,26 @@ export class Viewport {
 
   private animacao: { de: [THREE.Vector3, THREE.Vector3, number]; para: [THREE.Vector3, THREE.Vector3, number]; t0: number } | null = null;
 
-  private moverCamera(alvo: THREE.Vector3, posicao: THREE.Vector3, animado: boolean, zoom = this.camera.zoom) {
+  /** Vistas anteriores (alvo, posição, zoom), a mais recente no fim; até 20. */
+  private historicoVistas: [THREE.Vector3, THREE.Vector3, number][] = [];
+  private guardarVista() {
+    const atual: [THREE.Vector3, THREE.Vector3, number] = [this.controles.target.clone(), this.camera.position.clone(), this.camera.zoom];
+    const ult = this.historicoVistas[this.historicoVistas.length - 1];
+    if (ult && ult[0].distanceTo(atual[0]) < 1e-6 && ult[1].distanceTo(atual[1]) < 1e-6 && Math.abs(ult[2] - atual[2]) < 1e-9) return;
+    this.historicoVistas.push(atual);
+    if (this.historicoVistas.length > 20) this.historicoVistas.shift();
+  }
+  get temVistaAnterior() {
+    return this.historicoVistas.length > 0;
+  }
+  /** Volta para a vista de antes do último giro, zoom ou troca de vista. */
+  vistaAnterior() {
+    const v = this.historicoVistas.pop();
+    if (v) this.moverCamera(v[0], v[1], true, v[2], false);
+  }
+
+  private moverCamera(alvo: THREE.Vector3, posicao: THREE.Vector3, animado: boolean, zoom = this.camera.zoom, guardar = true) {
+    if (guardar) this.guardarVista();
     if (this.escalaTravada) zoom = this.escalaTravada; // escala real 1:1: enquadrar só centraliza
     if (!animado) {
       this.controles.target.copy(alvo);

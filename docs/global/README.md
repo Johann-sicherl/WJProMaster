@@ -146,7 +146,7 @@ WJProMaster/
 | **G8** WJERP fiscal e contábil | NF-e/NFS-e (via provedor homologado), SPED, contabilidade, conciliação bancária, boletos/PIX | exige conformidade legal; por último |
 
 Faces locais fora desta sequência, com roteiro próprio: **WJFlow** (A0–A6), **WJTaskPlan** e
-**WJVideoMaker** (V0–V6, `wjvideomaker.md` §12) **WJCalcEng** (C1–C4, `wjcalceng.md` §1) **WJGoldDiamond** (J0–J7, `wjgolddiamond.md` §2) e **WJSlicer3D** (S1 entregue, `wjslicer3d.md` §6); não dependem do servidor.
+**WJVideoMaker** (V0–V6, `wjvideomaker.md` §12), **WJCalcEng** (C1–C4, `wjcalceng.md` §1), **WJGoldDiamond** (J0–J7, `wjgolddiamond.md` §2) e **WJSlicer3D** (S1 entregue, `wjslicer3d.md` §6); não dependem do servidor.
 
 A ordem pode mudar por decisão do Johann (por exemplo, antecipar o WJPDM se o uso no trabalho pedir).
 

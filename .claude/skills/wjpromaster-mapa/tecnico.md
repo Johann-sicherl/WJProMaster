@@ -226,3 +226,8 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
   passando por aresta do perfil): aparar 0,6·r ou folgar 0,02 mm deixa 3–5× mais rápido e correto.
   Superfícies analíticas (toro, cilindro, plano) são bem mais rápidas que B-spline (loft) nos cortes.
   Fio de Ø variável: varredura com `Law_Linear` (`genericSweep` com `law`), não loft (autointercepta em voltas fechadas).
+- **Malha × B-Rep (WJGoldDiamond J8)**: escultura fica em malha; para peso/área/STL a joia do OpenCascade é
+  tesselada (`mesh`, tol. 0,01 mm; volume ~0,5 % abaixo do exato), soldada (`Mesh.merge`) e unida no
+  `manifold-3d` (centenas de ms). Não unir malha densa no OpenCascade (milhares de faces = minutos).
+  `manifold-3d` entra com `overrides` no `pnpm-workspace.yaml` cortando as dependências do editor CAD do pacote
+  (gltf-transform, sharp, esbuild-wasm…): só `manifold.js` + `manifold.wasm` são usados.
