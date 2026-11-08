@@ -4183,6 +4183,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("cad", temDocumento()) },
   exportar: { rotulo: "Exportar (STEP, STL)…", icone: "exportar", fazer: () => void abrirExportar() },
   fluxo: { rotulo: "Abrir no WJFlow (escoamento de ar)", icone: "exportar", fazer: () => void abrirNoWJFlow() },
+  imagem3d: { rotulo: "Imagens → modelo 3D (fotos das vistas)…", icone: "abrir", fazer: () => void abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}cad/imagem3d/`, location.href).href) },
   desenho: { rotulo: "Criar desenho desta peça", icone: "desenho", fazer: () => {
     salvarAutosave();
     abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}cad/desenho/#de-peca`, location.href).href);

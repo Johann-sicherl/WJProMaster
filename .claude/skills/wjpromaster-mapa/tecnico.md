@@ -201,6 +201,7 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
 - Erros do OpenCascade chegam como `WebAssembly.Exception` sem texto: traduzir para mensagem útil
   e marcar a feature com erro na árvore, sem interromper a regeneração das demais.
 - Manter o kernel fora da thread da UI. Regenerações antigas são descartadas (`seq`).
+- **Imagens → 3D (fase 1)**: casco visual em `src/imagem3d/casco.ts` — fração coberta 0–255 na grade (não binária) + surface nets = superfície sub-voxel sem tabelas de marching cubes; a grade inteira é `Uint8Array` (48 M pontos no máximo) e a superfície é feita em duas camadas de índices por vez. `simplificarStl` (agrupamento) custa mais que gerar: só usar se a malha passou mais de 8% do pedido.
 - **Exportar como "Salvar como"** (`exportarComo` em `src/comum/cofre.ts`): o explorador do cofre aceita `tipos` (seletor "Salvar como tipo" troca extensão e filtro), `dispositivo` (botão "No dispositivo": baixa) e `substituir` (nome repetido vira versão seguinte). Abre em `pastaDoDocumento(app)`. O conteúdo só é gerado depois da escolha. No Playwright, download com nome acentuado aparece como `download` (só no teste).
 - `vite.config.ts`: `base` vem de `BASE_PATH` (padrão `/`, Cloudflare); o workflow do GitHub Pages usa `/<nome do repositório>/`.
 - **Versão** ao lado do WJProMaster na página inicial e do nome de cada app (`%WJ_VERSAO%` no HTML, `__VERSAO__` no código): `<version do package.json>.<GITHUB_RUN_NUMBER>`

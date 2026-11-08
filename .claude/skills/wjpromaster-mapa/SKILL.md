@@ -31,6 +31,7 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | Converter entidades / interseção / silhueta / texto | `src/esboco/externas.ts`, `malhaPlano.ts`, `texto.ts`, `fontesTexto.ts`, `opentype.d.ts` | `sketch.md` |
 | Chapa metálica, planificar, DXF | `src/kernel/chapa.ts`, `src/kernel/dxf.ts` | `docs/funcional/chapa.md` |
 | Avaliar (medir, massa, seção, análises) | `src/kernel/avaliar.ts` (exato) · `src/analises.ts` (sobre a malha) | `docs/funcional/avaliar.md` |
+| Imagens → modelo 3D (fotos das vistas, casco visual) | `src/imagem3d/casco.ts` (silhueta, medidas, escultura, superfície, STL), `worker.ts`, `main.ts`, `imagem3d.css` · página `cad/imagem3d/` | `docs/global/cad.md` §5 |
 | Importar STEP/STL, cores do STEP | `src/kernel/importar.ts`, `stl.ts`, `coresStep.ts`, `coresImportadas.ts` | `CLAUDE.md` (Modelo) |
 | Seleção de faces/arestas, referências persistentes | `src/kernel/topologia.ts`, `facesRecurso.ts` | — |
 | Vista 3D, câmera, mouse/toque no modelo | `src/viewport.ts` (1 600 l) | `regras.md` §3 |
@@ -73,6 +74,7 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 | `teste-kernel.ts`, `teste-recursos.ts` | regeneração, features, chapa (kernel em Node) |
 | `teste-esboco.ts` | geometria e operações do esboço |
 | `teste-importar.ts` | STEP/STL, montagem STEP |
+| `teste-imagem3d.ts` | gerador imagens → 3D (silhueta, medidas, casco, faces, STL) |
 | `teste-montagem.ts` / `teste-desenho.ts` | solver de mates / projeção e desenho |
 | `teste-pdm.ts`, `teste-sincronia.ts`, `teste-drive.ts` | regras do cofre, sincronia das cópias, Drive simulado |
 | `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts`, `teste-joia.ts` | motores das outras faces |
