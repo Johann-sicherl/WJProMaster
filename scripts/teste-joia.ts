@@ -9,6 +9,7 @@ import {
 } from "../src/joia/regras";
 import { construir, medidas, paraFabricar } from "../src/joia/geometria";
 import { malhaGema } from "../src/joia/malhaGema";
+import { esbocoNovoOrnamento, ornamentar, ornamentoVintage, type Ornamento } from "../src/joia/ornamento";
 
 let falhas = 0;
 const ok = (c: boolean, m: string) => {
@@ -75,6 +76,26 @@ ok(m2.pave.length > 20 && m2.descartadas === 0, `eternidade dá a volta toda (${
 const livresFac = intervalosLivres(zonasOcupadas(docNovo(), m0, 0, false));
 ok(!!poligonoFacetas({ ...docNovo(), textura: { tipo: "facetas", quantidade: 16, profundidade: 0.2 } }, m0, livresFac), "polígono das facetas");
 ok(verificar({ ...docNovo(), cabeca: { ...docNovo().cabeca, diamGarra: 0.4 } }, m0, 0).some((x) => x.includes("Garras")), "verificação: garra fina");
+
+// ornamentos (puro)
+const ornTeste = (): Ornamento => {
+  const esb = esbocoNovoOrnamento("t", 2.4, null, 20);
+  esb.pontos.push({ id: "a", x: 1, y: 0.5 }, { id: "b", x: 4, y: 1 }, { id: "c", x: 0, y: 0 }, { id: "q", x: 6, y: 0 });
+  esb.geos.push({ id: "l", tipo: "linha", p1: "a", p2: "b" }, { id: "ci", tipo: "circulo", c: "c", r: 0.8 }, { id: "pq", tipo: "ponto", p: "q" });
+  return { id: "t", nome: "T", ativo: true, esboco: esb, altura: 0.1, diametro: 0.6, simetria: "xy", envolver: true, pontas: true, fios: { l: { d0: 0.6, d1: 0.3 } }, pontos: { q: { tipo: "inglesa", d: 1.5, material: "rubi" } } };
+};
+{
+  const o = ornTeste();
+  const r = ornamentar([o], 9, () => 1.7);
+  const linhas = r.fios.filter((f) => f.pts.length && Math.hypot(f.pts[0][0] - f.pts[f.pts.length - 1][0], f.pts[0][1] - f.pts[f.pts.length - 1][1], f.pts[0][2] - f.pts[f.pts.length - 1][2]) > 1e-6);
+  ok(linhas.length === 4 && r.fios.length === 5, `simetria xy: 4 cópias da linha, círculo central sem repetição (${r.fios.length} fios)`);
+  ok(perto(linhas[0].raios[0], 0.3, 1e-9) && perto(linhas[0].raios[linhas[0].raios.length - 1], 0.15, 1e-9) && linhas[0].bolinhaIni, "fio afinando com bolinha na ponta solta");
+  const p0 = linhas[0].pts[0];
+  ok(perto(Math.hypot(p0[0], p0[1]), 9 + 1.7 + 0.1 + 0.3, 1e-6) && perto(p0[2], 0.5, 1e-9), "fio envolvido no aro (raio = R + t + altura + r)");
+  ok(r.pontos.length === 2 && r.pontos.every((q) => q.tipo === "inglesa"), "ponto espelhado vira duas pedrinhas");
+  const m = montar({ ...docNovo(), cabeca: { ...docNovo().cabeca, ativo: false }, ornamentos: [o] });
+  ok(m.gemasOrn.length === 2 && ficha({ ...docNovo(), ornamentos: [o] }, m, 100).gemas.some((g) => g.descricao.startsWith("Rubi")), "pedrinhas dos ornamentos na ficha");
+}
 
 // geometria
 const OC = await (opencascade as any)({ locateFile: () => createRequire(import.meta.url).resolve("replicad-opencascadejs/wasm") });
@@ -191,6 +212,39 @@ for (let i = 0; i < 10; i++) {
     ok(vol > 30 && !r.avisos.some((x) => x.includes("kernel")), `sorteio ${i} (${d.aro.perfil}, ${d.cabeca.ativo ? d.cabeca.tipo + " " + lap : "sem cabeça"}, pavé ${d.pave.ativo ? d.pave.tipo : "não"}, ${d.textura.tipo}${d.fabricacao.ocar ? ", ocado" : ""}): ${vol.toFixed(1)} ${r.avisos.join(" ")}`);
   });
 }
+tempo("falha do aro cortado sob a gema (oval 8×6, aro 10)", () => {
+  const b = docNovo();
+  const d: DocJoia = { ...b, aro: { ...b.aro, tamanho: 10 }, cabeca: { ...b.cabeca, gema: { lapidacao: "oval", material: "rubi", comprimento: 8, largura: 6 } } };
+  const r = construir(d);
+  let solidos = 0;
+  const ex = new (OC as any).TopExp_Explorer(r.forma.wrapped, (OC as any).TopAbs_ShapeEnum.TopAbs_SOLID, (OC as any).TopAbs_ShapeEnum.TopAbs_SHAPE);
+  for (; ex.More(); ex.Next()) solidos++;
+  ok(solidos === 1, `um sólido só (aro inteiro sob a gema): ${solidos}`);
+  ok(montar(d).avisos.some((x) => x.includes("culaça")), "aviso da culaça entrando no aro");
+});
+tempo("garra alongada, garra dupla e aro dividido", () => {
+  const b = docNovo();
+  for (const ponta of ["alongada", "dupla"] as const) {
+    const vol = medidas(construir({ ...b, cabeca: { ...b.cabeca, pontaGarra: ponta } }).forma).volume;
+    ok(vol > volSol, `ponta ${ponta}: ${volSol.toFixed(1)} → ${vol.toFixed(1)}`);
+  }
+  const dv: DocJoia = { ...b, aro: { ...b.aro, largura: 3.2, larguraBase: 3.2, dividido: 1.2, divisao: 40 } };
+  const r = construir(dv);
+  const cheio = medidas(construir({ ...dv, aro: { ...dv.aro, dividido: 0 } }).forma).volume;
+  ok(medidas(r.forma).volume < cheio - 1 && !r.avisos.some((x) => x.includes("kernel")), `aro dividido tira metal no topo (${cheio.toFixed(1)} → ${medidas(r.forma).volume.toFixed(1)})`);
+});
+tempo("anel vintage com filigrana", () => {
+  const b = docNovo();
+  const d: DocJoia = {
+    ...b, aro: { ...b.aro, perfil: "meia-cana", tamanho: 14, largura: 2.2, espessura: 1.6, larguraBase: 2.0, espessuraBase: 1.5 },
+    cabeca: { ...b.cabeca, gema: { lapidacao: "oval", material: "diamante", comprimento: 8, largura: 6 }, girar: 90, pontaGarra: "alongada", galeria: false, elevacao: 2.9, diamGarra: 0.9 },
+    ornamentos: [ornamentoVintage("v", 2.2)],
+  };
+  const r = construir(d);
+  const vol = medidas(r.forma).volume;
+  const semOrn = medidas(construir({ ...d, ornamentos: [] }).forma).volume;
+  ok(vol > semOrn + 20 && !r.avisos.length && r.montagem.gemasOrn.length === 2, `vintage: ${semOrn.toFixed(1)} → ${vol.toFixed(1)} mm³, ${r.montagem.orn.fios.length} fios ${r.avisos.join(" ")}`);
+});
 
 if (falhas) { console.error(`${falhas} falha(s)`); process.exit(1); }
 console.log("teste-joia: tudo certo");

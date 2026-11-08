@@ -32,7 +32,8 @@ function traduzir(e: unknown): string {
 function malha(forma: Shape3D, seq: number, final: boolean, avisos: string[], t0: number) {
   const m = forma.mesh({ tolerance: 0.01, angularTolerance: 8 });
   const pos = new Float32Array(m.vertices), nor = new Float32Array(m.normals), idx = new Uint32Array(m.triangles);
-  const { volume, area } = medidas(forma);
+  // a prévia é um composto sem booleanas: volume e área só na versão final
+  const { volume, area } = final ? medidas(forma) : { volume: NaN, area: NaN };
   enviar({ tipo: "malha", seq, final, pos, nor, idx, volume, area, avisos, ms: performance.now() - t0 }, [pos.buffer, nor.buffer, idx.buffer]);
 }
 
