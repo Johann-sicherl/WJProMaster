@@ -240,8 +240,9 @@
 - PORTA_CANETA (exportação com arestas não-manifold, extrusão que não funde, corpo que some no corte):
   aguardando o ZIP com o STL original e o `.wjcad`.
 - Estados de exibição (aparência por estado): ainda não pedido para implementar.
-- **Imagem → modelo 3D** (até 8 vistas, 1,5 M / 1 M / 500 mil / 50 mil faces, aba nova no WJCAD): adiado
-  para a **G5** por decisão do Johann (07/11/2026) — o modelo não roda no tablet/navegador e ele não tem
-  placa NVIDIA; especificação e fatos em `docs/global/cad.md` §5.
+- **Imagem → modelo 3D**: **fase 1 entregue (08/11/2026)** — gerador próprio por silhuetas (casco
+  visual), offline, no tablet; fotos com **fundo liso sempre** (decisão do Johann). Página `cad/imagem3d/`
+  (Peça → menu → "Imagens → modelo 3D"). Fase 2 (acabamento por IA num servidor com GPU) fica para a
+  **G5**. Detalhes em `docs/global/cad.md` §5.
 - WJVideoMaker: teste de pasta/pendrive com vídeos de verdade no TCL (o desempenho já foi medido,
   §8 de `docs/global/wjvideomaker.md`) e a chave de API do seletor do Google Drive (passos no §14).

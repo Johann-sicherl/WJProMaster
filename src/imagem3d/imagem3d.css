@@ -1,0 +1,51 @@
+/* Imagens → modelo 3D (WJCAD): fotos das vistas à esquerda, vista 3D à direita. */
+body.im-app { grid-template-rows: auto minmax(0, 1fr) auto; height: 100dvh; overflow: hidden; }
+.im-titulo { font-weight: 600; margin-left: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.im-ajuda { min-height: 38px; }
+
+.im-principal { display: grid; grid-template-columns: minmax(340px, 430px) minmax(0, 1fr); min-height: 0; }
+.im-lado { overflow: auto; padding: 10px 12px 16px; border-right: 1px solid var(--linha); background: var(--painel); display: flex; flex-direction: column; gap: 12px; }
+.im-lado h2 { font-size: 15px; margin: 0 0 8px; }
+.im-lado h2 small { font-weight: 400; color: var(--texto-2); margin-left: 6px; }
+
+.im-vistas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.im-cartao { display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid var(--linha); border-radius: 8px; background: var(--painel-2); min-width: 0; }
+.im-cartao.tem { background: var(--painel); }
+.im-cartao.erro { border-color: var(--erro); }
+.im-cartao.erro small { color: var(--erro); }
+.im-foto { display: grid; place-items: center; height: 104px; padding: 2px; border-style: dashed; background: var(--painel); overflow: hidden; }
+.im-cartao.tem .im-foto { border-style: solid; }
+.im-foto canvas { max-width: 100%; max-height: 98px; object-fit: contain; }
+.im-mais { font-size: 34px; line-height: 1; color: var(--acento); }
+.im-rotulo { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-height: 30px; }
+.im-x { min-height: 30px; width: 34px; padding: 0; }
+.im-cartao small { font-size: 12px; color: var(--texto-2); line-height: 1.25; }
+
+.im-opcoes { display: flex; flex-direction: column; gap: 10px; }
+.im-campo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.im-campo > span { min-width: 140px; color: var(--texto-2); }
+.im-campo input[type="range"] { flex: 1; min-width: 120px; height: 34px; }
+.im-campo select { flex: 1; min-width: 150px; min-height: var(--toque); }
+.im-campo input[type="number"] { width: 100px; min-height: var(--toque); }
+.im-segmentos { display: flex; flex: 1; border: 1px solid var(--linha); border-radius: 8px; overflow: hidden; }
+.im-segmentos button { flex: 1; min-height: var(--toque); border: 0; border-radius: 0; border-left: 1px solid var(--linha); padding: 0 6px; white-space: nowrap; }
+.im-segmentos button:first-child { border-left: 0; }
+.im-segmentos button.sel { background: var(--acento); color: #fff; font-weight: 600; }
+.im-gerar { min-height: 48px; font-size: 16px; }
+
+.im-vista3d { position: relative; min-width: 0; min-height: 0; }
+.im-3d { position: absolute; inset: 0; touch-action: none; }
+.im-3d canvas { display: block; }
+.im-vazio { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--texto-2); pointer-events: none; }
+.im-vazio[hidden], .im-resultado[hidden] { display: none; }
+.im-resultado { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; background: var(--painel); border: 1px solid var(--linha); border-radius: 10px; box-shadow: var(--sombra); }
+.im-acoes { margin-left: auto; display: flex; gap: 8px; }
+.im-acoes button { min-height: var(--toque); }
+.im-dicas { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+
+body.disp-celular .im-principal { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 42vh; }
+body.disp-celular .im-lado { border-right: 0; border-bottom: 1px solid var(--linha); }
+@media (max-width: 760px) {
+  .im-principal { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 42vh; }
+  .im-lado { border-right: 0; border-bottom: 1px solid var(--linha); }
+}
