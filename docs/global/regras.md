@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 07/11/2026.
+> Última consolidação: 08/11/2026.
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -44,6 +44,10 @@
     (detalhes técnicos que saíram do `CLAUDE.md`). Invocar em toda tarefa antes de explorar. Manter viva
     no mesmo PR; `scripts/teste-mapa.ts` (no `pnpm teste` e no CI) barra arquivo de `src/` ou teste fora
     do mapa e caminho citado que não existe.
+15. **Qualidade acima de economia** (08/11/2026): qualidade e aprimoramento do software com o menor risco
+    possível, tudo coberto por testes, boa experiência de uso e assertividade. Não se corta leitura de
+    regras, testes nem validação para poupar tokens: este arquivo é lido inteiro a cada tarefa e a skill
+    do mapa é invocada sempre; a economia vem só de ir direto ao arquivo certo.
 
 ## 2. Inspiração sem cópia (vale para todas as faces)
 
