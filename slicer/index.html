@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/wjpromaster.svg" type="image/svg+xml" />
+    <title>WJSlicer3D — WJProMaster</title>
+  </head>
+  <body class="sl-app">
+    <header class="wj-topo">
+      <a class="wj-marca" href="../" title="Voltar ao WJProMaster"><img src="/wjpromaster.svg" alt="" /><span>WJSlicer3D <small id="sl-versao" class="versao-app"></small></span></a>
+      <button id="sl-abrir" class="sl-abrir" title="Abrir um STL do cofre ou do aparelho"><span>Abrir STL</span></button>
+      <span class="sl-sub">Tempo de impressão e material estimados · sem G-code</span>
+      <div id="sl-direita" class="wj-direita"></div>
+    </header>
+    <main class="sl-principal">
+      <section class="sl-vista-wrap">
+        <div id="sl-vista" class="sl-vista"></div>
+        <div id="sl-vazio" class="sl-vazio">
+          <p>Abra uma peça STL para estimar o tempo de impressão e o material.</p>
+          <button id="sl-vazio-abrir" class="destaque">Abrir STL…</button>
+          <p class="sl-nota">No WJCAD: menu da Peça → Estimar impressão 3D.</p>
+        </div>
+        <div class="sl-orientar" role="toolbar" aria-label="Orientação da peça">
+          <button data-girar="x" disabled title="Girar 90° em torno de X">↻ X</button>
+          <button data-girar="y" disabled title="Girar 90° em torno de Y">↻ Y</button>
+          <button data-girar="z" disabled title="Girar 90° em torno de Z (na mesa)">↻ Z</button>
+          <button id="sl-apoio" disabled title="Deita a peça na face plana maior (menos suporte, melhor aderência)">Melhor apoio</button>
+        </div>
+      </section>
+      <aside class="sl-painel" aria-label="Impressora, ajustes e resultado">
+        <section class="sl-cartao sl-resultado-cartao">
+          <div id="sl-peca" class="sl-peca"><strong>Nenhuma peça aberta</strong></div>
+          <div id="sl-resultado" class="sl-resultado" hidden>
+            <div class="sl-grandes">
+              <div><small>Tempo de impressão</small><b id="sl-tempo"></b></div>
+              <div><small>Material</small><b id="sl-massa"></b></div>
+            </div>
+            <div id="sl-faixa" class="sl-faixa" aria-hidden="true"></div>
+            <dl id="sl-dados" class="sl-dados"></dl>
+            <div id="sl-avisos" class="sl-avisos" hidden></div>
+            <details class="sl-detalhe">
+              <summary>Detalhamento por parte</summary>
+              <table id="sl-partes" class="wj-tabela sl-partes"></table>
+            </details>
+            <div class="sl-linha">
+              <button id="sl-calibrar" title="Ajusta o tempo desta impressora pelo tempo real de uma impressão">Calibrar tempo…</button>
+              <span id="sl-calibrado" class="sl-nota"></span>
+            </div>
+          </div>
+          <div id="sl-ocupado" class="sl-ocupado" hidden><span>Fatiando…</span><div class="sl-progresso"><i id="sl-barra"></i></div></div>
+        </section>
+        <section class="sl-cartao">
+          <h2>Impressora e material</h2>
+          <label class="sl-campo">Impressora <select id="sl-maquina"></select></label>
+          <div class="sl-par">
+            <label class="sl-campo">Material <select id="sl-material"></select></label>
+            <label class="sl-campo">Preço (R$/kg) <input id="sl-preco" type="number" min="0" step="1" inputmode="decimal" /></label>
+          </div>
+          <p id="sl-maq-info" class="sl-nota"></p>
+        </section>
+        <section class="sl-cartao">
+          <h2>Ajustes <button id="sl-padrao" class="sl-mini" title="Volta aos valores de fábrica do perfil desta impressora">Padrão do perfil</button></h2>
+          <label class="sl-campo">Altura da camada <select id="sl-altura"></select></label>
+          <div class="sl-trio">
+            <div class="sl-campo">Paredes<div class="sl-passo"><button data-alvo="sl-paredes" data-passo="-1" aria-label="Menos paredes">−</button><input id="sl-paredes" type="number" min="1" max="10" inputmode="numeric" /><button data-alvo="sl-paredes" data-passo="1" aria-label="Mais paredes">+</button></div></div>
+            <div class="sl-campo">Camadas de topo<div class="sl-passo"><button data-alvo="sl-topo" data-passo="-1" aria-label="Menos camadas de topo">−</button><input id="sl-topo" type="number" min="0" max="20" inputmode="numeric" /><button data-alvo="sl-topo" data-passo="1" aria-label="Mais camadas de topo">+</button></div></div>
+            <div class="sl-campo">Camadas de fundo<div class="sl-passo"><button data-alvo="sl-fundo" data-passo="-1" aria-label="Menos camadas de fundo">−</button><input id="sl-fundo" type="number" min="0" max="20" inputmode="numeric" /><button data-alvo="sl-fundo" data-passo="1" aria-label="Mais camadas de fundo">+</button></div></div>
+          </div>
+          <label class="sl-campo">Preenchimento <span class="sl-faixa-valor"><input id="sl-preench" type="range" min="0" max="100" step="1" /><b id="sl-preench-v"></b></span></label>
+          <div class="sl-par">
+            <label class="sl-chave"><input id="sl-suporte" type="checkbox" /> Suporte</label>
+            <label class="sl-chave"><input id="sl-borda" type="checkbox" /> Borda (aba de 5 mm)</label>
+          </div>
+        </section>
+        <p class="sl-nota sl-rodape">Estimativa por fatiamento das camadas com os perfis de fábrica (bico 0,4 mm) e o planejador de movimento da máquina. Não gera G-code nem envia para a impressora.</p>
+      </aside>
+    </main>
+    <div id="sl-aviso" class="wj-aviso" role="status" hidden></div>
+    <script type="module" src="/src/slicer/main.ts"></script>
+  </body>
+</html>
