@@ -10,11 +10,13 @@ import { carregarFonte } from "../esboco/fontesTexto";
 import { gerarContornos, OPCOES_TEXTO_PADRAO } from "../esboco/texto";
 import type { ComandoTexto } from "../model";
 import {
-  agruparLacos, diametroInterno, diametroPorQuilates, docNovo, ficha, LAPIDACOES, LIGAS, MATERIAIS, montar, NORMAS, proporcoes, quilates, tamanhos, validarDoc, verificar,
+  agruparLacos, diametroInterno, diametroPorQuilates, docNovo, ficha, superficie, LAPIDACOES, LIGAS, MATERIAIS, montar, NORMAS, proporcoes, quilates, tamanhos, validarDoc, verificar,
   type DocJoia, type Gema, type GrupoTexto, type Lapidacao, type Montagem, type P2,
 } from "./regras";
 import { VistaJoia } from "./vista";
 import { esbocoNovoOrnamento, ornamentoVintage, type Ornamento } from "./ornamento";
+import { aplicarToque, codificar, dentroDoRaio, esculturaNova, malhaLocal, matrizLugar, normais, subdividir, vizinhanca, type Escultura, type FormaBase, type Malha, type Pincel, type Vizinhanca } from "./escultura";
+import type { EsculturaVista, EventoPincel } from "./vista";
 import type { EditorOrnamento } from "./editorOrnamento";
 import type { PedidoJoia, RespostaJoia } from "./worker";
 
@@ -40,7 +42,7 @@ let texto: { grupos: GrupoTexto[]; largura: number } = { grupos: [], largura: 0 
 let resultado: { volume: number; area: number; avisos: string[]; ms: number; final: boolean } | null = null;
 let erroKernel = "";
 
-type Item = "aro" | "cabeca" | "pave" | "ornamentos" | "gravacao" | "textura" | "fabricacao" | "preco";
+type Item = "aro" | "cabeca" | "pave" | "ornamentos" | "esculturas" | "gravacao" | "textura" | "fabricacao" | "preco";
 let sel: Item = "aro";
 
 function alterar(muda: () => void, estrutura = false) {
@@ -69,6 +71,13 @@ function restaurar(d: DocJoia | null) {
   if (!d) return;
   doc = d;
   autosave.guardar(CHAVE, doc);
+  if (esculpindo) {
+    const e = escAtual();
+    if (e) abrirSessao(e);
+    else concluirEscultura();
+    painel();
+    return;
+  }
   if (editando) {
     const o = ornAtual();
     if (o && edOrn) edOrn.reatar(o.esboco);
@@ -161,6 +170,128 @@ function concluirOrnamento() {
   arvore();
   atualizar();
   painel();
+}
+
+// ---------------------------------------------------------------------------------------------
+// escultura livre em malha (pincéis na vista 3D; caneta/mouse esculpe, dedo gira)
+
+let escSel = "";
+let esculpindo = false;
+let sessao: { id: string; malha: Malha; nor: Float32Array; vz: Vizinhanca; pesos?: Map<number, number>; ultimo?: [number, number, number] } | null = null;
+const pincel: { tipo: Pincel; raio: number; forca: number; inverter: boolean; simetria: boolean; pressao: boolean; dedo: boolean } = (() => {
+  const p = { tipo: "puxar" as Pincel, raio: 1.2, forca: 0.5, inverter: false, simetria: true, pressao: true, dedo: false };
+  try {
+    Object.assign(p, JSON.parse(localStorage.getItem("wjgd:pincel") ?? "{}"));
+  } catch {
+    /* padrão */
+  }
+  return p;
+})();
+const guardarPincel = () => {
+  try {
+    localStorage.setItem("wjgd:pincel", JSON.stringify(pincel));
+  } catch {
+    /* sem preferências */
+  }
+};
+const escAtual = (): Escultura | undefined => doc.esculturas.find((e) => e.id === escSel) ?? doc.esculturas[0];
+const PINCEIS: [Pincel, string, NomeIc, string][] = [
+  ["puxar", "Puxar", "mais", "Levanta (ou afunda, invertido) na direção da superfície"],
+  ["inflar", "Inflar", "circulo", "Incha cada ponto pela sua normal"],
+  ["suavizar", "Suavizar", "pincel", "Alisa as irregularidades"],
+  ["achatar", "Achatar", "regua", "Aplaina no plano médio sob o pincel"],
+  ["vinco", "Vinco", "recortar", "Afina e afunda em linha (nervura de folha); invertido faz crista"],
+  ["arrastar", "Arrastar", "movimento", "Puxa a região tocada acompanhando o traço"],
+];
+
+/** Esculturas na vista (a da sessão usa os arrays vivos do pincel). */
+function vistaEsculturas() {
+  const R = diametroInterno(doc.aro.norma, doc.aro.tamanho) / 2;
+  const t = (th: number) => superficie(doc.aro, th, 0);
+  const lista: EsculturaVista[] = doc.esculturas.filter((e) => e.ativo).map((e) => {
+    const viva = sessao?.id === e.id ? sessao : null;
+    const ml = viva ? viva.malha : malhaLocal(e);
+    return { id: e.id, pos: ml.pos, nor: viva ? viva.nor : normais(ml.pos, ml.tri), tri: ml.tri, matrizes: (e.espelhar ? [false, true] : [false]).map((s) => matrizLugar(e, R, t, s)) };
+  });
+  vista.definirEsculturas(lista);
+}
+
+function abrirSessao(e: Escultura) {
+  const malha = malhaLocal(e);
+  sessao = { id: e.id, malha, nor: normais(malha.pos, malha.tri), vz: vizinhanca(malha.tri, malha.pos.length / 3) };
+  vista.esculpir = { id: e.id, raio: pincel.raio, dedo: pincel.dedo, aoPincel };
+  vistaEsculturas();
+}
+
+function aoPincel(ev: EventoPincel) {
+  const e = escAtual(), s = sessao;
+  if (!e || !s || s.id !== ev.id) return;
+  if (ev.fase === "fim") {
+    e.pos = codificar(s.malha.pos);
+    s.pesos = undefined;
+    s.ultimo = undefined;
+    historico.registrar(doc);
+    autosave.guardar(CHAVE, doc);
+    casca.definirStatus("Esculpindo: peso e STL são atualizados ao concluir.");
+    return;
+  }
+  const escala = Math.max(0.05, e.lugar.tamanho / 2);
+  const r = pincel.raio / escala;
+  const f = pincel.forca * (pincel.pressao ? Math.min(1.5, Math.max(0.15, ev.pressao * 1.6)) : 1);
+  if (pincel.tipo === "arrastar") {
+    if (ev.fase === "inicio") s.pesos = dentroDoRaio(s.malha.pos, ev.c, r);
+    else if (ev.d && s.pesos) aplicarToque(s.malha.pos, s.nor, s.vz, { pincel: "arrastar", c: ev.c, n: ev.n, r, f, inverter: false, d: ev.d, pesos: s.pesos }, pincel.simetria);
+  } else {
+    if (!Number.isFinite(ev.c[0])) return;
+    // espaçamento dos toques: 20 % do raio
+    if (s.ultimo && Math.hypot(ev.c[0] - s.ultimo[0], ev.c[1] - s.ultimo[1], ev.c[2] - s.ultimo[2]) < r * 0.2) return;
+    s.ultimo = ev.c;
+    aplicarToque(s.malha.pos, s.nor, s.vz, { pincel: pincel.tipo, c: ev.c, n: ev.n, r, f, inverter: pincel.inverter }, pincel.simetria);
+  }
+  normais(s.malha.pos, s.malha.tri, s.nor);
+  vista.atualizarEscultura(s.id);
+}
+
+function novaEscultura(base: FormaBase) {
+  const id = `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  escSel = id;
+  alterar(() => doc.esculturas.push(esculturaNova(id, base, doc.esculturas.length + 1)), true);
+  esculpir();
+}
+
+function esculpir() {
+  const e = escAtual();
+  if (!e) return casca.avisar("Crie uma escultura primeiro (Nova: esfera, gota, folha ou cápsula).");
+  if (editando) concluirOrnamento();
+  escSel = e.id;
+  esculpindo = true;
+  sel = "esculturas";
+  vista.girar(false);
+  abrirSessao(e);
+  casca.renderizar();
+  arvore();
+  painel();
+  casca.definirStatus("Esculpir: caneta ou mouse esquerdo esculpe sobre a peça; dedo (ou botão do meio) gira, dois dedos aproximam.");
+}
+
+function concluirEscultura() {
+  esculpindo = false;
+  vista.esculpir = null;
+  sessao = null;
+  casca.renderizar();
+  atualizar();
+  painel();
+}
+
+function subdividirEscultura() {
+  const e = escAtual();
+  if (!e) return;
+  if (e.nivel >= 6) return casca.avisar("A escultura já está no nível máximo (40 962 vértices).");
+  if (sessao?.id === e.id) e.pos = codificar(sessao.malha.pos);
+  const nova = subdividir(e);
+  alterar(() => (doc.esculturas = doc.esculturas.map((x) => (x.id === e.id ? nova : x))));
+  if (esculpindo) abrirSessao(escAtual()!);
+  casca.avisar(`Subdividida: ${(malhaLocal(nova).pos.length / 3).toLocaleString("pt-BR")} vértices.`);
 }
 
 const raioJoia = () => diametroInterno(doc.aro.norma, doc.aro.tamanho) / 2 + Math.max(doc.aro.espessura, doc.aro.espessuraBase) + (doc.cabeca.ativo ? doc.cabeca.elevacao + proporcoes(doc.cabeca.gema).total : 0);
@@ -308,6 +439,7 @@ function atualizar() {
   m = montar(doc);
   vista.definirGemas([...(m.cabeca ? [m.cabeca] : []), ...m.pave, ...m.gemasOrn.map((x) => x.gema)]);
   vista.corMetal(LIGAS[doc.liga].cor);
+  vistaEsculturas();
   if (resultado) resultado.final = false;
   gerar();
   status();
@@ -329,6 +461,7 @@ const ITENS: { id: Item; rotulo: string; icone: NomeIc; ativo?: () => boolean; a
   { id: "cabeca", rotulo: "Cabeça", icone: "garras", ativo: () => doc.cabeca.ativo, alternar: (v) => (doc.cabeca.ativo = v) },
   { id: "pave", rotulo: "Pavé", icone: "pave", ativo: () => doc.pave.ativo, alternar: (v) => (doc.pave.ativo = v) },
   { id: "ornamentos", rotulo: "Ornamentos", icone: "filigrana" },
+  { id: "esculturas", rotulo: "Escultura", icone: "esculpir" },
   { id: "gravacao", rotulo: "Gravação", icone: "gravar", ativo: () => doc.gravacao.ativo, alternar: (v) => (doc.gravacao.ativo = v) },
   { id: "textura", rotulo: "Textura", icone: "textura", ativo: () => doc.textura.tipo !== "nenhuma", alternar: (v) => (doc.textura.tipo = v ? "facetas" : "nenhuma") },
   { id: "fabricacao", rotulo: "Fabricação", icone: "fundir" },
@@ -407,6 +540,7 @@ const CAMPOS: Record<Item, Campo[]> = {
     { k: "pave.diamGarra", r: "Ø da conta / parede", u: "mm", passo: 0.05 },
   ],
   ornamentos: [],
+  esculturas: [],
   gravacao: [
     { k: "gravacao.texto", r: "Texto", t: "txt" },
     { k: "gravacao.lado", r: "Lado", t: "sel", ops: () => [["interno", "Por dentro"], ["externo", "Por fora"]] },
@@ -484,8 +618,37 @@ function campoHtml(c: Campo): string {
   return `<label class="gd-campo"><span>${escapar(c.r)}</span>${ctrl}<em>${c.u ?? ""}</em></label>`;
 }
 
+function camposEscultura(i: number): Campo[] {
+  const k = (c: string) => `esculturas.${i}.${c}`;
+  return [
+    { k: k("nome"), r: "Nome", t: "txt" },
+    { k: k("lugar.th"), r: "Posição ao longo do aro (0° = topo)", u: "°", passo: 2 },
+    { k: k("lugar.z"), r: "Lateral (largura do aro)", u: "mm", passo: 0.1 },
+    { k: k("lugar.altura"), r: "Altura sobre o aro", u: "mm", passo: 0.1 },
+    { k: k("lugar.tamanho"), r: "Tamanho", u: "mm", passo: 0.2 },
+    { k: k("lugar.rx"), r: "Giro em X (inclina para os lados)", u: "°", passo: 5 },
+    { k: k("lugar.ry"), r: "Giro em Y (gira sobre o aro)", u: "°", passo: 5 },
+    { k: k("lugar.rz"), r: "Giro em Z (inclina ao longo do aro)", u: "°", passo: 5 },
+    { k: k("espelhar"), r: "Cópia espelhada do outro lado do aro", t: "chk" },
+  ];
+}
+
+function painelPincel(): string {
+  const faixa = (id: string, rot: string, v: number, min: number, max: number, passo: number, u: string) =>
+    `<label class="gd-campo"><span>${rot}</span><input type="range" data-pincel="${id}" min="${min}" max="${max}" step="${passo}" value="${v}" /><em>${fmt(v, passo < 0.1 ? 2 : 1)}${u}</em></label>`;
+  const chk = (id: string, rot: string, v: boolean) => `<label class="gd-check"><input type="checkbox" data-pincel="${id}" ${v ? "checked" : ""} /> ${rot}</label>`;
+  return `<h4>Pincel: ${PINCEIS.find((x) => x[0] === pincel.tipo)?.[1]}</h4>
+    ${faixa("raio", "Raio", pincel.raio, 0.1, 6, 0.05, " mm")}
+    ${faixa("forca", "Força", pincel.forca, 0.05, 1, 0.05, "")}
+    ${chk("inverter", "Inverter (afundar em vez de levantar)", pincel.inverter)}
+    ${chk("simetria", "Simetria (espelha o traço no X da peça)", pincel.simetria)}
+    ${chk("pressao", "Pressão da caneta muda a força", pincel.pressao)}
+    ${chk("dedo", "Esculpir com o dedo (sem caneta)", pincel.dedo)}`;
+}
+
 function painel() {
   if (editando) sel = "ornamentos";
+  if (esculpindo) sel = "esculturas";
   const p = $("#gd-props");
   const it = ITENS.find((i) => i.id === sel)!;
   let extra = "";
@@ -501,6 +664,16 @@ function painel() {
     extra = `<p class="gd-nota">${m.pave.length} pedra(s), ${m.contas.length} conta(s). Gemas redondas; posições que não cabem ou colidem ficam de fora.</p>`;
   } else if (sel === "gravacao") {
     extra = `<p class="gd-nota">Fonte Noto Sans. Texto com <span id="gd-comp">${fmt(texto.largura, 1)}</span> mm de comprimento.</p>`;
+  } else if (sel === "esculturas") {
+    const e = escAtual();
+    const i = e ? doc.esculturas.indexOf(e) : -1;
+    const nv = e ? malhaLocal(e).pos.length / 3 : 0;
+    extra = `<p class="gd-nota">Escultura livre em malha (folhas, flores, relevos). Parte de uma forma, recebe pincéis e é unida à joia no peso e no STL (STEP leva só a parte paramétrica).</p>
+      <div class="gd-lista">${doc.esculturas.map((x) => `<label class="gd-check ${x.id === e?.id ? "gd-atual" : ""}"><input type="checkbox" data-esc-ativo="${x.id}" ${x.ativo ? "checked" : ""} /><button data-esc="${x.id}">${escapar(x.nome)}</button></label>`).join("") || `<p class="gd-nota">Nenhuma escultura.</p>`}</div>
+      <div class="gd-botoes">${(["esfera", "gota", "folha", "capsula"] as FormaBase[]).map((b) => `<button data-esc-nova="${b}">${IC.novo} ${{ esfera: "Esfera", gota: "Gota", folha: "Folha", capsula: "Cápsula" }[b]}</button>`).join("")}</div>
+      ${e ? `<div class="gd-botoes">${esculpindo ? "" : `<button data-acao="esc-esculpir" class="destaque">${IC.esculpir} Esculpir</button>`}<button data-acao="esc-subdividir">${IC.grade} Subdividir (${nv.toLocaleString("pt-BR")} vértices)</button><button data-acao="esc-excluir">${IC.apagar} Excluir</button></div>` : ""}
+      ${esculpindo ? painelPincel() : ""}
+      ${e ? camposEscultura(i).map(campoHtml).join("") : ""}`;
   } else if (sel === "ornamentos") {
     const o = ornAtual();
     const i = o ? doc.ornamentos.indexOf(o) : -1;
@@ -552,6 +725,20 @@ props.addEventListener("change", (e) => {
       if (g.lapidacao === "redonda") g.largura = g.comprimento = Math.round(diametroPorQuilates(ct * (3.52 / (MATERIAIS[g.material]?.densidade ?? 3.52))) * 100) / 100;
       else { const k = Math.cbrt(ct / quilates(g)); g.comprimento = Math.round(g.comprimento * k * 100) / 100; g.largura = Math.round(g.largura * k * 100) / 100; }
     });
+    return;
+  }
+  if (x.dataset.pincel) {
+    const k = x.dataset.pincel as keyof typeof pincel;
+    const inp = x as HTMLInputElement;
+    (pincel as Record<string, unknown>)[k] = inp.type === "checkbox" ? inp.checked : Number(inp.value);
+    guardarPincel();
+    if (vista.esculpir) Object.assign(vista.esculpir, { raio: pincel.raio, dedo: pincel.dedo });
+    painel();
+    return;
+  }
+  if (x.dataset.escAtivo) {
+    const alvo = doc.esculturas.find((q) => q.id === x.dataset.escAtivo);
+    if (alvo) alterar(() => (alvo.ativo = (x as HTMLInputElement).checked));
     return;
   }
   const o = ornAtual();
@@ -610,6 +797,23 @@ props.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest("button");
   if (!b) return;
   if (b.dataset.ligar !== undefined || b.dataset.desligar !== undefined) return alterar(() => ITENS.find((i) => i.id === sel)!.alternar!(b.dataset.ligar !== undefined), true);
+  if (b.dataset.esc) {
+    escSel = b.dataset.esc;
+    if (esculpindo) esculpir();
+    else painel();
+    return;
+  }
+  if (b.dataset.escNova) return novaEscultura(b.dataset.escNova as FormaBase);
+  if (b.dataset.acao === "esc-esculpir") return esculpir();
+  if (b.dataset.acao === "esc-subdividir") return subdividirEscultura();
+  if (b.dataset.acao === "esc-excluir") {
+    const e = escAtual();
+    if (e && confirm(`Excluir a escultura "${e.nome}"?`)) {
+      if (esculpindo) concluirEscultura();
+      alterar(() => (doc.esculturas = doc.esculturas.filter((x) => x.id !== e.id)), true);
+    }
+    return;
+  }
   if (b.dataset.orn) {
     ornSel = b.dataset.orn;
     if (editando) void editarOrnamento();
@@ -801,6 +1005,7 @@ const casca: Casca = new Casca({
         ],
         [
           { id: "grav", rotulo: "Gravação", icone: "gravar", dica: "Texto por dentro ou por fora do aro", acao: () => alterar(() => { doc.gravacao.ativo = true; sel = "gravacao"; }, true) },
+          { id: "esc", rotulo: "Escultura", icone: "esculpir", dica: "Escultura livre em malha: folhas, flores, relevos (pincéis com a caneta)", acao: () => { sel = "esculturas"; if (doc.esculturas.length) esculpir(); else { arvore(); painel(); } } },
           { id: "orn", rotulo: "Ornamento", icone: "filigrana", dica: "Desenhar filigrana, volutas e molduras (esboço do WJCAD envolvido no aro)", acao: () => { sel = "ornamentos"; if (doc.ornamentos.length) void editarOrnamento(); else novoOrnamento(); } },
           { id: "tex", rotulo: "Textura", icone: "textura", dica: "Facetado ou frisos no aro", acao: () => alterar(() => { if (doc.textura.tipo === "nenhuma") doc.textura.tipo = "facetas"; sel = "textura"; }, true) },
         ],
@@ -847,11 +1052,15 @@ document.addEventListener("keydown", (e) => {
   else if (ctrl && (k === "y" || (k === "z" && e.shiftKey))) refazer();
   else if (ctrl && k === "a" && editando) edOrn?.ed?.selecionarTudo();
   else if (ctrl) return;
+  else if (esculpindo && /^[1-6]$/.test(k)) pincel.tipo = PINCEIS[Number(k) - 1][0];
+  else if (esculpindo && (k === "[" || k === "]")) { pincel.raio = Math.max(0.1, Math.min(6, pincel.raio * (k === "]" ? 1.2 : 1 / 1.2))); if (vista.esculpir) vista.esculpir.raio = pincel.raio; }
+  else if (ctrl) return;
   else if (editando && edOrn?.teclado(e)) {
     /* atalhos do esboço (os mesmos do WJCAD) */
   } else if (k === "f") (editando ? edOrn?.enquadrar() : vista.enquadrar(raioJoia()));
   else return;
   e.preventDefault();
+  if (esculpindo) { guardarPincel(); casca.renderizar(); painel(); }
 });
 // no desenho do ornamento a faixa é a do esboço do WJCAD (+ Concluir)
 const renderizarCasca = casca.renderizar.bind(casca);
@@ -859,7 +1068,35 @@ casca.renderizar = () => {
   renderizarCasca();
   const faixa = document.querySelector<HTMLElement>(".wj-faixa");
   if (editando && edOrn && faixa) edOrn.montarFaixa(faixa, concluirOrnamento);
+  if (esculpindo && faixa) faixaEscultura(faixa);
 };
+
+/** Faixa no modo esculpir: Concluir, pincéis e alternâncias. */
+function faixaEscultura(faixa: HTMLElement) {
+  faixa.innerHTML = "";
+  const grupo = () => faixa.appendChild(document.createElement("div")) as HTMLElement;
+  const botao = (g: HTMLElement, rot: string, ic: string, dica: string, ativo: boolean, acao: () => void) => {
+    const b = document.createElement("button");
+    b.className = "wj-cmd";
+    b.title = dica;
+    b.innerHTML = `${ic}<span>${escapar(rot)}</span>`;
+    b.setAttribute("aria-pressed", String(ativo));
+    b.onclick = () => { acao(); casca.renderizar(); painel(); };
+    g.className = "wj-grupo";
+    g.append(b);
+    return b;
+  };
+  botao(grupo(), "Concluir escultura", `<span style="font-size:22px">✓</span>`, "Volta à joia e recalcula peso e STL", false, concluirEscultura).classList.add("gd-concluir");
+  const gp = grupo();
+  for (const [id, rot, ic, dica] of PINCEIS) botao(gp, rot, IC[ic], dica, pincel.tipo === id, () => { pincel.tipo = id; guardarPincel(); });
+  const ga = grupo();
+  botao(ga, "Inverter", IC.desfazer, "Afunda em vez de levantar", pincel.inverter, () => { pincel.inverter = !pincel.inverter; guardarPincel(); });
+  botao(ga, "Simetria", IC.duplicar, "Espelha o traço no X da peça", pincel.simetria, () => { pincel.simetria = !pincel.simetria; guardarPincel(); });
+  botao(ga, "Dedo esculpe", IC.caneta, "Sem caneta: o dedo esculpe sobre a peça (dois dedos navegam)", pincel.dedo, () => { pincel.dedo = !pincel.dedo; guardarPincel(); if (vista.esculpir) vista.esculpir.dedo = pincel.dedo; });
+  const gs = grupo();
+  botao(gs, "Subdividir", IC.grade, "Mais vértices para detalhes finos (até 40 962)", false, subdividirEscultura);
+  botao(gs, "Enquadrar", IC.enquadrar, "Enquadrar (F)", false, () => vista.enquadrar(raioJoia()));
+}
 registrarOffline();
 arvore();
 painel();

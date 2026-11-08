@@ -248,6 +248,8 @@
   08/11/2026 (J7, pedido do Johann: "modelar o anel do jeito que eu preciso", não só predefinições):
   **ornamentos desenhados com o esboço do WJCAD** viram fios envolvidos no aro (Ø e altura por fio,
   simetria, pontos = bolinha ou pedrinha em inglesa), ponta da garra (bolinha/alongada/dupla) e aro dividido.
+  08/11/2026 (J8, pedido do Johann): **escultura livre em malha** unida à joia (pincéis com a caneta, dedo
+  navega; peso e STL pela união de malhas `manifold-3d`).
 - Especificação e estado de cada face: `docs/global/<face>.md`.
 
 ## 8. Hospedagem, versão e offline

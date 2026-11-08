@@ -7,7 +7,12 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { malhaGema } from "./malhaGema";
-import { MATERIAIS, type GemaPosta } from "./regras";
+import { MATERIAIS, type GemaPosta, type V3 } from "./regras";
+
+/** Escultura para a vista: geometria (arrays vivos durante o esculpir) e matrizes no mundo. */
+export interface EsculturaVista { id: string; pos: Float32Array; nor: Float32Array; tri: Uint32Array; matrizes: number[][] }
+/** Pincel: ponto e normal no espaço local da escultura; `d` = deslocamento local (arrastar). */
+export type EventoPincel = { fase: "inicio" | "meio" | "fim"; id: string; c: V3; n: V3; pressao: number; d?: V3 };
 
 export class VistaJoia {
   private renderer: THREE.WebGLRenderer;
@@ -21,6 +26,12 @@ export class VistaJoia {
   private quadro = 0;
   private girando = false;
   private raio = 15;
+  private esculturas = new THREE.Group();
+  private geoEsc = new Map<string, THREE.BufferGeometry>();
+  /** modo esculpir: id da escultura, raio do pincel (mm) e se o dedo esculpe */
+  esculpir: { id: string; raio: number; dedo: boolean; aoPincel: (e: EventoPincel) => void } | null = null;
+  private cursor: THREE.LineLoop;
+  private traco: { id: string; plano: THREE.Plane; ultimo: THREE.Vector3; malha: THREE.Mesh; ponteiro: number } | null = null;
 
   constructor(private alvo: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false });
@@ -35,7 +46,12 @@ export class VistaJoia {
     sol.position.set(20, 40, 30);
     this.cena.add(sol, new THREE.AmbientLight(0xffffff, 0.25));
     this.metal = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0xe3b85c, metalness: 1, roughness: 0.18 }));
-    this.cena.add(this.metal, this.gemas);
+    this.cena.add(this.metal, this.gemas, this.esculturas);
+    const circ = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 48 }, (_, i) => new THREE.Vector3(Math.cos((i / 48) * Math.PI * 2), Math.sin((i / 48) * Math.PI * 2), 0)));
+    this.cursor = new THREE.LineLoop(circ, new THREE.LineBasicMaterial({ color: 0x2f7fd0, depthTest: false }));
+    this.cursor.visible = false;
+    this.cursor.renderOrder = 10;
+    this.cena.add(this.cursor);
     this.camera.position.set(30, 25, 40);
     this.controles = new OrbitControls(this.camera, this.renderer.domElement);
     this.controles.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
@@ -43,6 +59,12 @@ export class VistaJoia {
     this.controles.zoomToCursor = true;
     this.controles.autoRotateSpeed = 4;
     this.controles.addEventListener("change", () => this.desenhar());
+    // pincel: captura antes dos controles (caneta e mouse esquerdo esculpem; o dedo navega, salvo "esculpir com o dedo")
+    const cv = this.renderer.domElement;
+    cv.addEventListener("pointerdown", (e) => this.inicioTraco(e), { capture: true });
+    cv.addEventListener("pointermove", (e) => this.moverTraco(e), { capture: true });
+    for (const t of ["pointerup", "pointercancel"] as const) cv.addEventListener(t, (e) => this.fimTraco(e), { capture: true });
+    cv.addEventListener("pointerleave", () => { this.cursor.visible = false; this.desenhar(); });
     new ResizeObserver(() => this.redimensionar()).observe(alvo);
     this.redimensionar();
   }
@@ -66,6 +88,127 @@ export class VistaJoia {
     this.metal.geometry = g;
     (this.metal.material as THREE.MeshStandardMaterial).color.set(cor);
     this.desenhar();
+  }
+
+  /** Esculturas (malhas separadas com o material do metal; a cópia espelhada usa a mesma geometria). */
+  definirEsculturas(lista: EsculturaVista[]) {
+    this.esculturas.clear();
+    for (const g of this.geoEsc.values()) g.dispose();
+    this.geoEsc.clear();
+    for (const e of lista) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(e.pos, 3));
+      g.setAttribute("normal", new THREE.BufferAttribute(e.nor, 3));
+      g.setIndex(new THREE.BufferAttribute(e.tri, 1));
+      g.computeBoundingSphere();
+      this.geoEsc.set(e.id, g);
+      for (const M of e.matrizes) {
+        const me = new THREE.Mesh(g, this.metal.material);
+        me.matrixAutoUpdate = false;
+        me.matrix.fromArray(M);
+        me.userData.id = e.id;
+        this.esculturas.add(me);
+      }
+    }
+    this.esculturas.updateMatrixWorld(true);
+    this.desenhar();
+  }
+
+  /** Posições/normais da escultura mudaram (durante o traço). */
+  atualizarEscultura(id: string) {
+    const g = this.geoEsc.get(id);
+    if (!g) return;
+    g.attributes.position.needsUpdate = true;
+    g.attributes.normal.needsUpdate = true;
+    g.computeBoundingSphere();
+    g.computeBoundingBox();
+    this.desenhar();
+  }
+
+  private raycaster = new THREE.Raycaster();
+  private acertar(e: PointerEvent): THREE.Intersection | null {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    this.raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+    const alvos = this.esculturas.children.filter((m) => m.userData.id === this.esculpir?.id);
+    return this.raycaster.intersectObjects(alvos, false)[0] ?? null;
+  }
+
+  private local(h: THREE.Intersection): { c: V3; n: V3; malha: THREE.Mesh } {
+    const malha = h.object as THREE.Mesh;
+    const inv = malha.matrixWorld.clone().invert();
+    const c = h.point.clone().applyMatrix4(inv);
+    const n = h.face!.normal.clone();
+    return { c: [c.x, c.y, c.z], n: [n.x, n.y, n.z], malha };
+  }
+
+  private mostrarCursor(h: THREE.Intersection | null) {
+    if (!h || !this.esculpir) { this.cursor.visible = false; return this.desenhar(); }
+    const nw = h.face!.normal.clone().transformDirection(h.object.matrixWorld);
+    this.cursor.position.copy(h.point);
+    this.cursor.lookAt(h.point.clone().add(nw));
+    this.cursor.scale.setScalar(this.esculpir.raio);
+    this.cursor.visible = true;
+    this.desenhar();
+  }
+
+  private podeEsculpir(e: PointerEvent) {
+    if (!this.esculpir) return false;
+    if (e.pointerType === "pen") return true;
+    if (e.pointerType === "mouse") return e.button === 0;
+    return this.esculpir.dedo && e.isPrimary;
+  }
+
+  private inicioTraco(e: PointerEvent) {
+    if (!this.podeEsculpir(e)) return;
+    const h = this.acertar(e);
+    if (!h) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    this.renderer.domElement.setPointerCapture(e.pointerId);
+    this.controles.enabled = false;
+    const { c, n, malha } = this.local(h);
+    const normalTela = this.camera.getWorldDirection(new THREE.Vector3()).negate();
+    this.traco = { id: this.esculpir!.id, plano: new THREE.Plane().setFromNormalAndCoplanarPoint(normalTela, h.point), ultimo: h.point.clone(), malha, ponteiro: e.pointerId };
+    this.esculpir!.aoPincel({ fase: "inicio", id: this.traco.id, c, n, pressao: e.pointerType === "mouse" ? 1 : e.pressure || 0.5 });
+    this.mostrarCursor(h);
+  }
+
+  private moverTraco(e: PointerEvent) {
+    if (!this.esculpir) return;
+    if (!this.traco) {
+      if (e.pointerType !== "touch") this.mostrarCursor(this.acertar(e));
+      return;
+    }
+    if (e.pointerId !== this.traco.ponteiro) return;
+    e.stopImmediatePropagation();
+    const pressao = e.pointerType === "mouse" ? 1 : e.pressure || 0.5;
+    // deslocamento no plano da tela (arrastar), levado ao espaço local
+    const r = this.renderer.domElement.getBoundingClientRect();
+    this.raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+    const p = new THREE.Vector3();
+    const noPlano = this.raycaster.ray.intersectPlane(this.traco.plano, p);
+    let d: V3 | undefined;
+    if (noPlano) {
+      const inv = this.traco.malha.matrixWorld.clone().invert();
+      const a = this.traco.ultimo.clone().applyMatrix4(inv), b = p.clone().applyMatrix4(inv);
+      d = [b.x - a.x, b.y - a.y, b.z - a.z];
+      this.traco.ultimo.copy(p);
+    }
+    const h = this.acertar(e);
+    if (h) {
+      const { c, n } = this.local(h);
+      this.esculpir.aoPincel({ fase: "meio", id: this.traco.id, c, n, pressao, d });
+    } else if (d) this.esculpir.aoPincel({ fase: "meio", id: this.traco.id, c: [NaN, NaN, NaN], n: [0, 0, 0], pressao, d });
+    this.mostrarCursor(h);
+  }
+
+  private fimTraco(e: PointerEvent) {
+    if (!this.traco || e.pointerId !== this.traco.ponteiro) return;
+    e.stopImmediatePropagation();
+    const id = this.traco.id;
+    this.traco = null;
+    this.controles.enabled = true;
+    this.esculpir?.aoPincel({ fase: "fim", id, c: [0, 0, 0], n: [0, 0, 0], pressao: 0 });
   }
 
   corMetal(cor: string) {

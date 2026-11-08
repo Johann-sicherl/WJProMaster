@@ -161,6 +161,7 @@ export const IC = {
   textura: svg(`<ellipse cx="12" cy="12" rx="9" ry="7"/><path d="M7 6.5l2 11M11 5l1 14M15 5.5l0 13M18.5 7.5l-1.5 9" stroke="${C}"/>`),
   fundir: svg(`<path d="M6 3h12l-3 6H9z"/><path d="M12 9v5"/><circle cx="12" cy="17.5" r="3.5" stroke="${C}"/>`),
   filigrana: svg(`<path d="M4 18c3-1 4-4 3-6s-3-1-3 1 2 3 4 2 3-4 4-7"/><path d="M20 18c-3-1-4-4-3-6s3-1 3 1-2 3-4 2-3-4-4-7" stroke="${C}"/><circle cx="12" cy="4" r="1.3"/>`),
+  esculpir: svg(`<path d="M4 20c2-6 6-9 11-10"/><path d="M14 4l6 6-5 5-6-6z" stroke="${C}"/><path d="M4 20l3-1" />`),
   girar: svg(`<path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v5h-5" stroke="${C}"/>`),
 };
 
