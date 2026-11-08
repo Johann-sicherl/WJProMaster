@@ -14,6 +14,8 @@ import {
   type DocJoia, type Gema, type GrupoTexto, type Lapidacao, type Montagem, type P2,
 } from "./regras";
 import { VistaJoia } from "./vista";
+import { esbocoNovoOrnamento, ornamentoVintage, type Ornamento } from "./ornamento";
+import type { EditorOrnamento } from "./editorOrnamento";
 import type { PedidoJoia, RespostaJoia } from "./worker";
 
 const CHAVE = "wjgd:documento";
@@ -38,7 +40,7 @@ let texto: { grupos: GrupoTexto[]; largura: number } = { grupos: [], largura: 0 
 let resultado: { volume: number; area: number; avisos: string[]; ms: number; final: boolean } | null = null;
 let erroKernel = "";
 
-type Item = "aro" | "cabeca" | "pave" | "gravacao" | "textura" | "fabricacao" | "preco";
+type Item = "aro" | "cabeca" | "pave" | "ornamentos" | "gravacao" | "textura" | "fabricacao" | "preco";
 let sel: Item = "aro";
 
 function alterar(muda: () => void, estrutura = false) {
@@ -63,13 +65,102 @@ function trocarDoc(d: DocJoia) {
   vista.vista("iso");
 }
 
-function desfazer() {
-  const d = historico.desfazer();
-  if (d) { doc = d; autosave.guardar(CHAVE, doc); arvore(); atualizar(); painel(); }
+function restaurar(d: DocJoia | null) {
+  if (!d) return;
+  doc = d;
+  autosave.guardar(CHAVE, doc);
+  if (editando) {
+    const o = ornAtual();
+    if (o && edOrn) edOrn.reatar(o.esboco);
+    else concluirOrnamento();
+    painel();
+    return;
+  }
+  arvore();
+  atualizar();
+  painel();
 }
-function refazer() {
-  const d = historico.refazer();
-  if (d) { doc = d; autosave.guardar(CHAVE, doc); arvore(); atualizar(); painel(); }
+const desfazer = () => restaurar(historico.desfazer());
+const refazer = () => restaurar(historico.refazer());
+
+// ---------------------------------------------------------------------------------------------
+// ornamentos: o esboço do WJCAD num modo de edição (carregado só quando aberto)
+
+let ornSel = "";
+let editando = false;
+let edOrn: EditorOrnamento | null = null;
+const ornAtual = (): Ornamento | undefined => doc.ornamentos.find((o) => o.id === ornSel) ?? doc.ornamentos[0];
+const novoIdOrn = () => `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+
+function novoOrnamento(exemplo = false) {
+  const id = novoIdOrn();
+  const g = doc.cabeca.ativo ? doc.cabeca.gema : null;
+  const vira = doc.cabeca.girar % 180 >= 45;
+  const o: Ornamento = exemplo
+    ? ornamentoVintage(id, doc.aro.largura)
+    : {
+      id, nome: `Ornamento ${doc.ornamentos.length + 1}`, ativo: true, altura: 0.05, diametro: 0.7, simetria: "xy", envolver: true, pontas: true, fios: {}, pontos: {},
+      esboco: esbocoNovoOrnamento(`${id}-esb`, doc.aro.largura, g && (vira ? { comprimento: g.largura, largura: g.comprimento } : g), 26),
+    };
+  ornSel = id;
+  alterar(() => doc.ornamentos.push(o), true);
+  if (!exemplo) void editarOrnamento();
+}
+
+async function editarOrnamento() {
+  const o = ornAtual();
+  if (!o) return novoOrnamento();
+  ornSel = o.id;
+  editando = true;
+  vista.girar(false);
+  $("#gd-vista").hidden = true;
+  $("#gd-esboco").hidden = false;
+  $("#gd-arvore").hidden = true;
+  $("#gd-esq-esboco").hidden = false;
+  casca.definirStatus("Carregando o esboço…");
+  try {
+    if (!edOrn) {
+      const { EditorOrnamento } = await import("./editorOrnamento");
+      edOrn = await EditorOrnamento.criar({
+        viewport: $("#gd-vp"), overlay: $("#gd-overlay"), painel: $("#painel-comando"),
+        alterou: (final) => {
+          autosave.guardar(CHAVE, doc);
+          if (final) historico.registrar(doc);
+        },
+        atualizar: () => {
+          cancelAnimationFrame(quadroPainel);
+          quadroPainel = requestAnimationFrame(() => painel());
+        },
+        avisar: (t) => casca.avisar(t, 5000),
+        simetria: () => ornAtual()?.simetria ?? "nenhuma",
+      });
+    }
+  } catch (e) {
+    casca.avisar(`Não foi possível abrir o esboço: ${(e as Error).message}`, 8000);
+    return concluirOrnamento();
+  }
+  if (!editando) return;
+  edOrn.abrir(ornAtual()!.esboco);
+  casca.renderizar();
+  painel();
+  casca.definirStatus("Desenhe na vista de cima do aro: horizontal = ao longo do aro (0 = topo), vertical = largura. Linhas tracejadas = guias.");
+}
+let quadroPainel = 0;
+
+function concluirOrnamento() {
+  editando = false;
+  edOrn?.fechar();
+  $("#gd-vista").hidden = false;
+  $("#gd-esboco").hidden = true;
+  $("#gd-arvore").hidden = false;
+  $("#gd-esq-esboco").hidden = true;
+  doc = validarDoc(doc);
+  historico.registrar(doc);
+  autosave.guardar(CHAVE, doc);
+  casca.renderizar();
+  arvore();
+  atualizar();
+  painel();
 }
 
 const raioJoia = () => diametroInterno(doc.aro.norma, doc.aro.tamanho) / 2 + Math.max(doc.aro.espessura, doc.aro.espessuraBase) + (doc.cabeca.ativo ? doc.cabeca.elevacao + proporcoes(doc.cabeca.gema).total : 0);
@@ -94,7 +185,7 @@ worker.onmessage = (ev: MessageEvent<RespostaJoia>) => {
   } else if (r.tipo === "malha") {
     if (r.seq !== ultimaGeracao) return;
     vista.definirMetal(r.pos, r.nor, r.idx, LIGAS[doc.liga].cor);
-    resultado = { volume: r.volume, area: r.area, avisos: r.avisos, ms: r.ms, final: r.final };
+    resultado = r.final || !resultado ? { volume: r.final ? r.volume : 0, area: r.final ? r.area : 0, avisos: r.avisos, ms: r.ms, final: r.final } : { ...resultado, final: false };
     erroKernel = "";
     status();
     painelResultados();
@@ -215,7 +306,7 @@ function simplificar(l: P2[], tol: number): P2[] {
 
 function atualizar() {
   m = montar(doc);
-  vista.definirGemas([...(m.cabeca ? [m.cabeca] : []), ...m.pave]);
+  vista.definirGemas([...(m.cabeca ? [m.cabeca] : []), ...m.pave, ...m.gemasOrn.map((x) => x.gema)]);
   vista.corMetal(LIGAS[doc.liga].cor);
   if (resultado) resultado.final = false;
   gerar();
@@ -223,8 +314,8 @@ function atualizar() {
 }
 
 function status() {
-  const ct = (m.cabeca?.ct ?? 0) + m.pave.reduce((s, g) => s + g.ct, 0);
-  const pedras = (m.cabeca ? 1 : 0) + m.pave.length;
+  const ct = (m.cabeca?.ct ?? 0) + m.pave.reduce((s, g) => s + g.ct, 0) + m.gemasOrn.reduce((s, g) => s + g.gema.ct, 0);
+  const pedras = (m.cabeca ? 1 : 0) + m.pave.length + m.gemasOrn.length;
   const est = erroKernel ? `⚠ ${erroKernel}` : !kernelPronto ? "Carregando o kernel…" : resultado?.final ? `Pronto em ${resultado.ms < 1000 ? `${Math.round(resultado.ms)} ms` : `${fmt(resultado.ms / 1000, 1)} s`}` : "Calculando assentos e acabamentos…";
   casca.definirStatus(`Aro ${doc.aro.norma} ${fmt(doc.aro.tamanho, doc.aro.norma === "mm" ? 2 : 1)} · Ø ${fmt(2 * m.R)} mm · ${pedras} pedra(s) · ${fmt(ct, 3)} ct · ${est}`);
   casca.statusDireita.textContent = resultado ? `${fmt((resultado.volume / 1000) * LIGAS[doc.liga].densidade)} g · ${LIGAS[doc.liga].nome}` : "";
@@ -237,6 +328,7 @@ const ITENS: { id: Item; rotulo: string; icone: NomeIc; ativo?: () => boolean; a
   { id: "aro", rotulo: "Aro", icone: "anel" },
   { id: "cabeca", rotulo: "Cabeça", icone: "garras", ativo: () => doc.cabeca.ativo, alternar: (v) => (doc.cabeca.ativo = v) },
   { id: "pave", rotulo: "Pavé", icone: "pave", ativo: () => doc.pave.ativo, alternar: (v) => (doc.pave.ativo = v) },
+  { id: "ornamentos", rotulo: "Ornamentos", icone: "filigrana" },
   { id: "gravacao", rotulo: "Gravação", icone: "gravar", ativo: () => doc.gravacao.ativo, alternar: (v) => (doc.gravacao.ativo = v) },
   { id: "textura", rotulo: "Textura", icone: "textura", ativo: () => doc.textura.tipo !== "nenhuma", alternar: (v) => (doc.textura.tipo = v ? "facetas" : "nenhuma") },
   { id: "fabricacao", rotulo: "Fabricação", icone: "fundir" },
@@ -285,6 +377,8 @@ const CAMPOS: Record<Item, Campo[]> = {
     { k: "aro.larguraBase", r: "Largura na base", u: "mm", passo: 0.1 },
     { k: "aro.espessuraBase", r: "Espessura na base", u: "mm", passo: 0.1 },
     { k: "aro.torcao", r: "Torção (meias-voltas)", passo: 1 },
+    { k: "aro.dividido", r: "Aro dividido: abertura no topo (0 = inteiro)", u: "mm", passo: 0.1 },
+    { k: "aro.divisao", r: "Divisão até", u: "°", passo: 5, se: () => doc.aro.dividido > 0 },
   ],
   cabeca: [
     { k: "cabeca.tipo", r: "Cravação", t: "sel", ops: () => [["garras", "Garras"], ["inglesa", "Inglesa (aro fechado)"]], estrutura: true },
@@ -295,6 +389,7 @@ const CAMPOS: Record<Item, Campo[]> = {
     { k: "cabeca.gema.largura", r: "Largura", u: "mm", passo: 0.1, se: () => !redonda() },
     { k: "cabeca.garras", r: "Nº de garras", passo: 1, se: () => doc.cabeca.tipo === "garras" },
     { k: "cabeca.diamGarra", r: "Diâmetro da garra", u: "mm", passo: 0.05, se: () => doc.cabeca.tipo === "garras" },
+    { k: "cabeca.pontaGarra", r: "Ponta da garra", t: "sel", ops: () => [["bolinha", "Bolinha"], ["alongada", "Alongada (sobre a pedra)"], ["dupla", "Garra dupla"]], se: () => doc.cabeca.tipo === "garras" },
     { k: "cabeca.galeria", r: "Galeria (anel entre as garras)", t: "chk", se: () => doc.cabeca.tipo === "garras" },
     { k: "cabeca.parede", r: "Parede da inglesa", u: "mm", passo: 0.05, se: () => doc.cabeca.tipo === "inglesa" },
     { k: "cabeca.elevacao", r: "Altura da cintura sobre o aro", u: "mm", passo: 0.1 },
@@ -311,6 +406,7 @@ const CAMPOS: Record<Item, Campo[]> = {
     { k: "pave.fileiras", r: "Fileiras", passo: 1 },
     { k: "pave.diamGarra", r: "Ø da conta / parede", u: "mm", passo: 0.05 },
   ],
+  ornamentos: [],
   gravacao: [
     { k: "gravacao.texto", r: "Texto", t: "txt" },
     { k: "gravacao.lado", r: "Lado", t: "sel", ops: () => [["interno", "Por dentro"], ["externo", "Por fora"]] },
@@ -341,6 +437,41 @@ const CAMPOS: Record<Item, Campo[]> = {
   ],
 };
 
+function camposOrnamento(i: number): Campo[] {
+  const k = (c: string) => `ornamentos.${i}.${c}`;
+  return [
+    { k: k("nome"), r: "Nome", t: "txt" },
+    { k: k("altura"), r: "Altura sobre o aro", u: "mm", passo: 0.1 },
+    { k: k("diametro"), r: "Ø padrão do fio", u: "mm", passo: 0.05 },
+    { k: k("simetria"), r: "Simetria", t: "sel", ops: () => [["xy", "Espelhar nos dois eixos"], ["x", "Espelhar esquerda ↔ direita"], ["y", "Espelhar frente ↔ trás"], ["nenhuma", "Sem simetria"]] },
+    { k: k("envolver"), r: "Envolver no aro (senão: plano sobre o topo)", t: "chk" },
+    { k: k("pontas"), r: "Bolinha nas pontas soltas", t: "chk" },
+  ];
+}
+
+/** Seção da seleção no esboço: Ø e altura dos fios, tipo dos pontos. */
+function selecaoOrnamento(o: Ornamento): string {
+  const ids = edOrn?.selecao() ?? [];
+  const geos = o.esboco.geos.filter((g) => ids.includes(g.id) && !g.construcao && g.tipo !== "ponto" && g.tipo !== "texto");
+  const pts = o.esboco.geos.filter((g) => g.tipo === "ponto" && ids.includes(g.p)).map((g) => (g as { p: string }).p);
+  if (!geos.length && !pts.length) return `<p class="gd-nota">Toque num fio ou ponto para ajustar Ø, altura e tipo. Ponto (ferramenta Ponto) = bolinha ou pedrinha.</p>`;
+  let h = "";
+  if (geos.length) {
+    const c = o.fios[geos[0].id] ?? {};
+    const f = (nome: string, rot: string, v: number | undefined, u: string) => `<label class="gd-campo"><span>${rot}</span><input type="number" step="0.05" inputmode="decimal" data-fio="${nome}" value="${v ?? ""}" placeholder="padrão" /><em>${u}</em></label>`;
+    h += `<h4>${geos.length} fio(s) selecionado(s)</h4>${f("d0", "Ø no início", c.d0, "mm")}${f("d1", "Ø no fim", c.d1, "mm")}${f("a0", "Altura no início", c.a0, "mm")}${f("a1", "Altura no fim", c.a1, "mm")}
+      <p class="gd-nota">Vazio = valor padrão do ornamento. Alturas diferentes fazem o fio subir ou descer (ex.: da moldura até o aro).</p>`;
+  }
+  if (pts.length) {
+    const c = o.pontos[pts[0]] ?? { tipo: "conta", d: Math.round(o.diametro * 160) / 100, material: "diamante" };
+    h += `<h4>${pts.length} ponto(s) selecionado(s)</h4>
+      <label class="gd-campo"><span>Tipo</span><select data-pt="tipo"><option value="conta" ${c.tipo === "conta" ? "selected" : ""}>Bolinha de metal</option><option value="inglesa" ${c.tipo === "inglesa" ? "selected" : ""}>Pedrinha em inglesa</option></select><em></em></label>
+      <label class="gd-campo"><span>Ø</span><input type="number" step="0.05" inputmode="decimal" data-pt="d" value="${c.d}" /><em>mm</em></label>
+      ${c.tipo === "inglesa" ? `<label class="gd-campo"><span>Gema</span><select data-pt="material">${opMat().map(([k, r]) => `<option value="${k}" ${k === c.material ? "selected" : ""}>${r}</option>`).join("")}</select><em></em></label>` : ""}`;
+  }
+  return h;
+}
+
 function campoHtml(c: Campo): string {
   if (c.se && !c.se()) return "";
   const v = ler(c.k);
@@ -354,6 +485,7 @@ function campoHtml(c: Campo): string {
 }
 
 function painel() {
+  if (editando) sel = "ornamentos";
   const p = $("#gd-props");
   const it = ITENS.find((i) => i.id === sel)!;
   let extra = "";
@@ -369,6 +501,14 @@ function painel() {
     extra = `<p class="gd-nota">${m.pave.length} pedra(s), ${m.contas.length} conta(s). Gemas redondas; posições que não cabem ou colidem ficam de fora.</p>`;
   } else if (sel === "gravacao") {
     extra = `<p class="gd-nota">Fonte Noto Sans. Texto com <span id="gd-comp">${fmt(texto.largura, 1)}</span> mm de comprimento.</p>`;
+  } else if (sel === "ornamentos") {
+    const o = ornAtual();
+    const i = o ? doc.ornamentos.indexOf(o) : -1;
+    extra = `<p class="gd-nota">Desenhe fios (filigrana, volutas, moldura, pipa) com as ferramentas do esboço do WJCAD na vista de cima do aro; a simetria completa o desenho e o fio é envolvido no aro.</p>
+      <div class="gd-lista">${doc.ornamentos.map((x) => `<label class="gd-check ${x.id === o?.id ? "gd-atual" : ""}"><input type="checkbox" data-orn-ativo="${x.id}" ${x.ativo ? "checked" : ""} /><button data-orn="${x.id}">${escapar(x.nome)}</button></label>`).join("") || `<p class="gd-nota">Nenhum ornamento.</p>`}</div>
+      <div class="gd-botoes"><button data-acao="orn-novo">${IC.novo} Novo</button>${o ? `<button data-acao="orn-editar" class="destaque">${IC.editar} Desenhar</button><button data-acao="orn-excluir">${IC.apagar} Excluir</button>` : ""}<button data-acao="orn-exemplo">${IC.filigrana} Exemplo de filigrana</button></div>
+      ${o ? camposOrnamento(i).map(campoHtml).join("") : ""}
+      ${editando && o ? selecaoOrnamento(o) : ""}`;
   } else if (sel === "fabricacao") {
     extra = `<div class="gd-botoes"><button data-acao="stl-fund">${IC.fundir} STL para impressão e fundição</button><button data-acao="stl">${IC.exportar} STL da joia</button><button data-acao="step">${IC.exportar} STEP</button><button data-acao="ficha">${IC.tabela} Ficha técnica</button></div>
       <p class="gd-nota">Contração e canais só entram no "STL para impressão e fundição".</p>`;
@@ -414,8 +554,43 @@ props.addEventListener("change", (e) => {
     });
     return;
   }
+  const o = ornAtual();
+  if (x.dataset.ornAtivo) {
+    const alvo = doc.ornamentos.find((q) => q.id === x.dataset.ornAtivo);
+    if (alvo) alterar(() => (alvo.ativo = (x as HTMLInputElement).checked));
+    return;
+  }
+  if (o && (x.dataset.fio || x.dataset.pt)) {
+    const ids = edOrn?.selecao() ?? [];
+    const valor = x.value.trim() === "" ? undefined : x.dataset.pt === "tipo" || x.dataset.pt === "material" ? x.value : Number(x.value.replace(",", "."));
+    if (typeof valor === "number" && !(valor >= 0)) return;
+    for (const g of o.esboco.geos) {
+      if (x.dataset.fio && ids.includes(g.id) && g.tipo !== "ponto") {
+        const c = (o.fios[g.id] ??= {});
+        (c as Record<string, number | undefined>)[x.dataset.fio] = valor as number | undefined;
+      }
+      if (x.dataset.pt && g.tipo === "ponto" && ids.includes(g.p)) {
+        const c = (o.pontos[g.p] ??= { tipo: "conta", d: Math.round(o.diametro * 160) / 100, material: "diamante" });
+        (c as unknown as Record<string, unknown>)[x.dataset.pt] = valor ?? c[x.dataset.pt as "d"];
+      }
+    }
+    historico.registrar(doc);
+    autosave.guardar(CHAVE, doc);
+    painel();
+    return;
+  }
   const k = x.dataset.k;
   if (!k) return;
+  if (editando && k.startsWith("ornamentos.")) {
+    // durante o desenho: muda no lugar (o editor segura o mesmo esboço)
+    const v = x instanceof HTMLInputElement && x.type === "checkbox" ? x.checked : x instanceof HTMLInputElement && x.type === "number" ? Number(x.value.replace(",", ".")) : x.value;
+    if (typeof v === "number" && !Number.isFinite(v)) return;
+    gravar(k, v);
+    historico.registrar(doc);
+    autosave.guardar(CHAVE, doc);
+    painel();
+    return;
+  }
   const v = x instanceof HTMLInputElement && x.type === "checkbox" ? x.checked : x instanceof HTMLInputElement && x.type === "number" ? Number(x.value.replace(",", ".")) : x.value;
   if (typeof v === "number" && !Number.isFinite(v)) return;
   alterar(() => {
@@ -435,8 +610,23 @@ props.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest("button");
   if (!b) return;
   if (b.dataset.ligar !== undefined || b.dataset.desligar !== undefined) return alterar(() => ITENS.find((i) => i.id === sel)!.alternar!(b.dataset.ligar !== undefined), true);
+  if (b.dataset.orn) {
+    ornSel = b.dataset.orn;
+    if (editando) void editarOrnamento();
+    else painel();
+    return;
+  }
   const a = b.dataset.acao;
-  if (a === "biblioteca") biblioteca();
+  if (a === "orn-novo") novoOrnamento();
+  else if (a === "orn-exemplo") novoOrnamento(true);
+  else if (a === "orn-editar") void editarOrnamento();
+  else if (a === "orn-excluir") {
+    const o = ornAtual();
+    if (o && confirm(`Excluir o ornamento "${o.nome}"?`)) {
+      if (editando) concluirOrnamento();
+      alterar(() => (doc.ornamentos = doc.ornamentos.filter((x) => x !== ornAtual())), true);
+    }
+  } else if (a === "biblioteca") biblioteca();
   else if (a === "stl-fund") exportar("stl", true);
   else if (a === "stl") exportar("stl", false);
   else if (a === "step") exportar("step", false);
@@ -528,6 +718,18 @@ const MODELOS: { nome: string; criar: () => DocJoia }[] = [
   { nome: "Eternidade", criar: () => ({ ...docNovo(), nome: "Eternidade", cabeca: { ...docNovo().cabeca, ativo: false }, aro: { ...docNovo().aro, perfil: "reto", largura: 3, espessura: 1.8, larguraBase: 3, espessuraBase: 1.8 }, pave: { ...docNovo().pave, ativo: true, eternidade: true, dInicial: 1.8 } }) },
   { nome: "Inglesa oval (safira)", criar: () => ({ ...docNovo(), nome: "Inglesa oval", cabeca: { ...docNovo().cabeca, tipo: "inglesa", elevacao: 1.2, gema: { lapidacao: "oval", material: "safira", comprimento: 7, largura: 5 } } }) },
   { nome: "Anel torcido", criar: () => ({ ...docNovo(), nome: "Anel torcido", cabeca: { ...docNovo().cabeca, ativo: false }, aro: { ...docNovo().aro, perfil: "reto", largura: 2.6, espessura: 2.2, larguraBase: 2.6, espessuraBase: 2.2, torcao: 3 } }) },
+  {
+    nome: "Anel vintage com filigrana",
+    criar: () => {
+      const b = docNovo();
+      return {
+        ...b, nome: "Anel vintage",
+        aro: { ...b.aro, perfil: "meia-cana", tamanho: 14, largura: 2.2, espessura: 1.6, larguraBase: 2.0, espessuraBase: 1.5 },
+        cabeca: { ...b.cabeca, gema: { lapidacao: "oval", material: "diamante", comprimento: 8, largura: 6 }, girar: 90, pontaGarra: "alongada", galeria: false, elevacao: 2.9, diamGarra: 0.9 },
+        ornamentos: [ornamentoVintage("vintage", 2.2)],
+      };
+    },
+  },
   { nome: "Aliança facetada", criar: () => ({ ...docNovo(), nome: "Aliança facetada", cabeca: { ...docNovo().cabeca, ativo: false }, aro: { ...docNovo().aro, perfil: "reto", largura: 3.5, espessura: 1.9, larguraBase: 3.5, espessuraBase: 1.9 }, textura: { tipo: "facetas", quantidade: 14, profundidade: 0.3 } }) },
 ];
 
@@ -599,6 +801,7 @@ const casca: Casca = new Casca({
         ],
         [
           { id: "grav", rotulo: "Gravação", icone: "gravar", dica: "Texto por dentro ou por fora do aro", acao: () => alterar(() => { doc.gravacao.ativo = true; sel = "gravacao"; }, true) },
+          { id: "orn", rotulo: "Ornamento", icone: "filigrana", dica: "Desenhar filigrana, volutas e molduras (esboço do WJCAD envolvido no aro)", acao: () => { sel = "ornamentos"; if (doc.ornamentos.length) void editarOrnamento(); else novoOrnamento(); } },
           { id: "tex", rotulo: "Textura", icone: "textura", dica: "Facetado ou frisos no aro", acao: () => alterar(() => { if (doc.textura.tipo === "nenhuma") doc.textura.tipo = "facetas"; sel = "textura"; }, true) },
         ],
       ],
@@ -638,11 +841,25 @@ const casca: Casca = new Casca({
   ],
 });
 document.addEventListener("keydown", (e) => {
-  if ((e.target as HTMLElement).closest("input, select, textarea")) return;
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); desfazer(); }
-  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") { e.preventDefault(); refazer(); }
-  else if (!e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "f") vista.enquadrar(raioJoia());
+  if ((e.target as HTMLElement).closest("input, select, textarea, .wj-janela")) return;
+  const ctrl = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+  if (ctrl && k === "z" && !e.shiftKey) desfazer();
+  else if (ctrl && (k === "y" || (k === "z" && e.shiftKey))) refazer();
+  else if (ctrl && k === "a" && editando) edOrn?.ed?.selecionarTudo();
+  else if (ctrl) return;
+  else if (editando && edOrn?.teclado(e)) {
+    /* atalhos do esboço (os mesmos do WJCAD) */
+  } else if (k === "f") (editando ? edOrn?.enquadrar() : vista.enquadrar(raioJoia()));
+  else return;
+  e.preventDefault();
 });
+// no desenho do ornamento a faixa é a do esboço do WJCAD (+ Concluir)
+const renderizarCasca = casca.renderizar.bind(casca);
+casca.renderizar = () => {
+  renderizarCasca();
+  const faixa = document.querySelector<HTMLElement>(".wj-faixa");
+  if (editando && edOrn && faixa) edOrn.montarFaixa(faixa, concluirOrnamento);
+};
 registrarOffline();
 arvore();
 painel();

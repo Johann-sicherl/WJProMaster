@@ -11,7 +11,12 @@
   <body>
     <main class="gd-principal">
       <nav id="gd-arvore" class="gd-arvore" aria-label="Construtores da joia"></nav>
+      <aside id="gd-esq-esboco" class="gd-esq-esboco" aria-label="Esboço do ornamento" hidden><div id="painel-comando" class="painel-comando"></div></aside>
       <section id="gd-vista" class="gd-vista" aria-label="Vista 3D"></section>
+      <section id="gd-esboco" class="gd-vista viewport-wrap" aria-label="Desenho do ornamento" hidden>
+        <div id="gd-vp" class="viewport"></div>
+        <div id="gd-overlay" class="overlay-esboco"></div>
+      </section>
       <aside id="gd-props" class="gd-props" aria-label="Propriedades e resultados"></aside>
     </main>
     <script type="module" src="/src/joia/main.ts"></script>

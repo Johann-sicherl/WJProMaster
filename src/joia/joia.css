@@ -53,3 +53,18 @@ body.disp-celular .gd-props { border-left: 0; border-top: 1px solid var(--linha)
   body:not(.disp-celular) .gd-principal { grid-template-columns: minmax(0, 1fr) minmax(260px, 300px); }
   body:not(.disp-celular) .gd-arvore { display: none; }
 }
+/* desenho de ornamento: painel do esboço do WJCAD à esquerda */
+.gd-esq-esboco { overflow: auto; padding: 8px 10px 16px; border-right: 1px solid var(--linha); background: var(--painel); min-height: 0; }
+.gd-principal > [hidden] { display: none !important; }
+.gd-principal:has(> .gd-esq-esboco:not([hidden])) { grid-template-columns: minmax(250px, 290px) minmax(0, 1fr) minmax(290px, 340px); }
+.gd-lista { display: grid; gap: 2px; margin: 6px 0; }
+.gd-lista .gd-check { margin: 0; }
+.gd-lista button { flex: 1; text-align: left; min-height: 36px; border-color: transparent; background: transparent; }
+.gd-lista .gd-atual button { background: var(--acento-suave); border-color: var(--acento); font-weight: 600; }
+.gd-props h4 { margin: 10px 0 4px; font-size: 13px; }
+.gd-concluir { background: var(--acento-suave); border-color: var(--acento); }
+.ce-menu { display: inline-flex; align-items: stretch; }
+.ce-seta { min-width: 22px; padding: 0 4px; border-color: transparent; background: transparent; font-size: 12px; color: var(--texto-2); }
+.wj-cmd[aria-disabled="true"] { opacity: 0.45; }
+.gd-espelho { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; fill: #9aa7b5; stroke: #9aa7b5; stroke-width: 2; stroke-dasharray: 5 4; }
+.gd-espelho polyline { fill: none; }

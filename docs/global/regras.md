@@ -227,7 +227,10 @@
   "gema primeiro" (garras ou inglesa), pavé (graduado, fileiras, eternidade, contas ou trilho),
   gravação interna/externa, torção, facetado/frisos, ocar, contração e canais de fundição, ficha
   técnica e preço. Booleanas sempre conferidas pelo volume (`segura`). Arquivo `.wjgd`, pasta "Joias".
-  Detalhes e roteiro (J7: escultura, halo, brinco/pingente) em `docs/global/wjgolddiamond.md`.
+  Detalhes e roteiro (J8: escultura, halo, brinco/pingente) em `docs/global/wjgolddiamond.md`.
+  08/11/2026 (J7, pedido do Johann: "modelar o anel do jeito que eu preciso", não só predefinições):
+  **ornamentos desenhados com o esboço do WJCAD** viram fios envolvidos no aro (Ø e altura por fio,
+  simetria, pontos = bolinha ou pedrinha em inglesa), ponta da garra (bolinha/alongada/dupla) e aro dividido.
 - Especificação e estado de cada face: `docs/global/<face>.md`.
 
 ## 8. Hospedagem, versão e offline

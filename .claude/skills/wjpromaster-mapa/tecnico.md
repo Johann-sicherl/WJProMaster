@@ -217,3 +217,10 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
   cofre ou do aparelho) vai para uma janela nova. Salvamento automático e vínculo com o cofre ficam por janela
   (`chave@<id>`, id em `window.name`) além da chave comum (usada para passar documento entre apps, `#abrir-autosave`).
   Montagem e desenho se atualizam do cofre ao voltar para a janela (`visibilitychange`). Planos padrão começam ocultos.
+- **Booleanas do OpenCascade (aprendido no WJGoldDiamond)**: usar `BRepAlgoAPI_*` com `SetArguments/SetTools`
+  (várias ferramentas de uma vez, podem se cruzar) e conferir o resultado pelo volume (`segura` em
+  `src/joia/geometria.ts`); compostos sobrepostos e a simplificação do replicad quebram sólidos sem erro.
+  Evitar **arestas exatamente coincidentes** (ponta de tubo = esfera, tubo espelhado encostando no eixo, plano
+  passando por aresta do perfil): aparar 0,6·r ou folgar 0,02 mm deixa 3–5× mais rápido e correto.
+  Superfícies analíticas (toro, cilindro, plano) são bem mais rápidas que B-spline (loft) nos cortes.
+  Fio de Ø variável: varredura com `Law_Linear` (`genericSweep` com `law`), não loft (autointercepta em voltas fechadas).

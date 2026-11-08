@@ -53,10 +53,21 @@ círculo do aro, como no WJCAD com Y para cima).
 | **J4** | **Pavé**: gemas em curva ao longo do aro com tamanhos graduados, arco, espaço, 1–5 fileiras, eternidade (volta inteira), contas automáticas entre pedras ou trilho (canal); colisão e encaixe lateral (posições que não cabem saem com aviso); todos os assentos num corte só | ✅ |
 | **J5** | **Fabricação**: ocar (canal interno nas zonas livres, parede mínima), contração da fundição, canais de alimentação, STL para impressão/fundição, STL e STEP limpos, **ficha técnica** (pedras por tipo, quilates, peso do metal com perda, peso da resina, CSV), verificações (espessuras e garras mínimas por liga, profundidade da gravação, micropavé), **preço** (R$/g, R$/ct, mão de obra, margem) | ✅ |
 | **J6** | **Torção** (meias-voltas; perfis assimétricos só em voltas inteiras), **afunilado**, **gravação externa** (envolve o aro), texturas **facetado** e **frisos** fora das zonas ocupadas; vistas, girar (apresentação) e imagem PNG | ✅ |
-| J7 | Escultura (malha), relevo por imagem, texturas martelado/acetinado, gemas inclinadas pela normal em perfis curvos, pavé em superfície livre, halo, outras peças (brinco, pingente), vídeo giratório pelo WJVideoMaker, preço/itens no WJERP | próximo |
+| **J7** | **Modelagem livre**: ornamentos desenhados com o **esboço do WJCAD** (linha, arco, spline, círculo, elipse, ponto, espelhar, offset, cotas e relações) na vista de cima do aro, com **prévia espelhada**; cada entidade vira **fio** de perfil redondo (Ø inicial/final e altura inicial/final por fio: o fio sobe da moldura até o aro), simetria nos dois eixos, envolvido no aro ou num plano sobre o topo, bolinha nas pontas soltas; cada **ponto** vira bolinha de metal ou **pedrinha em inglesa** (entra na ficha e no peso em ct). **Ponta da garra**: bolinha, alongada (sobre a pedra) ou garra dupla. **Aro dividido** (abertura no topo e até que ângulo). Exemplo pronto: "Anel vintage com filigrana" (moldura em pipa, volutas, pontas norte–sul, pedrinhas laterais). Correção: o furo de luz da gema central parava no aro e cortava o aro inteiro com gemas largas; agora para no topo do aro e há aviso quando a culaça entra no aro | ✅ 08/11/2026 |
+| J8 | Escultura (malha), relevo por imagem, texturas martelado/acetinado, gemas inclinadas pela normal em perfis curvos, pavé em superfície livre, halo, outras peças (brinco, pingente), perfil do fio (meia-cana, quadrado), vídeo giratório pelo WJVideoMaker, preço/itens no WJERP | próximo |
 
 Modelos prontos (aba Joia → Modelos): solitário, solitário com pavé, aliança com gravação,
-meia-aliança, eternidade, inglesa oval, anel torcido, aliança facetada.
+meia-aliança, eternidade, inglesa oval, anel torcido, **anel vintage com filigrana**, aliança facetada.
+
+### Ornamentos (J7) — como desenhar
+- Joia → **Ornamento** (ou Construtores → Ornamentos → Desenhar) abre o esboço do WJCAD no lugar da vista 3D
+  (carregado só nessa hora). **Horizontal = ao longo do aro (0 = topo); vertical = largura do aro.** As linhas
+  tracejadas fixas são guias (bordas do aro e caixa da gema central); entidades de construção não viram fio.
+- Desenhe só um quadrante: a **simetria** (dois eixos, esquerda↔direita, frente↔trás ou nenhuma) completa o resto e
+  aparece em cinza enquanto se desenha. Comprimento desenhado = comprimento real sobre o topo do aro.
+- Toque num fio para mudar **Ø no início/fim** e **altura no início/fim** (vazio = padrão do ornamento); toque num
+  ponto para escolher **bolinha** ou **pedrinha em inglesa** (Ø e gema). ✓ Concluir ornamento volta ao 3D.
+- Vários ornamentos por joia (camadas), cada um com liga/desliga.
 
 ## 3. Regras de cálculo
 
@@ -87,9 +98,16 @@ meia-aliança, eternidade, inglesa oval, anel torcido, aliança facetada.
 > interface; valide no navegador simulando o tablet (1280×800, toque); documente o estado; publique
 > (PR → CI → merge → deploy) sem trabalho manual.
 
+**Fios (J7)**: varredura de um círculo ao longo da spline (aproximada a 0,03 mm) com **lei linear** do OpenCascade
+para o Ø variável; as pontas da trajetória são **aparadas 0,6·r** e cobertas por esferas (repetidas removidas).
+Arestas exatamente coincidentes (ponta do fio = esfera, fio = fio espelhado no eixo) deixavam a booleana 3–5× mais
+lenta e com volume errado. Loft de círculos foi descartado: em voltas fechadas (volutas) ele se autointercepta.
+A prévia do worker passou a ser o composto de tudo **sem booleanas** (aparece na hora); peso e volume só na final.
+
 ## 6. Estado (07/11/2026)
 
 J0–J6 entregues. Tempos medidos em Node (o tablet tende a ser 1,5–2× mais lento; a prévia aparece antes):
 aliança 30 ms, afunilado 0,1 s, solitário ~1 s, lapidações curvas 2–4 s, solitário com pavé ~6 s,
-eternidade com 35 pedras ~8 s. Limites conhecidos: gemas do pavé ficam radiais (não inclinam nas
+eternidade com 35 pedras ~8 s, anel vintage com filigrana (16 fios, 3 gemas) ~13–17 s (no navegador do teste,
+sem GPU, ~20 s; a prévia completa aparece antes). Limites conhecidos: gemas do pavé ficam radiais (não inclinam nas
 fileiras laterais de perfis curvos); a torção usa loft (mais lenta com pavé); texturas só no aro.
