@@ -3,7 +3,7 @@
 // sozinha, pavé num corte só) → − gravação → − canal interno (ocar). Canais de fundição e
 // contração só na exportação. Cortes agrupados num composto só quando as ferramentas não se cruzam.
 
-import { cast, draw, drawCircle, drawPointsInterpolation, getOC, makeCylinder, makeSphere, measureArea, measureShapeVolumeProperties, Plane, type Drawing, type Shape3D } from "replicad";
+import { assembleWire, makeCompound, cast, draw, drawCircle, drawPointsInterpolation, genericSweep, getOC, makeBSplineApproximation, makeCircle, makeCylinder, makeSphere, measureArea, measureShapeVolumeProperties, Plane, type Drawing, type Shape3D } from "replicad";
 import {
   angulosFrisos, contorno, intervalosLivres, montar, poligonoFacetas, pontosPerfil, porLoft, proporcoes, secao, superficie, superficieInterna, torcaoEfetiva, zonasOcupadas,
   type DocJoia, type GemaPosta, type GrupoTexto, type Haste, type Montagem, type P2, type Perfil, type V3,
@@ -150,7 +150,8 @@ export function cortador(g: GemaPosta, furo: number): Shape3D {
   const sF = 0.5, cul = Math.max(pr.culaca, 0.2);
   const yF = (-pr.pavilhao * (1 - sF)) / (1 - cul);
   const topo = pr.cintura + pr.coroa;
-  const secs: [number, number][] = [[sF, -pr.pavilhao - Math.max(0.5, furo)], [sF, yF], [1, 0]];
+  // furo ≤ 0: sem furo de luz (o pavilhão termina na culaça; o aro sob a cabeça fica inteiro)
+  const secs: [number, number][] = furo > 0.05 ? [[sF, -pr.pavilhao - furo], [sF, yF], [1, 0]] : [[cul, -pr.pavilhao], [1, 0]];
   if (g.passagem === "reta") secs.push([1, topo + 1.5]);
   else secs.push([1, pr.cintura], [pr.mesa, topo], [pr.mesa, topo + 0.5]);
   const sk = secs.map(([k, y]) => naPlano(contornoGema(g.gema, k), [0, y, 0], [1, 0, 0], [0, 1, 0]));
@@ -169,8 +170,12 @@ export function segura(tipo: "unir" | "cortar" | "comum", alvo: Shape3D, fs: Sha
   const ok = (v: number, a: number, s: number) =>
     tipo === "unir" ? v >= a - eps && v <= a + s + eps : tipo === "cortar" ? v <= a + eps && v >= a - s - eps && v > 0.05 * a : v <= a + eps && v > 0.2 * a;
   try {
+    const t0 = performance.now();
     const r = booleana(tipo, alvo, fs);
-    if (ok(vol(r), v0, vf.reduce((x, y) => x + y, 0))) return r;
+    const vr = vol(r);
+    if ((globalThis as any).DEPURAR_JOIA) console.log(`  ${nome}: ${fs.length} ferramentas, ${(performance.now() - t0).toFixed(0)} ms, ${v0.toFixed(1)} → ${vr.toFixed(1)}`);
+    if (ok(vr, v0, vf.reduce((x, y) => x + y, 0))) return r;
+    if ((globalThis as any).DEPURAR_JOIA) console.log(`  ${nome}: lote recusado, uma por vez`);
   } catch {
     /* tenta uma por vez */
   }
@@ -214,6 +219,67 @@ function faixaAngular(a0: number, a1: number, r0: number, r1: number, v0: number
   return naPlano(dr, [0, 0, 0], rHat(a1), tHat(a1)).revolve([0, 0, 1], { origin: [0, 0, 0], angle: (a1 - a0) / RAD });
 }
 
+/** Cápsula (cilindro com esfera nas duas pontas): ponta alongada da garra. */
+function capsula(h: Haste): Shape3D {
+  return booleana("unir", haste(h), [makeSphere(h.r).translate(h.base)]);
+}
+
+/**
+ * Fio de perfil redondo: varredura de um círculo ao longo da curva (spline aproximada a 0,03 mm),
+ * com lei linear de escala para o Ø inicial/final. As pontas da trajetória são aparadas 0,6·r e
+ * cobertas por esferas: nada coincide exatamente (arestas coincidentes deixam a booleana lenta e
+ * errada). Devolve os tubos e as esferas das pontas/juntas (repetidas são removidas em `construir`).
+ */
+export function fioSolido(f: { pts: V3[]; raios: number[]; bolinhaIni: boolean; bolinhaFim: boolean }): { tubos: Shape3D[]; esferas: [V3, number][] } {
+  const n = f.pts.length;
+  const dd = (p: V3, q: V3) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  const fechado = dd(f.pts[0], f.pts[n - 1]) < 1e-6;
+  const tubo = (a: number, b: number): Shape3D | null => {
+    let i0 = a, i1 = b;
+    while (i0 < b - 2 && dd(f.pts[i0], f.pts[a]) < 0.6 * f.raios[a]) i0++;
+    while (i1 > i0 + 2 && dd(f.pts[i1], f.pts[b]) < 0.6 * f.raios[b]) i1--;
+    const pts = f.pts.slice(i0, i1 + 1);
+    if (pts.length < 2 || dd(pts[0], pts[pts.length - 1]) < 1e-4) return null;
+    const oc = getOC() as any;
+    const e = makeBSplineApproximation(pts, { tolerance: 0.03, degMax: 3 });
+    const ad = new oc.BRepAdaptor_Curve((e as any).wrapped);
+    const u0 = ad.FirstParameter(), u1 = ad.LastParameter();
+    ad.delete();
+    const t: V3 = [pts[1][0] - pts[0][0], pts[1][1] - pts[0][1], pts[1][2] - pts[0][2]];
+    const perfil = assembleWire([makeCircle(f.raios[i0], pts[0], esc(t, 1 / (Math.hypot(...t) || 1)))]);
+    let lei = null;
+    if (Math.abs(f.raios[i1] - f.raios[i0]) > 1e-6) {
+      lei = new oc.Law_Linear();
+      lei.Set(u0, 1, u1, f.raios[i1] / f.raios[i0]);
+    }
+    return genericSweep(perfil, assembleWire([e]), { frenet: true, law: lei, forceProfileSpineOthogonality: true } as never);
+  };
+  const tubos: Shape3D[] = [];
+  const esferas: [V3, number][] = [];
+  if (fechado) {
+    const meio = Math.floor((n - 1) / 2);
+    for (const s of [tubo(0, meio), tubo(meio, n - 1)]) if (s) tubos.push(s);
+    esferas.push([f.pts[0], f.raios[0]], [f.pts[meio], f.raios[meio]]);
+  } else {
+    const s = tubo(0, n - 1);
+    if (s) tubos.push(s);
+    esferas.push([f.pts[0], f.raios[0] * (f.bolinhaIni ? 1.3 : 1)], [f.pts[n - 1], f.raios[n - 1] * (f.bolinhaFim ? 1.3 : 1)]);
+  }
+  return { tubos, esferas };
+}
+
+/** Aro dividido: rasgo central que abre até `dividido` mm no topo e fecha em ±`divisao` graus. */
+function divisao(d: DocJoia, R: number): Shape3D {
+  const a = d.aro, div = a.divisao * RAD, T = R + Math.max(a.espessura, a.espessuraBase) + 1;
+  const N = 9;
+  const secs = Array.from({ length: N }, (_, i) => {
+    const th = -div + (2 * div * i) / (N - 1);
+    const hw = Math.max(0.02, (a.dividido / 2) * (1 + Math.cos((Math.PI * th) / div)) / 2);
+    return naPlano(poligono([[R - 1, -hw], [T, -hw], [T, hw], [R - 1, hw]]), [0, 0, 0], rHat(th), tHat(th));
+  });
+  return secs[0].loftWith(secs.slice(1), { ruled: false });
+}
+
 // ---------------------------------------------------------------------------------------------
 // gravação
 
@@ -255,6 +321,7 @@ export function construir(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 
   const tMax = Math.max(a.espessura, a.espessuraBase) + 20;
   let metal = fazerAro(d, R);
   if (!(vol(metal) > 1)) throw new Error("O aro não pôde ser gerado com essas medidas (perfil, largura e espessura).");
+  if (a.dividido > 0) metal = segura("cortar", metal, [divisao(d, R)], avisos, "Aro dividido");
 
   // texturas (só no aro, fora das zonas ocupadas)
   if (d.textura.tipo !== "nenhuma" && !rapida) {
@@ -287,14 +354,31 @@ export function construir(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 
       partes.push(faixa(g.gema, ing.escala, ing.escalaFuro, ing.yBase, ing.yTopo - ing.yBase, g.ref.ry));
     }
   }
-  if (rapida) return { forma: segura("unir", metal, partes, avisos, "Cabeça"), montagem: m, avisos };
+  partes.push(...m.capsulas.map(capsula));
+  const esferas: [V3, number][] = [];
+  for (const f of m.orn.fios) {
+    const r = fioSolido(f);
+    partes.push(...r.tubos);
+    for (const [p, raio] of r.esferas) {
+      const o = esferas.find(([q]) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) < 1e-4);
+      if (o) o[1] = Math.max(o[1], raio);
+      else esferas.push([p, raio]);
+    }
+  }
+  partes.push(...esferas.map(([p, raio]) => makeSphere(raio).translate(p)));
+  for (const q of m.orn.pontos) if (q.tipo === "conta") partes.push(makeSphere(q.d / 2).translate(q.p));
+  for (const x of m.gemasOrn) partes.push(noLugar(naPlano(drawCircle(x.gema.gema.largura / 2 + 0.4).cut(drawCircle(x.gema.gema.largura * 0.4)), [0, x.yBase, 0], [1, 0, 0], [0, 1, 0]).extrude(x.yTopo - x.yBase), x.gema));
   partes.push(...m.contas.map((c) => makeSphere(c.r).translate(c.topo)));
   partes.push(...m.trilhos.map((t) => faixaAngular(t.a0, t.a1, t.rBase, t.rTopo, t.v - t.espessura / 2, t.v + t.espessura / 2)));
+  // prévia: tudo junto sem booleanas (aparece na hora; a união e os cortes vêm na versão final)
+  if (rapida) return { forma: makeCompound([metal, ...partes]) as Shape3D, montagem: m, avisos };
   metal = segura("unir", metal, partes, avisos, "Cabeça, contas e trilhos");
 
   // assentos das gemas e gravação (um corte só)
   const cortes: Shape3D[] = [];
-  if (m.cabeca) cortes.push(cortador(m.cabeca, m.cabeca.ref.p[1] - proporcoes(m.cabeca.gema).pavilhao - R + 0.5));
+  // furo de luz da cabeça só até o topo do aro: não corta o aro sob a gema
+  if (m.cabeca) cortes.push(cortador(m.cabeca, m.cabeca.ref.p[1] - proporcoes(m.cabeca.gema).pavilhao - (R + superficie(a, 0, 0)) - 0.15));
+  for (const x of m.gemasOrn) cortes.push(cortador(x.gema, 0.6));
   for (const g of m.pave) cortes.push(cortador(g, Math.hypot(g.ref.p[0], g.ref.p[1]) - proporcoes(g.gema).pavilhao - R + 0.5));
   if (d.gravacao.ativo && grupos.length) cortes.push(...gravacao(d, m, grupos));
   metal = segura("cortar", metal, cortes, avisos, "Assentos e gravação");
