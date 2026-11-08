@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icone.svg" type="image/svg+xml" />
+    <title>Imagens → modelo 3D — WJCAD</title>
+  </head>
+  <body class="wj-app im-app">
+    <header class="wj-topo">
+      <a class="wj-marca" href="../" title="Voltar ao WJCAD"><img src="/icone.svg" alt="" /><span>WJCAD <small class="versao-app">v%WJ_VERSAO%</small></span></a>
+      <strong class="im-titulo">Imagens → modelo 3D</strong>
+      <div class="wj-direita"><button id="im-ajuda" class="im-ajuda" title="Como fotografar">Como fotografar</button></div>
+    </header>
+    <main class="im-principal">
+      <aside class="im-lado" aria-label="Fotos das vistas e opções">
+        <section>
+          <h2>Fotos das vistas <small>fundo liso · pelo menos 2 direções</small></h2>
+          <div id="im-vistas" class="im-vistas"></div>
+        </section>
+        <section class="im-opcoes">
+          <label class="im-campo"><span>Tolerância do fundo</span><input id="im-tol" type="range" min="10" max="140" step="5" value="45" /><b id="im-tol-v">45</b></label>
+          <div class="im-campo"><span>Medida conhecida</span>
+            <select id="im-eixo" aria-label="Qual medida">
+              <option value="largura">Largura (X, vista de frente)</option>
+              <option value="altura">Altura (Y)</option>
+              <option value="profundidade">Profundidade (Z)</option>
+            </select>
+            <input id="im-valor" type="number" min="0.1" step="0.1" value="100" inputmode="decimal" aria-label="Medida em mm" /><b>mm</b>
+          </div>
+          <div class="im-campo"><span>Faces</span><div id="im-faces" class="im-segmentos" role="radiogroup" aria-label="Quantidade de faces"></div></div>
+          <button id="im-gerar" class="destaque im-gerar">Gerar modelo 3D</button>
+        </section>
+      </aside>
+      <section class="im-vista3d">
+        <div id="im-3d" class="im-3d"></div>
+        <div id="im-vazio" class="im-vazio">Coloque as fotos das vistas e toque em <b>Gerar modelo 3D</b>.</div>
+        <div id="im-resultado" class="im-resultado" hidden>
+          <span id="im-info"></span>
+          <span class="im-acoes">
+            <button id="im-peca" class="destaque">Abrir na Peça</button>
+            <button id="im-salvar">Salvar STL…</button>
+          </span>
+        </div>
+      </section>
+    </main>
+    <footer class="wj-status"><span id="im-status" class="wj-status-texto">Pronto.</span></footer>
+    <input id="im-arquivo" type="file" accept="image/*" hidden />
+    <script type="module" src="/src/imagem3d/main.ts"></script>
+  </body>
+</html>

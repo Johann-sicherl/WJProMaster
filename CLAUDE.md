@@ -57,6 +57,12 @@
    `docs/global/regras.md` se for decisão do Johann). A conferência `scripts/teste-mapa.ts` (dentro do
    `pnpm teste` e do CI) falha se um arquivo de `src/` ou um teste ficar fora do mapa ou se o mapa citar
    arquivo que não existe.
+11. **Qualidade acima de economia** (08/11/2026): priorizar sempre a qualidade e o aprimoramento do
+   software com o **menor risco possível**; toda entrega coberta por testes (motor em Node, interface no
+   navegador simulando o tablet), boa experiência de uso e assertividade. Nunca cortar leitura de regras,
+   testes ou validação para poupar tokens: `docs/global/regras.md` é lido **inteiro** a cada tarefa e a
+   skill `wjpromaster-mapa` é invocada sempre. Economizar só no que não tira qualidade (ir direto ao
+   arquivo certo, ler o trecho necessário dos arquivos grandes).
 
 Responda sempre em **português (Brasil)**. O dono do projeto é o Johann, engenheiro mecânico
 que usa CAD paramétrico profissionalmente; trate-o como usuário avançado de CAD.

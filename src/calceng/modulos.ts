@@ -24,33 +24,33 @@ export const MATERIAS: Materia[] = [
   {
     id: "algebra", nome: "Álgebra",
     calculadoras: [
-      { id: "eq1", nome: "Equação do 1º grau", chaves: "primeiro grau linear ax + b raiz" },
-      { id: "eq2", nome: "Equação do 2º grau", chaves: "segundo grau quadratica bhaskara delta discriminante raizes parabola" },
-      { id: "sistemas", nome: "Sistemas com várias variáveis", chaves: "sistema linear equacoes incognitas substituicao escalonamento" },
-      { id: "inequacoes", nome: "Inequações", chaves: "desigualdade intervalo maior menor solucao" },
+      { id: "eq1", nome: "Equação do 1º grau", pronto: true, chaves: "primeiro grau linear ax + b raiz" },
+      { id: "eq2", nome: "Equação do 2º grau", pronto: true, chaves: "segundo grau quadratica bhaskara delta discriminante raizes parabola" },
+      { id: "sistemas", nome: "Sistemas com várias variáveis", pronto: true, chaves: "sistema linear equacoes incognitas substituicao escalonamento" },
+      { id: "inequacoes", nome: "Inequações", pronto: true, chaves: "desigualdade intervalo maior menor solucao" },
     ],
   },
   {
     id: "matrizes", nome: "Álgebra linear — matrizes",
     calculadoras: [
-      { id: "cramer", nome: "Matriz 3×3 — Cramer", chaves: "regra de cramer determinante sistema 3x3 sarrus" },
-      { id: "gauss", nome: "Matriz 3×3 — Gauss", chaves: "eliminacao de gauss escalonamento pivo sistema 3x3 jordan" },
-      { id: "mult", nome: "Multiplicação de matrizes", chaves: "produto de matrizes linha por coluna 3x3" },
+      { id: "cramer", nome: "Matriz 3×3 — Cramer", pronto: true, chaves: "regra de cramer determinante sistema 3x3 sarrus" },
+      { id: "gauss", nome: "Matriz 3×3 — Gauss", pronto: true, chaves: "eliminacao de gauss escalonamento pivo sistema 3x3 jordan" },
+      { id: "mult", nome: "Multiplicação de matrizes", pronto: true, chaves: "produto de matrizes linha por coluna 3x3" },
     ],
   },
   {
     id: "dinamica", nome: "Física — dinâmica",
     calculadoras: [
-      { id: "newton", nome: "Leis de Newton", chaves: "forca massa aceleracao f = m a inercia acao reacao peso" },
-      { id: "plano", nome: "Plano inclinado", chaves: "rampa angulo componente do peso normal seno cosseno" },
-      { id: "atrito", nome: "Força de atrito", chaves: "coeficiente estatico cinetico normal mi" },
-      { id: "trabalho", nome: "Trabalho", chaves: "energia forca deslocamento joule potencia" },
+      { id: "newton", nome: "Leis de Newton", pronto: true, chaves: "forca massa aceleracao f = m a inercia acao reacao peso" },
+      { id: "plano", nome: "Plano inclinado", pronto: true, chaves: "rampa angulo componente do peso normal seno cosseno" },
+      { id: "atrito", nome: "Força de atrito", pronto: true, chaves: "coeficiente estatico cinetico normal mi" },
+      { id: "trabalho", nome: "Trabalho", pronto: true, chaves: "energia forca deslocamento joule potencia" },
     ],
   },
 ];
 
 /** Sem acentos, minúsculas, "×" = "x": a busca não depende de como se digita. */
-export const normalizar = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/×/g, "x").replace(/º/g, "o").toLowerCase();
+export const normalizar = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/×/g, "x").replace(/º/g, "o").toLowerCase();
 
 /**
  * Matérias com as calculadoras que casam com o texto (todas as palavras precisam aparecer no

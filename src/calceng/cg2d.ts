@@ -14,6 +14,7 @@ import {
   rot90, trechosDe, type Elipse2, type P2, type Trecho,
 } from "../esboco/geometria";
 import * as op from "../esboco/operacoes";
+import type { Valores } from "./calculadoras";
 
 export type { P2 };
 
@@ -45,8 +46,11 @@ export interface DocCg2d {
 export interface DocCalc {
   versao: 2;
   nome: string;
-  modulo: "cg2d";
+  /** Calculadora aberta ("cg2d", "eq2", "cramer"…; catálogo em modulos.ts). */
+  modulo: string;
   cg2d: DocCg2d;
+  /** Valores digitados em cada uma das outras calculadoras (por id). */
+  calcs?: Record<string, Valores>;
 }
 
 const SUPORTE = { tipo: "plano", plano: "XY", deslocamento: 0 } as const;
@@ -81,7 +85,10 @@ export function validarDoc(d: unknown): DocCalc {
     if (typeof v.massa === "number" && Number.isFinite(v.massa)) r.massa = v.massa;
     regioes[k] = r;
   }
-  return { versao: 2, nome, modulo: "cg2d", cg2d: { esboco: { ...e, tipo: "esboco", suporte: { ...SUPORTE } }, regioes, material } };
+  const doc: DocCalc = { versao: 2, nome, modulo: typeof (o as { modulo?: unknown }).modulo === "string" ? (o as { modulo: string }).modulo : "cg2d", cg2d: { esboco: { ...e, tipo: "esboco", suporte: { ...SUPORTE } }, regioes, material } };
+  const calcs = (o as { calcs?: unknown }).calcs;
+  if (calcs && typeof calcs === "object") doc.calcs = calcs as Record<string, Valores>;
+  return doc;
 }
 
 /** Figuras da versão 1 (antes do esboço do WJCAD) viram entidades de esboço. */
