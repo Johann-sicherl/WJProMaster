@@ -351,8 +351,14 @@ interface OpcoesExplorador {
   /** salvar: rodapé com a pasta padrão do dispositivo */
   infoDispositivo?: boolean;
   botao?: string;
+  /** salvar como: tipos à escolha (o seletor "Tipo" troca a extensão e o filtro) */
+  tipos?: { ext: string; rotulo: string }[];
+  /** salvar: botão "No dispositivo" (baixa em vez de gravar no cofre) */
+  dispositivo?: boolean;
+  /** salvar: nome repetido na pasta substitui (vira a versão seguinte) em vez de pedir outro */
+  substituir?: boolean;
 }
-type Escolha = { pasta: string; nome: string; arquivo?: Arquivo };
+type Escolha = { pasta: string; nome: string; arquivo?: Arquivo; ext?: string; dispositivo?: boolean };
 
 /**
  * Explorador do cofre: barra (Voltar, Pasta acima, caminho clicável, Nova pasta), lista em
@@ -368,6 +374,8 @@ async function explorarCofre(o: OpcoesExplorador): Promise<Escolha | null> {
   let atual = o.inicio === RAIZ || ps.some((p) => p.id === o.inicio) ? o.inicio : RAIZ;
   const historico: string[] = [];
   let soDeste = true;
+  let extAtual = o.ext ?? "";
+  const extsFiltro = () => (o.tipos ? [extAtual] : o.exts);
   let sel: string | null = null; // "p:<id>" ou "a:<id>"
   let novaAberta = false;
   let msg = "";
@@ -415,13 +423,13 @@ async function explorarCofre(o: OpcoesExplorador): Promise<Escolha | null> {
     const desenhar = async () => {
       const pai = atual === RAIZ ? null : atual;
       const pastas = ps.filter((p) => p.pai === pai).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-      const arquivos = arqs.filter((a) => (a.pasta === atual || (atual === RAIZ && !ps.some((p) => p.id === a.pasta))) && (!soDeste || o.exts.includes(extensao(a.nome))))
+      const arquivos = arqs.filter((a) => (a.pasta === atual || (atual === RAIZ && !ps.some((p) => p.id === a.pasta))) && (!soDeste || extsFiltro().includes(extensao(a.nome))))
         .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
       const tab = o.infoDispositivo ? await pastaDa("tablet") : undefined;
       const linhas = [
         ...pastas.map((p) => `<li data-k="p:${p.id}" tabindex="0" class="${sel === `p:${p.id}` ? "sel" : ""}"><span class="wje-n">${IC_PASTA}<span>${esc(p.nome)}</span></span><span class="wje-d">${p.mod ? quando(p.mod) : ""}</span><span class="wje-t">Pasta</span></li>`),
         ...arquivos.map((a) => {
-          const deste = o.exts.includes(extensao(a.nome));
+          const deste = extsFiltro().includes(extensao(a.nome));
           return `<li data-k="a:${a.id}" tabindex="0" class="${sel === `a:${a.id}` ? "sel" : ""}${deste ? "" : " outro"}"><span class="wje-n">${icArquivo(extensao(a.nome), deste)}<span>${esc(a.nome)}${a.checkout ? `<small>GO-OUT ${esc(a.checkout.usuario)}</small>` : ""}${a.soLocal ? `<small>não publicado</small>` : ""}</span></span><span class="wje-d">${a.mod ? quando(a.mod) : ""}</span><span class="wje-t">${esc(tipoDe(a.nome))}</span></li>`;
         }),
       ];
@@ -436,12 +444,14 @@ async function explorarCofre(o: OpcoesExplorador): Promise<Escolha | null> {
         <div class="wje-cab"><span>Nome</span><span class="wje-d">Modificado</span><span class="wje-t">Tipo</span></div>
         <ul class="wje-lista" role="listbox" aria-label="Pastas e arquivos">${linhas.join("") || `<li class="vazia">Esta pasta está vazia.</li>`}</ul>
         <div class="wje-rodape">
-          ${o.modo === "salvar" ? `<label class="wjc-nome"><span>Nome do arquivo</span><input data-nome value="${esc(campoNome)}" aria-label="Nome do arquivo" />${o.ext ? `<b>.${esc(o.ext)}</b>` : ""}</label>` : ""}
-          <label class="wje-filtro"><span>Tipo</span><select data-filtro><option value="1"${soDeste ? " selected" : ""}>${esc(o.rotuloFiltro)}</option><option value="0"${soDeste ? "" : " selected"}>Todos os arquivos</option></select></label>
+          ${o.modo === "salvar" ? `<label class="wjc-nome"><span>Nome do arquivo</span><input data-nome value="${esc(campoNome)}" aria-label="Nome do arquivo" />${extAtual ? `<b>.${esc(extAtual)}</b>` : ""}</label>` : ""}
+          <label class="wje-filtro"><span>${o.tipos ? "Salvar como tipo" : "Tipo"}</span><select data-filtro>${o.tipos
+            ? o.tipos.map((t) => `<option value="${esc(t.ext)}"${soDeste && t.ext === extAtual ? " selected" : ""}>${esc(t.rotulo)}</option>`).join("") + `<option value="*"${soDeste ? "" : " selected"}>Todos os arquivos (mostrar)</option>`
+            : `<option value="1"${soDeste ? " selected" : ""}>${esc(o.rotuloFiltro)}</option><option value="0"${soDeste ? "" : " selected"}>Todos os arquivos</option>`}</select></label>
           ${o.infoDispositivo ? `<p>O arquivo fica <b>em GO-OUT</b> no dispositivo (banco do app${tab ? ` e pasta <b>${esc(tab.name)}</b>/WJPDM` : ""}); o primeiro salvar já publica a versão 1 no pendrive e no Google Drive.${tab ? "" : temPastas() ? ` <button data-a="tab">Escolher pasta do dispositivo…</button>` : ""}</p>` : ""}
           <p class="wje-msg ${/não|Já existe/.test(msg) ? "wjc-nao" : "wjc-ok"}">${esc(msg)}</p>
         </div>
-        <footer><button data-a="cancelar">Cancelar</button><button data-a="ok" class="destaque">${esc(o.botao ?? (o.modo === "salvar" ? "Salvar" : "Abrir"))}</button></footer>`;
+        <footer>${o.dispositivo ? `<button data-a="disp" class="wje-disp" title="Baixar no dispositivo (pasta Downloads) em vez de gravar no cofre">No dispositivo</button>` : ""}<button data-a="cancelar">Cancelar</button><button data-a="ok" class="destaque">${esc(o.botao ?? (o.modo === "salvar" ? "Salvar" : "Abrir"))}</button></footer>`;
       const campo = caixa.querySelector<HTMLInputElement>("[data-nome]");
       if (campo) {
         campo.oninput = () => (campoNome = campo.value);
@@ -461,7 +471,14 @@ async function explorarCofre(o: OpcoesExplorador): Promise<Escolha | null> {
         campo.focus();
         campo.select();
       }
-      caixa.querySelector<HTMLSelectElement>("[data-filtro]")!.onchange = (e) => ((soDeste = (e.target as HTMLSelectElement).value === "1"), void desenhar());
+      caixa.querySelector<HTMLSelectElement>("[data-filtro]")!.onchange = (e) => {
+        const v = (e.target as HTMLSelectElement).value;
+        if (o.tipos) {
+          soDeste = v !== "*";
+          if (soDeste) extAtual = v;
+        } else soDeste = v === "1";
+        void desenhar();
+      };
       caixa.querySelectorAll<HTMLButtonElement>("[data-t]").forEach((b) => (b.onclick = () => irPara(b.dataset.t!)));
       caixa.querySelectorAll<HTMLButtonElement>("[data-a]").forEach((b) => (b.onclick = () => void acoes[b.dataset.a!]?.()));
       // um toque/clique seleciona; dois seguidos (duplo clique ou duplo toque) abrem
@@ -491,7 +508,7 @@ async function explorarCofre(o: OpcoesExplorador): Promise<Escolha | null> {
       const a = k.startsWith("a:") ? arqs.find((x) => x.id === k.slice(2)) : undefined;
       const campo = caixa.querySelector<HTMLInputElement>("[data-nome]");
       // salvar: tocar um arquivo usa o nome dele (como no explorador)
-      if (a && campo && o.exts.includes(extensao(a.nome))) campo.value = campoNome = a.nome.replace(/\.[^.]+$/, "");
+      if (a && campo && extsFiltro().includes(extensao(a.nome))) campo.value = campoNome = a.nome.replace(/\.[^.]+$/, "");
     };
     const ativar = async (k: string) => {
       if (k.startsWith("p:")) return irPara(k.slice(2));
@@ -511,14 +528,18 @@ async function explorarCofre(o: OpcoesExplorador): Promise<Escolha | null> {
       if (sel?.startsWith("p:") && document.activeElement?.closest(".wje-lista")) return irPara(sel.slice(2));
       const n = campoNome.trim().replace(/[\\/:*?"<>|]/g, "_");
       if (!n) return ((msg = "Digite o nome do arquivo."), void desenhar());
-      const nome = o.ext ? `${n}.${o.ext}` : n;
+      const nome = extAtual ? `${n}.${extAtual}` : n;
+      if (paraDispositivo) return terminar({ pasta: atual, nome, ext: extAtual, dispositivo: true });
       const irmaos = arqs.filter((a) => a.pasta === atual).map((a) => a.nome);
-      if (irmaos.some((x) => x.toLowerCase() === nome.toLowerCase())) {
+      if (o.substituir && irmaos.some((x) => x.toLowerCase() === nome.toLowerCase())) {
+        if (!confirm(`"${nome}" já existe nesta pasta.\n\nOK: substituir (vira a versão seguinte do arquivo, a anterior fica no histórico).\nCancelar: escolher outro nome.`)) return;
+      } else if (irmaos.some((x) => x.toLowerCase() === nome.toLowerCase())) {
         const livre = nomeLivre(nome, irmaos);
         if (!confirm(`"${nome}" já existe nesta pasta.\n\nOK: salvar este documento como "${livre}".\nCancelar: escolher outro nome.`)) return;
       }
-      terminar({ pasta: atual, nome });
+      terminar({ pasta: atual, nome, ext: extAtual });
     };
+    let paraDispositivo = false;
     const criarPasta = async () => {
       const nome = caixa.querySelector<HTMLInputElement>("[data-nova]")?.value.trim().replace(/[\\/:*?"<>|]/g, "_");
       if (!nome) return;
@@ -545,7 +566,8 @@ async function explorarCofre(o: OpcoesExplorador): Promise<Escolha | null> {
       });
     };
     const acoes: Record<string, () => void | Promise<void>> = {
-      ok: confirmar,
+      ok: () => ((paraDispositivo = false), confirmar()),
+      disp: () => ((paraDispositivo = true), confirmar()),
       cancelar: () => terminar(null),
       voltar: () => {
         const v = historico.pop();
@@ -709,6 +731,81 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
   const caminho = `${onde ? `${onde}/` : ""}${a.nome}`;
   if (primeiro) return `✓ Salvo e publicado (versão 1): ${caminho}. ${destino.texto} Segue em GO-OUT com você; o GO-IN publica as próximas versões.${aviso}`;
   return `✓ Salvo: ${caminho} (cópia de trabalho, em GO-OUT). ${destino.texto} O GO-IN publica a versão.${aviso}`;
+}
+
+/** Pasta (caminho no cofre) do documento ligado ao app nesta janela; null = ainda não salvo no cofre. */
+export async function pastaDoDocumento(app: ChaveApp): Promise<{ id: string; caminho: string } | null> {
+  const id = vinculo(app);
+  if (!id) return null;
+  const db = await abrirCofre();
+  const a = await db.ler<Arquivo>("arquivos", id);
+  if (!a || a.lixeira) return null;
+  return { id: a.pasta, caminho: caminhoDaPasta(await db.todos<Pasta>("pastas"), a.pasta) || "Cofre" };
+}
+
+/**
+ * Exportar (STEP, STL…) como um "Salvar como": o mesmo explorador do primeiro salvar, aberto na
+ * pasta onde o documento está no cofre, com o tipo à escolha e o botão "No dispositivo". No cofre
+ * o arquivo derivado entra publicado, sem GO-OUT; nome repetido na pasta vira a versão seguinte.
+ * `gerar` produz o conteúdo do tipo escolhido (só depois da escolha: exportar pode demorar).
+ */
+export async function exportarComo(app: ChaveApp, nomeBase: string, tipos: { ext: string; rotulo: string }[], gerar: (ext: string) => Promise<Blob>): Promise<string> {
+  const db = await abrirCofre();
+  const chaveTipo = `wjpdm:ultimoTipoExportar:${app}`;
+  const lembrado = localStorage.getItem(chaveTipo);
+  const ext = tipos.some((t) => t.ext === lembrado) ? lembrado! : tipos[0].ext;
+  const r = await explorarCofre({
+    titulo: "Exportar — salvar como", modo: "salvar", exts: [ext], rotuloFiltro: "", tipos, ext, nome: nomeBase,
+    inicio: (await pastaDoDocumento(app))?.id ?? (await pastaInicial(app)), dispositivo: true, substituir: true, botao: "Salvar no cofre",
+  });
+  if (!r) return "Exportação cancelada.";
+  const tipo = r.ext ?? ext;
+  localStorage.setItem(chaveTipo, tipo);
+  const dados = await gerar(tipo);
+  if (r.dispositivo) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([dados], { type: "application/octet-stream" }));
+    a.download = r.nome.replace(/[\\/:*?"<>|]/g, "_");
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    return `✓ ${r.nome} salvo no dispositivo (pasta Downloads).`;
+  }
+  return gravarExportacao(db, app, r.pasta, r.nome, dados);
+}
+
+/** Grava a exportação no cofre: arquivo novo publicado, ou versão seguinte do que tem o mesmo nome. */
+async function gravarExportacao(db: Armazem, app: ChaveApp, pasta: string, nome: string, dados: Blob): Promise<string> {
+  const usuario = await usuarioDo(db);
+  const t = agora();
+  const existente = (await db.todos<Arquivo>("arquivos")).find((x) => x.pasta === pasta && x.nome.toLowerCase() === nome.toLowerCase() && !x.lixeira);
+  if (existente) {
+    const b = existente.checkout?.usuario === usuario ? null : bloqueioDoCheckout(existente, usuario);
+    if (b) return `${existente.nome}: não exportado (${b}) Exporte com outro nome.`;
+  }
+  const blob = uid();
+  await db.porBlob(blob, dados);
+  let a: Arquivo;
+  if (existente) {
+    a = existente;
+    const n = Math.max(0, ...a.versoes.map((v) => v.n)) + 1;
+    a.versoes.push({ n, blob, tamanho: dados.size, autor: usuario, data: t, comentario: `Exportado do ${NOME_APP[app]}`, revisao: a.revisao, estado: a.estado });
+    a.historico.push({ data: t, usuario, texto: `Exportado de novo do ${NOME_APP[app]}: versão ${n} publicada` });
+    a.soLocal = undefined;
+    a.mod = t;
+  } else {
+    a = {
+      id: uid(), nome, pasta, revisao: "", estado: fluxoAtual().inicial, cartao: { descricao: nome.replace(/\.[^.]+$/, ""), projetista: usuario }, mod: t,
+      versoes: [{ n: 1, blob, tamanho: dados.size, autor: usuario, data: t, comentario: `Exportado do ${NOME_APP[app]}`, revisao: "", estado: fluxoAtual().inicial }],
+      historico: [{ data: t, usuario, texto: `Exportado do ${NOME_APP[app]}: versão 1 publicada` }],
+    };
+  }
+  await db.por("arquivos", a);
+  avisarMudanca();
+  const sinc = await sincronizarCofre({ pedir: true, publicar: true });
+  const destino = ondeChegou(sinc);
+  if (destino.faltou) faixaConexoes(sinc);
+  const onde = caminhoDaPasta(await db.todos<Pasta>("pastas"), a.pasta);
+  return `✓ Exportado: ${onde ? `${onde}/` : ""}${a.nome} (versão ${a.versoes[a.versoes.length - 1].n}). ${destino.texto}`;
 }
 
 /** Onde o último salvar chegou (pela situação das cópias na sincronia que acabou de rodar). */
@@ -931,6 +1028,7 @@ body.disp-celular .wjc-aba{width:26px;min-height:72px;font-size:12px}
 .wjc-cop.ok{color:#1e7d34;border-color:#9fd1ab}.wjc-cop.toque{color:#8a5a00;border-color:#e0b44a;background:#fff3dc}
 .wjc-cop.desconectado,.wjc-cop.offline{color:#b3261e;border-color:#e6a49e;background:#fdecea}.wjc-cop.nao{color:#7a8590}
 .wjc-explorador{width:min(880px,100%)}
+.wjc-janela footer .wje-disp{margin-right:auto}
 .wje-barra{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #dfe5ec;flex-wrap:wrap}
 .wjc-janela .wje-barra>button{min-width:44px;padding:0 10px}
 .wjc-janela .wje-barra>button:disabled{opacity:.4;cursor:default}
