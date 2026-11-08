@@ -184,6 +184,12 @@
 - **Importar**: STEP/STP/STL criam o recurso `importado`. STL com mais de 10 000 triângulos = **corpo de
   malha** (só exibido; janela "STL grande" oferece simplificar para sólido). Montagem STEP → `.wjasm`.
 - **STEP AP214/AP242 abre com as cores do arquivo** (04/11/2026), na Peça e na Montagem.
+- **Exportar = "Salvar como"** (07/11/2026): botão **Exportar** logo depois do 💾 Salvar (e no menu
+  Arquivo); nada de STEP/STL no canto superior. Abre o **mesmo explorador do primeiro salvar**, já **na
+  pasta onde a peça está no cofre** (peça ainda não salva: última pasta usada), com nome sugerido,
+  **"Salvar como tipo"** (STEP ou STL; lembra o último) e o botão **No dispositivo** (baixa em Downloads).
+  No cofre o arquivo exportado entra **publicado, sem GO-OUT**; nome repetido na pasta **substitui** e
+  vira a versão seguinte (a anterior fica no histórico).
 - **Aparência (cor)** (04/11/2026): painel com Aplicar em **Face / Corpo / Peça** (Peça) ou
   **Componente (nesta montagem) / Peça (documento)** (Montagem); paleta, cor do sistema, RGB ou HSV,
   hexadecimal, Remover aparência, prévia, desfazer. A face vence o corpo, que vence a peça, que vence o
