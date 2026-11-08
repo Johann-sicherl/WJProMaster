@@ -4,6 +4,20 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  manifold-3d>fflate: '-'
+  manifold-3d>commander: '-'
+  manifold-3d>magic-string: '-'
+  manifold-3d>fast-xml-parser: '-'
+  manifold-3d>convert-source-map: '-'
+  manifold-3d>@jscadui/3mf-export: '-'
+  manifold-3d>@gltf-transform/core: '-'
+  manifold-3d>@gltf-transform/functions: '-'
+  manifold-3d>@gltf-transform/extensions: '-'
+  manifold-3d>@jridgewell/resolve-uri: '-'
+  manifold-3d>@jridgewell/trace-mapping: '-'
+  manifold-3d>esbuild-wasm: '-'
+
 importers:
 
   .:
@@ -14,6 +28,9 @@ importers:
       '@salusoft89/planegcs':
         specifier: 1.3.0
         version: 1.3.0
+      manifold-3d:
+        specifier: 3.5.4
+        version: 3.5.4
       opentype.js:
         specifier: 2.0.0
         version: 2.0.0
@@ -550,6 +567,10 @@ packages:
     resolution: {integrity: sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==}
     engines: {node: '>= 12.0.0'}
 
+  manifold-3d@3.5.4:
+    resolution: {integrity: sha512-WWsme5HabwLHVcWPHT9m+s7mdmDVSEvCny+uXH1E7jEc8FbFUgM75C3Dh6NVw57Eeh3Ow7+xHCuXfxDMOemi9A==}
+    hasBin: true
+
   meshoptimizer@1.1.1:
     resolution: {integrity: sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==}
 
@@ -965,6 +986,8 @@ snapshots:
       lightningcss-linux-x64-musl: 1.33.0
       lightningcss-win32-arm64-msvc: 1.33.0
       lightningcss-win32-x64-msvc: 1.33.0
+
+  manifold-3d@3.5.4: {}
 
   meshoptimizer@1.1.1: {}
 

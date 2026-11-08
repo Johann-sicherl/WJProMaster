@@ -9,6 +9,8 @@ import {
 } from "../src/joia/regras";
 import { construir, medidas, paraFabricar } from "../src/joia/geometria";
 import { malhaGema } from "../src/joia/malhaGema";
+import { aplicarToque, codificar, decodificar, dentroDoRaio, esculturaNova, icosfera, malhaLocal, malhasNoMundo, normais, subdividir, vizinhanca, volumeMalha } from "../src/joia/escultura";
+import { carregarManifold, stlBinario, unir } from "../src/joia/uniao";
 import { esbocoNovoOrnamento, ornamentar, ornamentoVintage, type Ornamento } from "../src/joia/ornamento";
 
 let falhas = 0;
@@ -95,6 +97,34 @@ const ornTeste = (): Ornamento => {
   ok(r.pontos.length === 2 && r.pontos.every((q) => q.tipo === "inglesa"), "ponto espelhado vira duas pedrinhas");
   const m = montar({ ...docNovo(), cabeca: { ...docNovo().cabeca, ativo: false }, ornamentos: [o] });
   ok(m.gemasOrn.length === 2 && ficha({ ...docNovo(), ornamentos: [o] }, m, 100).gemas.some((g) => g.descricao.startsWith("Rubi")), "pedrinhas dos ornamentos na ficha");
+}
+
+// escultura (puro)
+{
+  ok([2, 3, 4, 5].every((n) => icosfera(n).pos.length / 3 === 10 * 4 ** n + 2), "icosfera: 10·4ⁿ + 2 vértices");
+  ok(perto(volumeMalha(icosfera(5)), (4 / 3) * Math.PI, 0.02), "icosfera fechada e para fora (volume ≈ 4π/3)");
+  for (const b of ["esfera", "gota", "folha", "capsula"] as const) ok(volumeMalha(malhaLocal(esculturaNova("x", b, 1))) > 0, `forma inicial ${b} fechada`);
+  const m = malhaLocal(esculturaNova("x", "esfera", 1));
+  const nor = normais(m.pos, m.tri), vz = vizinhanca(m.tri, m.pos.length / 3);
+  const v0 = volumeMalha(m);
+  aplicarToque(m.pos, nor, vz, { pincel: "puxar", c: [0.5, 0.86, 0], n: [0.5, 0.86, 0], r: 0.4, f: 1, inverter: false }, true);
+  const v1 = volumeMalha(m);
+  ok(v1 > v0, `puxar levanta (volume ${v0.toFixed(3)} → ${v1.toFixed(3)})`);
+  const vMeio = (sinal: number) => { let s = 0; for (let i = 0; i < m.pos.length; i += 3) if (m.pos[i] * sinal > 0.3 && m.pos[i + 1] > 0.6) s += m.pos[i + 1]; return s; };
+  ok(perto(vMeio(1), vMeio(-1), 1e-3), "simetria: o traço espelhado sobe igual do outro lado");
+  aplicarToque(m.pos, nor, vz, { pincel: "puxar", c: [0, -1, 0], n: [0, -1, 0], r: 0.3, f: 1, inverter: true }, false);
+  ok(volumeMalha(m) < v1, "inverter afunda");
+  const pesos = dentroDoRaio(m.pos, [0, 0, 1], 0.4);
+  const z0 = m.pos[3 * [...pesos.keys()][0] + 2];
+  aplicarToque(m.pos, nor, vz, { pincel: "arrastar", c: [0, 0, 1], n: [0, 0, 1], r: 0.4, f: 1, inverter: false, d: [0, 0, 0.3], pesos }, false);
+  ok(m.pos[3 * [...pesos.keys()][0] + 2] > z0, "arrastar leva os vértices junto");
+  const c = codificar(m.pos), d = decodificar(c, m.pos.length)!;
+  ok(d.every((x, i) => Math.abs(x - m.pos[i]) < 1e-4), "posições quantizadas em 16 bits");
+  const e = { ...esculturaNova("x", "folha", 1), pos: c, base: "esfera" as const };
+  const s2 = subdividir(e);
+  ok(s2.nivel === 6 && malhaLocal(s2).pos.length / 3 === 40962 && perto(volumeMalha(malhaLocal(s2)), volumeMalha(m), 0.1), "subdividir mantém a forma");
+  const mundo = malhasNoMundo([{ ...esculturaNova("f", "folha", 1), espelhar: true }], 9, () => 1.7);
+  ok(mundo.length === 2 && mundo.every((x) => volumeMalha(x) > 0), "cópia espelhada fechada e para fora");
 }
 
 // geometria
@@ -245,6 +275,19 @@ tempo("anel vintage com filigrana", () => {
   const semOrn = medidas(construir({ ...d, ornamentos: [] }).forma).volume;
   ok(vol > semOrn + 20 && !r.avisos.length && r.montagem.gemasOrn.length === 2, `vintage: ${semOrn.toFixed(1)} → ${vol.toFixed(1)} mm³, ${r.montagem.orn.fios.length} fios ${r.avisos.join(" ")}`);
 });
+{
+  const w = await carregarManifold();
+  const d: DocJoia = { ...docNovo(), esculturas: [{ ...esculturaNova("f", "folha", 1), espelhar: true }] };
+  const r = construir(d);
+  const metal = medidas(r.forma).volume;
+  const esc = malhasNoMundo(d.esculturas, diametroInterno(d.aro.norma, d.aro.tamanho) / 2, () => d.aro.espessura);
+  const somaEsc = esc.reduce((s2, x) => s2 + volumeMalha(x), 0);
+  const t0 = performance.now();
+  const u = unir(w, r.forma, esc);
+  ok(u.volume > metal && u.volume < metal + somaEsc && !u.avisos.length, `união: metal ${metal.toFixed(1)} + folhas ${somaEsc.toFixed(1)} → ${u.volume.toFixed(1)} mm³ (sobreposição descontada) em ${(performance.now() - t0).toFixed(0)} ms`);
+  const stl = stlBinario(u.malha, 1.02);
+  ok(stl.byteLength === 84 + 50 * (u.malha.tri.length / 3), `STL da união numa peça só (${stl.byteLength} bytes)`);
+}
 
 if (falhas) { console.error(`${falhas} falha(s)`); process.exit(1); }
 console.log("teste-joia: tudo certo");
