@@ -726,7 +726,9 @@ function filete(): Esquema<FeatureFilete> {
   return {
     titulo: "Filete",
     caixas: [
-      { titulo: "Tipo de filete", campos: [{ t: "info", texto: () => "Tamanho constante (variável, de face e arredondamento completo: próximas versões)." }] },
+      { titulo: "Tipo de filete", campos: [
+        { t: "sel", rot: "Tipo", cam: "assimetrico", opcoes: [["constante", "Tamanho constante"], ["variavel", "Tamanho variável"]], valor: (f) => (f.assimetrico ? "variavel" : "constante"), aoMudar: (f, v) => (f.assimetrico = v === "variavel") },
+      ] },
       {
         titulo: "Itens a filetar",
         campos: [
@@ -737,9 +739,11 @@ function filete(): Esquema<FeatureFilete> {
       {
         titulo: "Parâmetros",
         campos: [
-          { t: "sel", rot: "Tamanho", cam: "assimetrico", opcoes: [["simetrico", "Simétrico"], ["assimetrico", "Assimétrico"]], valor: (f) => (f.assimetrico ? "assimetrico" : "simetrico"), aoMudar: (f, v) => (f.assimetrico = v === "assimetrico") },
-          { t: "num", rot: "Raio", cam: "raio", un: "mm", min: 0.001, passo: 0.5 },
-          { t: "num", rot: "Distância 2", cam: "raio2", un: "mm", min: 0.001, passo: 0.5, vis: (f) => !!f.assimetrico },
+          { t: "num", rot: "Raio", cam: "raio", un: "mm", min: 0.001, passo: 0.5, vis: (f) => !f.assimetrico },
+          { t: "num", rot: "Raio no início", cam: "raio", un: "mm", min: 0.001, passo: 0.5, vis: (f) => !!f.assimetrico },
+          { t: "num", rot: "Raio no fim", cam: "raio2", un: "mm", min: 0.001, passo: 0.5, vis: (f) => !!f.assimetrico },
+          { t: "check", rot: "Inverter sentido (troca início e fim)", cam: "inverterSentido", vis: (f) => !!f.assimetrico },
+          { t: "info", texto: () => "O raio varia em linha reta do início ao fim de cada aresta.", vis: (f) => !!f.assimetrico },
           { t: "check", rot: "Filete de múltiplos raios", cam: "multiplosRaios", vis: (f) => !f.assimetrico },
           { t: "info", texto: (f) => (f.multiplosRaios ? "Raio por item: edite abaixo (vazio = raio padrão)." : ""), vis: (f) => !!f.multiplosRaios },
           ...Array.from({ length: 12 }, (_, i): Campo<FeatureFilete> => ({
@@ -756,22 +760,27 @@ function chanfro(): Esquema<FeatureChanfro> {
   return {
     titulo: "Chanfro",
     caixas: [
-      { titulo: "Tipo de chanfro", campos: [{ t: "sel", rot: "Tipo", cam: "modo", opcoes: [["distanciaDistancia", "Distância-distância"], ["anguloDistancia", "Ângulo-distância"]] }] },
+      { titulo: "Tipo de chanfro", campos: [{ t: "sel", rot: "Tipo", cam: "modo", opcoes: [["distanciaDistancia", "Distância-distância"], ["anguloDistancia", "Ângulo-distância"], ["vertice", "Vértice"]] }] },
       {
         titulo: "Itens a chanfrar",
         campos: [
-          { t: "refs", rot: "Arestas e faces", cam: "itens", aceita: ["aresta", "face"], multiplo: true, dica: "Toque nas arestas (ou faces) no modelo" },
-          { t: "check", rot: "Propagação tangente", cam: "propagarTangente" },
+          { t: "refs", rot: "Arestas e faces", cam: "itens", aceita: ["aresta", "face"], multiplo: true, dica: "Toque nas arestas (ou faces) no modelo", vis: (f) => f.modo !== "vertice" },
+          { t: "refs", rot: "Vértices", cam: "itens", aceita: ["vertice"], multiplo: true, dica: "Toque nos cantos (vértices com três arestas retas)", vis: (f) => f.modo === "vertice" },
+          { t: "check", rot: "Propagação tangente", cam: "propagarTangente", vis: (f) => f.modo !== "vertice" },
         ],
       },
       {
         titulo: "Parâmetros",
         campos: [
-          { t: "check", rot: "Assimétrico", cam: "assimetrico", vis: (f) => f.modo !== "anguloDistancia" },
-          { t: "num", rot: "Distância", cam: "distancia", un: "mm", min: 0.001, passo: 0.5 },
-          { t: "num", rot: "Distância 2", cam: "distancia2", un: "mm", min: 0.001, passo: 0.5, vis: (f) => !!f.assimetrico && f.modo !== "anguloDistancia" },
+          { t: "check", rot: "Assimétrico", cam: "assimetrico", vis: (f) => f.modo !== "anguloDistancia" && f.modo !== "vertice" },
+          { t: "check", rot: "Distâncias iguais", cam: "distanciasIguais", vis: (f) => f.modo === "vertice" },
+          { t: "num", rot: "Distância", cam: "distancia", un: "mm", min: 0.001, passo: 0.5, vis: (f) => f.modo !== "vertice" },
+          { t: "num", rot: "D1", cam: "distancia", un: "mm", min: 0.001, passo: 0.5, vis: (f) => f.modo === "vertice" },
+          { t: "num", rot: "D2", cam: "distancia2", un: "mm", min: 0.001, passo: 0.5, vis: (f) => f.modo === "vertice" && !f.distanciasIguais },
+          { t: "num", rot: "D3", cam: "distancia3", un: "mm", min: 0.001, passo: 0.5, vis: (f) => f.modo === "vertice" && !f.distanciasIguais },
+          { t: "num", rot: "Distância 2", cam: "distancia2", un: "mm", min: 0.001, passo: 0.5, vis: (f) => !!f.assimetrico && f.modo !== "anguloDistancia" && f.modo !== "vertice" },
           { t: "num", rot: "Ângulo", cam: "angulo", un: "°", min: 1, max: 89, vis: (f) => f.modo === "anguloDistancia" },
-          { t: "inverter", rot: "Inverter direção", cam: "inverter", vis: (f) => f.modo === "anguloDistancia" || !!f.assimetrico },
+          { t: "inverter", rot: "Inverter direção", cam: "inverter", vis: (f) => f.modo === "anguloDistancia" || (!!f.assimetrico && f.modo !== "vertice") },
         ],
       },
     ],

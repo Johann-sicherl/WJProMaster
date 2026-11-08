@@ -133,6 +133,10 @@ const bloco = ext(base, 10);
   const verticais = arestasRetas(feats, (a) => Math.abs(a.a[2] - a.b[2]) > 5); // 4 arestas de 10
   const fil = { ...(novaFeature("filete", 1) as any), raio: 2, itens: verticais };
   confere("filete r2 nas 4 verticais", regenerar([...feats, fil]).volume, 8000 - 4 * (4 - Math.PI) * 10);
+  // raio variável 1 → 3 ao longo de cada aresta de 10: área tirada (1 − π/4)·r², média de r² = (1 + 3 + 9)/3
+  const filVar = { ...fil, raio: 1, raio2: 3, assimetrico: true };
+  confere("filete variável 1→3 nas 4 verticais", regenerar([...feats, filVar]).volume, 8000 - 4 * (1 - Math.PI / 4) * (13 / 3) * 10);
+  confere("filete variável invertido (mesmo volume)", regenerar([...feats, { ...filVar, inverterSentido: true }]).volume, 8000 - 4 * (1 - Math.PI / 4) * (13 / 3) * 10);
   const topo = face(feats, [0, 0, 1], [0, 0, 10]);
   const filFace = { ...fil, itens: [topo], raio: 1 };
   const vf = regenerar([...feats, filFace]);
@@ -141,6 +145,14 @@ const bloco = ext(base, 10);
   confere("chanfro 1 nas verticais", regenerar([...feats, ch]).volume, 8000 - 4 * 0.5 * 10);
   const chA = { ...ch, assimetrico: true, distancia2: 2 };
   confere("chanfro assimétrico 1×2", regenerar([...feats, chA]).volume, 8000 - 4 * 1 * 10);
+  // chanfro de vértice: tira o tetraedro D1·D2·D3/6 do canto (arestas a 90°)
+  const canto = (verticais[0] as { ass: { a: number[]; b: number[] } }).ass;
+  const pCanto = (canto.a[2] > canto.b[2] ? canto.a : canto.b) as [number, number, number]; // canto de cima
+  const chV = { ...ch, modo: "vertice", itens: [{ tipo: "vertice", p: pCanto }], distancia: 2, distancia2: 3, distancia3: 4 };
+  confere("chanfro de vértice 2×3×4", regenerar([...feats, chV]).volume, 8000 - (2 * 3 * 4) / 6);
+  confere("chanfro de vértice distâncias iguais 3", regenerar([...feats, { ...chV, distanciasIguais: true, distancia: 3 }]).volume, 8000 - 27 / 6);
+  const chVGrande = regenerar([...feats, { ...chV, distancia: 50 }]);
+  verdade("chanfro de vértice maior que a aresta: erro claro", chVGrande.erros.some((e) => /não cabe na aresta/.test(e.mensagem)));
   const casca = { ...(novaFeature("casca", 1) as any), espessura: 1, faces: [topo] };
   confere("casca 1 sem o topo", regenerar([...feats, casca]).volume, 8000 - 38 * 18 * 9);
   const fechada = { ...casca, faces: [] };
@@ -233,7 +245,7 @@ const bloco = ext(base, 10);
 
 // ---------- avaliar ----------
 {
-  const { massa, medir, verificar } = await import("../src/kernel/avaliar");
+  const { massa, medir, verificar, propriedadesSecao } = await import("../src/kernel/avaliar");
   const { pecaAtual } = await import("../src/kernel/regenerar");
   const r = regenerar([base, bloco]);
   const mp = massa(pecaAtual());
@@ -247,6 +259,17 @@ const bloco = ext(base, 10);
   const m = medir(pecaAtual(), faces.map((ass) => ({ tipo: "face", ass })) as never);
   const dist = m.linhas.find((l) => l.rotulo === "Distância mínima")?.valor ?? "";
   confere("medir: distância entre topo e base", parseFloat(dist.replace(",", ".")), 10);
+  // propriedades de seção da face de cima (40 × 20 no plano XY): b·h³/12
+  const ps = propriedadesSecao(pecaAtual(), { tipo: "face", ass: faces.find((f) => f.normal![2] > 0)! } as never);
+  confere("seção: área", ps.area, 800);
+  confere("seção: Ix = 40·20³/12", ps.Iu, (40 * 20 ** 3) / 12);
+  confere("seção: Iy = 20·40³/12", ps.Iv, (20 * 40 ** 3) / 12);
+  confere("seção: Ixy = 0", ps.Iuv, 0, 1e-6);
+  confere("seção: polar J = Ix + Iy", ps.J, (40 * 20 ** 3 + 20 * 40 ** 3) / 12);
+  confere("seção: Wx = Ix/10", ps.Wu, (40 * 20 ** 3) / 12 / 10);
+  confere("seção: Wy = Iy/20", ps.Wv, (20 * 40 ** 3) / 12 / 20);
+  confere("seção: raio de giração kx = 20/√12", ps.ku, 20 / Math.sqrt(12));
+  verdade("seção: eixos X e Y", ps.nomeU === "X" && ps.nomeV === "Y");
   const v = verificar(pecaAtual());
   if (!v.valida || v.faces !== 6 || v.arestas !== 12) { falhas++; console.log("FALHA verificar", v); } else console.log("ok   verificar: válida, 6 faces, 12 arestas");
 }

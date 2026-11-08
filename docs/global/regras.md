@@ -48,6 +48,20 @@
     possível, tudo coberto por testes, boa experiência de uso e assertividade. Não se corta leitura de
     regras, testes nem validação para poupar tokens: este arquivo é lido inteiro a cada tarefa e a skill
     do mapa é invocada sempre; a economia vem só de ir direto ao arquivo certo.
+16. **Várias sessões ao mesmo tempo** (08/11/2026): o Johann trabalha com vários chats no mesmo projeto.
+    É seguro com estas regras (auditoria de 08/11: PRs #53–#92 sem nenhuma perda entre sessões):
+    - **Um ramo por sessão**; nunca empurrar para o ramo de outra sessão nem mexer em PR aberto dela.
+    - **Começar do `main` mais novo** (`git fetch origin main` e criar/atualizar o ramo a partir dele) e,
+      **antes do PR, mesclar o `origin/main` de novo** e repetir `pnpm check && pnpm teste && pnpm build`.
+    - Arquivos que todas as sessões editam (`regras.md`, `CLAUDE.md`, `README.md`, skill do mapa,
+      `vite.config.ts`, `public/sw.js`, `package.json`, `src/inicio/inicio.ts`, `ChaveApp` em
+      `src/comum/cofre.ts`): **só edições pontuais sobre a versão recém-baixada**, nunca reescrever o arquivo
+      inteiro de uma cópia lida antes. Conflito: juntar as duas versões, nunca descartar a da outra sessão.
+    - **PR só é mesclado com a verificação "Verificar PR" verde** (`.github/workflows/verificar.yml`: check,
+      teste e build sobre o PR já juntado com o `main` atual) e **pelo número devolvido ao criar o PR**,
+      com `expectedHeadSha` (nunca supor o número).
+    - O `teste-mapa` barra página fora do Vite/`sw.js` e teste fora do `pnpm teste` (entrada apagada ao
+      juntar trabalhos).
 
 ## 2. Inspiração sem cópia (vale para todas as faces)
 
@@ -174,6 +188,9 @@
 - **Importar**: STEP/STP/STL criam o recurso `importado`. STL com mais de 10 000 triângulos = **corpo de
   malha** (só exibido; janela "STL grande" oferece simplificar para sólido). Montagem STEP → `.wjasm`.
 - **STEP AP214/AP242 abre com as cores do arquivo** (04/11/2026), na Peça e na Montagem.
+- **Aviso de conexões "Cofre:" (Drive, pendrive, pasta)** (08/11/2026): botão **"Não mostrar de novo"** na
+  faixa; vale para o aparelho (`wjpdm:semAvisoConexoes`) e some ao abrir e ao salvar. A mensagem de cada
+  salvar continua dizendo onde chegou; religa em **Cópias do cofre** ("Mostrar o aviso de conexões").
 - **Exportar = "Salvar como"** (07/11/2026): botão **Exportar** logo depois do 💾 Salvar (e no menu
   Arquivo); nada de STEP/STL no canto superior. Abre o **mesmo explorador do primeiro salvar**, já **na
   pasta onde a peça está no cofre** (peça ainda não salva: última pasta usada), com nome sugerido,

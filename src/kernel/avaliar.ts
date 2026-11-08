@@ -1,7 +1,7 @@
 // Aba Avaliar no kernel: medições exatas no B-Rep, propriedades de massa (com inércia)
 // e verificação de geometria. Ver docs/funcional/avaliar.md.
 
-import { getOC, measureArea, measureLength, measureShapeVolumeProperties, type Shape3D } from "replicad";
+import { getOC, measureArea, measureLength, measureShapeSurfaceProperties, measureShapeVolumeProperties, type Shape3D } from "replicad";
 import type { Referencia, Vec3 } from "../model";
 import { acharAresta, acharFace, assinaturaAresta, assinaturaFace } from "./topologia";
 
@@ -199,6 +199,85 @@ export function massa(peca: Shape3D | null, malhas: MalhaMassa[] = []): Propried
     inercia: [ixx, iyy, izz, ixy, ixz, iyz],
     principais: valores as [number, number, number],
     eixos: vetores as [Vec3, Vec3, Vec3],
+  };
+}
+
+/** Propriedades de seção de uma face plana (momentos de área, mm⁴). */
+export interface PropriedadesSecao {
+  area: number;
+  centroide: Vec3;
+  normal: Vec3;
+  /** eixos do plano usados (u, v): os globais quando a face é paralela a um plano principal */
+  u: Vec3;
+  v: Vec3;
+  nomeU: string;
+  nomeV: string;
+  /** no centroide: Iu = ∫v² dA (em torno do eixo u), Iv = ∫u² dA, Iuv = ∫uv dA, J = Iu + Iv */
+  Iu: number;
+  Iv: number;
+  Iuv: number;
+  J: number;
+  /** principais (I1 ≥ I2) e ângulo do eixo 1 a partir de u, no sentido de u para v */
+  I1: number;
+  I2: number;
+  angulo: number;
+  /** módulos de resistência elásticos: I / distância à fibra mais afastada */
+  Wu: number;
+  Wv: number;
+  /** raios de giração */
+  ku: number;
+  kv: number;
+}
+
+/**
+ * Propriedades de seção (Section Properties) de uma face plana: área, centroide, momentos de
+ * inércia de área no centroide (eixos do plano e principais), polar, raios de giração e módulos
+ * de resistência — o que se usa para dimensionar vigas e perfis.
+ */
+export function propriedadesSecao(peca: Shape3D | null, r: Referencia): PropriedadesSecao {
+  if (!peca) throw new Error("Não há peça.");
+  if (r.tipo !== "face") throw new Error("Propriedades de seção: toque numa face plana.");
+  const f = acharFace(peca, r.ass);
+  const a = assinaturaFace(f);
+  if (a.geom !== "plano" || !a.normal) throw new Error("Propriedades de seção: a face precisa ser plana.");
+  const n = a.normal.map((x) => x / norma(a.normal!)) as Vec3;
+  const props = measureShapeSurfaceProperties(f) as unknown as { area: number; centerOfMass: Vec3; wrapped: { MomentOfInertia(a: unknown): number } };
+  const A = props.area, c = props.centerOfMass;
+  // eixos do plano: os globais quando a face é paralela a um plano principal (Y para cima)
+  const X: Vec3 = [1, 0, 0], Y: Vec3 = [0, 1, 0], Z: Vec3 = [0, 0, 1];
+  let u: Vec3, v: Vec3, nomeU: string, nomeV: string;
+  if (Math.abs(Math.abs(n[2]) - 1) < 1e-6) [u, v, nomeU, nomeV] = [X, Y, "X", "Y"];
+  else if (Math.abs(Math.abs(n[1]) - 1) < 1e-6) [u, v, nomeU, nomeV] = [X, Z, "X", "Z"];
+  else if (Math.abs(Math.abs(n[0]) - 1) < 1e-6) [u, v, nomeU, nomeV] = [Z, Y, "Z", "Y"];
+  else {
+    const t: Vec3 = Math.abs(n[1]) < 0.9 ? Y : X;
+    const w: Vec3 = [t[1] * n[2] - t[2] * n[1], t[2] * n[0] - t[0] * n[2], t[0] * n[1] - t[1] * n[0]];
+    const lw = norma(w);
+    v = w.map((x) => x / lw) as Vec3;
+    u = [v[1] * n[2] - v[2] * n[1], v[2] * n[0] - v[0] * n[2], v[0] * n[1] - v[1] * n[0]];
+    nomeU = "u";
+    nomeV = "v";
+  }
+  const O = oc();
+  const I = (d: Vec3) => props.wrapped.MomentOfInertia(new O.gp_Ax1(new O.gp_Pnt(...c), new O.gp_Dir(...d)));
+  const Iu = I(u), Iv = I(v), J = I(n);
+  const diag = I([(u[0] + v[0]) / Math.SQRT2, (u[1] + v[1]) / Math.SQRT2, (u[2] + v[2]) / Math.SQRT2]);
+  // ∫(u−v)²/2 dA = diag → ∫uv = (Iu + Iv)/2 − diag (Iu = ∫v², Iv = ∫u²)
+  const Iuv = (Iu + Iv) / 2 - diag;
+  const m = (Iu + Iv) / 2, rr = Math.hypot((Iu - Iv) / 2, Iuv);
+  const angulo = (0.5 * Math.atan2(-2 * Iuv, Iu - Iv) * 180) / Math.PI;
+  // fibra mais afastada: maior distância do centroide aos vértices/pontos das arestas, em u e em v
+  let du = 0, dv = 0;
+  for (const e of f.edges)
+    for (let k = 0; k <= 16; k++) {
+      const p = e.pointAt(k / 16).toTuple() as Vec3;
+      const d = sub(p, c);
+      du = Math.max(du, Math.abs(esc(d, u)));
+      dv = Math.max(dv, Math.abs(esc(d, v)));
+    }
+  return {
+    area: A, centroide: c, normal: n, u, v, nomeU, nomeV, Iu, Iv, Iuv, J, I1: m + rr, I2: m - rr, angulo,
+    Wu: dv > 0 ? Iu / dv : 0, Wv: du > 0 ? Iv / du : 0, ku: Math.sqrt(Iu / A), kv: Math.sqrt(Iv / A),
   };
 }
 

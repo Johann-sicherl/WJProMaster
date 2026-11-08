@@ -218,7 +218,7 @@ Parâmetros: X/Y.
 
 ### Estender entidades — ✅
 - Prévia tracejada da ponta até onde a linha vai encontrar outra entidade ✅
-### Dividir entidades (ponto de divisão) — F3
+### Dividir entidades (ponto de divisão) — ✅ (08/11/2026: linha e arco no ponto tocado, partes colineares / mesmo raio; grupo Aparar)
 
 ### Mover / Copiar / Girar / Dimensionar / Esticar — ✅ mover, copiar, girar; demais pendentes
 - Entidades · **Manter relações** · Copiar

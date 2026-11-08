@@ -93,9 +93,11 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 
 ## 4. Publicar (regra 6) — sequência sem pausa
 
-`pnpm check && pnpm teste && pnpm build` → commit em português → `git push -u origin <branch>` → PR para
-`main` (ferramentas `mcp__github__*`) → acompanhar o CI (`deploy.yml`: install, check, teste, build com
-`BASE_PATH=/WJProMaster/`) → corrigir → merge → conferir `https://johann-sicherl.github.io/WJProMaster/`.
+`git fetch origin main` + mesclar `origin/main` no ramo (outras sessões publicam ao mesmo tempo, `regras.md`
+regra 16) → `pnpm check && pnpm teste && pnpm build` → commit em português → `git push -u origin <branch>` →
+PR para `main` (ferramentas `mcp__github__*`) → esperar **"Verificar PR"** verde (`verificar.yml`: check,
+teste, build sobre o PR juntado com o `main`) → corrigir → merge **pelo número devolvido ao criar o PR**, com
+`expectedHeadSha` → acompanhar `deploy.yml` → conferir `https://johann-sicherl.github.io/WJProMaster/`.
 
 ## 5. Armadilhas já conhecidas
 

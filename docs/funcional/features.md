@@ -260,7 +260,7 @@ internas = Direção 2) gera as faces; tampas planas + `Sewing` + `MakeSolid` fe
 
 ## 7. Filete (Fillet) — 🟡
 
-✅ arestas/faces/recursos selecionados, propagação tangente, múltiplos raios, assimétrico. Raio variável e filete de face: pendentes.
+✅ arestas/faces/recursos selecionados, propagação tangente, múltiplos raios, **tamanho variável** (raio no início → raio no fim de cada aresta, inverter sentido; 08/11/2026 — o antigo "assimétrico" já era isto no OpenCascade e foi renomeado). Filete assimétrico (duas distâncias) e filete de face: ⏸ (o núcleo não oferece).
 
 Abas do painel: **Manual** · **Assistente** (sugere/organiza filetes — ⏸)
 
@@ -284,7 +284,7 @@ Abas do painel: **Manual** · **Assistente** (sugere/organiza filetes — ⏸)
 
 ## 8. Chanfro (Chamfer) — 🟡
 
-✅ distância-distância, ângulo-distância, assimétrico, inverter, só nas arestas escolhidas.
+✅ distância-distância, ângulo-distância, assimétrico, inverter, só nas arestas escolhidas, **vértice** (D1/D2/D3 ou iguais, canto com três arestas retas; 08/11/2026). Deslocamento de face e face-face: ⏸.
 
 **Caixa "Tipo de chanfro"**: Ângulo-distância · Distância-distância · Vértice · Deslocamento de face · Face-face
 **Itens a chanfrar**: arestas/faces/vértices, propagação tangente, pré-visualização
