@@ -24,13 +24,13 @@ import { celulaSilhueta, cortarMalha, entidadesDe, silhuetaMalha } from "./malha
 export type Ferramenta =
   | "selecionar" | "ponto" | "linha" | "retangulo" | "circulo" | "arco" | "rasgo" | "poligono" | "spline"
   | "elipse" | "elipseParcial" | "parabola" | "texto"
-  | "aparar" | "estender" | "fileteEsboco" | "chanfroEsboco" | "offset" | "espelhar" | "cota" | "converter"
+  | "aparar" | "estender" | "dividir" | "fileteEsboco" | "chanfroEsboco" | "offset" | "espelhar" | "cota" | "converter"
   | "padraoLinearEsboco" | "padraoCircularEsboco" | "exibirRelacoes";
 
 export const ROTULO_FERRAMENTA: Record<Ferramenta, string> = {
   selecionar: "Selecionar", ponto: "Ponto", linha: "Linha", retangulo: "Retângulo", circulo: "Círculo", arco: "Arco",
   rasgo: "Rasgo", poligono: "Polígono", spline: "Spline",
-  elipse: "Elipse", elipseParcial: "Elipse parcial", parabola: "Parábola", texto: "Texto de esboço", aparar: "Aparar", estender: "Estender",
+  elipse: "Elipse", elipseParcial: "Elipse parcial", parabola: "Parábola", texto: "Texto de esboço", aparar: "Aparar", estender: "Estender", dividir: "Dividir entidades",
   fileteEsboco: "Filete de esboço", chanfroEsboco: "Chanfro de esboço", offset: "Offset",
   espelhar: "Espelhar", cota: "Cota", converter: "Converter entidades",
   padraoLinearEsboco: "Padrão linear de esboço", padraoCircularEsboco: "Padrão circular de esboço",
@@ -74,6 +74,7 @@ function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
   }
   switch (f) {
     case "estender": return "Toque perto da ponta da linha a estender até a próxima interseção.";
+    case "dividir": return "Toque na linha ou no arco onde quer dividir: vira duas entidades com um ponto em comum.";
     case "converter": return "Toque arestas, vértices ou uma face da peça (a face converte o contorno inteiro, com os furos): viram geometria do esboço.";
     case "fileteEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
     case "chanfroEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
@@ -851,6 +852,14 @@ export class EditorEsboco {
       const alvo = this.achar(enc.p, tol);
       const g = alvo && this.esb.geos.find((x) => x.id === alvo.id);
       if (g?.externa) return this.h.avisar("Referência do modelo é fixa: não pode ser alterada (apague-a se não precisar).");
+    }
+    if (f === "dividir") {
+      const alvo = this.achar(enc.p, tol);
+      const g = alvo?.tipo === "geo" ? this.esb.geos.find((x) => x.id === alvo.id) : undefined;
+      if (g?.externa) return this.h.avisar("Referência do modelo é fixa: não pode ser dividida.");
+      if (g && op.dividir(esb, g.id, enc.p)) this.resolver(true);
+      else this.h.avisar("Toque no meio de uma linha ou de um arco (não na ponta).");
+      return;
     }
     if (f === "estender") {
       const alvo = this.achar(enc.p, tol);

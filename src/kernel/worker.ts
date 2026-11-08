@@ -11,7 +11,7 @@ import { ehFatal, esquecerSolidosImportados, exportar, exportarDxf, malhasAtuais
 
 /** Resposta do kernel: "mande o conteúdo importado de novo" (a interface reenvia sozinha). */
 export const REENVIAR = "__REENVIAR_DADOS__";
-import { massa, medir, verificar } from "./avaliar";
+import { massa, medir, verificar, propriedadesSecao } from "./avaliar";
 import { lerMontagemStep } from "./importar";
 import { simplificarStl } from "./stl";
 
@@ -21,6 +21,7 @@ export type PedidoKernel =
   | { tipo: "exportar"; seq: number; formato: "step" | "stl" }
   | { tipo: "medir"; seq: number; refs: Referencia[] }
   | { tipo: "massa"; seq: number }
+  | { tipo: "propSecao"; seq: number; ref: Referencia }
   | { tipo: "verificar"; seq: number }
   /** Peça de um componente de montagem/desenho: regenera e guarda o sólido pela chave do conteúdo. */
   | { tipo: "componente"; seq: number; chave: string; features: Feature[]; planificar?: boolean }
@@ -133,6 +134,9 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
         break;
       case "medir":
         enviar({ tipo: "resposta", seq: p.seq, dados: medir(pecaAtual(), p.refs) });
+        break;
+      case "propSecao":
+        enviar({ tipo: "resposta", seq: p.seq, dados: propriedadesSecao(pecaAtual(), p.ref) });
         break;
       case "massa":
         enviar({ tipo: "resposta", seq: p.seq, dados: massa(pecaAtual(), malhasAtuais()) });

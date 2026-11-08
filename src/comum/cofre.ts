@@ -245,8 +245,19 @@ const TEXTO_ESTADO: Record<EstadoCopia, [string, string]> = {
  * dispositivo, pendrive). Tudo certo: some sozinha. Cópia configurada que ficou de fora: fica com
  * "Conectar agora" (um toque libera o acesso e iguala tudo) e "Cópias…" (configurar).
  */
+/** "Não mostrar de novo" na faixa de conexões (vale para este aparelho; religa em Cópias do cofre). */
+const SEM_FAIXA = "wjpdm:semAvisoConexoes";
+const faixaDesligada = () => {
+  try {
+    return localStorage.getItem(SEM_FAIXA) === "1";
+  } catch {
+    return false;
+  }
+};
+
 function faixaConexoes(m: string) {
   document.querySelector(".wjc-faixa")?.remove();
+  if (faixaDesligada()) return;
   if (!document.getElementById("wjc-css")) document.head.append(Object.assign(document.createElement("style"), { id: "wjc-css", textContent: CSS }));
   const f = document.createElement("div");
   f.className = "wjc-faixa";
@@ -257,8 +268,12 @@ function faixaConexoes(m: string) {
     const nenhuma = ROTULO_COPIA.every(([k]) => s[k] === "nao");
     f.classList.toggle("ok", !pendente && !nenhuma);
     f.innerHTML = `<span class="wjc-cops"><b>Cofre:</b> ${ROTULO_COPIA.map(([k, r]) => `<i class="wjc-cop ${s[k]}" title="${r}: ${TEXTO_ESTADO[s[k]][1]}">${TEXTO_ESTADO[s[k]][0]} ${r}</i>`).join("")}${nenhuma ? "<small>Nenhuma cópia: os arquivos ficam só no banco deste navegador.</small>" : ""}</span>
-      ${pendente ? `<button class="destaque" data-s>Conectar agora</button>` : ""}<button data-c>Cópias…</button><button data-x title="Fechar" aria-label="Fechar">✕</button>`;
+      ${pendente ? `<button class="destaque" data-s>Conectar agora</button>` : ""}<button data-c>Cópias…</button><button data-n title="Não mostrar mais este aviso neste aparelho (religa em Cópias do cofre)">Não mostrar de novo</button><button data-x title="Fechar" aria-label="Fechar">✕</button>`;
     f.querySelector<HTMLElement>("[data-x]")!.onclick = () => f.remove();
+    f.querySelector<HTMLElement>("[data-n]")!.onclick = () => {
+      localStorage.setItem(SEM_FAIXA, "1");
+      f.remove();
+    };
     f.querySelector<HTMLElement>("[data-c]")!.onclick = () => void abrirCopias(() => desenhar(ultima?.texto ?? ""));
     const b = f.querySelector<HTMLButtonElement>("[data-s]");
     if (b) b.onclick = async () => {
@@ -1027,6 +1042,8 @@ body.disp-celular .wjc-aba{width:26px;min-height:72px;font-size:12px}
 .wjc-cop{font-style:normal;white-space:nowrap;padding:2px 8px;border-radius:12px;background:#fff;border:1px solid #d7dde4}
 .wjc-cop.ok{color:#1e7d34;border-color:#9fd1ab}.wjc-cop.toque{color:#8a5a00;border-color:#e0b44a;background:#fff3dc}
 .wjc-cop.desconectado,.wjc-cop.offline{color:#b3261e;border-color:#e6a49e;background:#fdecea}.wjc-cop.nao{color:#7a8590}
+.wjc-aviso{display:flex;align-items:center;gap:8px;min-height:44px;margin-top:6px}
+.wjc-aviso input{width:20px;height:20px}
 .wjc-explorador{width:min(880px,100%)}
 .wjc-janela footer .wje-disp{margin-right:auto}
 .wje-barra{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #dfe5ec;flex-wrap:wrap}
@@ -1108,7 +1125,8 @@ export async function abrirCopias(aoSincronizar?: () => void, mestre = false) {
       <section><h3>Google Drive</h3><p>${nuvem ? esc(nuvem.situacao()) : "Aguardando a configuração do acesso ao Google (cliente OAuth)."}${mestre ? ` Pastas: ${pastas("Meu Drive")}.` : ""}</p>
         ${nuvem && !nuvem.conectado() ? `<div class="wjc-botoes"><button data-b="drive" class="destaque">${localStorage.getItem("wjgoogle:autorizado") === "1" ? "Reconectar" : "Conectar ao Google Drive"}</button></div>` : ""}</section>
       <section><div class="wjc-botoes"><button data-b="sinc" class="destaque">Sincronizar agora</button></div>
-        <p data-r class="${/desconectado|não encontrado|sem permissão|vencido|recusou|não liberou/.test(msg) ? "wjc-nao" : msg ? "wjc-ok" : ""}">${esc(msg || (ultima ? `Última: ${quando(ultima.quando)} — ${ultima.texto}` : ""))}</p></section>
+        <p data-r class="${/desconectado|não encontrado|sem permissão|vencido|recusou|não liberou/.test(msg) ? "wjc-nao" : msg ? "wjc-ok" : ""}">${esc(msg || (ultima ? `Última: ${quando(ultima.quando)} — ${ultima.texto}` : ""))}</p>
+        <label class="wjc-aviso"><input type="checkbox" data-aviso${faixaDesligada() ? "" : " checked"} /> Mostrar o aviso de conexões (Drive, pendrive, pasta) ao abrir e ao salvar, neste aparelho</label></section>
       <footer><button data-b="fechar" class="destaque">Fechar</button></footer>`;
     const escolher = async (c: Copia) => {
       try {
@@ -1147,6 +1165,8 @@ export async function abrirCopias(aoSincronizar?: () => void, mestre = false) {
       },
     };
     caixa.querySelectorAll<HTMLButtonElement>("[data-b]").forEach((b) => (b.onclick = () => void acoes[b.dataset.b!]?.()));
+    const aviso = caixa.querySelector<HTMLInputElement>("[data-aviso]")!;
+    aviso.onchange = () => (aviso.checked ? localStorage.removeItem(SEM_FAIXA) : localStorage.setItem(SEM_FAIXA, "1"));
     const sel = caixa.querySelector<HTMLSelectElement>("[data-disp]");
     if (sel)
       sel.onchange = () => {

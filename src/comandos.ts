@@ -207,6 +207,7 @@ export const ABAS: Aba[] = [
         itens: [
           { id: "aparar", rotulo: "Aparar entidades", icone: "aparar", dica: "Apaga trechos entre interseções (T)", grupo: 3 },
           { id: "estender", rotulo: "Estender entidades", icone: "estender", dica: "Estende uma linha até a próxima interseção", grupo: 3 },
+          { id: "dividir", rotulo: "Dividir entidades", icone: "dividirEntidade", dica: "Divide uma linha ou arco no ponto tocado", grupo: 3 },
         ],
       },
       {
@@ -283,7 +284,7 @@ export const ABAS: Aba[] = [
     comandos: [
       { id: "medir", rotulo: "Medir", icone: "medir", dica: "Distâncias, ângulos, raios e coordenadas", grupo: 0 },
       { id: "massa", rotulo: "Massa", icone: "massa", dica: "Propriedades de massa: massa, volume, centro de massa, inércia", grupo: 0 },
-      { id: "prop-secao", rotulo: "Prop. de seção", icone: "propSecao", dica: "Área, centroide e momentos de inércia de uma face", grupo: 0, fase: 5 },
+      { id: "prop-secao", rotulo: "Prop. de seção", icone: "propSecao", dica: "Área, centroide, momentos de inércia e módulos de resistência de uma face plana", grupo: 0 },
       { id: "vista-secao", rotulo: "Vista de seção", icone: "vistaSecao", dica: "Corta a vista por um ou mais planos (só visual)", grupo: 1 },
       { id: "verificar", rotulo: "Verificar", icone: "verificar", dica: "Procura geometria inválida, arestas curtas e raio mínimo", grupo: 1 },
       { id: "analise-inclinacao", rotulo: "Inclinação", icone: "analiseInclinacao", dica: "Análise de inclinação para moldagem/fundição", grupo: 2 },

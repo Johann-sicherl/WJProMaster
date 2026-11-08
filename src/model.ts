@@ -273,16 +273,24 @@ export interface FeatureFilete extends FeatureBase {
   /** Raio por item (filete de múltiplos raios); ausente = `raio`. */
   raios?: (number | null)[];
   multiplosRaios?: boolean;
+  /** Raio variável: `raio` no início da aresta e `raio2` no fim (variação linear). Nome antigo mantido
+   * nos arquivos: o OpenCascade sempre fez raio variável com esse par (não um filete assimétrico). */
   assimetrico?: boolean;
   raio2?: number;
+  /** Raio variável: troca o início pelo fim da aresta. */
+  inverterSentido?: boolean;
   propagarTangente?: boolean;
 }
 
 export interface FeatureChanfro extends FeatureBase {
   tipo: "chanfro";
-  modo?: "anguloDistancia" | "distanciaDistancia";
+  /** vertice: corta o canto por um plano a D1, D2 e D3 do vértice, ao longo das três arestas */
+  modo?: "anguloDistancia" | "distanciaDistancia" | "vertice";
   distancia: number;
   distancia2?: number;
+  distancia3?: number;
+  /** vértice: D1 = D2 = D3 */
+  distanciasIguais?: boolean;
   angulo?: number;
   assimetrico?: boolean;
   inverter?: boolean;
