@@ -1,0 +1,33 @@
+name: Verificar PR
+
+# Roda em cada PR para o main, ANTES do merge, sobre o resultado já juntado com o main atual
+# (refs/pull/N/merge): pega quando dois PRs de sessões diferentes passam sozinhos mas quebram juntos.
+# Não publica nada; a publicação continua em deploy.yml, a cada merge no main.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verificar-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # versão do pnpm vem de "packageManager" no package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm teste
+      - run: pnpm build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
