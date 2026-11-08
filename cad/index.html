@@ -22,10 +22,10 @@
           <button data-acao="abrirCofre" role="menuitem"></button>
           <button data-acao="abrir" role="menuitem"></button>
           <button data-acao="salvar" role="menuitem" data-requer-doc></button>
-          <button data-acao="step" role="menuitem" data-requer-doc></button>
-          <button data-acao="stl" role="menuitem" data-requer-doc></button>
+          <button data-acao="exportar" role="menuitem" data-requer-doc></button>
           <button data-acao="desenho" role="menuitem" data-requer-doc></button>
           <button data-acao="fluxo" role="menuitem" data-requer-doc></button>
+          <button data-acao="imagem3d" role="menuitem"></button>
           <button data-acao="fechar" role="menuitem" data-requer-doc></button>
           <span class="menu-titulo" data-requer-doc>Ferramentas</span>
           <button data-acao="equacoes" role="menuitem" data-requer-doc></button>
@@ -43,6 +43,7 @@
         <button data-acao="novo" class="btn-ic" title="Novo documento"></button>
         <button data-acao="abrirCofre" class="btn-ic" title="Abrir do cofre (WJPDM)"></button>
         <button data-acao="salvar" class="btn-ic" title="Salvar (Ctrl+S)" data-requer-doc></button>
+        <button data-acao="exportar" class="btn-ic" title="Exportar STEP ou STL (no WJPDM, na pasta da peça, ou no dispositivo)" data-requer-doc></button>
         <span class="sep" data-requer-doc></span>
         <button id="btn-desfazer" class="btn-ic" title="Desfazer (Ctrl+Z)" data-requer-doc></button>
         <button id="btn-refazer" class="btn-ic" title="Refazer (Ctrl+Y)" data-requer-doc></button>
@@ -51,10 +52,6 @@
         <button data-acao="equacoes" class="btn-ic" title="Equações e variáveis globais" data-requer-doc></button>
       </div>
       <input id="nome-doc" class="nome-doc" aria-label="Nome da peça" data-requer-doc />
-      <div class="exportar" data-requer-doc>
-        <button data-acao="step" class="destaque">STEP</button>
-        <button data-acao="stl">STL</button>
-      </div>
     </header>
 
     <!-- 2. linha de ícones da aba ativa · 3. abas -->

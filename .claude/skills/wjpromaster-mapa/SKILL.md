@@ -31,6 +31,7 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | Converter entidades / interseção / silhueta / texto | `src/esboco/externas.ts`, `malhaPlano.ts`, `texto.ts`, `fontesTexto.ts`, `opentype.d.ts` | `sketch.md` |
 | Chapa metálica, planificar, DXF | `src/kernel/chapa.ts`, `src/kernel/dxf.ts` | `docs/funcional/chapa.md` |
 | Avaliar (medir, massa, seção, análises) | `src/kernel/avaliar.ts` (exato) · `src/analises.ts` (sobre a malha) | `docs/funcional/avaliar.md` |
+| Imagens → modelo 3D (fotos das vistas, casco visual) | `src/imagem3d/casco.ts` (silhueta, medidas, escultura, superfície, STL), `worker.ts`, `main.ts`, `imagem3d.css` · página `cad/imagem3d/` | `docs/global/cad.md` §5 |
 | Importar STEP/STL, cores do STEP | `src/kernel/importar.ts`, `stl.ts`, `coresStep.ts`, `coresImportadas.ts` | `CLAUDE.md` (Modelo) |
 | Seleção de faces/arestas, referências persistentes | `src/kernel/topologia.ts`, `facesRecurso.ts` | — |
 | Vista 3D, câmera, mouse/toque no modelo | `src/viewport.ts` (1 600 l) | `regras.md` §3 |
@@ -58,7 +59,7 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | WJERP | `src/erp/main.ts` · regras `src/erp/regras.ts` | `docs/global/erp.md` |
 | WJTaskPlan | `src/tarefas/main.ts`, `regras.ts`, `escrita.ts`, `copias.ts` | `docs/global/taskplan.md` |
 | WJVideoMaker (V0) | `src/video/aparelho.ts`, `aparelho-worker.ts`, `capacidade.ts`, `tempo.ts` | `docs/global/wjvideomaker.md` |
-| WJCalcEng | `src/calceng/main.ts` · motor `src/calceng/cg2d.ts` · calculadoras por matéria e busca `src/calceng/modulos.ts` | `docs/global/wjcalceng.md` |
+| WJCalcEng | `src/calceng/main.ts` · motor `src/calceng/cg2d.ts` · calculadoras por matéria e busca `src/calceng/modulos.ts` · álgebra, matrizes e física (campos + passos) `src/calceng/calculadoras.ts` | `docs/global/wjcalceng.md` |
 | WJGoldDiamond (joias) | `src/joia/main.ts`, `vista.ts`, `malhaGema.ts`, `worker.ts` · motor `src/joia/regras.ts` · ornamentos (esboço → fios) `src/joia/ornamento.ts` + editor `src/joia/editorOrnamento.ts` (esboço do WJCAD, import dinâmico) · sólido `src/joia/geometria.ts` (booleana `segura`, `fioSolido`) | `docs/global/wjgolddiamond.md` |
 | WJFlow | `src/flow/main.ts`, `gpu.ts` (WebGPU), `lbm.ts`, `geometria.ts`, `estudo.ts`, `campo.ts`, `vista3d.ts`, `aparelho.ts`, workers `cpu-worker.ts`, `pos-worker.ts`, `preparo-worker.ts` | `docs/global/wjflow.md` |
 | Integrações entre faces | — | `docs/global/integracoes.md` |
@@ -73,6 +74,7 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 | `teste-kernel.ts`, `teste-recursos.ts` | regeneração, features, chapa (kernel em Node) |
 | `teste-esboco.ts` | geometria e operações do esboço |
 | `teste-importar.ts` | STEP/STL, montagem STEP |
+| `teste-imagem3d.ts` | gerador imagens → 3D (silhueta, medidas, casco, faces, STL) |
 | `teste-montagem.ts` / `teste-desenho.ts` | solver de mates / projeção e desenho |
 | `teste-pdm.ts`, `teste-sincronia.ts`, `teste-drive.ts` | regras do cofre, sincronia das cópias, Drive simulado |
 | `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts`, `teste-joia.ts` | motores das outras faces |

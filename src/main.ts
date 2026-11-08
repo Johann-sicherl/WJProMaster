@@ -54,7 +54,7 @@ import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } fr
 import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
 import { ISO } from "./kernel/furos";
-import { abrirCopias, abrirDoCofre, desligar, escolherDoCofre, instalarPainelCofre, lerDoCofre, ligar, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
+import { abrirCopias, abrirDoCofre, desligar, escolherDoCofre, exportarComo, instalarPainelCofre, lerDoCofre, ligar, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
 import { botaoDiagnostico, registrarMetrica } from "./comum/diagnostico";
 import { Armazem } from "./comum/armazem";
 import {
@@ -4181,9 +4181,9 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   },
   locais: { rotulo: "Cópias do cofre (pendrive, Drive, tablet)…", icone: "pasta", fazer: () => void abrirCopias() },
   abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("cad", temDocumento()) },
-  step: { rotulo: "Exportar STEP", icone: "exportar", fazer: () => exportar("step") },
-  stl: { rotulo: "Exportar STL", icone: "exportar", fazer: () => exportar("stl") },
+  exportar: { rotulo: "Exportar (STEP, STL)…", icone: "exportar", fazer: () => void abrirExportar() },
   fluxo: { rotulo: "Abrir no WJFlow (escoamento de ar)", icone: "exportar", fazer: () => void abrirNoWJFlow() },
+  imagem3d: { rotulo: "Imagens → modelo 3D (fotos das vistas)…", icone: "abrir", fazer: () => void abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}cad/imagem3d/`, location.href).href) },
   desenho: { rotulo: "Criar desenho desta peça", icone: "desenho", fazer: () => {
     salvarAutosave();
     abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}cad/desenho/#de-peca`, location.href).href);
@@ -4613,12 +4613,23 @@ async function abrirArquivoEscolhido(arq: File) {
   }
 }
 
-async function exportar(formato: "step" | "stl") {
+/**
+ * Exportar como um "Salvar como": o explorador do cofre abre na pasta onde a peça está, com o tipo
+ * (STEP ou STL) à escolha; "No dispositivo" baixa para a pasta Downloads.
+ */
+async function abrirExportar() {
   if (!aberto) return;
   try {
-    baixar(await kernel.exportar(formato), formato);
+    const msg = await exportarComo("cad", doc.nome, [
+      { ext: "step", rotulo: "STEP (*.step) — sólido para outros CADs" },
+      { ext: "stl", rotulo: "STL (*.stl) — malha para impressão 3D" },
+    ], (f) => {
+      avisar(`Exportando ${f.toUpperCase()}…`);
+      return kernel.exportar(f === "stl" ? "stl" : "step");
+    });
+    avisar(msg, 9000);
   } catch (e) {
-    alert("Não foi possível exportar: " + (e as Error).message);
+    avisar(`Não foi possível exportar: ${(e as Error).message}`, 9000);
   }
 }
 

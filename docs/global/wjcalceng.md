@@ -11,18 +11,18 @@ arquivos de todos os apps. Página `calceng/`, código em `src/calceng/`, motor 
 | Calculadora | Estado |
 |---|---|
 | Centro de gravidade em 2D (esboço do WJCAD, relações, cotas, massa, momento de inércia) | ✅ C1 (07/11/2026) |
-| Equação do 1º grau | C2 |
-| Equação do 2º grau | C2 |
-| Equações com mais de 2 variáveis (sistemas) | C2 |
-| Inequações | C2 |
-| Matriz 3×3 por Cramer e por Gauss | C3 |
-| Multiplicação de matrizes | C3 |
-| Leis de Newton | C4 |
-| Plano inclinado | C4 |
-| Força de atrito | C4 |
-| Trabalho | C4 |
+| Equação do 1º grau | ✅ (08/11/2026) |
+| Equação do 2º grau | ✅ (08/11/2026) |
+| Equações com mais de 2 variáveis (sistemas) | ✅ (08/11/2026) |
+| Inequações | ✅ (08/11/2026) |
+| Matriz 3×3 por Cramer e por Gauss | ✅ (08/11/2026) |
+| Multiplicação de matrizes | ✅ (08/11/2026) |
+| Leis de Newton | ✅ (08/11/2026) |
+| Plano inclinado | ✅ (08/11/2026) |
+| Força de atrito | ✅ (08/11/2026) |
+| Trabalho | ✅ (08/11/2026) |
 
-A ordem C2–C4 é sugestão (álgebra → matrizes → física); muda quando o Johann pedir.
+Todas entregues em 08/11/2026 (pedido: "continue com o desenvolvimento de todas as outras matérias"); detalhes no §3.
 
 **Seletor de calculadoras** (07/11/2026, pedido do Johann: "organização das matérias por grupo, e uma
 lupa de pesquisa"): o botão **Calculadora ▾** abre a lista agrupada por matéria — Estática e geometria
@@ -89,6 +89,30 @@ melhoria no esboço do WJCAD chega aqui sozinha.
 no formato do WJCAD). Arquivos da versão 1 (figuras próprias) abrem convertidos em entidades de esboço.
 Salvamento automático no aparelho (`wjcalc:documento`), desfazer/refazer, salvar no cofre (Ctrl+S).
 
-## 3. Pendente / ideias
+## 3. Álgebra, matrizes e física (08/11/2026)
+
+Motor puro `src/calceng/calculadoras.ts` (testado em `teste-calceng.ts` com exemplos resolvidos à mão):
+cada calculadora declara os **campos** (número, opção ou matriz redimensionável) e devolve a
+**resolução passo a passo** (como no caderno), os resultados em destaque e, quando ajuda, um desenho em
+SVG. Tela: campos à esquerda (atualizam ao digitar; vírgula e contas como `2*pi`), resolução no resto da
+tela; faixa com Calculadoras, Exemplo (volta aos valores do exemplo) e Copiar resolução (texto). Os
+valores de cada calculadora ficam no `.wjcalc` (`calcs[id]`, com `modulo` = calculadora aberta), com
+desfazer/refazer. Respostas exatas aparecem também em fração ("2,5 (= 5/2)").
+
+| Calculadora | O que mostra |
+|---|---|
+| Equação do 1º grau | a·x + b = c·x + d: isolar x, verificação; casos ℝ e ∅ |
+| Equação do 2º grau | Δ, Bhaskara, raiz dupla, raízes complexas, soma e produto, forma fatorada, vértice e concavidade, gráfico |
+| Sistemas (2 a 6 variáveis) | matriz aumentada, Gauss-Jordan com pivoteamento parcial (operações Lᵢ ← …), SPD/SPI/SI, solução geral no SPI |
+| Inequações | 1º grau (inverte o sinal ao dividir por negativo) e 2º grau (estudo do sinal), conjunto solução em intervalos e gráfico com a faixa da solução |
+| Matriz 3×3 — Cramer | D por Sarrus com os números, Dx, Dy, Dz, x = Dx/D…; D = 0 → SI ou "use Gauss" |
+| Matriz 3×3 — Gauss | escalonamento (troca de linha com pivô zero) e retrossubstituição |
+| Multiplicação de matrizes | até 6×6; confere dimensões; cada cᵢⱼ = Σ aᵢₖ·bₖⱼ escrito |
+| Leis de Newton | F = m·a (calcula F, m ou a) e peso; resultante de várias forças (componentes, módulo, direção, a = R/m) com diagrama |
+| Plano inclinado | P∥, P⊥, N, atrito estático máximo, parado ou em movimento (sentido), a, ângulo crítico; diagrama de forças |
+| Força de atrito | plano horizontal, força com ângulo: N = m·g − F·sen θ, estático × cinético, a; diagrama |
+| Trabalho | W = F·d·cos θ (+ potência), teorema da energia cinética, trabalho do peso e ΔEp |
+
+## 4. Pendente / ideias
 - Figuras de massa pontual e eixo de referência escolhido pelo usuário (hoje: origem e CG).
 - Tocar a região no desenho para selecioná-la (hoje: pela lista do painel).

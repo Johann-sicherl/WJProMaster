@@ -170,6 +170,12 @@
 - **Importar**: STEP/STP/STL criam o recurso `importado`. STL com mais de 10 000 triângulos = **corpo de
   malha** (só exibido; janela "STL grande" oferece simplificar para sólido). Montagem STEP → `.wjasm`.
 - **STEP AP214/AP242 abre com as cores do arquivo** (04/11/2026), na Peça e na Montagem.
+- **Exportar = "Salvar como"** (07/11/2026): botão **Exportar** logo depois do 💾 Salvar (e no menu
+  Arquivo); nada de STEP/STL no canto superior. Abre o **mesmo explorador do primeiro salvar**, já **na
+  pasta onde a peça está no cofre** (peça ainda não salva: última pasta usada), com nome sugerido,
+  **"Salvar como tipo"** (STEP ou STL; lembra o último) e o botão **No dispositivo** (baixa em Downloads).
+  No cofre o arquivo exportado entra **publicado, sem GO-OUT**; nome repetido na pasta **substitui** e
+  vira a versão seguinte (a anterior fica no histórico).
 - **Aparência (cor)** (04/11/2026): painel com Aplicar em **Face / Corpo / Peça** (Peça) ou
   **Componente (nesta montagem) / Peça (documento)** (Montagem); paleta, cor do sistema, RGB ou HSV,
   hexadecimal, Remover aparência, prévia, desfazer. A face vence o corpo, que vence a peça, que vence o
@@ -208,9 +214,10 @@
   objetos e com a origem"): o mesmo editor, faixa Sketch, painel à esquerda, relações, cotas e solver,
   numa vista só 2D. A diferença é o **painel lateral direito**: **massa única** (um material: densidade
   × espessura) **ou massa de cada figura**, com o CG de cada figura (região fechada; contorno dentro de
-  outro = furo) e do conjunto, momentos de inércia de área e de massa e memória de cálculo. Calculadoras **organizadas por matéria** com **lupa de pesquisa** no seletor (07/11/2026). Próximas (pedidas): equações de 1º e 2º grau, sistemas,
-  inequações, matrizes 3×3 por Cramer e Gauss, multiplicação de matrizes, leis de Newton, plano
-  inclinado, atrito e trabalho. Detalhes em `docs/global/wjcalceng.md`.
+  outro = furo) e do conjunto, momentos de inércia de área e de massa e memória de cálculo. Calculadoras **organizadas por matéria** com **lupa de pesquisa** no seletor (07/11/2026). **Todas as
+  calculadoras pedidas entregues (08/11/2026)**, sempre com a **resolução passo a passo**: equações de 1º
+  e 2º grau, sistemas, inequações, matrizes 3×3 por Cramer e Gauss, multiplicação de matrizes, leis de
+  Newton, plano inclinado, atrito e trabalho. Detalhes em `docs/global/wjcalceng.md`.
 - **WJGoldDiamond** (07/11/2026): face de **modelagem 3D de joias** (nome do Johann). Construtores
   paramétricos no mesmo kernel do WJCAD: aro por tamanho (BR/ISO/EUA), perfis e afunilado, cabeça
   "gema primeiro" (garras ou inglesa), pavé (graduado, fileiras, eternidade, contas ou trilho),
@@ -237,8 +244,9 @@
 - PORTA_CANETA (exportação com arestas não-manifold, extrusão que não funde, corpo que some no corte):
   aguardando o ZIP com o STL original e o `.wjcad`.
 - Estados de exibição (aparência por estado): ainda não pedido para implementar.
-- **Imagem → modelo 3D** (até 8 vistas, 1,5 M / 1 M / 500 mil / 50 mil faces, aba nova no WJCAD): adiado
-  para a **G5** por decisão do Johann (07/11/2026) — o modelo não roda no tablet/navegador e ele não tem
-  placa NVIDIA; especificação e fatos em `docs/global/cad.md` §5.
+- **Imagem → modelo 3D**: **fase 1 entregue (08/11/2026)** — gerador próprio por silhuetas (casco
+  visual), offline, no tablet; fotos com **fundo liso sempre** (decisão do Johann). Página `cad/imagem3d/`
+  (Peça → menu → "Imagens → modelo 3D"). Fase 2 (acabamento por IA num servidor com GPU) fica para a
+  **G5**. Detalhes em `docs/global/cad.md` §5.
 - WJVideoMaker: teste de pasta/pendrive com vídeos de verdade no TCL (o desempenho já foi medido,
   §8 de `docs/global/wjvideomaker.md`) e a chave de API do seletor do Google Drive (passos no §14).

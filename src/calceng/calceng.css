@@ -72,3 +72,45 @@ body.disp-celular .ce-painel { grid-row: 3; border-left: 0; border-top: 1px soli
 .ce-materias button[aria-disabled="true"] span { color: var(--texto-2); }
 .ce-materias em { font-style: normal; font-size: 11.5px; color: var(--texto-2); white-space: nowrap; }
 body.disp-tablet .ce-busca input, body.disp-tablet .ce-materias button { min-height: 44px; }
+/* demais calculadoras: campos à esquerda, resolução passo a passo no resto da tela */
+body.ce-formulario .ce-principal { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); }
+body.ce-formulario .ce-vista, body.ce-formulario #ce-painel, body.ce-formulario #painel-comando { display: none; }
+.ce-form[hidden], .ce-calc-area[hidden] { display: none; }
+.ce-form-titulo { margin: 4px 0 2px; font-size: 17px; }
+.ce-forma { margin: 0 0 8px; padding: 6px 8px; border-radius: 6px; background: var(--painel-2); font: 14px/1.4 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--texto); }
+.ce-campo-opcao { grid-template-columns: 1fr minmax(0, 200px); }
+.ce-campo select { width: 100%; min-height: 36px; }
+.ce-campo input.invalido, .ce-matriz-edit input.invalido { border-color: var(--erro); background: #fdecea; }
+.ce-matriz-campo { margin: 8px 0; }
+.ce-matriz-rotulo { display: block; font-size: 14px; color: var(--texto-2); margin-bottom: 4px; }
+.ce-matriz-rolar { overflow-x: auto; }
+.ce-matriz-edit { border-collapse: separate; border-spacing: 3px; }
+.ce-matriz-edit th { font-size: 12px; color: var(--texto-2); font-weight: 600; }
+.ce-matriz-edit input { width: 56px; min-height: 36px; text-align: center; font-variant-numeric: tabular-nums; padding: 2px 4px; }
+.ce-matriz-edit td.aum { border-left: 2px solid var(--linha-forte); padding-left: 4px; }
+.ce-matriz-dim { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ce-matriz-dim button { min-height: 34px; font-size: 13px; }
+.ce-calc-area { grid-column: 2 / -1; overflow: auto; padding: 14px 18px 24px; background: var(--fundo); }
+.ce-calc-area h3 { margin: 16px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--acento); }
+.ce-destaques { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.ce-cartao { padding: 8px 12px; border-radius: 10px; background: var(--painel); border: 1px solid var(--linha); }
+.ce-cartao small { display: block; font-size: 12px; color: var(--texto-2); }
+.ce-cartao b { font-size: 19px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ce-cartao:first-child { background: #1e2730; color: #fff; border-color: #1e2730; }
+.ce-cartao:first-child small { color: #c9d3de; }
+.ce-figura { margin-top: 12px; padding: 8px; background: var(--painel); border: 1px solid var(--linha); border-radius: 10px; max-width: 560px; }
+.ce-grafico { display: block; width: 100%; height: auto; font: 12px system-ui, sans-serif; }
+.ce-grafico .eixo { fill: #5e6b78; font-size: 11px; }
+.ce-grafico .marca { fill: #b85f00; font-weight: 600; }
+.ce-grafico .forca { font-weight: 700; font-size: 13px; }
+.ce-passos { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+.ce-passos li { padding: 8px 10px; background: var(--painel); border: 1px solid var(--linha); border-radius: 8px; }
+.ce-passos li b { display: block; margin-bottom: 4px; }
+.ce-linha { font: 14.5px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
+.ce-matriz { border-collapse: collapse; margin: 4px 0; border-left: 2px solid #1e2730; border-right: 2px solid #1e2730; font: 14px ui-monospace, Consolas, monospace; }
+.ce-matriz td { padding: 2px 10px; text-align: right; font-variant-numeric: tabular-nums; }
+.ce-matriz td.aum { border-left: 1.5px solid #9aa6b2; }
+body.disp-tablet .ce-matriz-edit input, body.disp-tablet .ce-campo select, body.disp-tablet .ce-matriz-dim button { min-height: 44px; }
+body.disp-celular.ce-formulario .ce-principal { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+body.disp-celular.ce-formulario .ce-esq { grid-row: 1; max-height: none; }
+body.disp-celular.ce-formulario .ce-calc-area { grid-column: 1; grid-row: 2; }
