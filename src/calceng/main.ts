@@ -18,6 +18,7 @@ import { SolverEsboco } from "../esboco/solver";
 import { abrirCalibracao, lerPxPorMm, pxPorMmAutomatico } from "../esboco/escalaReal";
 import { IC } from "../comum/icones";
 import { buscarCalculadoras, calculadora } from "./modulos";
+import { CALCULADORAS, matrizDe, valoresDe, type Campo, type DefCalculadora, type Matriz, type Resultado, type Valores } from "./calculadoras";
 import { calcularDoc, docNovo, validarDoc, type DocCalc, type P2, type ResultadoCg } from "./cg2d";
 
 const CHAVE = "wjcalc:documento";
@@ -97,7 +98,7 @@ function trocarDoc(d: DocCalc) {
     editor.definirFerramenta("selecionar");
   }
   res = calcularDoc(doc.cg2d);
-  casca.renderizar();
+  aplicarModulo();
   painelEsboco();
   painelResultados();
   enquadrar();
@@ -116,7 +117,7 @@ function depoisDoHistorico(d: DocCalc) {
   editor?.reatar(doc.cg2d.esboco);
   autosave.guardar(CHAVE, doc);
   res = calcularDoc(doc.cg2d);
-  casca.renderizar();
+  aplicarModulo();
   painelEsboco();
   painelResultados();
   desenharCg();
@@ -289,6 +290,7 @@ function montarFaixa() {
   const faixa = document.querySelector<HTMLElement>(".wj-faixa");
   if (!faixa) return;
   faixa.innerHTML = "";
+  if (doc.modulo !== "cg2d") return montarFaixaCalculadora(faixa);
   let grupo: HTMLElement | null = null;
   let g = -1;
   for (const c of SKETCH) {
@@ -613,6 +615,11 @@ function abrirSeletor(ancora: HTMLElement) {
     if (!c) return;
     if (!c.pronto) return casca.avisar(`${c.nome}: em breve.`);
     fechar();
+    if (id === doc.modulo) return;
+    doc.modulo = id;
+    historico.registrar(doc);
+    autosave.guardar(CHAVE, doc);
+    aplicarModulo();
   };
   const desenhar = () => {
     const achadas = buscarCalculadoras(campoBusca.value);
@@ -644,9 +651,193 @@ function abrirSeletor(ancora: HTMLElement) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// demais calculadoras (álgebra, matrizes, física): campos à esquerda, resolução passo a passo ao centro
+
+const formEl = $("#ce-form");
+const areaEl = $("#ce-calc-area");
+const defAtual = (): DefCalculadora | undefined => CALCULADORAS[doc.modulo];
+const valoresAtuais = (def: DefCalculadora): Valores => valoresDe(def, doc.calcs?.[def.id]);
+
+/** Troca a tela entre o esboço (centro de gravidade) e o formulário das outras calculadoras. */
+function aplicarModulo() {
+  const ehCg = doc.modulo === "cg2d" || !defAtual();
+  if (!ehCg && !defAtual()) doc.modulo = "cg2d";
+  document.body.classList.toggle("ce-formulario", !ehCg);
+  formEl.hidden = ehCg;
+  areaEl.hidden = ehCg;
+  casca.o.abas[0].rotulo = ehCg ? "Sketch" : "Calculadora";
+  casca.renderizar();
+  montarCalculadoras();
+  if (ehCg) {
+    // o viewport voltou a aparecer: tamanho certo e marcas de CG
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new Event("resize"));
+      desenharCg();
+    });
+  } else {
+    montarFormulario();
+    mostrarResolucao();
+  }
+  status();
+}
+
+function guardarValores(def: DefCalculadora, v: Valores, final: boolean) {
+  (doc.calcs ??= {})[def.id] = v;
+  if (final) {
+    historico.registrar(doc);
+    autosave.guardar(CHAVE, doc);
+  }
+}
+
+function montarFaixaCalculadora(faixa: HTMLElement) {
+  const grupo = document.createElement("div");
+  grupo.className = "wj-grupo";
+  const botao = (rot: string, icone: keyof typeof IC, dica: string, acao: () => void) => {
+    const b = document.createElement("button");
+    b.className = "wj-cmd";
+    b.title = dica;
+    b.innerHTML = `${IC[icone]}<span>${escapar(rot)}</span>`;
+    b.onclick = acao;
+    grupo.append(b);
+  };
+  botao("Calculadoras", "calculo", "Escolher outra calculadora (por matéria, com pesquisa)", () => abrirSeletor($("#ce-calc")));
+  botao("Exemplo", "recomecar", "Volta aos valores do exemplo", () => {
+    const def = defAtual();
+    if (!def) return;
+    guardarValores(def, valoresDe(def), true);
+    montarFormulario();
+    mostrarResolucao();
+  });
+  botao("Copiar resolução", "copiar", "Copia a resolução em texto (cola no WJWrite ou no WJPlan)", () => void copiarResolucao());
+  faixa.append(grupo);
+}
+
+function htmlCampo(c: Campo, v: Valores): string {
+  if (c.tipo === "numero") return `<label class="ce-campo"><span>${escapar(c.rotulo)}</span><input data-campo="${c.id}" value="${campo(v[c.id] as number)}" inputmode="decimal" autocomplete="off" /><em>${escapar(c.unidade ?? "")}</em></label>`;
+  if (c.tipo === "opcao") return `<label class="ce-campo ce-campo-opcao"><span>${escapar(c.rotulo)}</span><select data-campo="${c.id}">${c.opcoes.map(([val, rot]) => `<option value="${escapar(val)}" ${val === v[c.id] ? "selected" : ""}>${escapar(rot)}</option>`).join("")}</select></label>`;
+  const m = v[c.id] as Matriz;
+  const nl = m.length, nc = m[0]?.length ?? 1;
+  const podeL = c.linhas[0] !== c.linhas[1];
+  const podeC = c.colunas !== "aumentada" && c.colunas[0] !== c.colunas[1];
+  return `<div class="ce-matriz-campo" data-matriz="${c.id}">
+    <span class="ce-matriz-rotulo">${escapar(c.rotulo)} <small>${nl}×${nc}</small></span>
+    <div class="ce-matriz-rolar"><table class="ce-matriz-edit">${c.cabecalhos ? `<thead><tr>${Array.from({ length: nc }, (_, j) => `<th>${escapar(c.cabecalhos!(j, nc))}</th>`).join("")}</tr></thead>` : ""}
+      <tbody>${m.map((l, i) => `<tr>${l.map((x, j) => `<td class="${c.colunas === "aumentada" && j === nc - 1 ? "aum" : ""}"><input data-cel="${i},${j}" value="${campo(x)}" inputmode="decimal" autocomplete="off" aria-label="Linha ${i + 1}, coluna ${j + 1}" /></td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    ${podeL || podeC ? `<div class="ce-matriz-dim">${podeL ? `<button data-dim="l-1" ${nl <= c.linhas[0] ? "disabled" : ""}>− linha</button><button data-dim="l+1" ${nl >= c.linhas[1] ? "disabled" : ""}>+ linha</button>` : ""}${podeC ? `<button data-dim="c-1" ${nc <= (c.colunas as [number, number])[0] ? "disabled" : ""}>− coluna</button><button data-dim="c+1" ${nc >= (c.colunas as [number, number])[1] ? "disabled" : ""}>+ coluna</button>` : ""}</div>` : ""}
+  </div>`;
+}
+
+function montarFormulario() {
+  const def = defAtual();
+  if (!def) return;
+  const v = valoresAtuais(def);
+  const nome = calculadora(def.id)?.nome ?? "";
+  formEl.innerHTML = `<h3 class="ce-form-titulo">${escapar(nome)}</h3><p class="ce-forma">${escapar(def.forma)}</p>${def.campos.filter((c) => !c.mostrarSe || c.mostrarSe(v)).map((c) => htmlCampo(c, v)).join("")}
+    <p class="ce-nota">Os campos aceitam vírgula e contas (ex.: 2*pi, 100/3). O resultado se atualiza ao digitar.</p>`;
+  // números: atualiza a resolução ao digitar; o passo de desfazer fica para quando sair do campo
+  formEl.querySelectorAll<HTMLInputElement>("input[data-campo]").forEach((inp) => {
+    const ler = () => {
+      const x = lerNumero(inp.value);
+      inp.classList.toggle("invalido", !Number.isFinite(x) && inp.value.trim() !== "");
+      return x;
+    };
+    inp.oninput = () => {
+      const x = ler();
+      if (!Number.isFinite(x)) return;
+      guardarValores(def, { ...valoresAtuais(def), [inp.dataset.campo!]: x }, false);
+      mostrarResolucao();
+    };
+    inp.onchange = () => {
+      if (Number.isFinite(ler())) guardarValores(def, valoresAtuais(def), true);
+    };
+    inp.onkeydown = (e) => e.key === "Enter" && inp.blur();
+  });
+  formEl.querySelectorAll<HTMLSelectElement>("select[data-campo]").forEach((sel) => {
+    sel.onchange = () => {
+      guardarValores(def, { ...valoresAtuais(def), [sel.dataset.campo!]: sel.value }, true);
+      montarFormulario();
+      mostrarResolucao();
+    };
+  });
+  formEl.querySelectorAll<HTMLElement>("[data-matriz]").forEach((div) => {
+    const id = div.dataset.matriz!;
+    const c = def.campos.find((x) => x.id === id) as Extract<Campo, { tipo: "matriz" }>;
+    const atual = () => valoresAtuais(def)[id] as Matriz;
+    div.querySelectorAll<HTMLInputElement>("input[data-cel]").forEach((inp) => {
+      const [i, j] = inp.dataset.cel!.split(",").map(Number);
+      inp.oninput = () => {
+        const x = lerNumero(inp.value);
+        inp.classList.toggle("invalido", !Number.isFinite(x) && inp.value.trim() !== "");
+        if (!Number.isFinite(x)) return;
+        const m = atual().map((l) => [...l]);
+        m[i][j] = x;
+        guardarValores(def, { ...valoresAtuais(def), [id]: m }, false);
+        mostrarResolucao();
+      };
+      inp.onchange = () => guardarValores(def, valoresAtuais(def), true);
+      inp.onkeydown = (e) => e.key === "Enter" && inp.blur();
+    });
+    div.querySelectorAll<HTMLButtonElement>("[data-dim]").forEach((b) => {
+      b.onclick = () => {
+        const m = atual();
+        let nl = m.length, nc = m[0]?.length ?? 1;
+        const [eixo, d] = [b.dataset.dim![0], Number(b.dataset.dim!.slice(1))];
+        if (eixo === "l") nl += d;
+        else nc += d;
+        if (c.colunas === "aumentada") nc = nl + 1;
+        guardarValores(def, { ...valoresAtuais(def), [id]: matrizDe(m, nl, nc) }, true);
+        montarFormulario();
+        mostrarResolucao();
+      };
+    });
+  });
+}
+
+let ultimaResolucao: Resultado | null = null;
+
+function mostrarResolucao() {
+  const def = defAtual();
+  if (!def) return;
+  let r: Resultado;
+  try {
+    r = def.resolver(valoresAtuais(def));
+  } catch (e) {
+    areaEl.innerHTML = `<p class="ce-aviso">Não foi possível calcular: ${escapar((e as Error).message)}</p>`;
+    return;
+  }
+  ultimaResolucao = r;
+  const tabela = (m: { m: string[][]; barra?: number }) => `<table class="ce-matriz">${m.m.map((l) => `<tr>${l.map((x, j) => `<td class="${m.barra !== undefined && j === m.barra ? "aum" : ""}">${escapar(x)}</td>`).join("")}</tr>`).join("")}</table>`;
+  areaEl.innerHTML = `
+    <div class="ce-destaques">${r.destaques.map(([k, x]) => `<div class="ce-cartao"><small>${escapar(k)}</small><b>${escapar(x)}</b></div>`).join("")}</div>
+    ${r.avisos.map((a) => `<p class="ce-aviso">${escapar(a)}</p>`).join("")}
+    ${r.svg ? `<div class="ce-figura">${r.svg}</div>` : ""}
+    <h3>Resolução passo a passo</h3>
+    <ol class="ce-passos">${r.passos.map((ps) => `<li><b>${escapar(ps.titulo)}</b>${ps.matriz ? tabela(ps.matriz) : ""}${(ps.linhas ?? []).map((l) => `<div class="ce-linha">${escapar(l)}</div>`).join("")}</li>`).join("")}</ol>`;
+}
+
+async function copiarResolucao() {
+  const r = ultimaResolucao;
+  if (!r) return;
+  const nome = calculadora(doc.modulo)?.nome ?? "";
+  const linhas = [nome, defAtual()?.forma ?? "", "", ...r.destaques.map(([k, x]) => `${k}: ${x}`), ...r.avisos, "", "Resolução:"];
+  r.passos.forEach((ps, i) => {
+    linhas.push(`${i + 1}. ${ps.titulo}`);
+    if (ps.matriz) linhas.push(...ps.matriz.m.map((l) => `   [ ${l.map((x, j) => (ps.matriz!.barra === j ? `| ${x}` : x)).join("  ")} ]`));
+    linhas.push(...(ps.linhas ?? []).map((l) => `   ${l}`));
+  });
+  try {
+    await navigator.clipboard.writeText(linhas.join("\n"));
+    casca.avisar("Resolução copiada.");
+  } catch {
+    casca.avisar("Não foi possível copiar (o navegador bloqueou).");
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // casca
 
 function status() {
+  if (doc.modulo !== "cg2d") return casca.definirStatus(`${calculadora(doc.modulo)?.nome ?? ""} · os resultados se atualizam ao digitar`);
   const ed = editor;
   casca.definirStatus(ed ? `${ed.textoDefinicao} · ${res.figuras.length} figura(s) · Unidades: mm, kg${prefs.escalaReal ? " · Escala 1:1" : ""}` : "Carregando o esboço…");
 }
@@ -696,6 +887,7 @@ document.addEventListener("keydown", (e) => {
   else if (ctrl && (k === "y" || (k === "z" && e.shiftKey))) refazer();
   else if (ctrl && k === "a" && editor) editor.selecionarTudo();
   else if (ctrl) return;
+  else if (doc.modulo !== "cg2d") return;
   else if (editor && editor.teclado(e)) {
     /* atalhos do esboço (os mesmos do WJCAD) */
   } else if (k === "f") enquadrar();
@@ -705,8 +897,7 @@ document.addEventListener("keydown", (e) => {
 new ResizeObserver(() => desenharCg()).observe($("#ce-viewport"));
 
 registrarOffline();
-casca.renderizar();
-montarCalculadoras();
+aplicarModulo();
 painelEsboco();
 painelResultados();
 void iniciarEditor();

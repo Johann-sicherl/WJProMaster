@@ -4,6 +4,7 @@
 import { calcular, calcularDoc, docNovo, integraisPoligono, nomearRegioes, regioesDoEsboco, validarDoc, type DocCg2d } from "../src/calceng/cg2d";
 import * as op from "../src/esboco/operacoes";
 import { buscarCalculadoras, MATERIAS } from "../src/calceng/modulos";
+import { CALCULADORAS, fracao, valoresDe, type Valores } from "../src/calceng/calculadoras";
 import type { FeatureEsboco } from "../src/model";
 
 let falhas = 0;
@@ -209,6 +210,66 @@ function poli(e: FeatureEsboco, pts: [number, number][]) {
   igual("busca pelo nome da matéria", nomes("dinâmica"), "newton,plano,atrito,trabalho");
   igual("busca sem resultado", buscarCalculadoras("xyzw").length, 0);
   igual("todas as calculadoras pedidas no catálogo", MATERIAS.flatMap((m) => m.calculadoras).length, 12);
+}
+
+// --- calculadoras de álgebra, matrizes e física ---
+{
+  const R = (id: string, v: Valores = {}) => CALCULADORAS[id].resolver({ ...valoresDe(CALCULADORAS[id]), ...v });
+  igual("fração 2,5 = 5/2", fracao(2.5), "5/2");
+  igual("fração de 1/3", fracao(-1 / 3), "−1/3");
+  igual("fração de π: nenhuma", fracao(Math.PI), null);
+  igual("1º grau: 2x + 3 = 11 → x = 4", R("eq1").numeros.x, 4);
+  igual("1º grau: 3x − 1 = x + 4 → x = 5/2", R("eq1", { a: 3, b: -1, c: 1, d: 4 }).numeros.x, 2.5);
+  igual("1º grau: 0x = 0 → ℝ", R("eq1", { a: 1, b: 1, c: 1, d: 1 }).textos.solucao, "R");
+  igual("1º grau: 0x = 3 → ∅", R("eq1", { a: 1, b: 1, c: 1, d: 4 }).textos.solucao, "vazio");
+  const e2 = R("eq2");
+  igual("2º grau: x² − 5x + 6 → Δ = 1", e2.numeros.delta, 1);
+  igual("2º grau: raízes 2 e 3", `${e2.numeros.x1} ${e2.numeros.x2}`, "2 3");
+  igual("2º grau: vértice (2,5; −0,25)", `${e2.numeros.xv} ${e2.numeros.yv}`, "2.5 -0.25");
+  igual("2º grau: Δ < 0 → complexas −1 ± 2i", (() => { const x = R("eq2", { a: 1, b: 2, c: 5 }).numeros; return `${x.re} ${x.im}`; })(), "-1 2");
+  igual("2º grau: raiz dupla", R("eq2", { a: 1, b: -4, c: 4 }).numeros.x1, 2);
+  igual("2º grau com a = 0 vira 1º grau", R("eq2", { a: 0, b: 2, c: -8 }).numeros.x, 4);
+  const sis = R("sistemas");
+  igual("sistema 3×3: x, y, z = 1, 2, 3", [sis.numeros.x, sis.numeros.y, sis.numeros.z].map((x) => Math.round(x * 1e9) / 1e9).join(), "1,2,3");
+  igual("sistema SPI", R("sistemas", { m: [[1, 1, 2], [2, 2, 4]] }).textos.tipo, "SPI");
+  igual("sistema SI", R("sistemas", { m: [[1, 1, 2], [1, 1, 5]] }).textos.tipo, "SI");
+  const s4 = R("sistemas", { m: [[1, 0, 0, 1, 2], [0, 2, 0, 0, 4], [0, 0, 3, 0, 9], [1, 1, 1, 0, 6]] }).numeros;
+  igual("sistema 4×4", [s4["x₁"], s4["x₂"], s4["x₃"], s4["x₄"]].map((x) => Math.round(x * 1e9) / 1e9).join(), "1,2,3,1");
+  const cr = R("cramer");
+  igual("Cramer: D = −1", cr.numeros.D, -1);
+  igual("Cramer: x, y, z = 2, 3, −1", [cr.numeros.x, cr.numeros.y, cr.numeros.z].map((x) => Math.round(x * 1e9) / 1e9).join(), "2,3,-1");
+  igual("Cramer: D = 0 → SI", R("cramer", { m: [[1, 1, 1, 1], [2, 2, 2, 5], [1, 0, 1, 1]] }).textos.tipo, "SI");
+  const ga = R("gauss");
+  igual("Gauss: x, y, z = 2, 3, −1", [ga.numeros.x, ga.numeros.y, ga.numeros.z].map((x) => Math.round(x * 1e9) / 1e9).join(), "2,3,-1");
+  igual("Gauss com pivô zero (troca de linha)", (() => { const x = R("gauss", { m: [[0, 1, 1, 5], [1, 0, 1, 4], [1, 1, 0, 3]] }).numeros; return [x.x, x.y, x.z].map((q) => Math.round(q * 1e9) / 1e9).join(); })(), "1,2,3");
+  const mu = R("mult").numeros;
+  igual("multiplicação (2×3)·(3×2)", [mu.c11, mu.c12, mu.c21, mu.c22].join(), "58,64,139,154");
+  igual("multiplicação com dimensões erradas", R("mult", { A: [[1, 2]], B: [[1, 2]] }).avisos.length, 1);
+  igual("inequação x² − 5x + 6 < 0", R("inequacoes").textos.solucao, "]2; 3[");
+  igual("inequação x² − 5x + 6 ≥ 0", R("inequacoes", { op: ">=" }).textos.solucao, "]−∞; 2] ∪ [3; +∞[");
+  igual("inequação −2x + 4 > 0 (1º grau, inverte)", R("inequacoes", { grau: "1", op: ">", a: -2, b: 4, c: 0 }).textos.solucao, "]−∞; 2[");
+  igual("inequação x² + 1 < 0 → ∅", R("inequacoes", { a: 1, b: 0, c: 1 }).textos.solucao, "∅");
+  igual("inequação (x−2)² > 0", R("inequacoes", { op: ">", a: 1, b: -4, c: 4 }).textos.solucao, "ℝ − {2}");
+  igual("Newton: a = F/m = 5", R("newton", { calc: "a", F: 50, m: 10 }).numeros.a, 5);
+  igual("Newton: F = m·a", R("newton", { calc: "F", m: 3, a: 4 }).numeros.F, 12);
+  const fr = R("newton", { modo: "forcas", m: 10 }).numeros;
+  igual("Newton: resultante 3-4-5 → 50 N", fr.R, 50);
+  igual("Newton: a = 5 m/s²", fr.a, 5);
+  const pl = R("plano").numeros;
+  igual("plano: P∥ = m·g·sen 30°", pl.Px, 10 * 9.81 * 0.5);
+  igual("plano: escorrega (tg 30° > 0,3)", pl.move, 1);
+  igual("plano: a = g(sen θ − μc cos θ)", pl.a, 9.81 * (0.5 - 0.2 * Math.cos(Math.PI / 6)));
+  igual("plano: parado com μe = 0,7", R("plano", { us: 0.7 }).numeros.move, 0);
+  igual("plano: ângulo crítico", R("plano", { us: 1 }).numeros.thetaC, 45);
+  const at = R("atrito").numeros;
+  igual("atrito: 60 N > 49,05 N → move", at.move, 1);
+  igual("atrito: a = (60 − 0,4·98,1)/10", at.a, (60 - 0.4 * 98.1) / 10);
+  igual("atrito: força inclinada reduz a normal", R("atrito", { th: 30 }).numeros.N, 98.1 - 30);
+  igual("trabalho: F·d", R("trabalho").numeros.W, 500);
+  igual("trabalho: 60° → metade", R("trabalho", { th: 60 }).numeros.W, 250);
+  igual("trabalho: ΔEc", R("trabalho", { modo: "cinetica" }).numeros.W, 100);
+  igual("trabalho do peso na subida", R("trabalho", { modo: "peso" }).numeros.W, -2 * 9.81 * 5);
+  igual("todas as calculadoras do catálogo existem", MATERIAS.flatMap((m) => m.calculadoras).every((c) => c.id === "cg2d" || CALCULADORAS[c.id]), true);
 }
 
 if (falhas) {
