@@ -291,6 +291,39 @@ export function aparar(esb: FeatureEsboco, geoId: string, toque: P2, opc: Opcoes
 }
 
 /**
+ * Dividir entidades: parte a linha ou o arco no ponto tocado (projetado na curva), criando um ponto
+ * comum às duas partes. As partes continuam alinhadas (colinear / mesmo centro e raio igual).
+ * Devolve o id do ponto novo, ou null (geometria que não divide, ou toque na ponta).
+ */
+export function dividir(esb: FeatureEsboco, geoId: string, toque: P2): string | null {
+  const g = esb.geos.find((x) => x.id === geoId);
+  if (!g || (g.tipo !== "linha" && g.tipo !== "arco")) return null;
+  const pts = mapaPontos(esb);
+  if (g.tipo === "linha") {
+    const a = pts.get(g.p1)!, b = pts.get(g.p2)!;
+    const t = distPontoSegmento(toque, a, b).t;
+    if (t < 1e-3 || t > 1 - 1e-3) return null;
+    const meio = ponto(esb, soma(a, mult(sub(b, a), t)));
+    const fimOriginal = g.p2;
+    g.p2 = meio;
+    const nova = linha(esb, meio, fimOriginal, g.construcao);
+    restringir(esb, { tipo: "colinear", a: g.id, b: nova.id });
+    esb.restricoes = esb.restricoes.filter((r) => !(r.tipo === "distancia" && r.a === g.id && !r.b));
+    return meio;
+  }
+  const ctr = pts.get(g.c)!;
+  const [a0, a1] = angulosArco(ctr, pts.get(g.ini)!, pts.get(g.fim)!);
+  const t = paramNoArco(angulo(ctr, toque), a0, a1);
+  if (t === null || t < 1e-3 || t > 1 - 1e-3) return null;
+  const meio = ponto(esb, polar(ctr, g.r, angulo(ctr, toque)));
+  const fimOriginal = g.fim;
+  g.fim = meio;
+  const novo = arco(esb, g.c, meio, fimOriginal, g.construcao);
+  restringir(esb, { tipo: "igual", a: g.id, b: novo.id });
+  return meio;
+}
+
+/**
  * Prévia do aparar: o trecho que `aparar` tiraria com o mesmo toque (polilinhas), sem mexer no
  * esboço. Vazio se nada sairia.
  */

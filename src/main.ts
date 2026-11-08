@@ -166,6 +166,7 @@ interface ComandoAtivo {
 
 type FerramentaAvaliar =
   | { tipo: "medir"; refs: Referencia[] }
+  | { tipo: "propSecao"; ref: Referencia | null }
   | { tipo: "secao"; plano: Plano; desloc: number; inverter: boolean }
   | { tipo: "analise"; analise: Analise; plano: Plano };
 
@@ -550,7 +551,7 @@ function botaoComando(c: Comando, aba: IdAba): HTMLButtonElement {
   }
   if (aba === "sketch" && c.id === "escalaReal") b.setAttribute("aria-pressed", String(!!prefs.escalaReal));
   if (aba === "avaliar" && avaliacao) {
-    const ativo = (c.id === "medir" && avaliacao.tipo === "medir") || (c.id === "vista-secao" && avaliacao.tipo === "secao") ||
+    const ativo = (c.id === "medir" && avaliacao.tipo === "medir") || (c.id === "prop-secao" && avaliacao.tipo === "propSecao") || (c.id === "vista-secao" && avaliacao.tipo === "secao") ||
       (avaliacao.tipo === "analise" && c.id === mapaAnalise[avaliacao.analise.tipo]);
     b.setAttribute("aria-pressed", String(ativo));
   }
@@ -1316,6 +1317,7 @@ function refsDoComando(): Referencia[] {
 }
 
 function refsDestacadas(): Referencia[] {
+  if (avaliacao?.tipo === "propSecao") return avaliacao.ref ? [avaliacao.ref] : [];
   return comando ? refsDoComando() : avaliacao?.tipo === "medir" ? avaliacao.refs : selPeca;
 }
 
@@ -1772,6 +1774,15 @@ function instalarToqueCurto() {
       const r = refDeEntidade(ent)!;
       if (c.aceita.includes("plano") && !c.aceita.includes("face") && (r.tipo !== "face" || r.ass.geom !== "plano")) return avisar("Escolha uma face plana.");
       adicionarAoCampo(r);
+      return;
+    }
+    if (avaliacao?.tipo === "propSecao") {
+      const ent = viewport.picarEntidade(e.clientX, e.clientY, filtrar(TODAS), tol);
+      const r = ent ? refDeEntidade(ent) : null;
+      if (!r || r.tipo !== "face" || r.ass.geom !== "plano") return avisar("Toque numa face plana.");
+      avaliacao.ref = r;
+      atualizarDestaques();
+      void mostrarPropSecao();
       return;
     }
     if (avaliacao?.tipo === "medir") {
@@ -3451,6 +3462,17 @@ function comandoAvaliar(id: string) {
         if (pre.length) void atualizarMedida();
       }
       break;
+    case "prop-secao":
+      if (avaliacao?.tipo === "propSecao") return fecharAvaliacao();
+      {
+        const pre = selPeca.find((r) => r.tipo === "face" && r.ass.geom === "plano") ?? null;
+        fecharAvaliacao();
+        avaliacao = { tipo: "propSecao", ref: pre };
+        limparSelPeca();
+        if (pre) void mostrarPropSecao();
+        else abrirJanela("Propriedades de seção", "<p class='dica'>Toque numa face plana (seção de um perfil, face de corte…).</p>");
+      }
+      break;
     case "massa":
       return void mostrarMassa();
     case "verificar":
@@ -3522,6 +3544,41 @@ function tabela(linhas: [string, string][]) {
 
 const num = (v: number, casas = 3) => (Math.abs(v) < 0.5 * 10 ** -casas ? 0 : v).toLocaleString("pt-BR", { maximumFractionDigits: casas });
 
+/** Propriedades de seção da face plana escolhida (momentos de área no centroide). */
+async function mostrarPropSecao() {
+  if (avaliacao?.tipo !== "propSecao" || !avaliacao.ref) return;
+  const titulo = "Propriedades de seção";
+  try {
+    const p = await kernel.propSecao(avaliacao.ref);
+    const mm4 = (v: number) => `${num(v, 2)} mm⁴`, mm3 = (v: number) => `${num(v, 2)} mm³`;
+    const U = p.nomeU, V = p.nomeV;
+    abrirJanela(titulo, `${tabela([
+      ["Área", `${num(p.area, 3)} mm²`],
+      ["Centroide (X; Y; Z)", `${p.centroide.map((v) => num(v, 3)).join("; ")} mm`],
+      ...(U === "u" ? [["Eixos do plano u / v", `${p.u.map((x) => num(x, 3)).join("; ")} / ${p.v.map((x) => num(x, 3)).join("; ")}`] as [string, string]] : []),
+    ])}
+    <p class="dica">No centroide, eixos paralelos a ${U} e ${V}:</p>
+    ${tabela([
+      [`I${U} (em torno de ${U})`, mm4(p.Iu)],
+      [`I${V} (em torno de ${V})`, mm4(p.Iv)],
+      [`I${U}${V} (produto)`, mm4(p.Iuv)],
+      ["J polar", mm4(p.J)],
+      [`W${U} (módulo de resistência)`, mm3(p.Wu)],
+      [`W${V} (módulo de resistência)`, mm3(p.Wv)],
+      [`k${U} / k${V} (raio de giração)`, `${num(p.ku, 3)} / ${num(p.kv, 3)} mm`],
+    ])}
+    <p class="dica">Principais:</p>
+    ${tabela([
+      ["I1 (máximo)", mm4(p.I1)],
+      ["I2 (mínimo)", mm4(p.I2)],
+      [`Ângulo de ${U} ao eixo 1`, `${num(p.angulo, 2)}°`],
+    ])}
+    <p class="dica">Toque outra face plana para trocar. W = I ÷ distância do centroide à fibra mais afastada.</p>`);
+  } catch (e) {
+    abrirJanela(titulo, `<p class="prop-erro">${(e as Error).message}</p>`);
+  }
+}
+
 async function mostrarMassa() {
   let p: PropriedadesMassa;
   try {
@@ -3587,7 +3644,7 @@ function aplicarSecao() {
 
 function renderizarPainelAvaliacao() {
   const a = avaliacao;
-  if (!a || a.tipo === "medir") return;
+  if (!a || a.tipo === "medir" || a.tipo === "propSecao") return;
   mostrarPainel("comando");
   const painel = $("painel-comando");
   const titulo = a.tipo === "secao" ? "Vista de seção"
@@ -3752,7 +3809,7 @@ function fecharJanela() {
 }
 $("janela-fechar").onclick = () => {
   fecharJanela();
-  if (avaliacao?.tipo === "medir") fecharAvaliacao();
+  if (avaliacao?.tipo === "medir" || avaliacao?.tipo === "propSecao") fecharAvaliacao();
 };
 
 // ---------- chapa metálica: planificar, DXF, tabela ----------
@@ -3970,6 +4027,7 @@ function renderizarBarraVistas() {
   };
 
   botao("enquadrar", "Ampliar para caber (F)", () => viewport.enquadrar());
+  botao("vistaAnterior", "Vista anterior (volta o último giro, zoom ou troca de vista)", () => (viewport.temVistaAnterior ? viewport.vistaAnterior() : avisar("Não há vista anterior.")));
   botao("zoomArea", "Zoom por área: arraste um retângulo", () => iniciarZoomArea(), zoomAreaAtivo);
   botao("vistaSecao", "Vista de seção", () => comandoAvaliar("vista-secao"), avaliacao?.tipo === "secao");
   botao("vistas", "Orientação da vista (Espaço)", (b) => abrirSeletorVistas(b), false, true);

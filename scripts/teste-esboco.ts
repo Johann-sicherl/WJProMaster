@@ -114,6 +114,25 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   verdade("aparar círculo vira arco", e2.geos.find((g) => g.id === ci.id)?.tipo === "arco");
 }
 
+// 5a. Dividir entidades: linha em 30/70 e arco ao meio, com o ponto em comum
+{
+  const e = plano();
+  const l = op.linha(e, op.ponto(e, { x: 0, y: 0 }), op.ponto(e, { x: 10, y: 0 }));
+  const pid = op.dividir(e, l.id, { x: 3, y: 0.2 });
+  const p = e.pontos.find((x) => x.id === pid);
+  const linhas = e.geos.filter((g) => g.tipo === "linha");
+  verdade("dividir linha: duas linhas e ponto em (3; 0)", linhas.length === 2 && !!p && Math.abs(p.x - 3) < 1e-9 && Math.abs(p.y) < 1e-9);
+  verdade("dividir linha: partes colineares", e.restricoes.some((r) => r.tipo === "colinear"));
+  verdade("dividir na ponta não faz nada", op.dividir(e, l.id, { x: 0, y: 0 }) === null);
+  const e2 = plano();
+  const c = op.ponto(e2, { x: 0, y: 0 });
+  const ar = op.arco(e2, c, op.ponto(e2, { x: 10, y: 0 }), op.ponto(e2, { x: -10, y: 0 }));
+  const q = op.dividir(e2, ar.id, { x: 0, y: 11 });
+  const pq = e2.pontos.find((x) => x.id === q);
+  verdade("dividir arco: dois arcos e ponto em (0; 10)", e2.geos.filter((g) => g.tipo === "arco").length === 2 && !!pq && Math.abs(pq.x) < 1e-9 && Math.abs(pq.y - 10) < 1e-9);
+  verdade("dividir círculo: não divide (sem início/fim)", op.dividir(e2, op.circulo(e2, c, 5).id, { x: 5, y: 0 }) === null);
+}
+
 // 5b. Prévia do aparar/estender: mostra o trecho certo sem mexer no esboço
 {
   const e = plano();

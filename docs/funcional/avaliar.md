@@ -46,9 +46,12 @@ Janela flutuante (não bloqueia o modelo), resultados atualizam a cada clique.
 - Tríade de inércia exibida no viewport no centro de massa
 - 🟡 Hoje: só o **volume** aparece na barra de status.
 
-## 3. Propriedades de seção (Section Properties) — F5 (pendente)
-Para uma face plana ou região de esboço: área, centroide, momentos de inércia de área
-(no centroide e na origem), eixos principais, momento polar.
+## 3. Propriedades de seção (Section Properties) — ✅ (08/11/2026)
+Toque numa **face plana**: área, centroide, momentos de inércia de área **no centroide** (eixos
+paralelos aos globais quando a face é paralela a um plano principal; senão eixos u/v do plano),
+produto de inércia, **J polar**, **eixos principais** (I1, I2 e ângulo), **módulos de resistência**
+W = I ÷ fibra mais afastada e **raios de giração** (`propriedadesSecao` em `src/kernel/avaliar.ts`).
+Região de esboço e momentos na origem: ⏸.
 
 ## 4. Vista de seção (Section View) — ✅
 Corte apenas visual (não altera a peça).

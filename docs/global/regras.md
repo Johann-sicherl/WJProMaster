@@ -174,6 +174,9 @@
 - **Importar**: STEP/STP/STL criam o recurso `importado`. STL com mais de 10 000 triângulos = **corpo de
   malha** (só exibido; janela "STL grande" oferece simplificar para sólido). Montagem STEP → `.wjasm`.
 - **STEP AP214/AP242 abre com as cores do arquivo** (04/11/2026), na Peça e na Montagem.
+- **Aviso de conexões "Cofre:" (Drive, pendrive, pasta)** (08/11/2026): botão **"Não mostrar de novo"** na
+  faixa; vale para o aparelho (`wjpdm:semAvisoConexoes`) e some ao abrir e ao salvar. A mensagem de cada
+  salvar continua dizendo onde chegou; religa em **Cópias do cofre** ("Mostrar o aviso de conexões").
 - **Exportar = "Salvar como"** (07/11/2026): botão **Exportar** logo depois do 💾 Salvar (e no menu
   Arquivo); nada de STEP/STL no canto superior. Abre o **mesmo explorador do primeiro salvar**, já **na
   pasta onde a peça está no cofre** (peça ainda não salva: última pasta usada), com nome sugerido,
