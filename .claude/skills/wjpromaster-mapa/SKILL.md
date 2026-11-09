@@ -81,7 +81,7 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 | `teste-pdm.ts`, `teste-sincronia.ts`, `teste-drive.ts` | regras do cofre, sincronia das cópias, Drive simulado |
 | `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts`, `teste-joia.ts`, `teste-slicer.ts` | motores das outras faces |
 | `teste-mapa.ts` | este mapa em dia com `src/` e `scripts/` |
-| `estresse-*.{ts,cjs}`, `roteiro-ui.cjs` | estresse e roteiro de interface com Playwright (não entram no `pnpm teste`) |
+| `estresse-*.{ts,cjs}`, `roteiro-ui.cjs`, `roteiro-aviso-conexoes.cjs` | estresse e roteiros de interface com Playwright (não entram no `pnpm teste`); o do aviso confere a faixa "Cofre:" e o "Não mostrar de novo" em todas as páginas |
 
 ## 3. Validar no navegador (tablet simulado)
 

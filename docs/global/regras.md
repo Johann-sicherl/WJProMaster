@@ -159,6 +159,11 @@
 - **Tentativas automáticas** (05/11/2026), sem botão: a cada 5 min com o app visível, ao voltar a
   internet, ao voltar para o app e depois de cada salvar. A faixa volta se aparecer problema e some quando
   resolve.
+- **"Não mostrar de novo"** (08/11/2026; 09/11/2026: vale em **todos os apps e na página inicial**): botão
+  na faixa "Cofre:". A escolha é **por aparelho** (`wjpdm:semAvisoConexoes`, mesma origem para todas as
+  páginas): dispensada em qualquer app ou no início, a faixa não aparece mais em nenhum, nem ao abrir nem
+  ao salvar. A mensagem de cada salvar continua dizendo onde o arquivo chegou. Religa em **Cópias do cofre**
+  (botão do cofre em cada app ou ⚙ Configurações do início): "Mostrar o aviso de conexões".
 - O acesso do Google vale 1 h e o navegador só deixa abrir a janela do Google durante um gesto do usuário:
   ele é **renovado sozinho no primeiro toque/tecla** no app quando falta menos de 10 min (ou já venceu) —
   a janela do Google pisca e fecha, sem botão. Sem nenhum toque (app parado/fechado) só com servidor
@@ -188,9 +193,6 @@
 - **Importar**: STEP/STP/STL criam o recurso `importado`. STL com mais de 10 000 triângulos = **corpo de
   malha** (só exibido; janela "STL grande" oferece simplificar para sólido). Montagem STEP → `.wjasm`.
 - **STEP AP214/AP242 abre com as cores do arquivo** (04/11/2026), na Peça e na Montagem.
-- **Aviso de conexões "Cofre:" (Drive, pendrive, pasta)** (08/11/2026): botão **"Não mostrar de novo"** na
-  faixa; vale para o aparelho (`wjpdm:semAvisoConexoes`) e some ao abrir e ao salvar. A mensagem de cada
-  salvar continua dizendo onde chegou; religa em **Cópias do cofre** ("Mostrar o aviso de conexões").
 - **Exportar = "Salvar como"** (07/11/2026): botão **Exportar** logo depois do 💾 Salvar (e no menu
   Arquivo); nada de STEP/STL no canto superior. Abre o **mesmo explorador do primeiro salvar**, já **na
   pasta onde a peça está no cofre** (peça ainda não salva: última pasta usada), com nome sugerido,
