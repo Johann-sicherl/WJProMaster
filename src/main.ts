@@ -4241,6 +4241,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("cad", temDocumento()) },
   exportar: { rotulo: "Exportar (STEP, STL)…", icone: "exportar", fazer: () => void abrirExportar() },
   fluxo: { rotulo: "Abrir no WJFlow (escoamento de ar)", icone: "exportar", fazer: () => void abrirNoWJFlow() },
+  slicer: { rotulo: "Estimar impressão 3D (WJSlicer3D)", icone: "exportar", fazer: () => void abrirNoWJSlicer3D() },
   imagem3d: { rotulo: "Imagens → modelo 3D (fotos das vistas)…", icone: "abrir", fazer: () => void abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}cad/imagem3d/`, location.href).href) },
   desenho: { rotulo: "Criar desenho desta peça", icone: "desenho", fazer: () => {
     salvarAutosave();
@@ -4265,6 +4266,20 @@ async function abrirNoWJFlow() {
     abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}flow/#peca-do-cad`, location.href).href);
   } catch (e) {
     avisar(`Não foi possível abrir no WJFlow: ${(e as Error).message}`);
+  }
+}
+
+/**
+ * Manda a malha da peça para o WJSlicer3D (tempo e material de impressão 3D) e abre o app com ela.
+ * A malha vai em Y para cima (como no WJCAD); o WJSlicer3D a põe em pé (Z para cima) ao receber.
+ */
+async function abrirNoWJSlicer3D() {
+  if (!ultimaMalha) return avisar("A peça ainda não tem sólido para estimar.");
+  try {
+    await deixar("slicer:peca", { nome: doc.nome, vertices: ultimaMalha.vertices, triangulos: ultimaMalha.triangulos });
+    abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}slicer/#peca-do-cad`, location.href).href);
+  } catch (e) {
+    avisar(`Não foi possível abrir no WJSlicer3D: ${(e as Error).message}`);
   }
 }
 

@@ -86,12 +86,14 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 | WJVideoMaker | `video/aparelho/` (V0; editor `video/` na V1) | `src/video/` | `src/video/tempo.ts`, `capacidade.ts` (`teste-video.ts`) | `.wjvid` + mídia e exportações, **tudo no cofre do WJPDM** (vídeo/foto = arquivo de mídia, sem versões); teste do aparelho em Worker com WebCodecs + WebGL2 |
 | WJCalcEng | `calceng/` | `src/calceng/` | `src/calceng/cg2d.ts` (`teste-calceng.ts`) | `.wjcalc` (pasta Cálculos do cofre), autosave `wjcalc:documento`; calculadora 1 = centro de gravidade 2D: o desenho é o **esboço do WJCAD** (`EditorEsboco`, faixa Sketch, `Viewport.definir2D`), cada região fechada = figura; painel direito = massa única ou por figura, CG, inércia; demais calculadoras (álgebra, matrizes, física) em `src/calceng/calculadoras.ts` (campos + resolução passo a passo, `calcs[id]` no arquivo), catálogo e lupa em `modulos.ts` |
 | WJGoldDiamond | `joia/` | `src/joia/` | `src/joia/regras.ts` + `geometria.ts` (`teste-joia.ts`) | `.wjgd` (pasta Joias do cofre), autosave `wjgd:documento`; construtores de joia (aro, cabeça, pavé, gravação, textura, fabricação, preço) no mesmo kernel OpenCascade, worker próprio |
+| WJSlicer3D | `slicer/` | `src/slicer/` | `src/slicer/fatiar.ts`, `malha.ts`, `perfis.ts` (`teste-slicer.ts`) | sem documento: lê STL do cofre (pasta CAD), do aparelho ou do WJCAD (`transferir.ts`, chave `slicer:peca`, malha em Y para cima, soldada e posta em pé no worker); preferências em `localStorage["wjslicer:preferencias"]`; estimativa sem G-code: corte por laços (aresta da malha), varredura com mapa de bits por camada (cascas, pontes, suporte por operações de bits), planejador trapezoidal com jerk, Klipper a2d, vazão máxima, balanço e tempo mínimo de camada; perfis de fábrica 0,4 mm / 0,20 mm |
 | WJFlow | `flow/` (+ `flow/aparelho/`) | `src/flow/` | `src/flow/lbm.ts`, `geometria.ts`, `estudo.ts` (`teste-flow.ts`) | `.wjflow` (estudo + peça), autosave IndexedDB `wjflow`; túnel de vento LBM D3Q19 em WebGPU |
 
 Integrações já feitas: o WJPDM abre arquivos nos apps (grava o autosave do app; o WJCAD abre direto
 com `cad/#abrir-autosave`) e faz check-in do documento aberto num app; o WJERP importa itens e
 listas de materiais do cofre do WJPDM; o WJCAD manda a peça para o WJFlow (menu Arquivo → Abrir no
-WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulação. Tudo local no aparelho até o servidor (G5/G7).
+WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulação; do mesmo jeito, menu → Estimar
+impressão 3D manda a malha para o WJSlicer3D. Tudo local no aparelho até o servidor (G5/G7).
 
 ## Decisões de produto (definidas pelo Johann)
 

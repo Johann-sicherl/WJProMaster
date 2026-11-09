@@ -61,6 +61,7 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | WJVideoMaker (V0) | `src/video/aparelho.ts`, `aparelho-worker.ts`, `capacidade.ts`, `tempo.ts` | `docs/global/wjvideomaker.md` |
 | WJCalcEng | `src/calceng/main.ts` · motor `src/calceng/cg2d.ts` · calculadoras por matéria e busca `src/calceng/modulos.ts` · álgebra, matrizes e física (campos + passos) `src/calceng/calculadoras.ts` | `docs/global/wjcalceng.md` |
 | WJGoldDiamond (joias) | `src/joia/main.ts`, `vista.ts`, `malhaGema.ts`, `worker.ts` · motor `src/joia/regras.ts` · ornamentos (esboço → fios) `src/joia/ornamento.ts` + editor `src/joia/editorOrnamento.ts` (esboço do WJCAD, import dinâmico) · escultura em malha `src/joia/escultura.ts` (pincéis, icosfera) + união de malhas `src/joia/uniao.ts` (`manifold-3d`) · sólido `src/joia/geometria.ts` (booleana `segura`, `fioSolido`) | `docs/global/wjgolddiamond.md` |
+| WJSlicer3D (tempo e material de impressão 3D) | `src/slicer/main.ts` (tela), `vista.ts` (mesa 3D), `worker.ts`, `slicer.css` · motor `src/slicer/fatiar.ts` (fatiamento, cascas, suporte, planejador de velocidade) · perfis das impressoras e materiais `src/slicer/perfis.ts` · STL, giro e apoio `src/slicer/malha.ts` | `docs/global/wjslicer3d.md` |
 | WJFlow | `src/flow/main.ts`, `gpu.ts` (WebGPU), `lbm.ts`, `geometria.ts`, `estudo.ts`, `campo.ts`, `vista3d.ts`, `aparelho.ts`, workers `cpu-worker.ts`, `pos-worker.ts`, `preparo-worker.ts` | `docs/global/wjflow.md` |
 | Integrações entre faces | — | `docs/global/integracoes.md` |
 | Status geral do CAD / lacunas priorizadas | — | `docs/funcional/README.md`, `referencia-introducao.md` |
@@ -77,7 +78,7 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 | `teste-imagem3d.ts` | gerador imagens → 3D (silhueta, medidas, casco, faces, STL) |
 | `teste-montagem.ts` / `teste-desenho.ts` | solver de mates / projeção e desenho |
 | `teste-pdm.ts`, `teste-sincronia.ts`, `teste-drive.ts` | regras do cofre, sincronia das cópias, Drive simulado |
-| `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts`, `teste-joia.ts` | motores das outras faces |
+| `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts`, `teste-joia.ts`, `teste-slicer.ts` | motores das outras faces |
 | `teste-mapa.ts` | este mapa em dia com `src/` e `scripts/` |
 | `estresse-*.{ts,cjs}`, `roteiro-ui.cjs` | estresse e roteiro de interface com Playwright (não entram no `pnpm teste`) |
 
@@ -109,4 +110,6 @@ teste, build sobre o PR juntado com o `main`) → corrigir → merge **pelo núm
 - Chaves `jlscad:` (localStorage) e cache `jlscad-` não mudam de nome. Versão do cache do `sw.js` não se edita à mão.
 - Autosave por janela: `chave@<id>` (id em `window.name`) + a chave comum usada para passar documento entre apps (`#abrir-autosave`).
 - COOP `same-origin` quebra o login do Google: usar `same-origin-allow-popups` quando for para o Cloudflare.
+- Elemento com o atributo `hidden` e `display` próprio no CSS continua visível (e pode tapar toques): acrescentar `.classe[hidden] { display: none; }`.
+- Malha do WJCAD (`ultimaMalha`) tem cada face B-Rep triangulada à parte (vértices repetidos nas bordas): soldar antes de cortar/encadear (o WJSlicer3D passa pelo leitor de STL).
 - Nunca o nome de produto de terceiros na interface; o fluxo segue o CAD de referência, os nomes são nossos.

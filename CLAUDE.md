@@ -6,8 +6,9 @@
 > (cronogramas), **WJCalcEng** (cálculos de engenharia do curso; `docs/global/wjcalceng.md`), **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD), **WJFlow** (escoamento de ar nas
 > peças do WJCAD; `docs/global/wjflow.md`), **WJTaskPlan** (tarefas em pastas, escritas à mão;
 > `docs/global/taskplan.md`) e **WJVideoMaker** (edição de vídeo e fotos; especificação em
-> `docs/global/wjvideomaker.md`; por enquanto só o teste do aparelho, V0) e **WJGoldDiamond** (modelagem 3D de
-> joias; `docs/global/wjgolddiamond.md`). Tudo roda no **celular, tablet e
+> `docs/global/wjvideomaker.md`; por enquanto só o teste do aparelho, V0) **WJGoldDiamond** (modelagem 3D de
+> joias; `docs/global/wjgolddiamond.md`) e **WJSlicer3D** (tempo e material de impressão 3D de STL, sem
+> G-code; `docs/global/wjslicer3d.md`). Tudo roda no **celular, tablet e
 > notebook/computador**. Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada
 > face estão em **`docs/global/`**; o prompt de trabalho está em `docs/global/prompt-mestre.md`.
 > Até a fase G0 (monorepo), tudo fica neste repositório: o WJCAD (descrito abaixo) e as primeiras

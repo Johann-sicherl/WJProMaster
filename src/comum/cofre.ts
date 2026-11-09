@@ -868,6 +868,16 @@ export async function lerDoCofre(id: string): Promise<{ arquivo: Arquivo; texto:
   return { arquivo: a, texto: await b.text(), versao: a.versoes[a.versoes.length - 1]?.n ?? 1 };
 }
 
+/** Conteúdo binário atual de um arquivo do cofre (ex.: STL binário para o WJSlicer3D). */
+export async function lerBytesDoCofre(id: string): Promise<{ arquivo: Arquivo; bytes: Uint8Array } | null> {
+  const db = await abrirCofre();
+  const a = await db.ler<Arquivo>("arquivos", id);
+  if (!a || a.lixeira) return null;
+  const blob = a.trabalho?.blob ?? a.versoes[a.versoes.length - 1]?.blob;
+  const b = blob ? await db.blob(blob) : undefined;
+  return b ? { arquivo: a, bytes: new Uint8Array(await b.arrayBuffer()) } : null;
+}
+
 /** Referências da tabela: o que o arquivo contém e onde ele é usado. */
 export async function referenciasDe(id: string): Promise<{ contem: ReferenciaArquivo[]; usadoEm: ReferenciaArquivo[] }> {
   const rs = await (await abrirCofre()).todos<ReferenciaArquivo>("referencias");
