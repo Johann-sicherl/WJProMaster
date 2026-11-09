@@ -229,6 +229,13 @@
   cópia só por lugar, sem versões nem duplicata no banco do aparelho), **1080p** no tablet (4K só no computador), exportação no cofre **sem versões**, extensão
   `.wjvid`, pasta "Vídeos". V0 (teste do aparelho, `video/aparelho/`) entregue e medido no TCL: até 1080p por hardware,
   2 vídeos 1080p simultâneos, 4K com proxy, exportação MP4 H.264 + AAC (≈ 1,4 min por minuto).
+  **08/11/2026 (Johann): "apenas um editor de vídeo"** — cortar, reduzir o tempo, acelerar e reduzir o
+  vídeo, juntar vídeo com imagem, texto sobre imagens e vídeos; **os arquivos vêm do próprio aparelho
+  ou do WJPDM** (nada de analisar pastas; o seletor do Google Drive foi dispensado). **V1 entregue**
+  (editor em `video/`): importar do aparelho/WJPDM, pista magnética de vídeos e fotos + pista de textos,
+  dividir/aparar/mover/excluir, velocidade 0,1×–10× e "duração na linha do tempo", texto arrastável no
+  vídeo, exportar MP4 (resolução, qualidade ou tamanho máximo) para o aparelho, Compartilhar ou o
+  WJPDM (reexportar com o mesmo nome substitui, sem versões), projeto `.wjvid` no cofre.
 - **WJCalcEng** (07/11/2026): face para guardar as formas de calcular do curso de engenharia do Johann.
   Uma calculadora por módulo; a primeira é o **centro de gravidade em 2D**. **O desenho é o esboço do
   WJCAD** (07/11/2026: "exatamente igual ao Sketch do CAD 3D, com os mesmos recursos e relações com os
@@ -279,5 +286,3 @@
   visual), offline, no tablet; fotos com **fundo liso sempre** (decisão do Johann). Página `cad/imagem3d/`
   (Peça → menu → "Imagens → modelo 3D"). Fase 2 (acabamento por IA num servidor com GPU) fica para a
   **G5**. Detalhes em `docs/global/cad.md` §5.
-- WJVideoMaker: teste de pasta/pendrive com vídeos de verdade no TCL (o desempenho já foi medido,
-  §8 de `docs/global/wjvideomaker.md`) e a chave de API do seletor do Google Drive (passos no §14).

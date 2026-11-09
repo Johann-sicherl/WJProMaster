@@ -88,9 +88,9 @@ const FACES: Face[] = [
     icone: svg(`<path d="M6 20h12M8 20l1-3h6l1 3"/><path d="M7 13h10M8 10h8M9 7h6" stroke="${C}"/><path d="M12 3v2"/>`),
   },
   {
-    // Especificação em docs/global/wjvideomaker.md; por enquanto só o teste do aparelho (V0).
-    id: "video", nome: "WJVideoMaker", url: "video/aparelho/", selo: "Teste do aparelho",
-    descricao: "Edição de vídeo e fotos: linha do tempo, títulos, transições, cor, áudio; mídia do Drive, pasta ou pendrive.",
+    // Editor de vídeo (V1); especificação em docs/global/wjvideomaker.md; teste do aparelho em video/aparelho/.
+    id: "video", nome: "WJVideoMaker", url: "video/",
+    descricao: "Editor de vídeo: cortar, acelerar ou desacelerar, juntar vídeos e fotos, texto sobre a imagem e exportar MP4.",
     icone: svg(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M3 15h18M7 5v4M12 5v4M17 5v4M7 15v4M12 15v4M17 15v4"/><path d="M10.5 10.5v3l2.5-1.5z" stroke="${C}"/>`),
   },
 ];

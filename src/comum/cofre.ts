@@ -12,13 +12,13 @@ import { nuvemGoogle, type DestinoNuvem } from "./drive";
 import { bloqueioDoCheckout, estadoDe, extensao, fluxoAtual, nomeLivre, trocarReferencias, usarFluxo, type Arquivo, type DadosModelo, type Pasta, type ReferenciaArquivo } from "../pdm/regras";
 import { abrirEmNovaJanela, fixarNaJanela, gravarNaJanela, lerDaJanela, removerDaJanela } from "./janelas";
 
-export type ChaveApp = "cad" | "asm" | "drw" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp" | "flow" | "calc" | "joia";
+export type ChaveApp = "cad" | "asm" | "drw" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp" | "flow" | "calc" | "joia" | "video";
 export const NOME_APP: Record<ChaveApp, string> = {
-  cad: "WJCAD", asm: "WJCAD (montagem)", drw: "WJCAD (desenho)", plan: "WJPlan", word: "WJWrite", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP", flow: "WJFlow", calc: "WJCalcEng", joia: "WJGoldDiamond",
+  cad: "WJCAD", asm: "WJCAD (montagem)", drw: "WJCAD (desenho)", plan: "WJPlan", word: "WJWrite", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP", flow: "WJFlow", calc: "WJCalcEng", joia: "WJGoldDiamond", video: "WJVideoMaker",
 };
 /** Pasta padrão de cada face na raiz do cofre. */
 export const PASTA_DA_FACE: Record<ChaveApp, string> = {
-  cad: "CAD", asm: "CAD", drw: "CAD", plan: "Planilhas", word: "Documentos", cron: "Cronogramas", apn: "Apresentações", pdm: "PDM", erp: "ERP", flow: "Escoamento", calc: "Cálculos", joia: "Joias",
+  cad: "CAD", asm: "CAD", drw: "CAD", plan: "Planilhas", word: "Documentos", cron: "Cronogramas", apn: "Apresentações", pdm: "PDM", erp: "ERP", flow: "Escoamento", calc: "Cálculos", joia: "Joias", video: "Vídeos",
 };
 /** Apps por extensão: chave do salvamento automático e endereço (abrir arquivo do cofre no app). */
 export const APPS: Record<string, { app: string; chave: string; url: string; face: ChaveApp }> = {
@@ -32,9 +32,10 @@ export const APPS: Record<string, { app: string; chave: string; url: string; fac
   wjcron: { app: "WJCronProject", chave: "wjcron:documento", url: "cronograma/", face: "cron" },
   wjflow: { app: "WJFlow", chave: "wjflow:estudo", url: "flow/", face: "flow" },
   wjcalc: { app: "WJCalcEng", chave: "wjcalc:documento", url: "calceng/", face: "calc" },
+  wjvid: { app: "WJVideoMaker", chave: "wjvid:documento", url: "video/", face: "video" },
   wjgd: { app: "WJGoldDiamond", chave: "wjgd:documento", url: "joia/", face: "joia" },
 };
-const EXT_DA_FACE: Record<ChaveApp, string[]> = { cad: ["wjcad", "jlscad"], asm: ["wjasm"], drw: ["wjdrw"], plan: ["wjpl"], word: ["wjdoc"], cron: ["wjcron"], apn: ["wjapn"], pdm: ["wjpdm"], erp: ["wjerp"], flow: ["wjflow"], calc: ["wjcalc"], joia: ["wjgd"] };
+const EXT_DA_FACE: Record<ChaveApp, string[]> = { cad: ["wjcad", "jlscad"], asm: ["wjasm"], drw: ["wjdrw"], plan: ["wjpl"], word: ["wjdoc"], cron: ["wjcron"], apn: ["wjapn"], pdm: ["wjpdm"], erp: ["wjerp"], flow: ["wjflow"], calc: ["wjcalc"], joia: ["wjgd"], video: ["wjvid"] };
 
 const agora = () => new Date().toISOString();
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -346,7 +347,7 @@ async function pastaDaFace(db: Armazem, app: ChaveApp): Promise<string> {
 /** Rótulo do tipo de arquivo pela extensão (coluna "Tipo" e filtro). */
 const TIPO_EXT: Record<string, string> = {
   wjcad: "Peça (WJCAD)", jlscad: "Peça (WJCAD)", wjasm: "Montagem (WJCAD)", wjdrw: "Desenho (WJCAD)", wjpl: "Planilha (WJPlan)", wjdoc: "Documento (WJWrite)",
-  wjapn: "Apresentação (WJApresentation)", wjcron: "Cronograma (WJCronProject)", wjflow: "Estudo (WJFlow)", wjcalc: "Cálculo (WJCalcEng)", wjgd: "Joia (WJGoldDiamond)", wjpdm: "Cópia do cofre (WJPDM)", wjerp: "Dados (WJERP)",
+  wjapn: "Apresentação (WJApresentation)", wjcron: "Cronograma (WJCronProject)", wjflow: "Estudo (WJFlow)", wjcalc: "Cálculo (WJCalcEng)", wjgd: "Joia (WJGoldDiamond)", wjvid: "Projeto de vídeo (WJVideoMaker)", wjpdm: "Cópia do cofre (WJPDM)", wjerp: "Dados (WJERP)",
 };
 const tipoDe = (nome: string) => TIPO_EXT[extensao(nome)] ?? (extensao(nome) ? `Arquivo ${extensao(nome).toUpperCase()}` : "Arquivo");
 const IC_PASTA = `<svg viewBox="0 0 24 24" width="22" height="22"><path d="M2.5 6.5a1.5 1.5 0 0 1 1.5-1.5h5l2 2.2h9a1.5 1.5 0 0 1 1.5 1.5V18a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 18z" fill="#f2c14e" stroke="#c99a1e"/></svg>`;
@@ -763,8 +764,10 @@ export async function pastaDoDocumento(app: ChaveApp): Promise<{ id: string; cam
  * pasta onde o documento está no cofre, com o tipo à escolha e o botão "No dispositivo". No cofre
  * o arquivo derivado entra publicado, sem GO-OUT; nome repetido na pasta vira a versão seguinte.
  * `gerar` produz o conteúdo do tipo escolhido (só depois da escolha: exportar pode demorar).
+ * `semVersoes` (vídeo exportado do WJVideoMaker): nome repetido substitui o arquivo em vez de criar a
+ * versão seguinte, para arquivos grandes não se acumularem a cada reexportação.
  */
-export async function exportarComo(app: ChaveApp, nomeBase: string, tipos: { ext: string; rotulo: string }[], gerar: (ext: string) => Promise<Blob>): Promise<string> {
+export async function exportarComo(app: ChaveApp, nomeBase: string, tipos: { ext: string; rotulo: string }[], gerar: (ext: string) => Promise<Blob>, opcoes: { semVersoes?: boolean } = {}): Promise<string> {
   const db = await abrirCofre();
   const chaveTipo = `wjpdm:ultimoTipoExportar:${app}`;
   const lembrado = localStorage.getItem(chaveTipo);
@@ -785,11 +788,11 @@ export async function exportarComo(app: ChaveApp, nomeBase: string, tipos: { ext
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     return `✓ ${r.nome} salvo no dispositivo (pasta Downloads).`;
   }
-  return gravarExportacao(db, app, r.pasta, r.nome, dados);
+  return gravarExportacao(db, app, r.pasta, r.nome, dados, !!opcoes.semVersoes);
 }
 
 /** Grava a exportação no cofre: arquivo novo publicado, ou versão seguinte do que tem o mesmo nome. */
-async function gravarExportacao(db: Armazem, app: ChaveApp, pasta: string, nome: string, dados: Blob): Promise<string> {
+async function gravarExportacao(db: Armazem, app: ChaveApp, pasta: string, nome: string, dados: Blob, semVersoes = false): Promise<string> {
   const usuario = await usuarioDo(db);
   const t = agora();
   const existente = (await db.todos<Arquivo>("arquivos")).find((x) => x.pasta === pasta && x.nome.toLowerCase() === nome.toLowerCase() && !x.lixeira);
@@ -800,7 +803,17 @@ async function gravarExportacao(db: Armazem, app: ChaveApp, pasta: string, nome:
   const blob = uid();
   await db.porBlob(blob, dados);
   let a: Arquivo;
-  if (existente) {
+  if (existente && semVersoes && existente.versoes.length) {
+    // substitui o conteúdo da última versão (não guarda a anterior)
+    a = existente;
+    const v = a.versoes[a.versoes.length - 1];
+    const velho = v.blob;
+    Object.assign(v, { blob, tamanho: dados.size, autor: usuario, data: t, comentario: `Exportado do ${NOME_APP[app]}` });
+    a.historico.push({ data: t, usuario, texto: `Exportado de novo do ${NOME_APP[app]}: substituiu o arquivo (sem guardar versões)` });
+    a.soLocal = undefined;
+    a.mod = t;
+    if (velho && velho !== blob && !a.versoes.some((x) => x.blob === velho) && a.trabalho?.blob !== velho) await db.apagar("blobs", velho);
+  } else if (existente) {
     a = existente;
     const n = Math.max(0, ...a.versoes.map((v) => v.n)) + 1;
     a.versoes.push({ n, blob, tamanho: dados.size, autor: usuario, data: t, comentario: `Exportado do ${NOME_APP[app]}`, revisao: a.revisao, estado: a.estado });
@@ -866,6 +879,16 @@ export async function lerDoCofre(id: string): Promise<{ arquivo: Arquivo; texto:
   const b = blob ? await db.blob(blob) : undefined;
   if (!b) return null;
   return { arquivo: a, texto: await b.text(), versao: a.versoes[a.versoes.length - 1]?.n ?? 1 };
+}
+
+/** Conteúdo binário (Blob) do arquivo do cofre: a cópia de trabalho ou a última versão. */
+export async function lerBlobDoCofre(id: string): Promise<{ arquivo: Arquivo; dados: Blob } | null> {
+  const db = await abrirCofre();
+  const a = await db.ler<Arquivo>("arquivos", id);
+  if (!a || a.lixeira) return null;
+  const blob = a.trabalho?.blob ?? a.versoes[a.versoes.length - 1]?.blob;
+  const b = blob ? await db.blob(blob) : undefined;
+  return b ? { arquivo: a, dados: b } : null;
 }
 
 /** Conteúdo binário atual de um arquivo do cofre (ex.: STL binário para o WJSlicer3D). */
