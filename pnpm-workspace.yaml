@@ -8,3 +8,19 @@ onlyBuiltDependencies:
 # Não aceita versões publicadas há menos de 3 dias (em minutos).
 # Pacotes comprometidos costumam ser descobertos e removidos nesse prazo.
 minimumReleaseAge: 4320
+
+# manifold-3d (booleanas de malha do WJGoldDiamond): só o núcleo manifold.js + manifold.wasm é usado.
+# As dependências abaixo são do editor CAD do pacote (glTF, imagens, compilador) e ficam de fora.
+overrides:
+  "manifold-3d>fflate": "-"
+  "manifold-3d>commander": "-"
+  "manifold-3d>magic-string": "-"
+  "manifold-3d>fast-xml-parser": "-"
+  "manifold-3d>convert-source-map": "-"
+  "manifold-3d>@jscadui/3mf-export": "-"
+  "manifold-3d>@gltf-transform/core": "-"
+  "manifold-3d>@gltf-transform/functions": "-"
+  "manifold-3d>@gltf-transform/extensions": "-"
+  "manifold-3d>@jridgewell/resolve-uri": "-"
+  "manifold-3d>@jridgewell/trace-mapping": "-"
+  "manifold-3d>esbuild-wasm": "-"

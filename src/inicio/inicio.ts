@@ -82,6 +82,12 @@ const FACES: Face[] = [
     icone: svg(`<path d="M5 9l3-4h8l3 4-7 8z"/><path d="M5 9h14M9.5 5L12 9l2.5-4" stroke="${C}"/><ellipse cx="12" cy="17.5" rx="6" ry="3"/>`),
   },
   {
+    // Especificação em docs/global/wjslicer3d.md; estimativa de tempo e material (sem G-code).
+    id: "slicer", nome: "WJSlicer3D", url: "slicer/",
+    descricao: "Fatiamento de STL para impressão 3D: tempo de impressão e material estimados nas impressoras Bambu Lab e Anycubic.",
+    icone: svg(`<path d="M6 20h12M8 20l1-3h6l1 3"/><path d="M7 13h10M8 10h8M9 7h6" stroke="${C}"/><path d="M12 3v2"/>`),
+  },
+  {
     // Editor de vídeo (V1); especificação em docs/global/wjvideomaker.md; teste do aparelho em video/aparelho/.
     id: "video", nome: "WJVideoMaker", url: "video/",
     descricao: "Editor de vídeo: cortar, acelerar ou desacelerar, juntar vídeos e fotos, texto sobre a imagem e exportar MP4.",

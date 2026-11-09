@@ -54,7 +54,8 @@ círculo do aro, como no WJCAD com Y para cima).
 | **J5** | **Fabricação**: ocar (canal interno nas zonas livres, parede mínima), contração da fundição, canais de alimentação, STL para impressão/fundição, STL e STEP limpos, **ficha técnica** (pedras por tipo, quilates, peso do metal com perda, peso da resina, CSV), verificações (espessuras e garras mínimas por liga, profundidade da gravação, micropavé), **preço** (R$/g, R$/ct, mão de obra, margem) | ✅ |
 | **J6** | **Torção** (meias-voltas; perfis assimétricos só em voltas inteiras), **afunilado**, **gravação externa** (envolve o aro), texturas **facetado** e **frisos** fora das zonas ocupadas; vistas, girar (apresentação) e imagem PNG | ✅ |
 | **J7** | **Modelagem livre**: ornamentos desenhados com o **esboço do WJCAD** (linha, arco, spline, círculo, elipse, ponto, espelhar, offset, cotas e relações) na vista de cima do aro, com **prévia espelhada**; cada entidade vira **fio** de perfil redondo (Ø inicial/final e altura inicial/final por fio: o fio sobe da moldura até o aro), simetria nos dois eixos, envolvido no aro ou num plano sobre o topo, bolinha nas pontas soltas; cada **ponto** vira bolinha de metal ou **pedrinha em inglesa** (entra na ficha e no peso em ct). **Ponta da garra**: bolinha, alongada (sobre a pedra) ou garra dupla. **Aro dividido** (abertura no topo e até que ângulo). Exemplo pronto: "Anel vintage com filigrana" (moldura em pipa, volutas, pontas norte–sul, pedrinhas laterais). Correção: o furo de luz da gema central parava no aro e cortava o aro inteiro com gemas largas; agora para no topo do aro e há aviso quando a culaça entra no aro | ✅ 08/11/2026 |
-| J8 | Escultura (malha), relevo por imagem, texturas martelado/acetinado, gemas inclinadas pela normal em perfis curvos, pavé em superfície livre, halo, outras peças (brinco, pingente), perfil do fio (meia-cana, quadrado), vídeo giratório pelo WJVideoMaker, preço/itens no WJERP | próximo |
+| **J8** | **Escultura livre em malha**: corpos esculpidos postos na joia (posição ao longo do aro, lateral, altura, tamanho, giros, cópia espelhada do outro lado), partindo de esfera, gota, folha ou cápsula; pincéis **Puxar, Inflar, Suavizar, Achatar, Vinco e Arrastar** com raio, força, **pressão da caneta**, inverter e simetria; subdividir até 40 962 vértices; desfazer por traço. **Caneta ou mouse esquerdo esculpe; dedo (ou botão do meio) gira**, dois dedos aproximam ("Dedo esculpe" para quem não tem caneta). Peso, área e **STL numa peça só** pela união de malhas (`manifold-3d`); STEP leva só a parte paramétrica | ✅ 08/11/2026 |
+| J9 | Remalha dinâmica (densidade automática sob o pincel), esculpir a joia inteira convertida em malha, relevo por imagem, texturas martelado/acetinado, gemas inclinadas pela normal em perfis curvos, pavé em superfície livre, halo, outras peças (brinco, pingente), perfil do fio (meia-cana, quadrado), vídeo giratório pelo WJVideoMaker, preço/itens no WJERP | próximo |
 
 Modelos prontos (aba Joia → Modelos): solitário, solitário com pavé, aliança com gravação,
 meia-aliança, eternidade, inglesa oval, anel torcido, **anel vintage com filigrana**, aliança facetada.
@@ -103,6 +104,15 @@ para o Ø variável; as pontas da trajetória são **aparadas 0,6·r** e coberta
 Arestas exatamente coincidentes (ponta do fio = esfera, fio = fio espelhado no eixo) deixavam a booleana 3–5× mais
 lenta e com volume errado. Loft de círculos foi descartado: em voltas fechadas (volutas) ele se autointercepta.
 A prévia do worker passou a ser o composto de tudo **sem booleanas** (aparece na hora); peso e volume só na final.
+
+**Escultura (J8)**: `src/joia/escultura.ts` (puro: icosfera, formas iniciais, pincéis, codificação) e
+`src/joia/uniao.ts` (`manifold-3d`). A topologia sai só de (forma, nível); o arquivo guarda as posições
+quantizadas em 16 bits (base64: ~80 kB no nível 5, ~330 kB no 6). A vista mostra o metal paramétrico e as
+esculturas como malhas separadas (mesmo material); o worker faz a união só na versão final (peso/área) e na
+exportação STL (contração aplicada na malha final; canais pelo OpenCascade antes da união). Dependência nova
+`manifold-3d` 3.5.4 (Apache-2.0, a mesma das booleanas do OpenSCAD): só o núcleo `manifold.js` + `.wasm`
+(540 kB, carregado só com escultura); as dependências do editor CAD do pacote foram cortadas com `overrides`
+no `pnpm-workspace.yaml` (o lockfile ganha só ele).
 
 ## 6. Estado (07/11/2026)
 

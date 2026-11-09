@@ -86,12 +86,14 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 | WJVideoMaker | `video/` (editor, V1) + `video/aparelho/` (V0) | `src/video/` | `src/video/projeto.ts`, `audio.ts`, `tempo.ts`, `capacidade.ts` (`teste-video.ts`) | `.wjvid` no cofre (app `video`, pasta "Vídeos"), autosave `wjvid:documento`; mídia importada do aparelho ou do WJPDM com cópia no OPFS (`wjvideo/midia/<id>`); exportação MP4 no Worker com a `mediabunny` (MPL-2.0), "Salvar no WJPDM" sem versões (`exportarComo(..., { semVersoes })`) |
 | WJCalcEng | `calceng/` | `src/calceng/` | `src/calceng/cg2d.ts` (`teste-calceng.ts`) | `.wjcalc` (pasta Cálculos do cofre), autosave `wjcalc:documento`; calculadora 1 = centro de gravidade 2D: o desenho é o **esboço do WJCAD** (`EditorEsboco`, faixa Sketch, `Viewport.definir2D`), cada região fechada = figura; painel direito = massa única ou por figura, CG, inércia; demais calculadoras (álgebra, matrizes, física) em `src/calceng/calculadoras.ts` (campos + resolução passo a passo, `calcs[id]` no arquivo), catálogo e lupa em `modulos.ts` |
 | WJGoldDiamond | `joia/` | `src/joia/` | `src/joia/regras.ts` + `geometria.ts` (`teste-joia.ts`) | `.wjgd` (pasta Joias do cofre), autosave `wjgd:documento`; construtores de joia (aro, cabeça, pavé, gravação, textura, fabricação, preço) no mesmo kernel OpenCascade, worker próprio |
+| WJSlicer3D | `slicer/` | `src/slicer/` | `src/slicer/fatiar.ts`, `malha.ts`, `perfis.ts` (`teste-slicer.ts`) | sem documento: lê STL do cofre (pasta CAD), do aparelho ou do WJCAD (`transferir.ts`, chave `slicer:peca`, malha em Y para cima, soldada e posta em pé no worker); preferências em `localStorage["wjslicer:preferencias"]`; estimativa sem G-code: corte por laços (aresta da malha), varredura com mapa de bits por camada (cascas, pontes, suporte por operações de bits), planejador trapezoidal com jerk, Klipper a2d, vazão máxima, balanço e tempo mínimo de camada; perfis de fábrica 0,4 mm / 0,20 mm |
 | WJFlow | `flow/` (+ `flow/aparelho/`) | `src/flow/` | `src/flow/lbm.ts`, `geometria.ts`, `estudo.ts` (`teste-flow.ts`) | `.wjflow` (estudo + peça), autosave IndexedDB `wjflow`; túnel de vento LBM D3Q19 em WebGPU |
 
 Integrações já feitas: o WJPDM abre arquivos nos apps (grava o autosave do app; o WJCAD abre direto
 com `cad/#abrir-autosave`) e faz check-in do documento aberto num app; o WJERP importa itens e
 listas de materiais do cofre do WJPDM; o WJCAD manda a peça para o WJFlow (menu Arquivo → Abrir no
-WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulação. Tudo local no aparelho até o servidor (G5/G7).
+WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulação; do mesmo jeito, menu → Estimar
+impressão 3D manda a malha para o WJSlicer3D. Tudo local no aparelho até o servidor (G5/G7).
 
 ## Decisões de produto (definidas pelo Johann)
 
@@ -224,6 +226,11 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
   passando por aresta do perfil): aparar 0,6·r ou folgar 0,02 mm deixa 3–5× mais rápido e correto.
   Superfícies analíticas (toro, cilindro, plano) são bem mais rápidas que B-spline (loft) nos cortes.
   Fio de Ø variável: varredura com `Law_Linear` (`genericSweep` com `law`), não loft (autointercepta em voltas fechadas).
+- **Malha × B-Rep (WJGoldDiamond J8)**: escultura fica em malha; para peso/área/STL a joia do OpenCascade é
+  tesselada (`mesh`, tol. 0,01 mm; volume ~0,5 % abaixo do exato), soldada (`Mesh.merge`) e unida no
+  `manifold-3d` (centenas de ms). Não unir malha densa no OpenCascade (milhares de faces = minutos).
+  `manifold-3d` entra com `overrides` no `pnpm-workspace.yaml` cortando as dependências do editor CAD do pacote
+  (gltf-transform, sharp, esbuild-wasm…): só `manifold.js` + `manifold.wasm` são usados.
 - **WJVideoMaker — armadilhas (08/11/2026):** o `AudioSampleSource` da `mediabunny` exige taxa e canais
   constantes (a opção `transform` não aceita taxas que mudam): todo áudio passa pelo `Reamostrador`
   (`src/video/audio.ts`, 48 kHz estéreo, com a velocidade). O Chromium de testes recusa nome com acento

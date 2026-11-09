@@ -4,6 +4,7 @@
 // Eixo do aro = Z; topo do anel em +Y; ângulo θ medido a partir de +Y em direção a +X.
 
 import { ornamentar, type Ornamentacao, type Ornamento, type Simetria } from "./ornamento";
+import type { Escultura, FormaBase } from "./escultura";
 
 export type P2 = [number, number];
 export type V3 = [number, number, number];
@@ -33,6 +34,8 @@ export interface DocJoia {
   preco: { cotacao: number; precoQuilate: number; maoDeObra: number; margem: number };
   /** desenhos livres (filigrana, volutas, galerias) envolvidos no aro */
   ornamentos: Ornamento[];
+  /** esculturas livres em malha (unidas à joia no peso e no STL) */
+  esculturas: Escultura[];
 }
 
 const RAD = Math.PI / 180;
@@ -779,6 +782,7 @@ export function docNovo(): DocJoia {
     fabricacao: { ocar: false, parede: 0.6, contracao: 0, canais: 1, diamCanal: 1.6, compCanal: 6, perda: 5 },
     preco: { cotacao: 0, precoQuilate: 0, maoDeObra: 0, margem: 0 },
     ornamentos: [],
+    esculturas: [],
   };
 }
 
@@ -836,6 +840,16 @@ export function validarDoc(x: unknown): DocJoia {
       simetria: umDe(x.simetria, ["nenhuma", "x", "y", "xy"] as Simetria[], "xy"), envolver: x.envolver !== false, pontas: x.pontas !== false,
       fios: x.fios && typeof x.fios === "object" ? x.fios : {}, pontos: x.pontos && typeof x.pontos === "object" ? x.pontos : {},
     })),
+    esculturas: (Array.isArray(o.esculturas) ? o.esculturas : []).slice(0, 12).map((x: any, i: number): Escultura => {
+      const L = x?.lugar ?? {};
+      const pos = x?.pos && typeof x.pos.dados === "string" && Array.isArray(x.pos.min) && Array.isArray(x.pos.max) ? { min: x.pos.min.map(Number) as V3, max: x.pos.max.map(Number) as V3, dados: x.pos.dados } : undefined;
+      return {
+        id: typeof x?.id === "string" ? x.id : `esc${i}`, nome: typeof x?.nome === "string" && x.nome.trim() ? x.nome.slice(0, 40) : `Escultura ${i + 1}`,
+        ativo: x?.ativo !== false, base: umDe(x?.base, ["esfera", "gota", "folha", "capsula"] as FormaBase[], "esfera"), nivel: Math.round(num(x?.nivel, 5, 3, 6)), pos,
+        lugar: { th: num(L.th, 0, -180, 180), z: num(L.z, 0, -20, 20), altura: num(L.altura, 0, -10, 20), tamanho: num(L.tamanho, 3, 0.2, 40), rx: num(L.rx, 0, -360, 360), ry: num(L.ry, 0, -360, 360), rz: num(L.rz, 0, -360, 360) },
+        espelhar: !!x?.espelhar,
+      };
+    }),
   };
   if (doc.cabeca.gema.lapidacao === "redonda") doc.cabeca.gema.comprimento = doc.cabeca.gema.largura;
   return doc;

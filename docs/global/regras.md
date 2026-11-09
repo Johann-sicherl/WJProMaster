@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 08/11/2026.
+> Última consolidação: 08/11/2026 (WJSlicer3D).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -255,6 +255,16 @@
   08/11/2026 (J7, pedido do Johann: "modelar o anel do jeito que eu preciso", não só predefinições):
   **ornamentos desenhados com o esboço do WJCAD** viram fios envolvidos no aro (Ø e altura por fio,
   simetria, pontos = bolinha ou pedrinha em inglesa), ponta da garra (bolinha/alongada/dupla) e aro dividido.
+  08/11/2026 (J8, pedido do Johann): **escultura livre em malha** unida à joia (pincéis com a caneta, dedo
+  navega; peso e STL pela união de malhas `manifold-3d`).
+- **WJSlicer3D** (08/11/2026): face para **fatiar STL para impressão 3D**, por enquanto **só a estimativa
+  de tempo de impressão e de material** (g, m, custo): **sem G-code e sem envio para a impressora**, sem
+  configurações avançadas. Base funcional: um fatiador de código aberto e os perfis de fábrica das
+  impressoras **Bambu Lab e Anycubic** (bico 0,4 mm, 0,20 mm padrão). Os nomes das impressoras aparecem
+  só na lista de máquinas, como dado técnico de compatibilidade; o nome do fatiador de referência nunca
+  aparece. STL do cofre, do aparelho ou do WJCAD (menu → Estimar impressão 3D). Ajustes básicos:
+  camada, paredes, topo/fundo, preenchimento, suporte, borda; calibração do tempo por impressora.
+  Detalhes em `docs/global/wjslicer3d.md`.
 - Especificação e estado de cada face: `docs/global/<face>.md`.
 
 ## 8. Hospedagem, versão e offline

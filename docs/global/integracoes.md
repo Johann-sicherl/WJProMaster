@@ -30,6 +30,10 @@ Regra geral: **vínculo por URI, nunca cópia silenciosa**.
 | **WJCronProject** | — | exportar tarefas, curva S | relatório de status, linha do tempo vinculada | linha do tempo, Gantt vinculados | — | projetos ↔ pedidos, capacidade finita, recursos, custos |
 | **WJPDM / WJERP** | itens comprados para inserir, material com densidade/custo, custo estimado | consultas vivas, `WJ.ITEM` | dados de registros em modelos (mala direta) | painéis vinculados | OPs, apontamentos, recursos e calendários, ações de RNC | — |
 
+Ligações locais já feitas fora da matriz (atalhos de navegação, a malha vai pelo aparelho): WJCAD →
+**WJFlow** (menu → Abrir no WJFlow) e WJCAD → **WJSlicer3D** (menu → Estimar impressão 3D: tempo e
+material de impressão 3D da peça).
+
 ## 3. Fluxos ponta a ponta (cenários de aceitação)
 
 ### F1 — Peça de chapa do projeto à fábrica

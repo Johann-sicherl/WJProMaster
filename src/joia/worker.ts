@@ -5,7 +5,12 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import { setOC, type Shape3D } from "replicad";
 import { construir, medidas, paraFabricar } from "./geometria";
-import type { DocJoia, GrupoTexto } from "./regras";
+import { diametroInterno, superficie, type DocJoia, type GrupoTexto } from "./regras";
+import { malhasNoMundo } from "./escultura";
+import manifoldUrl from "manifold-3d/manifold.wasm?url";
+
+/** Esculturas ativas no mundo (vazio = nenhuma). */
+const esculturasDe = (d: DocJoia) => (d.esculturas.some((e) => e.ativo) ? malhasNoMundo(d.esculturas, diametroInterno(d.aro.norma, d.aro.tamanho) / 2, (th) => superficie(d.aro, th, 0)) : []);
 
 export type PedidoJoia =
   | { tipo: "gerar"; seq: number; doc: DocJoia; grupos: GrupoTexto[]; larguraTexto: number }
@@ -29,11 +34,19 @@ function traduzir(e: unknown): string {
   return m && !/^\d+$/.test(m) ? m : "O kernel não conseguiu montar a joia com esses valores. Desfaça a última alteração ou mude as medidas.";
 }
 
-function malha(forma: Shape3D, seq: number, final: boolean, avisos: string[], t0: number) {
+async function malha(forma: Shape3D, seq: number, final: boolean, avisos: string[], t0: number, doc?: DocJoia) {
   const m = forma.mesh({ tolerance: 0.01, angularTolerance: 8 });
   const pos = new Float32Array(m.vertices), nor = new Float32Array(m.normals), idx = new Uint32Array(m.triangles);
   // a prévia é um composto sem booleanas: volume e área só na versão final
-  const { volume, area } = final ? medidas(forma) : { volume: NaN, area: NaN };
+  let { volume, area } = final ? medidas(forma) : { volume: NaN, area: NaN };
+  const esc = final && doc ? esculturasDe(doc) : [];
+  if (esc.length) {
+    // com escultura: peso e área da união (metal + esculturas) pelo manifold-3d
+    const { carregarManifold, unir } = await import("./uniao");
+    const u = unir(await carregarManifold(manifoldUrl), forma, esc);
+    if (Number.isFinite(u.volume)) ({ volume, area } = u);
+    avisos = [...avisos, ...u.avisos];
+  }
   enviar({ tipo: "malha", seq, final, pos, nor, idx, volume, area, avisos, ms: performance.now() - t0 }, [pos.buffer, nor.buffer, idx.buffer]);
 }
 
@@ -46,16 +59,16 @@ function processar() {
   const t0 = performance.now();
   try {
     const previa = construir(p.doc, p.grupos, p.larguraTexto, true);
-    malha(previa.forma, p.seq, false, [], t0);
+    void malha(previa.forma, p.seq, false, [], t0);
   } catch {
     /* a prévia é opcional */
   }
-  setTimeout(() => {
+  setTimeout(async () => {
     if (pendente) return; // pedido mais novo já agendado
     try {
       const r = construir(p.doc, p.grupos, p.larguraTexto);
       atual = { forma: r.forma, doc: p.doc };
-      malha(r.forma, p.seq, true, r.avisos, t0);
+      await malha(r.forma, p.seq, true, r.avisos, t0, p.doc);
     } catch (e) {
       enviar({ tipo: "erro", seq: p.seq, mensagem: traduzir(e) });
     }
@@ -72,14 +85,26 @@ self.onmessage = (ev: MessageEvent<PedidoJoia>) => {
     }
     return;
   }
-  try {
-    if (!atual) throw new Error("A joia ainda não foi gerada.");
-    const s = p.fabricar ? paraFabricar(atual.doc, atual.forma, true) : atual.forma;
-    const blob = p.formato === "step" ? s.blobSTEP() : s.blobSTL({ tolerance: 0.005, angularTolerance: 3, binary: true } as never);
-    void blob.arrayBuffer().then((bytes) => enviar({ tipo: "arquivo", seq: p.seq, bytes }, [bytes]));
-  } catch (e) {
-    enviar({ tipo: "erro", seq: p.seq, mensagem: traduzir(e) });
-  }
+  void (async () => {
+    try {
+      if (!atual) throw new Error("A joia ainda não foi gerada.");
+      const d = atual.doc, esc = esculturasDe(d);
+      let bytes: ArrayBuffer;
+      if (esc.length && p.formato === "stl") {
+        // com escultura: STL da união numa peça só (contração aplicada na malha final)
+        const { carregarManifold, unir, stlBinario } = await import("./uniao");
+        const base = p.fabricar ? paraFabricar(d, atual.forma, true, false) : atual.forma;
+        const u = unir(await carregarManifold(manifoldUrl), base, esc);
+        bytes = stlBinario(u.malha, p.fabricar ? 1 + d.fabricacao.contracao / 100 : 1);
+      } else {
+        const s = p.fabricar ? paraFabricar(d, atual.forma, true) : atual.forma;
+        bytes = await (p.formato === "step" ? s.blobSTEP() : s.blobSTL({ tolerance: 0.005, angularTolerance: 3, binary: true } as never)).arrayBuffer();
+      }
+      enviar({ tipo: "arquivo", seq: p.seq, bytes }, [bytes]);
+    } catch (e) {
+      enviar({ tipo: "erro", seq: p.seq, mensagem: traduzir(e) });
+    }
+  })();
 };
 
 (async () => {
