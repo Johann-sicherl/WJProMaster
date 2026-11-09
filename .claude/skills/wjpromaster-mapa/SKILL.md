@@ -58,7 +58,8 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | WJCronProject | `src/cronograma/main.ts` · motor `src/agenda/agenda.ts` | `docs/global/cronograma.md` |
 | WJERP | `src/erp/main.ts` · regras `src/erp/regras.ts` | `docs/global/erp.md` |
 | WJTaskPlan | `src/tarefas/main.ts`, `regras.ts`, `escrita.ts`, `copias.ts` | `docs/global/taskplan.md` |
-| WJVideoMaker (V0) | `src/video/aparelho.ts`, `aparelho-worker.ts`, `capacidade.ts`, `tempo.ts` | `docs/global/wjvideomaker.md` |
+| WJVideoMaker (editor) | interface `src/video/main.ts` (biblioteca, linha do tempo, propriedades, exportar) + `video.css` · motor puro `src/video/projeto.ts` (clipes, cortes, velocidade, textos, plano de quadros, taxa) · desenho do quadro `desenho.ts` (prévia = exportação) · prévia `previa.ts` · mídias no OPFS `midias.ts` · exportação MP4 no Worker `exportar-worker.ts` (mediabunny) · áudio 48 kHz/velocidade `audio.ts` · tempo `tempo.ts` | `docs/global/wjvideomaker.md` §16 |
+| WJVideoMaker (teste do aparelho, V0) | `src/video/aparelho.ts`, `aparelho-worker.ts`, `aparelho.css`, `capacidade.ts` | `docs/global/wjvideomaker.md` §8 |
 | WJCalcEng | `src/calceng/main.ts` · motor `src/calceng/cg2d.ts` · calculadoras por matéria e busca `src/calceng/modulos.ts` · álgebra, matrizes e física (campos + passos) `src/calceng/calculadoras.ts` | `docs/global/wjcalceng.md` |
 | WJGoldDiamond (joias) | `src/joia/main.ts`, `vista.ts`, `malhaGema.ts`, `worker.ts` · motor `src/joia/regras.ts` · ornamentos (esboço → fios) `src/joia/ornamento.ts` + editor `src/joia/editorOrnamento.ts` (esboço do WJCAD, import dinâmico) · sólido `src/joia/geometria.ts` (booleana `segura`, `fioSolido`) | `docs/global/wjgolddiamond.md` |
 | WJFlow | `src/flow/main.ts`, `gpu.ts` (WebGPU), `lbm.ts`, `geometria.ts`, `estudo.ts`, `campo.ts`, `vista3d.ts`, `aparelho.ts`, workers `cpu-worker.ts`, `pos-worker.ts`, `preparo-worker.ts` | `docs/global/wjflow.md` |

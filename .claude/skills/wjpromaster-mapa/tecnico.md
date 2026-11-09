@@ -83,7 +83,7 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 | WJPDM | `pdm/` | `src/pdm/` | `src/pdm/regras.ts` (`teste-pdm.ts`) | IndexedDB `wjpdm`, cópia `.wjpdm` |
 | WJERP | `erp/` | `src/erp/` | `src/erp/regras.ts` (`teste-erp.ts`) | IndexedDB `wjerp`, cópia `.wjerp` |
 | WJTaskPlan | `tarefas/` | `src/tarefas/` | `src/tarefas/regras.ts` (`teste-tarefas.ts`) | IndexedDB `wjtaskplan`; `WJTaskPlan/tarefas.json` + `.csv` (pasta irmã do WJPDM nas cópias) |
-| WJVideoMaker | `video/aparelho/` (V0; editor `video/` na V1) | `src/video/` | `src/video/tempo.ts`, `capacidade.ts` (`teste-video.ts`) | `.wjvid` + mídia e exportações, **tudo no cofre do WJPDM** (vídeo/foto = arquivo de mídia, sem versões); teste do aparelho em Worker com WebCodecs + WebGL2 |
+| WJVideoMaker | `video/` (editor, V1) + `video/aparelho/` (V0) | `src/video/` | `src/video/projeto.ts`, `audio.ts`, `tempo.ts`, `capacidade.ts` (`teste-video.ts`) | `.wjvid` no cofre (app `video`, pasta "Vídeos"), autosave `wjvid:documento`; mídia importada do aparelho ou do WJPDM com cópia no OPFS (`wjvideo/midia/<id>`); exportação MP4 no Worker com a `mediabunny` (MPL-2.0), "Salvar no WJPDM" sem versões (`exportarComo(..., { semVersoes })`) |
 | WJCalcEng | `calceng/` | `src/calceng/` | `src/calceng/cg2d.ts` (`teste-calceng.ts`) | `.wjcalc` (pasta Cálculos do cofre), autosave `wjcalc:documento`; calculadora 1 = centro de gravidade 2D: o desenho é o **esboço do WJCAD** (`EditorEsboco`, faixa Sketch, `Viewport.definir2D`), cada região fechada = figura; painel direito = massa única ou por figura, CG, inércia; demais calculadoras (álgebra, matrizes, física) em `src/calceng/calculadoras.ts` (campos + resolução passo a passo, `calcs[id]` no arquivo), catálogo e lupa em `modulos.ts` |
 | WJGoldDiamond | `joia/` | `src/joia/` | `src/joia/regras.ts` + `geometria.ts` (`teste-joia.ts`) | `.wjgd` (pasta Joias do cofre), autosave `wjgd:documento`; construtores de joia (aro, cabeça, pavé, gravação, textura, fabricação, preço) no mesmo kernel OpenCascade, worker próprio |
 | WJFlow | `flow/` (+ `flow/aparelho/`) | `src/flow/` | `src/flow/lbm.ts`, `geometria.ts`, `estudo.ts` (`teste-flow.ts`) | `.wjflow` (estudo + peça), autosave IndexedDB `wjflow`; túnel de vento LBM D3Q19 em WebGPU |
@@ -224,3 +224,11 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
   passando por aresta do perfil): aparar 0,6·r ou folgar 0,02 mm deixa 3–5× mais rápido e correto.
   Superfícies analíticas (toro, cilindro, plano) são bem mais rápidas que B-spline (loft) nos cortes.
   Fio de Ø variável: varredura com `Law_Linear` (`genericSweep` com `law`), não loft (autointercepta em voltas fechadas).
+- **WJVideoMaker — armadilhas (08/11/2026):** o `AudioSampleSource` da `mediabunny` exige taxa e canais
+  constantes (a opção `transform` não aceita taxas que mudam): todo áudio passa pelo `Reamostrador`
+  (`src/video/audio.ts`, 48 kHz estéreo, com a velocidade). O Chromium de testes recusa nome com acento
+  no OPFS (`TypeMismatchError`): gravar com nome interno ASCII e renomear o `File` ao entregar. No
+  Playwright, um toque logo depois de um arraste com o dedo (< ~0,5 s) não gera `click` (Chrome móvel):
+  pausar no roteiro. Guardar `FileSystemDirectoryHandle` do OPFS no IndexedDB derruba o Chromium de
+  testes (no tablet funciona). Carregar a `mediabunny` de dois caminhos na mesma página dá aviso de
+  "carregada duas vezes": nos testes, gerar/conferir mídia numa aba à parte.

@@ -9,8 +9,9 @@ Roda no **celular, tablet e computador** (navegador Chrome/Edge e PWA), tudo **n
   `quadros.ts` (`scripts/teste-video.ts`) · teste do aparelho em `video/aparelho/`
 - Arquivos: **tudo no cofre do WJPDM** — projeto **`.wjvid`** (linha do tempo + ids da mídia do cofre), mídia e exportações, pasta
   **"Vídeos"** · autosave no IndexedDB `wjvideo` · cache de mídia, miniaturas e proxies no **OPFS**
-- Status: **V0 ✅** (teste do aparelho em `video/aparelho/`, aberto pela caixa do início; números do
-  TCL medidos em 05/11/2026, §8) · **V1** é a próxima (§12). Decisões do §14 tomadas em 05/11/2026.
+- Status: **V0 ✅** (teste do aparelho, `video/aparelho/`) · **V1 ✅ (08/11/2026)**: editor em `video/`
+  (cortar, aparar, acelerar/desacelerar, reduzir o tempo, juntar vídeos e fotos, texto sobre a imagem,
+  exportar MP4 com redução de tamanho; §16). Próxima: V2.
 
 Legenda: ✅ existe · 🟡 parcial · **V0…V6** fase deste documento · ⏸ registrado, fora do escopo atual ·
 ❓ depende de decisão do Johann (§14).
@@ -61,6 +62,12 @@ Legenda: ✅ existe · 🟡 parcial · **V0…V6** fase deste documento · ⏸ r
    e legenda, exportados pequenos para mandar por mensagem.
 
 ## 4. Fontes de mídia (pedido do Johann)
+
+> **Decisão de 08/11/2026 (Johann):** "os documentos serão fornecidos pelo próprio dispositivo ou via
+> WJPDM" — o editor **não analisa pastas**: importa pelo seletor de arquivos do aparelho (galeria,
+> câmera, Downloads, pendrive) ou pelo explorador do cofre do WJPDM (o que está no Drive chega pelo
+> WJPDM). Com isso o seletor do Google Drive (chave de API) deixou de ser necessário. A tabela abaixo
+> é o levantamento original; o que vale na V1 está no §16.
 
 | Fonte | Como entra | Abrir de novo depois | Limites |
 |---|---|---|---|
@@ -375,7 +382,7 @@ pelo navegador, 10,2 GB de espaço para o app, armazenamento persistente):**
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
 | **V0** ✅ | **Teste do aparelho** (`video/aparelho/`, como o do WJFlow): lista codecs de decodificação e codificação com aceleração (H.264/HEVC/VP9/AV1/AAC/Opus) e resoluções aceitas; mede decodificação simultânea (1, 2, 3 vídeos 1080p), composição WebGL2 e exportação de 10 s; espaço do OPFS; seletores de pasta/pendrive | ✅ números do TCL anotados (§8) e limites da V1 definidos |
-| **V1** | **Núcleo utilizável**: página `video/` e caixa no início; projeto 16:9 ou 9:16; **arquivo de mídia no cofre** (§7.2: sem versões, uma cópia só, envio retomável ao Drive); **importar para o cofre** da galeria, arquivos/pendrive e Drive (Picker); biblioteca com miniaturas; linha do tempo com pista principal magnética + 1 pista de sobreposição + 1 de áudio; mover, aparar, dividir, excluir, fechar vão; fotos com duração; volume e *fade*; visualizador com qualidade automática; **exportar MP4 1080p**; `.wjvid` no cofre; mídia offline/Localizar; autosave e desfazer | caso 4 (fotos + música) e caso 5 (cortes de vídeos do pendrive) feitos no tablet do início ao fim |
+| **V1** ✅ | **Editor** (08/11/2026, foco pedido pelo Johann: "apenas um editor de vídeo, como corte, redução de tempo, aceleração e redução de vídeo, anexar vídeo com imagem, colocar texto sobre imagens e vídeos"): página `video/`; importar do aparelho e do WJPDM; pista principal magnética de vídeos e fotos + pista de textos; dividir, aparar (pelo cursor ou arrastando a alça), excluir fechando o vão, mover, duplicar; velocidade 0,1×–10× e "duração na linha do tempo" (reduz o tempo sem cortar); duração da foto; volume/mudo; texto sobre a imagem (arrastar no vídeo, posição, tamanho, cor, faixa, negrito); formato 16:9/9:16/1:1/4:5; exportar MP4 (resolução, qualidade ou tamanho máximo em MB) para o aparelho, Compartilhar ou o WJPDM; `.wjvid` no cofre; desfazer/refazer, autosave | roteiro de navegador no tablet: importar, dividir, 2×, aparar com o dedo, texto, desfazer, exportar e conferir duração, imagem e som do MP4 ✅ |
 | **V2** | **Montagem completa**: pistas ilimitadas, transformar (posição/escala/rotação/opacidade), recorte, girar/espelhar, sobreposição e tela dividida, pan & zoom em foto, **quadros-chave**, velocidade (constante, inverter, congelar), **títulos** e rótulos com animação, **transições**, marcadores, *roll*/*slip*, agrupar, copiar atributos | caso 1 (vídeo técnico) e caso 3 sem áudio avançado |
 | **V3** | **Áudio**: várias pistas, forma de onda, quadros-chave de volume, normalizar (LUFS), *ducking*, equalizador, redução de ruído simples, **gravar narração**, detectar silêncios (cortar automaticamente), marcar batidas | caso 3 completo (cortes no ritmo) |
 | **V4** | **Cor e efeitos**: correção básica, curvas, HSL, **LUT `.cube`**, croma, máscaras (inclusive desenhadas com a caneta), desfoque/mosaico de área com quadros-chave, vinheta, modos de mesclagem, antes/depois | croma e LUT conferidos com imagem de referência |
@@ -403,7 +410,8 @@ Tablet) e publicada na hora (regras 6, 7 e 9).
 
 1. ~~Mídia fora do cofre~~ → **trocado pelo Johann em 06/11/2026: "use a mesma pasta do WJPDM,
    centralize todos os arquivos lá"**. Tudo no cofre, com o arquivo de mídia do §7.2.
-2. Seletor do Google Drive com **chave de API do navegador**: falta o Johann criar a chave (Google
+2. ~~Seletor do Google Drive com chave de API~~ → **dispensado em 08/11/2026** (a mídia vem do aparelho
+   ou do WJPDM, que já traz o que está no Drive). Texto original: seletor do Google Drive com **chave de API do navegador**: falta o Johann criar a chave (Google
    Cloud, projeto `wjpromaster` → APIs e serviços → ativar "Google Picker API" → Credenciais → Criar
    credencial → Chave de API → restringir a sites `https://johann-sicherl.github.io/*` e à Picker API) e
    mandar a chave (ela é pública, vai no código). Até lá, a V1 sai com pasta, pendrive e galeria.
@@ -434,7 +442,7 @@ Texto original das perguntas (para referência):
 "Movie Maker" é marca da Microsoft e há apps com "Video Maker" no nome: fazer a busca no INPI antes
 de registrar (README §6). Na UI nunca aparece o nome do software de referência.
 
-## 16. Estado (05/11/2026)
+## 16. Estado (08/11/2026)
 
 - Especificação e levantamento de requisitos: este documento; decisões no §14.
 - **V0 ✅** — página `video/aparelho/` (caixa **WJVideoMaker → "Teste do aparelho"** no início):
@@ -452,6 +460,46 @@ de registrar (README §6). Na UI nunca aparece o nome do software de referência
   - Funções puras em `src/video/tempo.ts` (µs ↔ quadros, fps racional, código de tempo) e
     `capacidade.ts`, testadas em `scripts/teste-video.ts` (no `pnpm teste`).
 - Números do TCL medidos e limites da V1 definidos (§8).
-- Próximo: **V1**, começando pelo **arquivo de mídia no cofre** (§7.2), depois o editor. Pendentes
-  com o Johann: teste 2 (pasta do WJPDM) com um vídeo dentro do cofre e a chave do seletor do
-  Google Drive (§14).
+- **V1 ✅ (08/11/2026) — editor** (`video/`, caixa WJVideoMaker → Abrir no início):
+  - **Importar**: "Do aparelho" (seletor de arquivos: galeria, câmera, Downloads, pendrive) e "Do
+    WJPDM" (explorador do cofre, `lerBlobDoCofre`). Cada mídia é lida pela `mediabunny` (duração,
+    tamanho do quadro já girado, se tem som, se o aparelho decodifica; HEIC e H.265 10 bits com
+    mensagem clara) e uma cópia fica no armazenamento do app (OPFS `wjvideo/midia/<id>`, `midias.ts`)
+    para o projeto reabrir. Mídia ausente neste aparelho (projeto aberto em outro): marca "Fora deste
+    aparelho · Localizar…".
+  - **Linha do tempo** (`main.ts`): pista principal magnética (vídeos e fotos em sequência, sem vão) +
+    pista de textos; régua com zoom (−/+, Ctrl+roda, pinça com dois dedos, "mostrar tudo"); toque na
+    régua busca; toque no bloco seleciona; arrastar o bloco **reordena** (marca laranja de inserção);
+    **alças** nas pontas **aparam** (vídeo: trecho da mídia; foto/texto: duração); toque longo ou botão
+    direito abre o menu (dividir, aparar, velocidades, duplicar, excluir).
+  - **Comandos** (faixa Editar/Texto/Exportar e atalhos): Dividir (S ou Ctrl+B), Aparar início (Q) / fim
+    (W) pelo cursor, Velocidade (0,25×…8×, ou qualquer valor 0,1×–10× no painel), Som, Mover antes/depois,
+    Duplicar, Excluir (Delete), Adicionar texto (T), Espaço toca, ←/→ um quadro, Home/End, Ctrl+Z/Y.
+  - **Painel à direita**: clipe (começa/termina no vídeo, velocidade, **duração na linha do tempo** —
+    mudar ajusta a velocidade, volume 0–200 %), foto (duração), texto (conteúdo, tempo, posição,
+    tamanho, cor, negrito, faixa e cor da faixa), projeto (formato, quadros por segundo, duração).
+  - **Prévia** (`previa.ts`): `<video>` do navegador por mídia (hardware), velocidade pelo
+    `playbackRate`, clipes seguidos da mesma mídia sem pausa; texto arrastável no vídeo.
+  - **Exportar** (`exportar-worker.ts`, Worker): MP4 H.264 (H.265/VP9/AV1 se faltar) + AAC (Opus se
+    faltar); resolução 1080/720/480/360 no lado menor; qualidade alta/boa/econômica ou **tamanho máximo
+    em MB** (taxa calculada); estimativa do tamanho antes; progresso com tempo restante, tela acesa,
+    cancelar. Quadros pela `CanvasSink` (rotação do celular aplicada) + textos (mesmo `desenho.ts` da
+    prévia); áudio contínuo convertido para 48 kHz estéreo com a velocidade do clipe pelo reamostrador
+    próprio (`audio.ts`; o tom acompanha a velocidade), silêncio nas fotos e clipes mudos. Arquivo
+    gravado aos poucos no OPFS (nome interno sem acento). Pronto: **Salvar no WJPDM…** (explorador do
+    cofre; reexportar com o mesmo nome **substitui**, sem acumular versões — `exportarComo(..., { semVersoes })`),
+    **Baixar no aparelho** ou **Compartilhar**.
+  - **Projeto** `.wjvid` no cofre (pasta da face "Vídeos", app `video` no `cofre.ts`), autosave
+    `wjvid:documento`, desfazer por fotografias. Celular começa em 9:16.
+  - **Testes**: `scripts/teste-video.ts` (119 verificações: cortes, aparar, velocidade, reduzir tempo,
+    mover, textos, plano de quadros, tamanho/taxa, arquivo, reamostrador) e roteiro de navegador no
+    tablet (importar MP4 + foto gerados no próprio teste, dividir, 2×, aparar com o dedo, texto,
+    desfazer, exportar e conferir o MP4: duração, quadro, texto, foto, 440 Hz/880 Hz/silêncio), mouse
+    no computador (reordenar, aparar, menu, Ctrl+roda), celular (sem rolagem lateral), salvar e
+    reabrir pelo cofre, exportar no WJPDM duas vezes (substitui).
+  - Dependência nova: **`mediabunny` 1.65.2** (MPL-2.0, sem dependências além de tipos), só no editor
+    (importação e Worker de exportação), conforme o §10.
+- Limites da V1 (para as próximas fases): áudio acelerado muda o tom (manter o tom = V3); uma pista de
+  vídeo (sobreposição/tela dividida = V2); sem transições, música separada nem efeitos de cor (V2–V4);
+  a mídia fica no armazenamento do app de cada aparelho (no outro aparelho: "Localizar…"; levar a mídia
+  junto pelo cofre = "arquivo de mídia", §7.2).

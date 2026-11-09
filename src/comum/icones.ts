@@ -162,6 +162,18 @@ export const IC = {
   fundir: svg(`<path d="M6 3h12l-3 6H9z"/><path d="M12 9v5"/><circle cx="12" cy="17.5" r="3.5" stroke="${C}"/>`),
   filigrana: svg(`<path d="M4 18c3-1 4-4 3-6s-3-1-3 1 2 3 4 2 3-4 4-7"/><path d="M20 18c-3-1-4-4-3-6s3-1 3 1-2 3-4 2-3-4-4-7" stroke="${C}"/><circle cx="12" cy="4" r="1.3"/>`),
   girar: svg(`<path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v5h-5" stroke="${C}"/>`),
+  // WJVideoMaker (edição de vídeo)
+  filme: svg(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M3 15h18M7 5v4M12 5v4M17 5v4M7 15v4M12 15v4M17 15v4"/><path d="M10.5 10.5v3l2.5-1.5z" stroke="${C}"/>`),
+  dividirClipe: svg(`<rect x="2.5" y="8" width="8" height="8" rx="1"/><rect x="13.5" y="8" width="8" height="8" rx="1"/><path d="M12 3v18" stroke="${C}" stroke-dasharray="2 2"/>`),
+  apararInicio: svg(`<rect x="6" y="8" width="15" height="8" rx="1"/><path d="M3 6v12M6 12H3" stroke="${C}"/><path d="M9 8v8" stroke="${C}" stroke-dasharray="2 2"/>`),
+  apararFim: svg(`<rect x="3" y="8" width="15" height="8" rx="1"/><path d="M21 6v12M18 12h3" stroke="${C}"/><path d="M15 8v8" stroke="${C}" stroke-dasharray="2 2"/>`),
+  velocidade: svg(`<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4.5-5" stroke="${C}"/><circle cx="12" cy="16" r="1.4" stroke="${C}"/>`),
+  moverAntes: svg(`<rect x="11" y="7" width="10" height="10" rx="1"/><path d="M8 12H2m3-3-3 3 3 3" stroke="${C}"/>`),
+  moverDepois: svg(`<rect x="3" y="7" width="10" height="10" rx="1"/><path d="M16 12h6m-3-3 3 3-3 3" stroke="${C}"/>`),
+  som: svg(`<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" stroke="${C}"/>`),
+  semSom: svg(`<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l5 6M21 9l-5 6" stroke="${C}"/>`),
+  inicioFilme: svg(`<path d="M6 5v14"/><path d="M19 6v12l-9-6z" stroke="${C}"/>`),
+  fimFilme: svg(`<path d="M18 5v14"/><path d="M5 6v12l9-6z" stroke="${C}"/>`),
 };
 
 export type NomeIc = keyof typeof IC;

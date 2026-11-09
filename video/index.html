@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/wjpromaster.svg" type="image/svg+xml" />
+    <title>WJVideoMaker — WJProMaster</title>
+  </head>
+  <body>
+    <main class="vm-principal">
+      <aside class="vm-biblioteca" id="vm-biblioteca" aria-label="Mídia do projeto"></aside>
+      <section class="vm-centro" aria-label="Visualizador">
+        <div class="vm-palco" id="vm-palco"><canvas id="vm-previa" aria-label="Prévia do vídeo"></canvas></div>
+        <div class="vm-transporte" id="vm-transporte"></div>
+      </section>
+      <aside class="vm-props" id="vm-props" aria-label="Propriedades"></aside>
+      <section class="vm-linha" aria-label="Linha do tempo">
+        <div class="vm-linha-barra"><span>Linha do tempo</span><div id="vm-zoom" class="vm-zoom"></div></div>
+        <div class="vm-rolo" id="vm-rolo"></div>
+      </section>
+    </main>
+    <input id="vm-entrada" type="file" accept="video/*,image/*" multiple hidden />
+    <script type="module" src="/src/video/main.ts"></script>
+  </body>
+</html>
