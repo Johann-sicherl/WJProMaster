@@ -3,6 +3,7 @@
 // (cad/index.html + style.css), para o usuário ver o mesmo app nos três ambientes.
 
 import { ICONES, type NomeIcone } from "../icones";
+import { lerPrefsCad, type Dispositivo } from "./preferenciasCad";
 
 export const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 export const escapar = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -107,20 +108,8 @@ export function instalarFecharAoTocarFora(fecharMenu: () => void) {
   });
 }
 
-// ---------- dispositivo (o mesmo perfil da peça: Ferramentas → Dispositivo) ----------
-export type Dispositivo = "celular" | "tablet" | "computador";
-export interface PrefsCad {
-  dispositivo?: Dispositivo;
-  toqueLongoMs?: number;
-  estilo?: string;
-}
-export function lerPrefsCad(): PrefsCad {
-  try {
-    return JSON.parse(localStorage.getItem("jlscad:interface") ?? "{}");
-  } catch {
-    return {};
-  }
-}
+// ---------- dispositivo (o mesmo perfil da peça: ⚙ Configurações → Dispositivo) ----------
+export { lerPrefsCad, type Dispositivo, type PrefsCad } from "./preferenciasCad";
 export function aplicarDispositivo(): Dispositivo {
   const p = lerPrefsCad();
   const d = p.dispositivo ?? (matchMedia("(pointer: coarse)").matches ? (Math.min(screen.width, screen.height) < 600 ? "celular" : "tablet") : "computador");

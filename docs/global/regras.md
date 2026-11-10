@@ -81,13 +81,16 @@
 ## 3. Aparelhos e entrada
 
 - Roda em **celular, tablet (Android, Chrome/PWA) e computador**. Perfil escolhido na janela inicial
-  (Ferramentas → Dispositivo; ⚙ Configurações na página inicial). Classe `disp-*` no `body`.
+  (no WJCAD, trocar na ⚙ Configurações → Dispositivo; ⚙ Configurações na página inicial). Classe `disp-*` no `body`.
   - Celular: ícones sem texto, árvore/painéis em gaveta, dedo desenha.
   - Tablet: caneta + dedo, **alvos ≥ 44 px**, lupa de precisão.
   - Computador: botões compactos, mouse e atalhos.
 - **Caneta desenha, dedo navega** (1 dedo orbita, 2 dedos zoom/pan). Sem caneta, o dedo também esboça.
 - Mouse como nos CADs profissionais: esquerdo seleciona/desenha, **meio gira** (Ctrl+meio arrasta), roda
-  aproxima no cursor, **direito abre o menu de contexto**.
+  aproxima no cursor, **direito abre o menu de contexto**. **Roda configurável** (10/11/2026, WJCAD):
+  sentido ("Rolar para a frente aproxima" = padrão / "afasta") e **passo por clique de 2 % a 50 %,
+  padrão 5 %, um valor só para Peça, Montagem e Desenho** (decisão do Johann: o Desenho, que dava ~14 %,
+  passou a seguir o mesmo passo). No esboço em Escala 1:1 o zoom continua travado.
 - **Toque longo** (0,6 s, configurável) de dedo ou caneta = botão direito (menu de contexto).
 - **Sem gestos de mouse/caneta** (guia radial): o Johann não quer.
 - Atalhos: Ctrl+1…8 vistas, Espaço orientação, F enquadrar, S barra de atalhos, Ctrl+B reconstruir,
@@ -187,6 +190,13 @@
 
 ## 6. WJCAD (Peça, Montagem, Desenho)
 
+- **⚙ Configurações do WJCAD** (10/11/2026): engrenagem no canto direito da barra superior da Peça, da
+  Montagem e do Desenho (e "Ferramentas → Configurações…" no menu) abre uma tela à parte, por seções:
+  **Dispositivo** (perfil, toque longo, caixa flutuante), **Mouse e zoom**, **Esboço** (escala real 1:1,
+  calibrar a tela; recebe a seguir "Relações automáticas"), **Exibição** (estilo da vista 3D) e **Cofre**
+  (atalho para Cópias do cofre). Vale na hora, guardado por aparelho, e as outras janelas abertas seguem a
+  mudança. O item antigo "Ferramentas → Dispositivo" saiu (a janela de dispositivo só aparece na primeira
+  vez). A ⚙ da página inicial continua como está.
 - Só quatro áreas de comando: **Features, Sketch, Sheet Metal e Avaliar**. Nada de superfícies, soldas,
   moldes, simulação (o WJFlow é app separado).
 - Especificação campo a campo e status em `docs/funcional/` (consultar antes de implementar; atualizar

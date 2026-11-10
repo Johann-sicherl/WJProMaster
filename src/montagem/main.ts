@@ -6,6 +6,8 @@
 import { registrarComAtualizacao } from "../comum/atualizacao";
 import { instalarLateralAjustavel } from "../ui/lateral";
 import { abrirEmNovaJanela, gravarNaJanela, lerDaJanela, podarJanelas } from "../comum/janelas";
+import { abrirConfiguracoesCad, calibrarTelaCad, type IdSecao } from "../ui/configuracoesCad";
+import { aoMudarPrefsCad, gravarPrefsCad, type PrefsCad } from "../ui/preferenciasCad";
 import "../style.css";
 import { abrirEditorCor } from "../ui/editorCor";
 import { indiceDoCorpoRef, trechosDeCor, type TrechoCor } from "../aparencia";
@@ -21,7 +23,7 @@ import type { Referencial } from "../esboco/referencial";
 import { esbocosAbsorvidos, ROTULO_TIPO, type Feature } from "../model";
 import { iconeFeature } from "../ui/iconeRecurso";
 import { capturarAtiva, limparConfiguracoes } from "../configuracoes";
-import { Viewport, type Entidade, type TipoEntidade, type Vista } from "../viewport";
+import { Viewport, type Entidade, type EstiloExibicao, type TipoEntidade, type Vista } from "../viewport";
 import { documentoImportado, fotografiaLeve, revelarFotografia, MATERIAIS, validarDocumento, type Documento, type Referencia, type Vec3 } from "../model";
 import {
   aplicarPadroes, embutirPeca, excluirComponentes, excluirPadrao, explosaoAutomatica, girarEmTorno, massaDaMontagem, posesExplodidas, IDENTIDADE, inserirComponente, marcaDe, montagemVazia, novoIdM, quantidades, quatDeEuler,
@@ -87,6 +89,13 @@ for (const id of ["XY", "XZ", "YZ"] as const) viewport.definirVisibilidadeRefere
 const kernel = new ClienteKernel();
 const prefsCad = lerPrefsCad();
 viewport.tempoToqueLongo = prefsCad.toqueLongoMs ?? 600;
+/** Opções do aparelho mudaram (aqui na ⚙ ou em outra janela do WJCAD): aplica na hora. */
+function aplicarPrefsCad(p: PrefsCad) {
+  aplicarDispositivo();
+  viewport.tempoToqueLongo = p.toqueLongoMs ?? 600;
+  viewport.definirRoda(p);
+}
+aoMudarPrefsCad(aplicarPrefsCad);
 queueMicrotask(() => (viewport.interceptador = interceptarArraste)); // arraste livre fora de comando
 if (prefsCad.estilo) viewport.definirEstilo(prefsCad.estilo as never);
 
@@ -2464,6 +2473,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
     salvarAutosave();
     abrirEmNovaJanela(new URL(`${RAIZ}cad/desenho/#de-montagem`, location.href).href);
   }, doc: true },
+  configuracoes: { rotulo: "Configurações…", icone: "engrenagem", fazer: () => abrirConfiguracoes() },
   locais: { rotulo: "Cópias do cofre (pendrive, Drive, dispositivo)…", icone: "pasta", fazer: () => void abrirCopias() },
   atalhos: { rotulo: "Atalhos", icone: "menu", fazer: () => abrirJanela("Atalhos da montagem", `<table class="tabela"><tbody>${[
     ["I", "Inserir componentes"], ["M", "Posicionar"], ["Delete", "Excluir componente/posicionamento selecionado"], ["H", "Ocultar/mostrar o selecionado"],
@@ -2491,6 +2501,7 @@ function montarMenu() {
   titulo("Arquivo");
   ["novo", "abrirCofre", "abrir", "salvar", "desenho", "fechar"].forEach(item);
   titulo("Ferramentas");
+  item("configuracoes");
   item("locais");
   titulo("Ajuda");
   item("atalhos");
@@ -2516,6 +2527,27 @@ function montarMenu() {
     rap.append(b);
   }
 }
+/** ⚙ Configurações do WJCAD (as mesmas da Peça e do Desenho). */
+function abrirConfiguracoes(secao?: IdSecao) {
+  fecharMenu();
+  abrirConfiguracoesCad({
+    ambiente: "montagem",
+    ler: lerPrefsCad,
+    mudar: (m) => aplicarPrefsCad(gravarPrefsCad(m)),
+    estilo: {
+      atual: () => viewport.estiloExibicao,
+      mudar: (e) => {
+        gravarPrefsCad({ estilo: e });
+        viewport.definirEstilo(e as EstiloExibicao);
+      },
+    },
+    calibrar: calibrarTelaCad,
+    copias: () => void abrirCopias(),
+  }, secao);
+}
+$("btn-config").innerHTML = ICONES.engrenagem;
+$("btn-config").onclick = () => abrirConfiguracoes();
+
 function fecharMenu() {
   $("menu-arquivo").hidden = true;
   $("btn-menu").setAttribute("aria-expanded", "false");
