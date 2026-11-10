@@ -218,6 +218,10 @@
   de soltar; **nunca** relação redundante ou que superdefina (o solver confere). **Ligadas por padrão**,
   chave em ⚙ Configurações → Esboço; **segurar Ctrl** suprime no momento. Ctrl+Z tira a linha com as relações
   dela. Filete/chanfro de esboço aceitam canto unido por Coincidente (inclusive preso à origem).
+- **Esboço sobre a peça** (10/11/2026): **cota até aresta/vértice da peça não cria linha no esboço** (referência
+  oculta, nunca entra no perfil; esboços antigos ocultam sozinhos a linha usada só por cota); **o esboço vence a
+  peça na seleção** (tocar de novo no mesmo lugar alterna para a aresta da peça embaixo); **caixa de seleção** no
+  Espelhar, Deslocar e Padrões, com as mesmas regras do Selecionar.
 - **✕ num recurso novo** (09/11/2026): cancelar não deixa o recurso (nem recurso com erro) na árvore; o
   esboço volta a ficar solto.
 - **Exportar = "Salvar como"** (07/11/2026): botão **Exportar** logo depois do 💾 Salvar (e no menu

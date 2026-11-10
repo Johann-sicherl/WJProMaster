@@ -780,7 +780,7 @@ function flangeBase(f: FeatureFlangeBase, ctx: Ctx): ModeloChapa {
     return m;
   }
   // perfil aberto (só linhas): paredes ao longo do perfil, dobras com o raio da chapa nos cantos
-  const linhas = esb.geos.filter((g) => !g.construcao && g.tipo !== "ponto");
+  const linhas = esb.geos.filter((g) => !g.construcao && !g.oculta && g.tipo !== "ponto");
   if (!linhas.length || linhas.some((g) => g.tipo !== "linha")) {
     throw new Error("Flange base: use um contorno fechado (placa) ou um perfil aberto só de linhas (perfil dobrado).");
   }

@@ -15,7 +15,7 @@ import * as op from "./operacoes";
 import { carregarFonte, fonteLida } from "./fontesTexto";
 import { gerarContornos, OPCOES_TEXTO_PADRAO, type GuiaTexto } from "./texto";
 import type { Font } from "opentype.js";
-import { atualizarExternas, criarExterna, idsExternos, podarExternas, pontoNaProjecao, projetar, type ProjecaoExterna } from "./externas";
+import { atualizarExternas, criarExterna, idsExternos, idsOcultos, ocultarRefsDeCota, podarExternas, pontoNaProjecao, projetar, type ProjecaoExterna } from "./externas";
 import { referencial, type Referencial } from "./referencial";
 import { alvoDoArraste, aplicarAutoLinha, candidatosLinha, tentarRelacao, type CandidatoAuto } from "./relacoesAuto";
 import { abrirTecladoCota, avaliarTeclado, numeroVisor } from "../ui/tecladoCota";
@@ -102,18 +102,18 @@ function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
     case "parabola": return ["Toque o foco.", "Toque o vértice.", "Toque o início do arco.", "Toque o fim do arco."][n] ?? "";
     case "spline": return n ? "Mais pontos. Toque no último de novo (ou Esc) para terminar; no primeiro, fecha a curva." : "Toque o primeiro ponto da curva.";
     case "aparar": return "Toque o trecho a apagar (entre interseções).";
-    case "offset": return "Toque uma entidade: a cadeia ligada a ela é copiada à distância indicada.";
+    case "offset": return "Toque uma entidade (a cadeia ligada a ela vai junto) ou arraste no vazio para a caixa; as entidades são copiadas à distância indicada.";
     case "exibirRelacoes": return "Toque uma relação da lista para ver as entidades; toque entidades no desenho para filtrar por elas.";
     case "padraoLinearEsboco":
     case "padraoCircularEsboco": {
       const c = ed?.campoPadrao;
       return c === "dir1" || c === "dir2" ? "Toque a direção: linha do esboço, eixo ou aresta reta da peça."
         : c === "centro" ? "Toque o ponto de centro (ou um círculo/arco: vale o centro dele)."
-        : "Toque as entidades a padronizar.";
+        : "Toque as entidades a padronizar, ou arraste no vazio para a caixa (esquerda→direita: só o que fica dentro; ao contrário: também o que cruza).";
     }
     case "espelhar": return ed?.espelho.campo === "eixo"
       ? "Toque a linha de espelho: linha do esboço, eixo ou aresta reta da peça."
-      : "Toque as entidades a espelhar; depois o campo \"Espelhar em relação a\".";
+      : "Toque as entidades a espelhar ou arraste no vazio para a caixa (esquerda→direita: só o que fica dentro; ao contrário: também o que cruza); depois o campo \"Espelhar em relação a\".";
     case "cota": return n === 0 ? "Toque uma entidade (ou duas) e depois onde fica o número. Arestas e vértices da peça também valem." : n === 1 ? "Toque outra entidade (do esboço ou da peça), ou onde fica o número." : "Toque onde fica o número.";
   }
 }
@@ -295,6 +295,8 @@ export class EditorEsboco {
       cv.removeEventListener("pointerleave", sair);
     });
     vp.olharPlano(this.ref);
+    // esboços antigos: a linha de referência criada só por uma cota até a peça passa a ser oculta
+    ocultarRefsDeCota(esb);
     // referências do modelo acompanham a peça atual (a entidade mais parecida)
     if (vp.topologia && esb.geos.some((g) => g.externa)) {
       const { perdidas } = atualizarExternas(esb, vp.topologia, this.ref);
@@ -416,19 +418,33 @@ export class EditorEsboco {
     return (tipo === "touch" ? 24 : 10) * this.h.viewport.mmPorPixel(this.ref);
   }
 
-  /** Entidade sob o ponto: pontos têm prioridade sobre curvas; eixos por último. */
+  /**
+   * Entidade sob o ponto: pontos têm prioridade sobre curvas; eixos por último. O que é do esboço vence
+   * as referências da peça (linha do esboço sobre uma aresta da peça: pega a linha); referências só de
+   * cota (ocultas) nunca são achadas.
+   */
   private achar(p: P2, tol: number): Alvo | null {
     const pts = mapaPontos(this.esb);
-    let melhor: Alvo | null = null, dm = tol;
+    const ocultos = idsOcultos(this.esb);
+    const externos = idsExternos(this.esb);
+    const prioridade = (id: string) => (externos.has(id) ? 1 : 0);
+    let melhor: Alvo | null = null, dm = tol, pm = 2;
+    const tentar = (alvo: Alvo, d: number) => {
+      const pr = prioridade(alvo.id);
+      if (pr < pm || (pr === pm && d < dm)) { pm = pr; dm = d; melhor = alvo; }
+    };
     for (const [id, q] of pts) {
+      if (ocultos.has(id)) continue;
       const d = dist(p, q);
-      if (d < dm) { dm = d; melhor = { tipo: "ponto", id }; }
+      if (d < tol) tentar({ tipo: "ponto", id }, d);
     }
     if (melhor) return melhor;
+    pm = 2;
     dm = tol;
     for (const g of this.esb.geos) {
+      if (g.oculta) continue;
       const d = distanciaGeo(g, pts, p);
-      if (d < dm) { dm = d; melhor = { tipo: "geo", id: g.id }; }
+      if (d < tol) tentar({ tipo: "geo", id: g.id }, d);
     }
     if (melhor) return melhor;
     if (Math.abs(p.y) < tol) return { tipo: "geo", id: EIXO_H };
@@ -439,8 +455,10 @@ export class EditorEsboco {
   /** Encaixe do cursor: ponto existente, ponto médio, sobre curva/eixo, e H/V em relação ao anterior. */
   private encaixar(p: P2, tol: number, anterior?: P2): Encaixe {
     const pts = mapaPontos(this.esb);
+    const ocultos = idsOcultos(this.esb);
     let melhor: Encaixe | null = null, dm = tol;
     for (const [id, q] of pts) {
+      if (ocultos.has(id)) continue;
       const d = dist(p, q);
       if (d < dm) { dm = d; melhor = { p: q, ponto: id, rotulo: id === ORIGEM ? "Origem" : "Coincidente" }; }
     }
@@ -448,7 +466,7 @@ export class EditorEsboco {
     const mv = this.tela && this.acharModelo(this.tela.x, this.tela.y, this.tela.tipo, ["vertice"]);
     if (mv && mv.proj.tipo === "ponto") return { p: mv.proj.p, modelo: mv, rotulo: mv.rotulo };
     for (const g of this.esb.geos) {
-      if (g.tipo !== "linha") continue;
+      if (g.tipo !== "linha" || g.oculta) continue;
       const m = mult(soma(pts.get(g.p1)!, pts.get(g.p2)!), 0.5);
       const d = dist(p, m);
       if (d < dm) { dm = d; melhor = { p: m, meio: g.id, rotulo: "Ponto médio" }; }
@@ -464,6 +482,7 @@ export class EditorEsboco {
     }
     dm = tol;
     for (const g of this.esb.geos) {
+      if (g.oculta) continue;
       const d = distanciaGeo(g, pts, q);
       if (d < dm) { dm = d; melhor = { p: projetarNaGeo(g, pts, q), geo: g.id, rotulo: "Sobre a curva" }; }
     }
@@ -646,7 +665,7 @@ export class EditorEsboco {
       if (!this.dedoDesenha) return false;
       // com Selecionar, dedo no vazio gira a vista (na caixa); em cima de algo, seleciona/arrasta.
       // Traço e laço escolhidos de propósito: o dedo também seleciona.
-      if (this.ferramenta === "selecionar" && !alvo && this.modoSelecao === "caixa") return false;
+      if (!alvo && ((this.ferramenta === "selecionar" && this.modoSelecao === "caixa") || this.caixaNoComando())) return false;
     }
     const anterior = this.cliques.length ? this.cliques[this.cliques.length - 1].p : undefined;
     const enc = this.ferramentaUsaEncaixe() ? this.encaixar(p, tol, this.ferramenta === "linha" ? anterior : undefined) : { p };
@@ -687,6 +706,12 @@ export class EditorEsboco {
         (this.gesto ??= { pts: [pt.enc.p], x0: pt.x0 }).pts.push(p);
         this.redesenhar();
       }
+      return;
+    }
+    if (pt && pt.moveu && !pt.alvo && this.caixaNoComando()) {
+      // Espelhar, Deslocar e Padrões: arrastar no vazio desenha a caixa que enche a lista de entidades
+      (this.gesto ??= { pts: [pt.enc.p], x0: pt.x0 }).pts.push(p);
+      this.redesenhar();
       return;
     }
     if (pt && pt.moveu && this.ferramenta === "aparar" && this.aparo.modo === "potente") {
@@ -743,13 +768,16 @@ export class EditorEsboco {
       } else if (pt.arraste) {
         this.concluirArraste();
       } else if (pt.alvo) {
-        this.alternarSelecao(pt.alvo.id);
-        this.abrirCaixaRelacoes(e.clientX, e.clientY);
+        this.toqueSelecionar(pt.alvo, e.clientX, e.clientY, pt.tipo);
       } else if (pt.modelo && !pt.moveu) {
         this.selecionarModelo(pt.modelo, e.clientX, e.clientY);
       } else {
         this.limparSelecao();
       }
+      return;
+    }
+    if (this.gesto) {
+      this.concluirGesto(e.clientX, e.clientY, pt.tipo);
       return;
     }
     // arrastar de um ponto a outro = dois cliques (início no ponto pressionado)
@@ -770,9 +798,66 @@ export class EditorEsboco {
       return;
     }
     if (e.pointerType !== "touch" || this.ferramenta !== "selecionar") return;
+    // com caneta, o dedo navega; o toque curto do dedo também seleciona — e o esboço vence a peça
+    const p = this.noPlano(e);
+    const alvo = p && this.achar(p, this.tolMm("touch"));
+    if (alvo) {
+      this.tela = { x: e.clientX, y: e.clientY, tipo: "touch" };
+      this.toqueSelecionar(alvo, e.clientX, e.clientY, "touch");
+      return;
+    }
     const m = this.acharModelo(e.clientX, e.clientY, "touch", ["vertice", "aresta"]);
     if (m) this.selecionarModelo(m, e.clientX, e.clientY);
     else if (this.selecao.size) this.limparSelecao();
+  }
+
+  /**
+   * Espelhar, Deslocar (offset), Padrão linear e Padrão circular com o campo de entidades ativo: a caixa
+   * de seleção (mesmas regras e mesmo visual do Selecionar) enche a lista do comando.
+   */
+  private caixaNoComando(): boolean {
+    const f = this.ferramenta;
+    return (f === "espelhar" && this.espelho.campo === "entidades") || f === "offset"
+      || ((f === "padraoLinearEsboco" || f === "padraoCircularEsboco") && this.campoPadrao === "entidades");
+  }
+
+  /** Último toque do Selecionar numa entidade: tocar de novo no mesmo lugar alterna esboço ↔ peça. */
+  private ultimoToque: { x: number; y: number; esboco: string; peca: string | null } | null = null;
+
+  /**
+   * Toque do Selecionar numa entidade do esboço (ela vence a aresta/vértice da peça que estiver
+   * embaixo). Tocar de novo no mesmo lugar com ela selecionada troca pela aresta/vértice da peça sob o
+   * toque (se houver); mais um toque volta para a entidade do esboço.
+   */
+  private toqueSelecionar(alvo: Alvo, x: number, y: number, tipo: string) {
+    const u = this.ultimoToque;
+    const mesmoLugar = !!u && u.esboco === alvo.id && Math.hypot(x - u.x, y - u.y) <= (tipo === "touch" ? 16 : 8);
+    if (u && mesmoLugar && u.peca && this.selecao.has(u.peca)) {
+      this.selecao.delete(u.peca);
+      this.selecao.add(alvo.id);
+      u.peca = null;
+      this.resolver(true); // a referência da peça que ficou sem uso sai
+      this.abrirCaixaRelacoes(x, y);
+      return;
+    }
+    if (u && mesmoLugar && !u.peca && this.selecao.has(alvo.id)) {
+      const m = this.acharModelo(x, y, tipo, ["vertice", "aresta"]);
+      const g = m && criarExterna(this.esb, m.proj, m.ref);
+      const id = g && (g.tipo === "ponto" ? g.p : g.id);
+      if (id && id !== alvo.id) {
+        this.selecao.delete(alvo.id);
+        this.selecao.add(id);
+        u.peca = id;
+        this.resolver(true);
+        this.abrirCaixaRelacoes(x, y);
+        this.h.avisar(`Selecionado: ${m!.rotulo.toLowerCase()} (embaixo da entidade do esboço). Toque de novo para voltar ao esboço.`);
+        return;
+      }
+      if (g) this.resolver(false); // a referência criada à toa sai
+    }
+    this.ultimoToque = { x, y, esboco: alvo.id, peca: null };
+    this.alternarSelecao(alvo.id);
+    this.abrirCaixaRelacoes(x, y);
   }
 
   /** Fim do gesto de seleção: soma à seleção o que o traço encostou ou o que a caixa/laço pegou. */
@@ -780,11 +865,23 @@ export class EditorEsboco {
     const g = this.gesto!;
     this.gesto = null;
     const pts = g.pts;
-    const forma: FormaSelecao = this.modoSelecao === "traco" ? { tipo: "traco", pts, tol: this.tolMm(tipo) }
-      : this.modoSelecao === "laco" ? { tipo: "laco", pts }
+    const comando = this.caixaNoComando();
+    const modo = comando ? "caixa" : this.modoSelecao;
+    const forma: FormaSelecao = modo === "traco" ? { tipo: "traco", pts, tol: this.tolMm(tipo) }
+      : modo === "laco" ? { tipo: "laco", pts }
       // caixa: da esquerda para a direita só o que fica dentro; ao contrário, também o que cruza
       : { tipo: "caixa", a: pts[0], b: pts[pts.length - 1], cruzando: x < g.x0 };
-    const ids = idsNaSelecao(this.esb, forma);
+    let ids = idsNaSelecao(this.esb, forma);
+    if (comando) {
+      // a lista do comando recebe só curvas do esboço (como o toque); o eixo do espelho fica de fora
+      const geos = new Set(this.esb.geos.filter((x) => x.tipo !== "ponto").map((x) => x.id));
+      ids = ids.filter((id) => geos.has(id) && id !== this.espelho.eixo);
+      for (const id of ids) this.selecao.add(id);
+      this.redesenhar();
+      this.h.atualizarInterface();
+      if (ids.length) this.h.avisar(`${ids.length} entidade(s) somada(s) à lista (${this.geosSelecionadas().length} no total).`);
+      return;
+    }
     for (const id of ids) this.selecao.add(id);
     this.redesenhar();
     this.h.atualizarInterface();
@@ -797,7 +894,7 @@ export class EditorEsboco {
   /** Seleciona todas as entidades do esboço (Ctrl+A). */
   selecionarTudo() {
     if (this.ferramenta !== "selecionar") this.definirFerramenta("selecionar");
-    this.selecao = new Set(this.esb.geos.map((g) => (g.tipo === "ponto" ? g.p : g.id)));
+    this.selecao = new Set(this.esb.geos.filter((g) => !g.oculta).map((g) => (g.tipo === "ponto" ? g.p : g.id)));
     this.redesenhar();
     this.h.atualizarInterface();
     this.h.avisar(this.selecao.size ? `${this.selecao.size} entidade(s) selecionada(s).` : "O esboço não tem entidades.");
@@ -807,7 +904,7 @@ export class EditorEsboco {
   private previaGesto() {
     const g = this.gesto!;
     let pl = g.pts;
-    if (this.modoSelecao === "caixa") {
+    if (this.modoSelecao === "caixa" || this.caixaNoComando()) {
       const a = pl[0], b = pl[pl.length - 1];
       pl = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }, a];
     } else if (this.modoSelecao === "laco") pl = [...pl, pl[0]];
@@ -1021,7 +1118,7 @@ export class EditorEsboco {
         if (!eixo) {
           // aresta reta da peça: vira referência do modelo e serve de espelho
           const m = this.tela && this.acharModelo(this.tela.x, this.tela.y, this.tela.tipo, ["aresta"]);
-          const ge = m && criarExterna(this.esb, m.proj, m.ref);
+          const ge = m && criarExterna(this.esb, m.proj, m.ref, true);
           if (ge?.tipo === "linha") eixo = ge.id;
         }
         if (!eixo) {
@@ -1597,7 +1694,7 @@ export class EditorEsboco {
       let g = id ? this.esb.geos.find((x) => x.id === id) : undefined;
       if (!id || (g && g.tipo !== "linha")) {
         const m = this.tela && this.acharModelo(this.tela.x, this.tela.y, this.tela.tipo, ["aresta"]);
-        const ge = m && criarExterna(this.esb, m.proj, m.ref);
+        const ge = m && criarExterna(this.esb, m.proj, m.ref, true);
         id = ge?.tipo === "linha" ? ge.id : null;
         g = ge ?? undefined;
       }
@@ -1764,7 +1861,8 @@ export class EditorEsboco {
       // aresta/vértice da peça: vira referência do modelo e entra na cota
       const m = this.tela && this.acharModelo(this.tela.x, this.tela.y, this.tela.tipo, ["vertice", "aresta"]);
       if (m) {
-        const g = criarExterna(this.esb, m.proj, m.ref);
+        // a cota fica presa à aresta/vértice da peça sem criar entidade visível no esboço
+        const g = criarExterna(this.esb, m.proj, m.ref, true);
         alvo = g.tipo === "ponto" ? { tipo: "ponto", id: g.p } : { tipo: "geo", id: g.id };
       }
     }
@@ -2200,7 +2298,9 @@ export class EditorEsboco {
 
   /** Relações (não cotas) do esboço que passam no filtro do painel. */
   relacoesFiltradas(): RestricaoEsboco[] {
-    const rels = this.esb.restricoes.filter((r) => !ehCota(r));
+    // o "fixo" que prende uma referência só de cota (oculta) não aparece na lista
+    const ocultos = idsOcultos(this.esb);
+    const rels = this.esb.restricoes.filter((r) => !ehCota(r) && !op.referencias(r).every((x) => ocultos.has(x)));
     const externas = new Set(this.esb.geos.filter((g) => g.externa).flatMap((g) => [g.id, ...pontosDaGeo(g)]));
     switch (this.filtroRelacoes) {
       case "problemas": return rels.filter((r) => this.estadoRelacao(r) !== "Satisfeita");

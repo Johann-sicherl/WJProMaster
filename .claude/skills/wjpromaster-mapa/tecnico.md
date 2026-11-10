@@ -200,6 +200,14 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
 
 ## Observações técnicas
 
+- **Referência oculta do esboço** (10/11/2026, `src/esboco/externas.ts`): `GeoEsboco.oculta` marca a geometria
+  externa criada para cota, linha de espelho ou direção de padrão (`criarExterna(..., true)`). Fica fora de
+  `visual.ts` (traço e pontos), `achar`/`encaixar` do editor, `idsNaSelecao`, relações automáticas, lista de
+  relações (o "fixo" dela) e perfil (`encontrarLacos`, `cadeiaAberta`, chapa). **Armadilha:** oculta e
+  visível nunca se reaproveitam (`externaExistente(..., oculta)`): selecionar a aresta para relação revelaria a
+  referência da cota. Esboço antigo: `ocultarRefsDeCota` ao abrir no editor. `achar` dá prioridade ao que não é
+  externo; `toqueSelecionar` alterna esboço ↔ peça no toque repetido; `caixaNoComando` liga a caixa no
+  Espelhar/Deslocar/Padrões. `window.__cad.editor()` (só em dev) expõe o editor aos roteiros.
 - **Relações automáticas do esboço** (10/11/2026, `src/esboco/relacoesAuto.ts`): a prévia (símbolo no cursor)
   usa só geometria, a cada movimento; ao soltar, `tentarRelacao` resolve com e sem a relação e só a mantém se
   o grau de liberdade cair sem conflito nem redundância nova (senão desfaz e devolve as posições). Colinear

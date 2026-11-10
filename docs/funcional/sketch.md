@@ -264,7 +264,7 @@ Parâmetros: X/Y.
 - Esticar: entidades, ponto base/ΔXY
 
 ### Espelhar entidades — ✅
-- Entidades a espelhar ✅ (campo de seleção) · **Copiar** ✅ · **Espelhar em relação a** ✅
+- Entidades a espelhar ✅ (campo de seleção; **caixa de seleção** ✅ 10/11/2026, ver Seleção múltipla) · **Copiar** ✅ · **Espelhar em relação a** ✅
   (linha do esboço, eixo ou aresta reta da peça) · relações de simetria ✅ · pré-visualização ✅
 - Pendente: plano/face como espelho
 - **Espelhamento dinâmico** ✅ (Espelhar ▾ → Espelhamento dinâmico): escolher a linha de centro (ou
@@ -297,8 +297,16 @@ esperado × encontrado — hoje o erro aparece na feature ✅)
 ## 4. Cotas
 
 ### Cota inteligente — ✅
-- Aceita **arestas e vértices da peça** (viram referência do modelo, em roxo) ✅ — ex.: centro do
-  círculo até a aresta da face onde está o esboço.
+- Aceita **arestas e vértices da peça** ✅ — ex.: centro do círculo até a aresta da face onde está o
+  esboço. **10/11/2026 (pedido do Johann):** a cota fica **presa direto à aresta/vértice da peça**, sem
+  criar linha no esboço: a referência é **oculta** (`oculta` na geometria externa) — não aparece, não se
+  seleciona, não encaixa, não recebe relação automática e **nunca entra no perfil** (contorno, perfil
+  aberto, até o próximo). Continua acompanhando a aresta quando a peça muda (assinatura geométrica) e sai
+  sozinha quando a cota é apagada. O mesmo vale para a aresta usada como linha de espelho e como direção
+  dos padrões. Selecionar a mesma aresta (para relação) cria outra referência, visível; a da cota segue
+  oculta. **Esboços antigos**: ao abrir, a linha de referência usada **só por cotas** (sem relação nem
+  geometria ligada) vira oculta automaticamente — a cota continua, a linha some (`ocultarRefsDeCota`,
+  testado em `teste-esboco` com extrusão e corte até o próximo).
 - **Distanciador automático** ✅: enquanto posiciona, a cota segue o cursor (prévia) e a linha de
   cota vai sozinha para a distância padrão da geometria; mais longe encaixa em múltiplos dessa
   distância (cotas paralelas igualmente espaçadas); entre as linhas de chamada o número fica
@@ -388,6 +396,17 @@ Botão **Selecionar ▾** na aba Sketch (a seta escolhe o modo; o botão repete 
 - **Selecionar tudo** (Ctrl+A): todas as entidades do esboço.
 - Os gestos **somam** à seleção (bom para a caneta, sem Ctrl); tocar no vazio limpa. Ao terminar,
   abre a caixinha de relações aplicáveis. Função pura `idsNaSelecao` (testada em `teste-esboco`).
+- **Caixa dentro dos comandos** ✅ (10/11/2026, pedido do Johann): no **Espelhar** (campo Entidades),
+  **Deslocar (offset)**, **Padrão linear** e **Padrão circular** (campo Entidades), arrastar no vazio com
+  caneta ou mouse faz a mesma caixa (mesmas regras e mesmo visual) e enche a lista do comando; tocar
+  uma entidade continua pondo/tirando uma a uma. Só curvas do esboço entram (o eixo do espelho fica de
+  fora). Com o dedo, arrastar no vazio gira a vista, como no Selecionar.
+- **Prioridade do esboço sobre a peça** ✅ (10/11/2026, pedido do Johann): dentro da tolerância do toque,
+  linhas, arcos e pontos do esboço **sempre vencem** as arestas/vértices da peça (e as referências da peça
+  já trazidas ao esboço). A peça só é pega se não houver entidade do esboço ali, ou no Converter entidades.
+  Vale para caneta, mouse e dedo (com caneta em uso, o toque curto do dedo também seleciona).
+  **Tocar de novo no mesmo lugar** (com a entidade selecionada) troca para a aresta/vértice da peça que
+  está embaixo; mais um toque volta para a entidade do esboço.
 
 ### Caixinha de relações no ponteiro — ✅
 - Ao selecionar entidades (Selecionar), abre ao lado do ponteiro uma caixinha com os **símbolos**

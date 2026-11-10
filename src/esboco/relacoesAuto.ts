@@ -56,7 +56,7 @@ export function candidatosLinha(esb: FeatureEsboco, a: P2, b: P2, o: { pontas?: 
   const pts = mapaPontos(esb);
   const ligados = new Set<string>();
   for (const p of o.pontas ?? []) if (p) for (const q of grupoCoincidente(esb, p)) ligados.add(q);
-  const linhas = esb.geos.filter((g): g is Linha => g.tipo === "linha" && g.id !== o.ignorar && pts.has(g.p1) && pts.has(g.p2));
+  const linhas = esb.geos.filter((g): g is Linha => g.tipo === "linha" && !g.oculta && g.id !== o.ignorar && pts.has(g.p1) && pts.has(g.p2));
   const out: CandidatoAuto[] = [];
 
   // 1) colinear: mesma direção e as duas pontas sobre a reta da outra (linha não ligada a esta: ligada,
@@ -139,7 +139,8 @@ export function alvoDoArraste(esb: FeatureEsboco, arrastado: string, p: P2, tol:
   const pts = mapaPontos(esb);
   const proprias = esb.geos.filter((g) => pontosDaGeo(g).includes(arrastado));
   const fora = new Set([...grupoCoincidente(esb, arrastado), ...proprias.flatMap(pontosDaGeo)]);
-  const doTexto = new Set(esb.geos.filter((g) => g.tipo === "texto").flatMap(pontosDaGeo));
+  // pontos de texto e de referências só de cota (ocultas) não recebem relação automática
+  const doTexto = new Set(esb.geos.filter((g) => g.tipo === "texto" || g.oculta).flatMap(pontosDaGeo));
   let melhor: CandidatoAuto | null = null, dm = tol;
   for (const [id, q] of pts) {
     if (fora.has(id) || doTexto.has(id)) continue;
@@ -153,7 +154,7 @@ export function alvoDoArraste(esb: FeatureEsboco, arrastado: string, p: P2, tol:
   dm = tol;
   const ids = new Set(proprias.map((g) => g.id));
   for (const g of esb.geos) {
-    if (ids.has(g.id) || g.tipo === "ponto" || g.tipo === "texto") continue;
+    if (ids.has(g.id) || g.oculta || g.tipo === "ponto" || g.tipo === "texto") continue;
     const d = distanciaGeo(g, pts, p);
     if (d < dm) {
       dm = d;

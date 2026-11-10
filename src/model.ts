@@ -97,6 +97,11 @@ interface GeoBase {
   construcao?: boolean; // geometria de construção: não vira perfil (ex.: linha de centro)
   /** Referência do modelo 3D (aresta/vértice da peça projetado no plano): fica fixa. */
   externa?: Referencia;
+  /**
+   * Referência só de cota/eixo (aresta/vértice da peça usado numa cota, espelho ou direção de padrão):
+   * não aparece, não é selecionável nem encaixável e nunca entra no perfil. Some quando ninguém a usa.
+   */
+  oculta?: boolean;
 }
 
 export type GeoEsboco =

@@ -81,7 +81,10 @@ export function construirCamada(esb: FeatureEsboco, o: OpcoesCamada): THREE.Grou
     adicionar({ cor: o.selecao?.has(EIXO_V) ? CORES.selecionado : CORES.eixo, largura: 1, tracejado: true }, [{ x: 0, y: -L }, { x: 0, y: L }]);
   }
 
+  // referências só de cota (aresta/vértice da peça): nada aparece no esboço; a cota vai até a peça
+  const ocultos = new Set(esb.geos.filter((g) => g.oculta).flatMap((g) => [g.id, ...pontosDaGeo(g)]));
   for (const g of esb.geos) {
+    if (g.oculta) continue;
     const seg: P2[] = [];
     for (const pl of tracosDaGeo(g, pts, passo)) for (let i = 0; i + 1 < pl.length; i++) seg.push(pl[i], pl[i + 1]);
     const largura = o.editando ? (g.construcao ? 1.4 : 2.4) : 1.6;
@@ -170,7 +173,7 @@ export function construirCamada(esb: FeatureEsboco, o: OpcoesCamada): THREE.Grou
       cores.push(cor.r, cor.g, cor.b);
     };
     ponto({ x: 0, y: 0 }, o.selecao?.has(ORIGEM) ? CORES.selecionado : 0x55606b);
-    for (const p of esb.pontos) ponto(p, corDe(p.id));
+    for (const p of esb.pontos) if (!ocultos.has(p.id)) ponto(p, corDe(p.id));
     for (const p of o.previa?.pontos ?? []) ponto(p, CORES.previa);
     if (o.marcador) ponto(o.marcador, CORES.selecionado);
     const geo = new THREE.BufferGeometry();
