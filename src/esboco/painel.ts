@@ -3,7 +3,7 @@
 
 import { ehCota, type OpcoesTexto, type RestricaoEsboco } from "../model";
 import { textoCota } from "./cotas";
-import { EIXO_H, EIXO_V, ORIGEM } from "./geometria";
+import { EIXO_H, EIXO_V, entidadesMinusculas, LIMITE_MINUSCULA, ORIGEM } from "./geometria";
 import { avaliar, COMANDOS_SELECAO, ROTULO_FERRAMENTA, type EditorEsboco } from "./editor";
 
 const NOME_RELACAO: Record<string, string> = {
@@ -108,6 +108,17 @@ export function renderizarPainelEsboco(
   painel.append(def);
   if (ed.estado.definicao === "superdefinido") {
     painel.append(botao("Excluir relações em conflito", () => ed.excluirConflitos(), "perigo largo"));
+  }
+
+  // entidades minúsculas (quase sempre involuntárias): só aviso, o esboço continua valendo
+  const miudas = entidadesMinusculas(esb);
+  if (miudas.length) {
+    const caixa = el("div", "aviso-minusculas");
+    const n = miudas.length;
+    const lista = miudas.slice(0, 3).map((m) => m.texto).join(", ") + (n > 3 ? "…" : "");
+    caixa.append(el("span", "", `⚠ ${n} entidade${n > 1 ? "s" : ""} menor${n > 1 ? "es" : ""} que ${String(LIMITE_MINUSCULA).replace(".", ",")} mm (${lista}). Confira se não é sem querer.`));
+    caixa.append(botao("Selecionar", () => ed.selecionarSomente(miudas.map((m) => m.id))));
+    painel.append(caixa);
   }
 
   // espelhamento dinâmico ligado: aviso fixo com botão para desligar

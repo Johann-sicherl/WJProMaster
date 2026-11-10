@@ -222,6 +222,11 @@
   oculta, nunca entra no perfil; esboços antigos ocultam sozinhos a linha usada só por cota); **o esboço vence a
   peça na seleção** (tocar de novo no mesmo lugar alterna para a aresta da peça embaixo); **caixa de seleção** no
   Espelhar, Deslocar e Padrões, com as mesmas regras do Selecionar.
+- **Mesclar = um corpo quando se tocam por face** (10/11/2026): sobreposição ou face com face vira um corpo
+  em todos os recursos com mesclar. A fusão **cola só ruído numérico (≤ 0,001 mm)**; folga real ou contato só
+  por aresta/ponto fica como corpo separado, com **aviso** no recurso dizendo a folga (não esconder folgas).
+  **Planos novos** a partir de face têm **origem fixa** (projeção da origem da peça), para o esboço não andar
+  quando a face muda; planos antigos ficam como estão. Esboço avisa (sem bloquear) entidade **< 0,5 mm**.
 - **✓/✕ de cada ferramenta do esboço** (10/11/2026): lado a lado no canto superior direito do painel
   lateral; ✓ (Enter) conclui/aplica e sai; ✕ sai desfazendo o que foi feito na ferramenta (comandos com
   seleção: cancela sem aplicar). **Esc seguro**: nas ferramentas de desenho o Esc só sai mantendo o desenho

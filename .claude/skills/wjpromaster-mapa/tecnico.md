@@ -200,6 +200,15 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
 
 ## Observações técnicas
 
+- **Mesclar / fusão** (10/11/2026, `src/kernel/regenerar.ts`): toda união de "mesclar" passa por `fundir()`
+  (`aplicar` e Espelhar corpo). A fusão comum do OpenCascade já une face com face; só quando a ferramenta
+  sobra solta (mais corpos que antes) tenta `BRepAlgoAPI_Fuse` com `SetFuzzyValue(FOLGA_NUMERICA = 0,001 mm)`
+  e aceita se o volume não mudar. Depois de cada recurso de `mesclaNaPeca`, se o nº de sólidos subiu,
+  `avisoCorpoSeparado` mede a distância (`BRepExtrema_DistShapeShape`, até 12 corpos) e grava em
+  `ResultadoRegeneracao.avisos` (não é erro; árvore `.com-aviso`, painel `.prop-aviso`, status "N avisos").
+  **Armadilha** (TAMPA_JANELA do Johann, modelo de teste `scripts/modelos/tampa-janela.wjcad`): plano a partir
+  de face com origem no centro da face anda quando a face muda e leva junto o perfil sem relações (0,033 mm
+  de folga → corpo separado). Planos novos: `origemFixa`.
 - **✓/✕ da ferramenta do esboço** (10/11/2026, `editor.ts` `confirmarFerramenta`/`cancelarFerramenta`, barra
   `.esb-ferr-barra` em `painel.ts`): `definirFerramenta` guarda `JSON.stringify(esb)` ao trocar de ferramenta
   (mudar só o tipo não reinicia); o ✕ restaura no mesmo objeto (`Object.assign`, o `doc` continua apontando

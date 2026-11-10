@@ -900,6 +900,14 @@ export class EditorEsboco {
     }
   }
 
+  /** Seleciona só estas entidades (ex.: as minúsculas apontadas pelo aviso do painel). */
+  selecionarSomente(ids: string[]) {
+    this.selecao.clear();
+    for (const id of ids) this.selecao.add(id);
+    this.redesenhar();
+    this.h.atualizarInterface();
+  }
+
   /** Seleciona todas as entidades do esboço (Ctrl+A). */
   selecionarTudo() {
     if (this.ferramenta !== "selecionar") this.definirFerramenta("selecionar");
