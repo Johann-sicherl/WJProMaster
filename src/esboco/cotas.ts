@@ -85,6 +85,33 @@ export function textoCota(c: CotaEsboco): string {
   return c.referencia ? `(${t})` : t;
 }
 
+/**
+ * Vértice e setor do ângulo cotado: entre as semirretas que saem do vértice na direção de cada linha
+ * (do vértice para o meio da linha), com a abertura igual ao valor medido. Linhas quase paralelas têm
+ * o vértice longe: o setor continua estreito e junto das linhas.
+ */
+export function geometriaAngulo(c: CotaEsboco, esb: FeatureEsboco): { O: P2; a0: number; a1: number; ra: { a: P2; b: P2 }; rb: { a: P2; b: P2 } } | null {
+  if (c.tipo !== "angulo") return null;
+  const pts = mapaPontos(esb);
+  const geos = new Map(esb.geos.map((g) => [g.id, g]));
+  const ra = retaDe(c.a, geos, pts), rb = retaDe(c.b, geos, pts);
+  if (!ra || !rb) return null;
+  const u = sub(ra.b, ra.a), v = sub(rb.b, rb.a);
+  const den = u.x * v.y - u.y * v.x;
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((rb.a.x - ra.a.x) * v.y - (rb.a.y - ra.a.y) * v.x) / den;
+  const O = soma(ra.a, mult(u, t));
+  // pares de semirretas com a abertura do valor cotado: (u, v) ou (−u, −v); fica o par que aponta
+  // para onde as linhas estão (do vértice para o meio de cada uma)
+  const ma = sub(mult(soma(ra.a, ra.b), 0.5), O), mb = sub(mult(soma(rb.a, rb.b), 0.5), O);
+  const nota = (du: P2, dv: P2) => Math.sign(esc2(ma, du)) + Math.sign(esc2(mb, dv));
+  const [du, dv] = nota(u, v) >= nota(mult(u, -1), mult(v, -1)) ? [u, v] : [mult(u, -1), mult(v, -1)];
+  let a0 = angulo({ x: 0, y: 0 }, du), a1 = angulo({ x: 0, y: 0 }, dv);
+  // de a0 a a1 no sentido anti-horário, pelo lado menor (abertura ≤ 180°)
+  if (norm(a1 - a0) > Math.PI) [a0, a1] = [a1, a0];
+  return { O, a0, a1: a0 + norm(a1 - a0), ra, rb };
+}
+
 export interface DesenhoCota {
   segmentos: P2[]; // pares de pontos
   texto: P2; // onde fica o número
@@ -111,8 +138,12 @@ export function textoPadrao(c: CotaEsboco, esb: FeatureEsboco, mmPx: number): P2
     return polar(ctr, raioDe(g, pts) + afast, Math.PI / 4);
   }
   if (c.tipo === "angulo") {
-    const ra = retaDe(c.a, geos, pts);
-    return ra ? soma(ra.a, mult(sub(ra.b, ra.a), 0.3)) : { x: 0, y: 0 };
+    const g = geometriaAngulo(c, esb);
+    if (!g) return { x: 0, y: 0 };
+    // no meio do setor, à distância média do vértice até o meio das duas linhas
+    const ma = mult(soma(g.ra.a, g.ra.b), 0.5), mb = mult(soma(g.rb.a, g.rb.b), 0.5);
+    const rho = Math.max((dist(g.O, ma) + dist(g.O, mb)) / 2, afast);
+    return polar(g.O, rho, (g.a0 + g.a1) / 2);
   }
   const e = extremosLineares(c, esb);
   if (!e) return { x: 0, y: 0 };
@@ -150,22 +181,42 @@ export function desenharCota(c: CotaEsboco, esb: FeatureEsboco, mmPx: number): D
   }
 
   if (c.tipo === "angulo") {
-    const ra = retaDe(c.a, geos, pts), rb = retaDe(c.b, geos, pts);
-    if (!ra || !rb) return null;
-    const u = sub(ra.b, ra.a), v = sub(rb.b, rb.a);
-    const den = u.x * v.y - u.y * v.x;
-    if (Math.abs(den) < 1e-12) return null;
-    const t = ((rb.a.x - ra.a.x) * v.y - (rb.a.y - ra.a.y) * v.x) / den;
-    const O = soma(ra.a, mult(u, t));
+    const g = geometriaAngulo(c, esb);
+    if (!g) return null;
+    const { O, a0, a1 } = g;
     const rho = Math.max(dist(O, T), 6 * mmPx);
-    // setor entre as semirretas (±u, ±v) que contém o texto
-    const angs = [angulo({ x: 0, y: 0 }, u), angulo({ x: 0, y: 0 }, v)].flatMap((a) => [norm(a), norm(a + Math.PI)]).sort((p, q) => p - q);
-    const at = norm(angulo(O, T));
-    let a0 = angs[angs.length - 1] - 2 * Math.PI, a1 = angs[0];
-    for (let i = 0; i + 1 < angs.length; i++) if (at >= angs[i] && at <= angs[i + 1]) [a0, a1] = [angs[i], angs[i + 1]];
     const seg: P2[] = [];
-    const n = 24;
-    for (let i = 0; i < n; i++) seg.push(polar(O, rho, a0 + ((a1 - a0) * i) / n), polar(O, rho, a0 + ((a1 - a0) * (i + 1)) / n));
+    const arco = (de: number, ate: number) => {
+      const n = Math.max(2, Math.min(48, Math.ceil((Math.abs(ate - de) * rho) / (3 * mmPx))));
+      for (let i = 0; i < n; i++) seg.push(polar(O, rho, de + ((ate - de) * i) / n), polar(O, rho, de + ((ate - de) * (i + 1)) / n));
+    };
+    // arco só no setor do ângulo cotado (o que mede o valor), com setas nas pontas
+    arco(a0, a1);
+    const A = polar(O, rho, a0), B = polar(O, rho, a1);
+    const tg = (a: number, s1: number): P2 => ({ x: -Math.sin(a) * s1, y: Math.cos(a) * s1 });
+    seg.push(...seta(A, tg(a0, -1), s), ...seta(B, tg(a1, 1), s));
+    // texto fora do setor: o arco continua até ele (extensão), pelo lado mais perto
+    const at = angulo(O, T);
+    const dentro = (x: number) => {
+      const d = norm(x - a0);
+      return d <= norm(a1 - a0) + 1e-9;
+    };
+    if (!dentro(at)) {
+      const d0 = Math.atan2(Math.sin(at - a0), Math.cos(at - a0)); // < 0: antes do início
+      const d1 = Math.atan2(Math.sin(at - a1), Math.cos(at - a1)); // > 0: depois do fim
+      if (Math.abs(d0) < Math.abs(d1)) arco(a0 + d0, a0);
+      else arco(a1, a1 + d1);
+    }
+    // linhas de chamada: da ponta mais próxima de cada linha até o arco, quando o arco passa fora dela
+    for (const [r, a] of [[g.ra, a0], [g.rb, a1]] as const) {
+      const P = polar(O, rho, a);
+      const t = distPontoSegmento(P, r.a, r.b);
+      if (t.d > 1.5 * mmPx) {
+        const ponta = t.t <= 0.5 ? r.a : r.b;
+        const dd = sub(P, ponta), l = Math.hypot(dd.x, dd.y);
+        if (l > 1e-9) seg.push(soma(ponta, mult(dd, Math.min(1, (2 * mmPx) / l))), soma(P, mult(dd, folga / l)));
+      }
+    }
     return { segmentos: seg, texto: T };
   }
 

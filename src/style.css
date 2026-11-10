@@ -466,9 +466,8 @@ button svg { width: 22px; height: 22px; flex: none; }
   font-size: 12px;
   white-space: nowrap;
 }
-.cota-edicao { display: flex; gap: 4px; padding: 4px; background: var(--painel); border: 1px solid var(--acento); border-radius: 8px; box-shadow: var(--sombra); }
-.cota-edicao input { width: 96px; height: 40px; padding: 0 8px; border: 1px solid var(--linha); border-radius: 6px; font-size: 17px; text-align: center; user-select: text; }
-.cota-edicao button { min-width: 40px; min-height: 40px; padding: 0; background: var(--acento); color: #fff; border-color: var(--acento); }
+/* cota em edição: só o valor sendo digitado (o teclado-calculadora abre ao lado, src/ui/tecladoCota.ts) */
+.cota-edicao { padding: 4px 10px; background: var(--painel); border: 2px solid var(--acento); border-radius: 8px; box-shadow: var(--sombra); font-size: 17px; font-weight: 700; white-space: nowrap; pointer-events: none; }
 .lupa {
   width: 132px;
   height: 132px;
