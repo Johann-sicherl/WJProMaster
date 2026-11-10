@@ -925,10 +925,63 @@ export function poligonoCircunscrito(esb: FeatureEsboco, c: string, meioLado: P2
 
 // ---------- filete e chanfro de esboço, estender ----------
 
-/** Duas linhas que se encontram no ponto (canto). */
-function linhasNoCanto(esb: FeatureEsboco, p: string): [Geo<"linha">, Geo<"linha">] | null {
-  const ls = esb.geos.filter((g): g is Geo<"linha"> => g.tipo === "linha" && !g.construcao && (g.p1 === p || g.p2 === p));
-  return ls.length === 2 ? [ls[0], ls[1]] : null;
+/**
+ * Pontos presos ao ponto `p` por relações Coincidente ponto-ponto (inclusive a origem), com ele mesmo.
+ * Duas linhas desenhadas separadas e unidas depois pela relação formam um canto como se fossem um
+ * ponto só.
+ */
+export function grupoCoincidente(esb: FeatureEsboco, p: string): Set<string> {
+  const ehPonto = new Set([ORIGEM, ...esb.pontos.map((x) => x.id)]);
+  const viz = new Map<string, string[]>();
+  for (const r of esb.restricoes)
+    if (r.tipo === "coincidente" && ehPonto.has(r.a) && ehPonto.has(r.b)) {
+      (viz.get(r.a) ?? viz.set(r.a, []).get(r.a)!).push(r.b);
+      (viz.get(r.b) ?? viz.set(r.b, []).get(r.b)!).push(r.a);
+    }
+  const grupo = new Set([p]);
+  const fila = [p];
+  while (fila.length) for (const q of viz.get(fila.pop()!) ?? []) if (!grupo.has(q)) { grupo.add(q); fila.push(q); }
+  return grupo;
+}
+
+/** Duas linhas que se encontram no canto (no mesmo ponto ou em pontos coincidentes por relação). */
+function linhasNoCanto(esb: FeatureEsboco, grupo: Set<string>): [Geo<"linha">, Geo<"linha">] | null {
+  const ls = esb.geos.filter((g): g is Geo<"linha"> => g.tipo === "linha" && !g.construcao && (grupo.has(g.p1) || grupo.has(g.p2)));
+  if (ls.length !== 2 || ls.some((l) => grupo.has(l.p1) && grupo.has(l.p2))) return null;
+  return [ls[0], ls[1]];
+}
+
+/**
+ * Junta as pontas das duas linhas do canto num ponto só (o tocado, se for uma delas; a origem, se uma
+ * linha sair dela): as geometrias e relações que citavam a outra passam a citar ele, e a coincidência
+ * entre as duas some. As demais relações continuam (ex.: o canto preso à origem por Coincidente).
+ */
+function unificarCanto(esb: FeatureEsboco, ls: [Geo<"linha">, Geo<"linha">], grupo: Set<string>, p: string): string {
+  const pontas = [...new Set(ls.flatMap((l) => [l.p1, l.p2]).filter((x) => grupo.has(x)))];
+  if (pontas.length < 2) return pontas[0] ?? p;
+  const rep = pontas.includes(ORIGEM) ? ORIGEM : pontas.includes(p) ? p : pontas[0];
+  const juntar = new Set(pontas);
+  const troca = (v: unknown) => (typeof v === "string" && v !== rep && juntar.has(v) ? rep : v);
+  for (const g of esb.geos) {
+    const o = g as unknown as Record<string, unknown>;
+    for (const k of Object.keys(o)) {
+      if (k === "id") continue;
+      o[k] = Array.isArray(o[k]) ? (o[k] as unknown[]).map(troca) : troca(o[k]);
+    }
+  }
+  const vistas = new Set<string>();
+  esb.restricoes = esb.restricoes.filter((r) => {
+    const o = r as unknown as Record<string, unknown>;
+    for (const k of ["a", "b", "p", "g"]) if (k in o) o[k] = troca(o[k]);
+    if (o.b !== undefined && o.a === o.b) return false; // coincidência (ou cota) de um ponto com ele mesmo
+    const { id: _id, ...resto } = r;
+    const chave = JSON.stringify(resto);
+    if (vistas.has(chave)) return false; // relação repetida depois da troca
+    vistas.add(chave);
+    return true;
+  });
+  esb.pontos = esb.pontos.filter((x) => x.id === rep || !juntar.has(x.id));
+  return rep;
 }
 
 /**
@@ -949,18 +1002,19 @@ function cantoVirtual(esb: FeatureEsboco, p: string, ls: [Geo<"linha">, Geo<"lin
 }
 
 function cantoInfo(esb: FeatureEsboco, p: string) {
-  const ls = linhasNoCanto(esb, p);
+  const grupo = grupoCoincidente(esb, p);
+  const ls = linhasNoCanto(esb, grupo);
   if (!ls) return null;
   const pts = mapaPontos(esb);
   const P = pts.get(p)!;
   const dirs = ls.map((l) => {
-    const o = pts.get(l.p1 === p ? l.p2 : l.p1)!;
+    const o = pts.get(grupo.has(l.p1) ? l.p2 : l.p1)!;
     const d = sub(o, P);
     const len = Math.hypot(d.x, d.y) || 1;
     return { u: { x: d.x / len, y: d.y / len }, len };
   });
   const cos = Math.max(-1, Math.min(1, esc2(dirs[0].u, dirs[1].u)));
-  return { ls, P, dirs, theta: Math.acos(cos) };
+  return { ls, P, dirs, grupo, theta: Math.acos(cos) };
 }
 
 /** Filete de esboço num canto entre duas linhas. Devolve o arco criado. */
@@ -969,6 +1023,7 @@ export function fileteEsboco(esb: FeatureEsboco, p: string, raio: number, cotar 
   if (!ci || ci.theta < 1e-3 || ci.theta > Math.PI - 1e-3) return null;
   const d = raio / Math.tan(ci.theta / 2);
   if (d >= Math.min(ci.dirs[0].len, ci.dirs[1].len)) return null;
+  p = unificarCanto(esb, ci.ls, ci.grupo, p);
   const t1 = ponto(esb, soma(ci.P, mult(ci.dirs[0].u, d)));
   const t2 = ponto(esb, soma(ci.P, mult(ci.dirs[1].u, d)));
   const bis = soma(ci.dirs[0].u, ci.dirs[1].u);
@@ -1018,7 +1073,8 @@ export function filetesEsboco(esb: FeatureEsboco, cantos: string[], raio: number
 /** Chanfro de esboço (distâncias iguais ou d1/d2) num canto entre duas linhas. */
 export function chanfroEsboco(esb: FeatureEsboco, p: string, d1: number, d2 = d1): Geo<"linha"> | null {
   const ci = cantoInfo(esb, p);
-  if (!ci || d1 >= ci.dirs[0].len || d2 >= ci.dirs[1].len) return null;
+  if (!ci || ci.theta < 1e-3 || ci.theta > Math.PI - 1e-3 || d1 >= ci.dirs[0].len || d2 >= ci.dirs[1].len) return null;
+  p = unificarCanto(esb, ci.ls, ci.grupo, p);
   const t1 = ponto(esb, soma(ci.P, mult(ci.dirs[0].u, d1)));
   const t2 = ponto(esb, soma(ci.P, mult(ci.dirs[1].u, d2)));
   const outras = ci.ls.map((l) => (l.p1 === p ? l.p2 : l.p1)) as [string, string];

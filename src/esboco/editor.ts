@@ -17,6 +17,7 @@ import { gerarContornos, OPCOES_TEXTO_PADRAO, type GuiaTexto } from "./texto";
 import type { Font } from "opentype.js";
 import { atualizarExternas, criarExterna, idsExternos, podarExternas, pontoNaProjecao, projetar, type ProjecaoExterna } from "./externas";
 import { referencial, type Referencial } from "./referencial";
+import { alvoDoArraste, aplicarAutoLinha, candidatosLinha, tentarRelacao, type CandidatoAuto } from "./relacoesAuto";
 import { abrirTecladoCota, avaliarTeclado, numeroVisor } from "../ui/tecladoCota";
 
 /** Símbolo de calculadora do botão da caixa de cota. */
@@ -225,6 +226,12 @@ export class EditorEsboco {
   /** Mostrar a opção "desenhar com o dedo" (só no perfil tablet, onde há caneta). */
   opcaoDedo = true;
   mostrarRelacoes = true;
+  /** Relações automáticas ao desenhar e arrastar (Configurações → Esboço; padrão ligado). */
+  relacoesAuto = true;
+  /** Ctrl segurado: suprime as relações automáticas só neste gesto (como nos CADs profissionais). */
+  private semAuto = false;
+  /** Ponto arrastado sobre outro ponto/curva: a relação que será criada ao soltar. */
+  private autoArraste: CandidatoAuto | null = null;
   estado: ResultadoSolver = { ok: true, gl: 0, conflitantes: [], redundantes: [], definicao: "subdefinido" };
   livres = new Set<string>();
   private conflito = new Set<string>();
@@ -271,7 +278,17 @@ export class EditorEsboco {
     cv.addEventListener("pointerup", soltar);
     cv.addEventListener("pointercancel", cancelar);
     cv.addEventListener("pointerleave", sair);
+    // Ctrl apertado/solto no meio do gesto: a prévia do símbolo some/volta na hora
+    const ctrl = (e: KeyboardEvent) => {
+      if (e.key !== "Control" || this.semAuto === (e.type === "keydown")) return;
+      this.semAuto = e.type === "keydown";
+      if (this.ponteiro || this.cursor) this.redesenhar();
+    };
+    window.addEventListener("keydown", ctrl);
+    window.addEventListener("keyup", ctrl);
     this.soltos.push(() => {
+      window.removeEventListener("keydown", ctrl);
+      window.removeEventListener("keyup", ctrl);
       cv.removeEventListener("pointermove", mover);
       cv.removeEventListener("pointerup", soltar);
       cv.removeEventListener("pointercancel", cancelar);
@@ -458,8 +475,18 @@ export class EditorEsboco {
     return { p: q, hv, rotulo: hv === "horizontal" ? "Horizontal" : hv === "vertical" ? "Vertical" : undefined };
   }
 
-  /** Cria (ou reaproveita) o ponto do encaixe e as relações que ele implica. */
+  /** Relações automáticas valem agora (ligadas nas Configurações e sem Ctrl segurado)? */
+  get autoAtivo(): boolean {
+    return this.relacoesAuto && !this.semAuto;
+  }
+
+  /**
+   * Cria (ou reaproveita) o ponto do encaixe e as relações que ele implica. Sem relações automáticas o
+   * encaixe só posiciona: o ponto existente continua sendo reaproveitado (a cadeia segue ligada), mas
+   * "sobre a curva", ponto médio e as arestas/vértices da peça não viram relação.
+   */
   private pontoDo(enc: Encaixe): string {
+    if (!this.autoAtivo) return op.ponto(this.esb, enc.p, enc.ponto);
     if (!enc.ponto && enc.modelo) {
       // vértice da peça: o ponto do esboço é a própria referência (fixa)
       const g = criarExterna(this.esb, enc.modelo.proj, enc.modelo.ref);
@@ -606,6 +633,7 @@ export class EditorEsboco {
       return false;
     }
     if (e.pointerType === "mouse" && e.button !== 0) return false;
+    this.semAuto = e.ctrlKey;
     this.tela = { x: e.clientX, y: e.clientY, tipo: e.pointerType };
     const p = this.noPlano(e);
     if (!p) return false;
@@ -639,6 +667,7 @@ export class EditorEsboco {
     const pt = this.ponteiro;
     if (pt && e.pointerId !== pt.id) return;
     if (!pt && e.pointerType === "touch") return;
+    this.semAuto = e.ctrlKey;
     this.tela = { x: e.clientX, y: e.clientY, tipo: e.pointerType };
     const p = this.noPlano(e);
     if (!p) return;
@@ -686,6 +715,7 @@ export class EditorEsboco {
     if (!pt || e.pointerId !== pt.id) return;
     this.ponteiro = null;
     this.fecharLupa();
+    this.semAuto = e.ctrlKey;
     this.tela = { x: e.clientX, y: e.clientY, tipo: pt.tipo };
     const p = this.noPlano(e);
     if (!p) return;
@@ -704,14 +734,14 @@ export class EditorEsboco {
       return;
     }
     if (this.ferramenta === "cota" && pt.arraste) {
-      this.resolver(true);
+      this.concluirArraste();
       return;
     }
     if (this.ferramenta === "selecionar") {
       if (this.gesto) {
         this.concluirGesto(e.clientX, e.clientY, pt.tipo);
       } else if (pt.arraste) {
-        this.resolver(true);
+        this.concluirArraste();
       } else if (pt.alvo) {
         this.alternarSelecao(pt.alvo.id);
         this.abrirCaixaRelacoes(e.clientX, e.clientY);
@@ -796,9 +826,18 @@ export class EditorEsboco {
     this.h.atualizarInterface();
   }
 
+  /** Fim do arraste: solto sobre um ponto/curva cria a relação (se não sobrar nem conflitar); um passo de desfazer. */
+  private concluirArraste() {
+    const alvo = this.autoArraste;
+    this.autoArraste = null;
+    if (alvo && this.autoAtivo && tentarRelacao(this.esb, this.h.solver, alvo.r)) this.h.avisar(`Relação automática: ${alvo.rotulo}.`);
+    this.resolver(true);
+  }
+
   private cancelarPonteiro() {
     const pt = this.ponteiro;
     this.ponteiro = null;
+    this.autoArraste = null;
     this.fecharLupa();
     this.gesto = null;
     if (pt?.arraste || this.rastro) {
@@ -829,7 +868,12 @@ export class EditorEsboco {
       }
     }
     const a = pt.arraste;
-    if (a.tipo === "ponto") this.h.solver.resolver(this.esb, { pontos: [{ id: a.id, ...p }] });
+    if (a.tipo === "ponto") {
+      // sobre outro ponto ou curva: encaixa nele e mostra o símbolo da relação que será criada
+      this.autoArraste = this.autoAtivo ? alvoDoArraste(this.esb, a.id, p, this.tolMm(pt.tipo)) : null;
+      const q = this.autoArraste?.p ?? p;
+      this.h.solver.resolver(this.esb, { pontos: [{ id: a.id, x: q.x, y: q.y }] });
+    }
     else if (a.tipo === "raio") {
       const g = this.esb.geos.find((x) => x.id === a.id) as Extract<GeoEsboco, { tipo: "circulo" | "arco" }>;
       this.h.solver.resolver(this.esb, { raios: [{ id: a.id, r: Math.max(1e-3, dist(pts.get(g.c)!, p)) }] });
@@ -1017,7 +1061,8 @@ export class EditorEsboco {
       case "linha":
         if (this.tipoLinha === "pontoMedio") {
           if (c.length === 2) {
-            op.linhaPontoMedio(esb, this.pontoDo(c[0]), c[1].p, cons);
+            const l = op.linhaPontoMedio(esb, this.pontoDo(c[0]), c[1].p, cons);
+            if (this.autoAtivo) aplicarAutoLinha(esb, this.h.solver, l.id, tol);
             pronto = true;
           }
           break;
@@ -1026,7 +1071,8 @@ export class EditorEsboco {
           const a = this.pontoDo(c[0]);
           const b = this.pontoDo(c[1]);
           const l = op.linha(esb, a, b, cons || this.tipoLinha === "centro");
-          if (c[1].hv) op.restringir(esb, { tipo: c[1].hv, a: l.id });
+          // relação automática (H/V, colinear, paralela, perpendicular) entra no mesmo passo de desfazer
+          if (this.autoAtivo) aplicarAutoLinha(esb, this.h.solver, l.id, tol);
           const fecha = !!c[1].ponto; // terminou num ponto que já existia: fecha a cadeia
           this.cliques = fecha ? [] : [{ p: c[1].p, ponto: b }];
           this.resolver(true);
@@ -2456,7 +2502,7 @@ export class EditorEsboco {
     }
     this.mmPxDesenho = vp.mmPorPixel(this.ref);
     const { w, h } = vp.tamanho();
-    const marcador = this.cursor && (this.cursor.ponto || this.cursor.geo || this.cursor.meio) ? this.cursor.p : null;
+    const marcador = this.autoArraste?.p ?? (this.cursor && (this.cursor.ponto || this.cursor.geo || this.cursor.meio) ? this.cursor.p : null);
     this.cotaPrevia = this.previaCota();
     this.camada = construirCamada(this.esb, {
       ref: this.ref,
@@ -2592,8 +2638,21 @@ export class EditorEsboco {
           // só Selecionar e Exibir relações tocam o selo; com as outras ferramentas (Cota, Linha…) o
           // toque passa para a linha embaixo dele (o selo fica no meio da linha, onde se toca para cotar)
           if (this.ferramenta === "selecionar" || this.ferramenta === "exibirRelacoes") {
-            el.onpointerdown = (ev) => ev.stopPropagation();
-            el.onclick = () => this.alternarSelecao(r.id);
+            let repassado = false;
+            el.onpointerdown = (ev) => {
+              ev.stopPropagation();
+              // o Chrome desvia o dedo para o botão vizinho (ajuste de toque): com um ponto do esboço logo
+              // embaixo do dedo, o toque é do ponto (arrastar o canto), não do selo ao lado dele
+              repassado = this.ferramenta === "selecionar" && ev.pointerType === "touch" && this.pontoSobODedo(ev);
+              if (repassado) {
+                ev.preventDefault();
+                this.aoPressionar(ev);
+              }
+            };
+            el.onclick = () => {
+              if (!repassado) this.alternarSelecao(r.id);
+              repassado = false;
+            };
           } else el.style.pointerEvents = "none";
           ov.appendChild(el);
           this.rotulos.push({ el, p, dx: 14 + i * 20, dy: -18 });
@@ -2612,11 +2671,37 @@ export class EditorEsboco {
       }
     }
 
+    // relação automática que será criada ao soltar: símbolo no cursor e na entidade de referência
+    const auto = this.previaAuto();
+    if (auto?.c.ref) {
+      const g = geos.get(auto.c.ref);
+      const p = g?.tipo === "linha" ? mult(soma(pts.get(g.p1)!, pts.get(g.p2)!), 0.5) : g ? null : pts.get(auto.c.ref);
+      if (p) {
+        const el = document.createElement("div");
+        el.className = "relacao previa-auto";
+        el.textContent = auto.c.simbolo;
+        ov.appendChild(el);
+        this.rotulos.push({ el, p, dx: 14, dy: -18 });
+      }
+    }
+    if (auto && this.ferramenta !== "linha") {
+      const el = document.createElement("div");
+      el.className = "dica-cursor auto";
+      el.textContent = `${auto.c.simbolo} ${auto.c.rotulo}`;
+      ov.appendChild(el);
+      this.rotulos.push({ el, p: auto.p, dx: 16, dy: 16 });
+    }
+
     // dica do cursor: encaixe ou medida em andamento
     const cur = this.cursor;
     if (cur && this.ferramentaUsaEncaixe()) {
       const partes: string[] = [];
-      if (cur.rotulo) partes.push(cur.rotulo);
+      // H/V do encaixe: com relação automática quem fala é ela (pode ser colinear no lugar da H)
+      // sem relações automáticas (desligadas ou Ctrl) o encaixe só posiciona: a dica não promete relação
+      // (o ponto existente reaproveitado continua: "Coincidente"/"Origem")
+      const soPosiciona = !this.autoAtivo && !cur.ponto;
+      if (cur.rotulo && !(auto && cur.hv) && !soPosiciona) partes.push(cur.rotulo);
+      if (auto) partes.push(`${auto.c.simbolo} ${auto.c.rotulo}`);
       const c0 = this.cliques[0]?.p;
       if (c0) {
         const fmt = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
@@ -2633,6 +2718,31 @@ export class EditorEsboco {
       }
     }
     this.posicionarOverlay();
+  }
+
+  /**
+   * Relação automática prevista agora: a do ponto arrastado sobre outro ponto/curva, ou a da linha em
+   * desenho (do primeiro ponto até o cursor). Só a geometria (sem o solver), para ser leve a cada
+   * movimento; ao soltar, o solver ainda confere redundância e conflito.
+   */
+  private previaAuto(): { c: CandidatoAuto; p: P2 } | null {
+    if (!this.autoAtivo) return null;
+    if (this.autoArraste?.p) return { c: this.autoArraste, p: this.autoArraste.p };
+    const cur = this.cursor;
+    if (this.ferramenta !== "linha" || !cur) return null;
+    const ini = this.cliques[0] ?? (this.ponteiro?.moveu ? this.ponteiro.enc : null);
+    if (!ini || dist(ini.p, cur.p) < 1e-6) return null;
+    const a = this.tipoLinha === "pontoMedio" ? { x: 2 * ini.p.x - cur.p.x, y: 2 * ini.p.y - cur.p.y } : ini.p;
+    const tol = this.tolMm(this.tela?.tipo ?? "mouse");
+    const c = candidatosLinha(this.esb, a, cur.p, { pontas: [ini.ponto, cur.ponto], tol })[0];
+    return c ? { c, p: cur.p } : null;
+  }
+
+  /** Há um ponto do esboço a meio raio de toque da posição real do dedo? */
+  private pontoSobODedo(ev: PointerEvent): boolean {
+    const p = this.noPlano(ev);
+    const alvo = p && this.achar(p, this.tolMm("touch") * 0.5);
+    return alvo?.tipo === "ponto";
   }
 
   /** Arrastar o número move a cota; tocar abre a edição do valor. */

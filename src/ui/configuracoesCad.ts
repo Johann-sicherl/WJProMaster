@@ -2,11 +2,11 @@
 // Reúne as opções do aparelho por seções; cada mudança vale na hora e fica guardada neste aparelho
 // (`jlscad:interface`, a mesma chave lida pelos três ambientes). Cada ambiente passa um adaptador:
 // a Peça grava no objeto de preferências dela; a Montagem e o Desenho, direto no armazenamento.
-// Opção nova de uma seção = um item a mais em `itensDaSecao` (ex.: "Relações automáticas" no Esboço).
+// Opção nova de uma seção = um item a mais em `itensDaSecao`.
 
 import { ICONES, type NomeIcone } from "../icones";
 import {
-  PASSO_ZOOM_MAX, PASSO_ZOOM_MIN, PASSO_ZOOM_PADRAO, passoZoom, type Dispositivo, type PrefsCad,
+  PASSO_ZOOM_MAX, PASSO_ZOOM_MIN, PASSO_ZOOM_PADRAO, passoZoom, relacoesAutoLigadas, type Dispositivo, type PrefsCad,
 } from "./preferenciasCad";
 
 export type Ambiente = "peca" | "montagem" | "desenho";
@@ -101,7 +101,11 @@ function itensDaSecao(s: IdSecao, a: AdaptadorConfig): Item[] {
               valor: () => !!p().escalaReal, mudar: (v: boolean) => a.escalaReal!(v) } as Item]
           : []),
         { tipo: "botao", rotulo: "Calibrar escala da tela…", icone: "regua", nota: "Uma vez por aparelho; usada pela escala real 1:1.", fazer: a.calibrar },
-        // próxima opção do esboço: "Relações automáticas" (interruptor) entra aqui
+        {
+          tipo: "interruptor", rotulo: "Relações automáticas",
+          nota: "Ao desenhar e arrastar, cria Coincidente, Sobre a curva, Ponto médio, Horizontal/Vertical, Colinear, Paralela e Perpendicular (±1°), sem redundância nem conflito; o símbolo aparece antes de soltar. Segure Ctrl para não criar no momento.",
+          valor: () => relacoesAutoLigadas(p()), mudar: (v) => a.mudar({ relacoesAuto: v }),
+        },
         ...(a.ambiente === "peca" ? [] : [{ tipo: "nota", texto: "Os esboços são feitos na Peça; estas opções valem lá." } as Item]),
       ];
     case "exibicao":

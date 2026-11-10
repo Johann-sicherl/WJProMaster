@@ -14,6 +14,7 @@ import { SolverEsboco } from "../esboco/solver";
 import type { FeatureEsboco } from "../model";
 import { amostrar, mapaPontos } from "../esboco/geometria";
 import type { Simetria } from "./ornamento";
+import { lerPrefsCad, relacoesAutoLigadas } from "../ui/preferenciasCad";
 
 const FORA = new Set(["grupo-esboco", "grupo-converter", "escalaReal", "calibrarTela", "converter", "intersecao", "silhueta"]);
 const SKETCH = ABAS.find((a) => a.id === "sketch")!.comandos.filter((c) => !FORA.has(c.id));
@@ -91,6 +92,7 @@ export class EditorOrnamento {
       atualizarInterface: () => { this.painel(); this.o.atualizar(); },
       avisar: this.o.avisar,
     }, esb);
+    this.ed.relacoesAuto = relacoesAutoLigadas(lerPrefsCad()); // a mesma chave do esboço do WJCAD
     this.encadear();
     this.vp.olharPlano(this.ed.referencial);
     this.painel();

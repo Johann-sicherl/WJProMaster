@@ -200,6 +200,16 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
 
 ## Observações técnicas
 
+- **Relações automáticas do esboço** (10/11/2026, `src/esboco/relacoesAuto.ts`): a prévia (símbolo no cursor)
+  usa só geometria, a cada movimento; ao soltar, `tentarRelacao` resolve com e sem a relação e só a mantém se
+  o grau de liberdade cair sem conflito nem redundância nova (senão desfaz e devolve as posições). Colinear
+  com linha ligada é redundante no PlaneGCS (o ponto comum já está na reta): vira Paralela. **Armadilha:** os
+  objetos de `mapaPontos` são os pontos vivos do esboço (com `id`); espalhar um deles num arrasto
+  (`{ id, ...ponto }`) troca o id e arrasta o ponto errado — copiar só `x`/`y`.
+- **Canto do filete/chanfro por grupo** (10/11/2026, `operacoes.ts` `grupoCoincidente`): o canto é o conjunto
+  de pontos ligados por Coincidente ponto-ponto; ao aplicar, só as pontas das duas linhas são unificadas
+  (`unificarCanto`), e a coincidência com a origem continua relação (o canto virtual segue preso nela).
+
 - **⚙ Configurações do WJCAD** (`src/ui/configuracoesCad.ts`): itens declarativos por seção (`itensDaSecao`:
   escolha, interruptor, passo, botão, nota) e um adaptador por ambiente (`ler`/`mudar`/extras). A Peça grava
   no objeto `prefs` dela (senão o próximo `salvarPrefs` apagaria a mudança); Montagem e Desenho usam

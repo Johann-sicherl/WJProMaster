@@ -22,6 +22,7 @@ import { CALCULO } from "./calculo";
 import { html as htmlExpr, ler as lerExpr, lerEquacao } from "./expressao";
 import { CALCULADORAS, matrizDe, valoresDe, type Campo, type DefCalculadora, type Matriz, type Resultado, type Valores } from "./calculadoras";
 import { calcularDoc, docNovo, validarDoc, type DocCalc, type P2, type ResultadoCg } from "./cg2d";
+import { lerPrefsCad, relacoesAutoLigadas } from "../ui/preferenciasCad";
 
 const CHAVE = "wjcalc:documento";
 const CHAVE_PREFS = "wjcalc:prefs";
@@ -207,6 +208,7 @@ async function iniciarEditor() {
     avisar: (t) => casca.avisar(t, 5000),
   };
   editor = new EditorEsboco(host, doc.cg2d.esboco);
+  editor.relacoesAuto = relacoesAutoLigadas(lerPrefsCad()); // a mesma chave do esboço do WJCAD
   // as marcas de CG vão por cima de cada quadro desenhado
   const aposEditor = viewport.aposDesenhar;
   viewport.aposDesenhar = () => {

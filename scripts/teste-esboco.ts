@@ -254,6 +254,79 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   verdade("raio grande demais: os cantos que não cabem são avisados", r3.falharam.length === 4 && !r3.arcos.length);
 }
 
+// 4d5. Canto formado por pontos coincidentes por RELAÇÃO (passos do Johann): duas linhas desenhadas
+// separadas → Coincidente entre as pontas → Coincidente do canto com a origem → filete/chanfro tocando
+// o canto. Antes: "Esse ponto não é um canto entre duas linhas." O canto continua preso à origem.
+{
+  const montar = (origemEm: "ponta1" | "ponta2") => {
+    const e = plano();
+    const a1 = op.ponto(e, { x: 40, y: 1.2 }), a2 = op.ponto(e, { x: 0.8, y: 0.6 });
+    const b1 = op.ponto(e, { x: -0.5, y: 0.3 }), b2 = op.ponto(e, { x: 0.4, y: 30 });
+    const L1 = op.linha(e, a1, a2), L2 = op.linha(e, b1, b2);
+    op.restringir(e, { tipo: "horizontal", a: L1.id });
+    op.restringir(e, { tipo: "vertical", a: L2.id });
+    op.restringir(e, { tipo: "coincidente", a: a2, b: b1 }); // une as pontas
+    op.restringir(e, { tipo: "coincidente", a: origemEm === "ponta1" ? a2 : b1, b: ORIGEM }); // canto na origem
+    op.restringir(e, { tipo: "distancia", a: L1.id, valor: 40 });
+    op.restringir(e, { tipo: "distancia", a: L2.id, valor: 30 });
+    const r0 = solver.resolver(e);
+    return { e, a1, a2, b1, b2, L1, L2, ok0: r0.ok && r0.definicao === "definido" };
+  };
+  const pt = (e: FeatureEsboco, id: string) => (id === ORIGEM ? { x: 0, y: 0 } : e.pontos.find((q) => q.id === id)!);
+  const distOrigemReta = (e: FeatureEsboco, l: { p1: string; p2: string }) => {
+    const p = pt(e, l.p1), q = pt(e, l.p2);
+    return Math.abs(p.x * q.y - p.y * q.x) / Math.hypot(q.x - p.x, q.y - p.y);
+  };
+  for (const origemEm of ["ponta1", "ponta2"] as const)
+    for (const tocado of ["a2", "b1", "origem"] as const) {
+      const g = montar(origemEm);
+      const nome = `canto por relação (origem na ${origemEm}, toque em ${tocado})`;
+      const id = tocado === "a2" ? g.a2 : tocado === "b1" ? g.b1 : ORIGEM;
+      verdade(`${nome}: esboço inicial totalmente definido`, g.ok0);
+      verdade(`${nome}: aceito como canto`, op.ehCantoDeLinhas(g.e, id));
+      const arco = op.fileteEsboco(g.e, id, 3, true);
+      const r = solver.resolver(g.e);
+      verdade(`${nome}: filete criado e resolve sem conflito`, !!arco && r.ok && !r.conflitantes.length && r.definicao === "definido");
+      verdade(`${nome}: as linhas continuam passando pela origem (canto virtual preso)`, distOrigemReta(g.e, g.L1) < 1e-6 && distOrigemReta(g.e, g.L2) < 1e-6);
+      confere(`${nome}: ponta oposta da horizontal`, pt(g.e, g.a1).x, 40, 1e-6);
+      confere(`${nome}: ponta oposta da vertical`, pt(g.e, g.b2).y, 30, 1e-6);
+      const cota = g.e.restricoes.find((x) => x.tipo === "raio") as { valor: number; tipo: string };
+      verdade(`${nome}: raio 3 → 6 resolve e o canto fica na origem`, aplicarValorGradual(solver, g.e, cota, 6).ok && distOrigemReta(g.e, g.L1) < 1e-6 && Math.abs(pt(g.e, g.a1).x - 40) < 1e-6);
+    }
+  {
+    const g = montar("ponta1");
+    const l = op.chanfroEsboco(g.e, g.b1, 5);
+    const r = solver.resolver(g.e);
+    verdade("chanfro no canto por relação: criado, resolve e continua preso à origem", !!l && r.ok && !r.conflitantes.length && distOrigemReta(g.e, g.L1) < 1e-6 && distOrigemReta(g.e, g.L2) < 1e-6);
+    confere("chanfro no canto por relação: ponta oposta da horizontal", pt(g.e, g.a1).x, 40, 1e-6);
+  }
+  {
+    // canto fora da origem, só com a relação entre as pontas, e uma cota até o canto
+    const e = plano();
+    const a1 = op.ponto(e, { x: 50, y: 10 }), a2 = op.ponto(e, { x: 10, y: 10 });
+    const b1 = op.ponto(e, { x: 10.5, y: 9.7 }), b2 = op.ponto(e, { x: 10, y: 40 });
+    const L1 = op.linha(e, a1, a2), L2 = op.linha(e, b1, b2);
+    op.restringir(e, { tipo: "coincidente", a: a2, b: b1 });
+    op.restringir(e, { tipo: "distanciaH", a: ORIGEM, b: b1, valor: 10 });
+    solver.resolver(e);
+    verdade("canto solto por relação: aceito", op.ehCantoDeLinhas(e, a2));
+    verdade("três linhas no mesmo grupo não são canto", (() => {
+      const e2 = structuredClone(e);
+      const c3 = op.ponto(e2, { x: 10, y: 10 }), c4 = op.ponto(e2, { x: 0, y: 0 });
+      op.linha(e2, c3, c4);
+      op.restringir(e2, { tipo: "coincidente", a: c3, b: a2 });
+      return !op.ehCantoDeLinhas(e2, a2);
+    })());
+    const arco = op.fileteEsboco(e, a2, 2);
+    const r = solver.resolver(e);
+    const cotaH = e.restricoes.find((x) => x.tipo === "distanciaH")!;
+    verdade("canto solto por relação: filete resolve e a cota até o canto continua (no canto virtual)",
+      !!arco && r.ok && !!cotaH && op.referencias(cotaH).every((x) => x === ORIGEM || e.pontos.some((q) => q.id === x)));
+    verdade("canto solto por relação: as duas pontas viraram um canto virtual só (sem coincidência sobrando)",
+      !e.restricoes.some((x) => x.tipo === "coincidente" && x.a === x.b) && [a2, b1].filter((x) => e.pontos.some((q) => q.id === x)).length === 1 && !!L1 && !!L2);
+  }
+}
+
 // 4e. Teclado-calculadora das cotas: normal e científico (trigonométricas em graus)
 {
   const casos: [string, number][] = [

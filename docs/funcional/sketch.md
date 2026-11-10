@@ -100,8 +100,32 @@ Pontos de atenção: **Cônica** geral não existe no solver (PlaneGCS tem elips
 | Grade e encaixe | exibir grade, espaçamento maior/menor, escala automática, encaixar na grade | F3 |
 | Encaixes rápidos | ponto ✅, ponto médio ✅, sobre curva ✅, H/V ✅; centro, quadrante, interseção, tangente, perpendicular, paralelo, comprimento | 🟡 |
 | Linhas de inferência | pontilhadas alinhando com pontos existentes (H/V a distância) | F3 |
-| Relações automáticas | ícone da relação junto ao cursor ✅ (texto), opção liga/desliga | 🟡 |
-| Opções do esboço | relações automáticas, resolver automaticamente, detectar superdefinição | F3 |
+| Relações automáticas | ✅ (10/11/2026, pedido do Johann) — ver detalhes abaixo | ✅ |
+| Opções do esboço | relações automáticas ✅ (⚙ Configurações → Esboço); resolver automaticamente, detectar superdefinição | 🟡 |
+
+**Relações automáticas ("magnetismo")** ✅ (10/11/2026) — `src/esboco/relacoesAuto.ts`, teste `scripts/teste-relacoes-auto.ts`:
+- **Ao desenhar** (como antes): terminar num ponto reaproveita o ponto; sobre curva/eixo → Coincidente (sobre);
+  ponto médio → Ponto médio; aresta/vértice da peça → referência do modelo.
+- **Linha nova** ganha **uma** relação de direção, na ordem **Colinear** (mesma reta de outra linha solta, dentro
+  do raio de encaixe) › **Horizontal/Vertical** › **Paralela** (a mais alinhada; empate: a mais perto) ›
+  **Perpendicular** (só com linha ligada a ela, no canto). Tolerância **±1°** (o encaixe H/V de ±4° continua
+  posicionando o ponto). Continuação de uma linha ganha Paralela (a Colinear seria redundante no ponto comum).
+- **Arrastar um ponto e soltar** sobre outro ponto (ou a origem) → **Coincidente**; sobre linha/arco/curva →
+  **Coincidente (sobre a curva)**. O ponto encaixa no alvo enquanto arrasta. Não contam: a própria entidade,
+  pontos já coincidentes com ele e os eixos.
+- **Símbolo antes de soltar**: na dica do cursor (verde, ex.: "∥ Paralela") e um selo verde tracejado na
+  entidade de referência.
+- **Nunca redundante nem em conflito**: cada relação passa pelo solver antes de ficar — precisa tirar grau de
+  liberdade sem criar conflito nem redundância; senão é descartada (e as posições voltam). Esboço já em
+  conflito não ganha relação automática.
+- **Ligadas por padrão**; interruptor **"Relações automáticas"** em ⚙ Configurações → Esboço (`PrefsCad.relacoesAuto`,
+  `jlscad:interface`; vale também no WJCalcEng e nos ornamentos do WJGoldDiamond). Desligadas, o encaixe só
+  posiciona (o ponto existente continua sendo reaproveitado para a cadeia seguir ligada).
+- **Segurar Ctrl** suprime no gesto (desenhar ou arrastar), como nos CADs profissionais; o símbolo some na hora.
+- **Desfazer (Ctrl+Z)**: a linha e a relação automática dela saem no mesmo passo; o arraste e o Coincidente
+  criado ao soltar também.
+- Pendente (F3): linhas de inferência pontilhadas, Tangente automática em arcos, relações automáticas nas
+  outras entidades (retângulo já nasce com H/V).
 
 ## 2. Entidades
 
@@ -191,6 +215,11 @@ Parâmetros: X/Y.
 - **Manter cantos com restrição** ✅ (10/11/2026, filete e chanfro): o canto vira **canto virtual** (ponto de
   construção na interseção das duas linhas); relações e cotas do canto (origem, distâncias) continuam nele e
   as cotas de comprimento das linhas passam a medir do canto virtual — mudar o raio não move o perfil.
+- **Canto unido por relação** ✅ (10/11/2026, erro relatado pelo Johann): duas linhas desenhadas separadas e
+  unidas depois por **Coincidente** entre as pontas (inclusive com o canto preso à origem por outra
+  Coincidente) são aceitas como canto, tocando qualquer um dos pontos (ou a origem). Ao aplicar, as duas
+  pontas viram um ponto só (o canto virtual) e as outras relações continuam (o canto segue na origem). Vale
+  também para o chanfro. Antes: "Esse ponto não é um canto entre duas linhas."
 ### Chanfro de esboço — ✅ (distância igual)
 - Ângulo-distância · Distância-distância · Distâncias iguais; D1, D2, ângulo
 

@@ -455,9 +455,12 @@ button svg { width: 22px; height: 22px; flex: none; }
   font-size: 11px;
   font-weight: 700;
   line-height: 18px;
+  touch-action: none; /* o dedo que cai no selo pode virar arraste do ponto embaixo (editor.ts pontoSobODedo) */
 }
 .relacao.selecionado { background: #fff1de; border-color: #f08c00; color: #b86400; }
 .relacao.conflito { background: var(--erro-suave); border-color: var(--erro); color: var(--erro); }
+/* relação automática prevista (antes de soltar): selo verde tracejado na referência e na dica do cursor */
+.relacao.previa-auto { pointer-events: none !important; background: #e6f6ea; border: 1px dashed #2f9e44; color: #2b8a3e; }
 .dica-cursor {
   pointer-events: none !important;
   padding: 2px 6px;
@@ -467,6 +470,7 @@ button svg { width: 22px; height: 22px; flex: none; }
   font-size: 12px;
   white-space: nowrap;
 }
+.dica-cursor.auto { background: rgba(43, 138, 62, 0.92); }
 /* cota em edição: número + botão da calculadora (abre src/ui/tecladoCota.ts) + ✓ */
 .cota-edicao { display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--painel); border: 2px solid var(--acento); border-radius: 8px; box-shadow: var(--sombra); }
 .cota-edicao input { width: 96px; height: 40px; padding: 0 8px; border: 1px solid var(--linha); border-radius: 6px; font-size: 17px; font-weight: 700; text-align: center; user-select: text; }

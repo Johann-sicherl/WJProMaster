@@ -76,7 +76,7 @@ import { absorvidosDe, excluirRecursos, filhosDe } from "./dependencias";
 import { registrarComAtualizacao } from "./comum/atualizacao";
 import { instalarLateralAjustavel } from "./ui/lateral";
 import { abrirConfiguracoesCad, type IdSecao } from "./ui/configuracoesCad";
-import { aoMudarPrefsCad, type PrefsCad } from "./ui/preferenciasCad";
+import { aoMudarPrefsCad, relacoesAutoLigadas, type PrefsCad } from "./ui/preferenciasCad";
 import { abrirEmNovaJanela, gravarNaJanela, lerDaJanela, podarJanelas } from "./comum/janelas";
 
 const CHAVE_AUTOSAVE = "jlscad:documento";
@@ -119,6 +119,8 @@ interface Prefs {
   posCaixaFlutuante?: { x: number; y: number };
   /** Esboço em escala real 1:1 (vista travada em tamanho real, com a calibração da tela). */
   escalaReal?: boolean;
+  /** Configurações → Esboço: relações automáticas ao desenhar/arrastar (sem escolha = ligadas). */
+  relacoesAuto?: boolean;
   /** Configurações → Mouse e zoom: sentido da roda e passo do zoom por clique (%). */
   rodaFrenteAfasta?: boolean;
   passoZoom?: number;
@@ -3265,6 +3267,7 @@ async function editarEsboco(esb: FeatureEsboco, ferramenta?: Ferramenta) {
     } : {}),
   };
   editor = new EditorEsboco(host, esb);
+  editor.relacoesAuto = relacoesAutoLigadas(prefs);
   // a seleção acima redesenha os esboços da peça (ainda sem editor): tira essas cópias fixas,
   // senão o que for aparado/apagado continua aparecendo por baixo do esboço em edição
   limparEsbocos();
@@ -4588,6 +4591,10 @@ function abrirConfiguracoes(secao?: IdSecao) {
     mudar: (m) => {
       Object.assign(prefs, m);
       salvarPrefs();
+      if ("relacoesAuto" in m) {
+        if (editor) editor.relacoesAuto = relacoesAutoLigadas(prefs);
+        return;
+      }
       if (GERAIS.some((k) => k in m)) aplicarPrefsGerais();
       else viewport.definirRoda(prefs);
     },
@@ -4611,6 +4618,10 @@ function abrirConfiguracoes(secao?: IdSecao) {
 aoMudarPrefsCad((p: PrefsCad) => {
   const mudou = (ks: readonly (keyof PrefsCad)[]) => ks.filter((k) => prefs[k] !== p[k]);
   const gerais = mudou(GERAIS), roda = mudou(DA_RODA);
+  if (prefs.relacoesAuto !== p.relacoesAuto) {
+    prefs.relacoesAuto = p.relacoesAuto;
+    if (editor) editor.relacoesAuto = relacoesAutoLigadas(prefs);
+  }
   for (const k of [...gerais, ...roda]) Object.assign(prefs, { [k]: p[k] });
   if (gerais.length) aplicarPrefsGerais();
   else if (roda.length) viewport.definirRoda(prefs);
