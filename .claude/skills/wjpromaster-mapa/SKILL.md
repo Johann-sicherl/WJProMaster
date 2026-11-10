@@ -24,7 +24,7 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | Edição direta (mover/excluir/substituir face) | `src/kernel/edicaoDireta.ts` | `features.md` §18 |
 | Esboço: ferramenta, encaixe, seleção, arrasto | `src/esboco/editor.ts` (2 600 l) | `docs/funcional/sketch.md` |
 | Esboço: entidades compostas, aparar, offset, espelhar | `src/esboco/operacoes.ts` + `geometria.ts` | `sketch.md` |
-| Cotas/relações do esboço, solver | `src/esboco/cotas.ts`, `solver.ts` (PlaneGCS) | `sketch.md` |
+| Cotas/relações do esboço, solver | `src/esboco/cotas.ts`, `solver.ts` (PlaneGCS, `aplicarValorGradual`) · teclado-calculadora das cotas `src/ui/tecladoCota.ts` | `sketch.md` |
 | Camada 3D do esboço, referencial do plano | `src/esboco/visual.ts`, `src/esboco/referencial.ts` | — |
 | Painel do esboço (definição, opções) | `src/esboco/painel.ts` | `sketch.md` |
 | Escala 1:1 / calibrar tela | `src/esboco/escalaReal.ts` | `sketch.md` §7 |
@@ -81,7 +81,7 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 | `teste-pdm.ts`, `teste-sincronia.ts`, `teste-drive.ts` | regras do cofre, sincronia das cópias, Drive simulado |
 | `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts`, `teste-joia.ts`, `teste-slicer.ts` | motores das outras faces |
 | `teste-mapa.ts` | este mapa em dia com `src/` e `scripts/` |
-| `estresse-*.{ts,cjs}`, `roteiro-ui.cjs`, `roteiro-aviso-conexoes.cjs` | estresse e roteiros de interface com Playwright (não entram no `pnpm teste`); o do aviso confere a faixa "Cofre:" e o "Não mostrar de novo" em todas as páginas |
+| `estresse-*.{ts,cjs}`, `roteiro-ui.cjs`, `roteiro-aviso-conexoes.cjs`, `roteiro-cotas.cjs` | estresse e roteiros de interface com Playwright (não entram no `pnpm teste`); o do aviso confere a faixa "Cofre:" e o "Não mostrar de novo" em todas as páginas; o das cotas, teclado-calculadora, cota angular, arraste com a Cota ativa e ✕ de recurso novo |
 
 ## 3. Validar no navegador (tablet simulado)
 
@@ -113,4 +113,7 @@ teste, build sobre o PR juntado com o `main`) → corrigir → merge **pelo núm
 - COOP `same-origin` quebra o login do Google: usar `same-origin-allow-popups` quando for para o Cloudflare.
 - Elemento com o atributo `hidden` e `display` próprio no CSS continua visível (e pode tapar toques): acrescentar `.classe[hidden] { display: none; }`.
 - Malha do WJCAD (`ultimaMalha`) tem cada face B-Rep triangulada à parte (vértices repetidos nas bordas): soldar antes de cortar/encadear (o WJSlicer3D passa pelo leitor de STL).
+- Comando novo: o recurso entra no documento antes do painel; a fotografia do ✕ (`abrirComando`) é o documento **sem** ele (senão cancelar deixa o recurso com erro).
+- Selos de relação (H, V…) ficam no meio da linha e roubavam o toque da Cota: só aceitam toque em Selecionar/Exibir relações.
+- `direction: rtl` para "rolar" texto à direita embaralha símbolos e unidade (bidi): usar flex com `justify-content: flex-end` e `overflow: hidden`.
 - Nunca o nome de produto de terceiros na interface; o fluxo segue o CAD de referência, os nomes são nossos.

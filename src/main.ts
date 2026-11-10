@@ -986,8 +986,11 @@ function abrirComando(f: Feature, novo: boolean, modo?: "chapa") {
   if (editor) sairEsboco();
   fecharCotasNoModelo();
   fecharAvaliacao();
+  // recurso novo já entra no documento antes do painel abrir: a fotografia do ✕ é o documento sem
+  // ele (cancelar não deixa recurso com erro na árvore; o esboço volta a ficar solto)
+  const fotografia = novo ? JSON.stringify({ ...doc, features: doc.features.filter((x) => x !== f) }) : JSON.stringify(doc);
   comando = {
-    f, novo, snapshot: JSON.stringify(doc), campo: null, recolhidas: new Set(),
+    f, novo, snapshot: fotografia, campo: null, recolhidas: new Set(),
     aba: f.tipo === "furo" ? "Tipo" : undefined, modo,
   };
   // campo de seleção ativo: o primeiro vazio

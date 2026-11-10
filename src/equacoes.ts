@@ -9,6 +9,9 @@ const FUNCOES: Record<string, string> = {
   sin: "Math.sin(Math.PI/180*", cos: "Math.cos(Math.PI/180*", tan: "Math.tan(Math.PI/180*",
   sqrt: "Math.sqrt(", abs: "Math.abs(", min: "Math.min(", max: "Math.max(", round: "Math.round(",
   floor: "Math.floor(", ceil: "Math.ceil(", int: "Math.trunc(",
+  // inversas em graus (como as diretas) e logaritmos (teclado científico das cotas)
+  asin: "(180/Math.PI)*Math.asin(", acos: "(180/Math.PI)*Math.acos(", atan: "(180/Math.PI)*Math.atan(",
+  log: "Math.log10(", ln: "Math.log(", exp: "Math.exp(",
 };
 
 /**

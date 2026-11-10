@@ -9,7 +9,7 @@ import type { TipoEntidade, Viewport } from "../viewport";
 import { ajustarTextoCota, desenharCota, medirCota, textoCota } from "./cotas";
 import {
   amostrar, angulo, angulosArco, centroTresPontos, tracosDaGeo, paramElipse, parabolaDe, paramParabola, pontoElipse, pontoParabola, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
-  idsNaSelecao, mapaPontos, mult, ORIGEM, pontosDaGeo, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type FormaSelecao, type P2,
+  cruzamentoDoLaco, encontrarLacos, idsNaSelecao, mapaPontos, mult, ORIGEM, pontosDaGeo, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type FormaSelecao, type P2,
 } from "./geometria";
 import * as op from "./operacoes";
 import { carregarFonte, fonteLida } from "./fontesTexto";
@@ -17,7 +17,8 @@ import { gerarContornos, OPCOES_TEXTO_PADRAO, type GuiaTexto } from "./texto";
 import type { Font } from "opentype.js";
 import { atualizarExternas, criarExterna, idsExternos, podarExternas, pontoNaProjecao, projetar, type ProjecaoExterna } from "./externas";
 import { referencial, type Referencial } from "./referencial";
-import type { ResultadoSolver, SolverEsboco } from "./solver";
+import { abrirTecladoCota, numeroVisor } from "../ui/tecladoCota";
+import { aplicarValorGradual, type ResultadoSolver, type SolverEsboco } from "./solver";
 import { construirCamada, descartarCamada } from "./visual";
 import { celulaSilhueta, cortarMalha, entidadesDe, silhuetaMalha } from "./malhaPlano";
 
@@ -636,6 +637,12 @@ export class EditorEsboco {
     const tol = this.tolMm(e.pointerType);
     if (pt && Math.hypot(e.clientX - pt.x0, e.clientY - pt.y0) > 6) pt.moveu = true;
 
+    // Cota ativa: pressionar numa linha/ponto e arrastar move a geometria (como em Selecionar),
+    // para desfazer um contorno que se cruzou sem trocar de ferramenta
+    if (pt && this.ferramenta === "cota" && pt.moveu && pt.alvo && (pt.alvo.tipo === "ponto" || this.esb.geos.some((g) => g.id === pt.alvo!.id))) {
+      this.arrastar(pt, p);
+      return;
+    }
     if (pt && this.ferramenta === "selecionar") {
       if (pt.moveu && pt.alvo) this.arrastar(pt, p);
       else if (pt.moveu) {
@@ -685,6 +692,10 @@ export class EditorEsboco {
     if (this.rastro) {
       // fim do aparar potente: um passo de desfazer para tudo o que foi riscado
       this.rastro = null;
+      this.resolver(true);
+      return;
+    }
+    if (this.ferramenta === "cota" && pt.arraste) {
       this.resolver(true);
       return;
     }
@@ -1797,15 +1808,21 @@ export class EditorEsboco {
     if (!c || !ehCota(c) || !Number.isFinite(valor) || valor <= 0 && c.tipo !== "angulo") return;
     if (c.referencia) return;
     const antigo = c.valor;
-    c.valor = valor;
-    const res = this.h.solver.resolver(this.esb);
+    const copia = JSON.stringify(this.esb.pontos);
+    const raios = this.esb.geos.map((g) => (g.tipo === "circulo" || g.tipo === "arco" ? g.r : 0));
+    const cruzavaAntes = encontrarLacos(this.esb).some((l) => cruzamentoDoLaco(l));
+    const res = aplicarValorGradual(this.h.solver, this.esb, c, valor);
     if (!res.ok) {
       c.valor = antigo;
+      this.esb.pontos = JSON.parse(copia);
+      this.esb.geos.forEach((g, i) => { if (g.tipo === "circulo" || g.tipo === "arco") g.r = raios[i]; });
       this.h.avisar("O esboço não consegue chegar nesse valor (geometria impossível).");
       this.resolver(false);
       return;
     }
     this.resolver(true);
+    if (!cruzavaAntes && encontrarLacos(this.esb).some((l) => cruzamentoDoLaco(l)))
+      this.h.avisar("Com esse valor o contorno passou a se cruzar (✕ vermelho). Arraste a geometria azul para desfazer o cruzamento, ou Desfazer (Ctrl+Z).");
   }
 
   alternarReferencia(id: string) {
@@ -1828,29 +1845,32 @@ export class EditorEsboco {
     this.selecao = new Set([id]);
     this.redesenhar();
     this.h.atualizarInterface();
-    const caixa = document.createElement("form");
+    // na cota fica só o valor sendo digitado; o teclado-calculadora abre ao lado dela
+    const caixa = document.createElement("div");
     caixa.className = "cota-edicao";
-    caixa.innerHTML = `<input inputmode="decimal" aria-label="Valor da cota" /><button type="submit" aria-label="Aplicar">✓</button>`;
-    const inp = caixa.querySelector("input")!;
-    inp.value = String(Number(c.valor.toFixed(4)));
-    caixa.onsubmit = (ev) => {
-      ev.preventDefault();
-      fechar();
-      this.definirValorCota(id, avaliar(inp.value));
-    };
-    const fechar = () => {
-      caixa.remove();
-      this.edicaoCota = null;
-    };
-    inp.onkeydown = (ev) => {
-      if (ev.key === "Escape") { fechar(); ev.stopPropagation(); }
-    };
-    inp.onblur = () => setTimeout(() => caixa.isConnected && caixa.requestSubmit(), 120);
+    caixa.setAttribute("aria-live", "polite");
+    const un = c.tipo === "angulo" ? "°" : "mm";
+    caixa.textContent = `${numeroVisor(c.valor, 3)} ${un}`;
     this.edicaoCota = { el: caixa, id };
     this.h.overlay.appendChild(caixa);
+    this.redesenhar(); // tira a etiqueta normal desta cota (fica só a de edição)
     this.posicionarOverlay();
-    inp.focus();
-    inp.select();
+    const titulo = c.tipo === "angulo" ? "Ângulo" : c.tipo === "raio" ? "Raio" : c.tipo === "diametro" ? "Diâmetro" : "Distância";
+    abrirTecladoCota({
+      valor: c.valor,
+      unidade: un,
+      titulo,
+      ancora: () => (caixa.isConnected ? caixa.getBoundingClientRect() : null),
+      aoMudar: (texto) => (caixa.textContent = `${texto || "0"} ${un}`),
+      aoAplicar: (v) => this.definirValorCota(id, v),
+      aoFechar: () => {
+        caixa.remove();
+        if (this.edicaoCota?.el === caixa) {
+          this.edicaoCota = null;
+          this.redesenhar();
+        }
+      },
+    });
   }
   private edicaoCota: { el: HTMLElement; id: string } | null = null;
 
@@ -2405,6 +2425,7 @@ export class EditorEsboco {
       if (!ehCota(r)) continue;
       const d = desenharCota(r, this.esb, this.mmPxDesenho);
       if (!d) continue;
+      if (this.edicaoCota?.id === r.id) continue; // em edição: o valor digitado fica no lugar da etiqueta
       const el = document.createElement("div");
       el.className = "cota-rotulo";
       el.classList.toggle("selecionado", this.selecao.has(r.id));
@@ -2456,8 +2477,12 @@ export class EditorEsboco {
           el.title = r.tipo;
           el.classList.toggle("selecionado", this.selecao.has(r.id));
           el.classList.toggle("conflito", this.conflito.has(r.id));
-          el.onpointerdown = (ev) => ev.stopPropagation();
-          el.onclick = () => this.alternarSelecao(r.id);
+          // só Selecionar e Exibir relações tocam o selo; com as outras ferramentas (Cota, Linha…) o
+          // toque passa para a linha embaixo dele (o selo fica no meio da linha, onde se toca para cotar)
+          if (this.ferramenta === "selecionar" || this.ferramenta === "exibirRelacoes") {
+            el.onpointerdown = (ev) => ev.stopPropagation();
+            el.onclick = () => this.alternarSelecao(r.id);
+          } else el.style.pointerEvents = "none";
           ov.appendChild(el);
           this.rotulos.push({ el, p, dx: 14 + i * 20, dy: -18 });
         }

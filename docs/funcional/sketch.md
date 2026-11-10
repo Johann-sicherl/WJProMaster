@@ -287,6 +287,16 @@ Outros tipos — F3/⏸: horizontal/vertical dedicadas, linha de base, cadeia, c
 chanfro.
 
 ### Diálogo "Modificar" (ao criar e ao editar) — 🟡
+- **Teclado-calculadora** ✅ (09/11/2026, pedido do Johann): abre ao criar ou editar **qualquer** cota, ao
+  lado do número (sem cobri-lo); visor que não sobe o teclado do sistema; **normal** (algarismos, vírgula,
+  ±, + − × ÷, parênteses) ↔ **científico** (sen/cos/tan em graus e inversas, √, x², xʸ, π, log, ln),
+  lembrado por aparelho; resultado ao vivo; teclado físico vale (Enter/Esc); tocar fora aplica
+  (`src/ui/tecladoCota.ts`). O valor atual vem selecionado: o 1º algarismo troca, um operador continua dele.
+- Cota angular ✅ (09/11/2026): o arco fica **no setor do ângulo cotado**, com setas, extensão até o texto e
+  linhas de chamada (linhas quase paralelas não desenham mais o setor suplementar atravessando a tela).
+- Mudar o valor leva a cota em **passos** (o solver acompanha) e, se o contorno passar a se cruzar, avisa;
+  com a **Cota ativa, arrastar uma linha/ponto move a geometria** (desfaz o cruzamento sem trocar de
+  ferramenta). Selos de relação (H, V…) só recebem toque em Selecionar/Exibir relações.
 - Valor ✅ · aceita **expressão** ✅ (`20/2`) · **variável global** / equação ✅ (`=nome`)
 - ✓ salvar ✅ · ✕ cancelar ✅ (Esc) · **Reconstruir** · setas ± com incremento · inverter sentido ·
   marcar para desenho

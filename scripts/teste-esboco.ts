@@ -11,7 +11,9 @@ import { aninhamento, areaAssinada, encontrarLacos, idsNaSelecao, ORIGEM, EIXO_H
 import { atualizarExternas, criarExterna, podarExternas, projetar } from "../src/esboco/externas";
 import { referencial } from "../src/esboco/referencial";
 import { cortarMalha, entidadesDe, silhuetaMalha } from "../src/esboco/malhaPlano";
-import { ajustarTextoCota, PASSO_COTA_PX } from "../src/esboco/cotas";
+import { ajustarTextoCota, desenharCota, geometriaAngulo, medirCota, PASSO_COTA_PX, textoPadrao } from "../src/esboco/cotas";
+import { aplicarValorGradual } from "../src/esboco/solver";
+import { avaliarTeclado } from "../src/ui/tecladoCota";
 import { readFileSync } from "node:fs";
 import * as opentype from "opentype.js";
 import { gerarContornos, OPCOES_TEXTO_PADRAO } from "../src/esboco/texto";
@@ -112,6 +114,66 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   op.linha(e2, op.ponto(e2, { x: -20, y: 5 }), op.ponto(e2, { x: 20, y: 5 }));
   op.aparar(e2, ci.id, { x: 0, y: 10 });
   verdade("aparar círculo vira arco", e2.geos.find((g) => g.id === ci.id)?.tipo === "arco");
+}
+
+// 4c. Cota angular entre linhas quase paralelas (1°): o arco fica no setor do ângulo cotado, junto
+// das linhas, mesmo com o texto ao lado (antes desenhava o setor de 179° atravessando a tela)
+{
+  const e = plano();
+  const a = op.linha(e, op.ponto(e, { x: 0, y: 0 }), op.ponto(e, { x: 0, y: 100 }));
+  const s1 = Math.sin(Math.PI / 180), c1 = Math.cos(Math.PI / 180);
+  const b = op.linha(e, op.ponto(e, { x: 2, y: 0 }), op.ponto(e, { x: 2 + 100 * s1, y: 100 * c1 }));
+  const cota = { id: "ang", tipo: "angulo", a: a.id, b: b.id, valor: 1, texto: { x: 40, y: 80 } } as const;
+  confere("cota angular de 1°: valor medido", medirCota(cota as never, e), 1, 1e-6);
+  const g = geometriaAngulo(cota as never, e)!;
+  confere("cota angular: abertura do setor = 1°", ((g.a1 - g.a0) * 180) / Math.PI, 1, 1e-6);
+  const d = desenharCota(cota as never, e, 0.2)!;
+  const angs = d.segmentos.map((p) => Math.atan2(p.y - g.O.y, p.x - g.O.x));
+  const leque = ((Math.max(...angs) - Math.min(...angs)) * 180) / Math.PI;
+  // o arco vai só até o texto (extensão) e cobre o setor de 1°: nunca os 179° do outro lado
+  const ateTexto = (Math.abs(Math.atan2(80 - g.O.y, 40 - g.O.x) - (g.a0 + g.a1) / 2) * 180) / Math.PI;
+  verdade(`cota angular: traços só entre as linhas e o texto (${leque.toFixed(2)}° ≤ ${(ateTexto + 2).toFixed(2)}°, não 179°)`, leque <= ateTexto + 2);
+  const tp = textoPadrao(cota as never, e, 0.2);
+  const at = Math.atan2(tp.y - g.O.y, tp.x - g.O.x);
+  verdade("cota angular: texto padrão dentro do setor", at >= Math.min(g.a0, g.a1) - 1e-9 && at <= Math.max(g.a0, g.a1) + 1e-9);
+  // ângulo de 90° num canto: o setor é o de 90°, do lado das linhas
+  const e2 = plano();
+  const o = op.ponto(e2, { x: 0, y: 0 });
+  const h = op.linha(e2, o, op.ponto(e2, { x: 50, y: 0 })), v = op.linha(e2, o, op.ponto(e2, { x: 0, y: 50 }));
+  const g2 = geometriaAngulo({ id: "a2", tipo: "angulo", a: h.id, b: v.id, valor: 90 } as never, e2)!;
+  confere("cota angular de 90°: setor no 1º quadrante (início)", (g2.a0 * 180) / Math.PI, 0, 1e-6);
+  confere("cota angular de 90°: setor no 1º quadrante (fim)", (g2.a1 * 180) / Math.PI, 90, 1e-6);
+}
+
+// 4d. Cota aplicada em passos: chega no valor e a geometria fica do mesmo lado
+{
+  const e = plano();
+  const o = op.ponto(e, { x: 0, y: 0 }), pa = op.ponto(e, { x: 50, y: 0 }), pb = op.ponto(e, { x: 28, y: 28 });
+  const la = op.linha(e, o, pa), lb = op.linha(e, o, pb);
+  op.restringir(e, { tipo: "coincidente", a: o, b: ORIGEM });
+  op.restringir(e, { tipo: "horizontal", a: la.id });
+  op.restringir(e, { tipo: "distancia", a: la.id, valor: 50 });
+  op.restringir(e, { tipo: "distancia", a: lb.id, valor: 40 });
+  const id = op.restringir(e, { tipo: "angulo", a: la.id, b: lb.id, valor: 45 });
+  solver.resolver(e);
+  const c = e.restricoes.find((r) => r.id === id) as { valor: number; tipo: string };
+  const r = aplicarValorGradual(solver, e, c, 170);
+  const q = e.pontos.find((p) => p.id === pb)!;
+  verdade("cota em passos: resolveu", r.ok);
+  confere("cota em passos: ângulo final 170°", medirCota(c as never, e), 170, 1e-4);
+  verdade("cota em passos: braço continua em cima (y > 0)", q.y > 0);
+}
+
+// 4e. Teclado-calculadora das cotas: normal e científico (trigonométricas em graus)
+{
+  const casos: [string, number][] = [
+    ["12,5", 12.5], ["20÷2", 10], ["3×4+1", 13], ["−4×2", -8], ["2π", 2 * Math.PI], ["sin(30)", 0.5], ["cos(60)", 0.5],
+    ["tan(45)", 1], ["√(16)+1", 5], ["3^2", 9], ["2^0,5", Math.SQRT2], ["asin(1)", 90], ["acos(0)", 90], ["atan(1)", 45],
+    ["log(100)", 2], ["ln(1)", 0], ["2(3+1)", 8], ["(60−10)÷2", 25],
+  ];
+  for (const [t, v] of casos) confere(`teclado: ${t}`, avaliarTeclado(t), v, 1e-9);
+  verdade("teclado: expressão incompleta (5+) é inválida", Number.isNaN(avaliarTeclado("5+")));
+  verdade("teclado: vazio é inválido", Number.isNaN(avaliarTeclado("")));
 }
 
 // 5a. Dividir entidades: linha em 30/70 e arco ao meio, com o ponto em comum
