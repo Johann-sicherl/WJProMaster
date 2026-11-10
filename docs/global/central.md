@@ -59,7 +59,7 @@ Atualizar o status em docs/funcional/<arquivo>.md.
 | 10/11 | Cofre: GO-IN não trava (janela do Google pedida 2×), comentário no GO-IN, GO-OUT/GO-IN/Desfazer por componente na Montagem, perguntar GO-OUT ou consulta ao abrir | Cofre GO-IN/GO-OUT e comentários | #116 | ≈ US$ 2,50 | 4/4 | pendente |
 
 Referência do método antigo: conversa "Software CAD" (21/10 → 10/11), 68 PRs, ≈ US$ 688 ≈ US$ 10,10 por
-entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11): ≈ US$ 33 ≈ US$ 4,70 por entrega (amostra pequena).
+entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11): ≈ US$ 31 ≈ US$ 4,50 por entrega (amostra pequena).
 
 ## 5. Pendências e conversas em andamento
 
