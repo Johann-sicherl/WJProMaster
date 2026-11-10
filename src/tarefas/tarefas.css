@@ -180,3 +180,7 @@ button.wj-selo.tp-fora-prazo { cursor: pointer; font: inherit; font-size: 11px; 
 .tp-etapas li input[type="date"].tp-fora-prazo, .tp-etapas-ed li input[type="date"].tp-fora-prazo, .tp-etapas li.tp-fora-prazo input[type="date"] { border-color: var(--erro); color: var(--erro); opacity: 1; }
 .tp-afetadas { margin: 6px 0 0; padding-left: 20px; }
 .tp-afetadas small { color: var(--texto-2); }
+/* alerta de prazo com três saídas: botões quebram linha (celular) e ficam com alvo de toque */
+.tp-escolha-prazo footer { flex-wrap: wrap; }
+.tp-escolha-prazo footer button { flex: 1 1 200px; min-height: 40px; white-space: normal; }
+body.disp-tablet .tp-escolha-prazo footer button, body.disp-celular .tp-escolha-prazo footer button { min-height: 44px; }

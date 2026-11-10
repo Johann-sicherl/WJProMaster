@@ -1,11 +1,11 @@
 // Teste das regras do WJTaskPlan em Node: árvore de pastas (mover, ciclos, excluir), estados com
 // histórico datado, tempo de atendimento, painel, alertas de prazo, prazo da etapa ≤ prazo da tarefa
-// e mescla das cópias.
+// (alerta de mão dupla), etapas em ordem de prazo e mescla das cópias.
 import {
   alertas, baseNova, caminhoPasta, concluidaEm, criarPasta, criarTarefa, descendentes, diasEntre, duracao, excluirEstado, excluirPasta, excluirTarefa,
   filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, validarBase, type Base,
   definirNota, definirNotaEtapa, adicionarEtapa, excluirEtapa, marcarEtapa, moverEtapa, progresso, estadoPelasEtapas, prazoEtapa, painelEtapas, alertasEtapas,
-  passaDoPrazo, etapasForaDoPrazo, trazerEtapasAoPrazo, mudarPrazoTarefa,
+  passaDoPrazo, etapasForaDoPrazo, trazerEtapasAoPrazo, mudarPrazoTarefa, conflitoPrazos, resolverPrazos, maiorPrazoEtapas, ordenarEtapas, podeMoverEtapa,
 } from "../src/tarefas/regras";
 
 let falhas = 0;
@@ -219,17 +219,18 @@ igual("tarefa concluída não alerta etapas", alertasEtapas(qpb, "2026-10-10", 1
 igual("csv com prazo da etapa", tabelaCSV(qpb).includes("Revisar (prazo 2026-10-08)"), true);
 
 // --- prazo da etapa ≤ prazo da tarefa (tarefa sem prazo = sem limite) ---
+const ord = (t: { etapas?: { titulo: string }[] }) => t.etapas!.map((e) => e.titulo).join();
 const rb = baseNova();
 const rt = criarTarefa(rb, "geral", "Entregar projeto", "2026-10-20", T(1));
 igual("etapa no prazo da tarefa entra", adicionarEtapa(rt, "Esboço", T(1), "2026-10-20")?.prazo, "2026-10-20");
 igual("etapa nova depois do prazo: recusada", adicionarEtapa(rt, "Revisão", T(2), "2026-10-25"), null);
 igual("recusa não mexe na tarefa", `${rt.prazo}|${rt.etapas!.length}|${rt.atualizado}`, `2026-10-20|1|${T(1)}`);
-const rev = adicionarEtapa(rt, "Revisão", T(2), "2026-10-25", true)!;
-igual("etapa nova com estender: tarefa estendida", `${rt.prazo}|${rev.prazo}|${rt.atualizado}`, `2026-10-25|2026-10-25|${T(2)}`);
+const rev = adicionarEtapa(rt, "Revisão", T(2), "2026-10-25", "estender")!;
+igual("etapa nova + usar o maior prazo na tarefa", `${rt.prazo}|${rev.prazo}|${rt.atualizado}`, `2026-10-25|2026-10-25|${T(2)}`);
 const rs = adicionarEtapa(rt, "Detalhar", T(2), "2026-10-10")!;
 igual("editar etapa depois do prazo: recusada", prazoEtapa(rt, rs.id, "2026-11-01", T(3)), false);
 igual("recusada: etapa e tarefa não mudam", `${rs.prazo}|${rt.prazo}|${rt.atualizado}`, `2026-10-10|2026-10-25|${T(2)}`);
-igual("editar etapa com estender: aceita", prazoEtapa(rt, rs.id, "2026-11-01", T(3), true), true);
+igual("editar etapa + usar o maior prazo: aceita", prazoEtapa(rt, rs.id, "2026-11-01", T(3), "estender"), true);
 igual("tarefa estendida até a etapa", `${rs.prazo}|${rt.prazo}|${rt.atualizado}`, `2026-11-01|2026-11-01|${T(3)}`);
 igual("tirar o prazo da etapa sempre pode", prazoEtapa(rt, rs.id, "", T(3)), true);
 igual("passa do prazo", `${passaDoPrazo(rt, "2026-11-02")}|${passaDoPrazo(rt, "2026-11-01")}|${passaDoPrazo(rt, null)}`, "true|false|false");
@@ -237,8 +238,8 @@ igual("passa do prazo", `${passaDoPrazo(rt, "2026-11-02")}|${passaDoPrazo(rt, "2
 prazoEtapa(rt, rs.id, "2026-10-28", T(3));
 igual("antecipar: etapas afetadas (na ordem)", etapasForaDoPrazo(rt, "2026-10-22").map((e) => e.titulo).join(), "Revisão,Detalhar");
 const af = mudarPrazoTarefa(rt, "2026-10-22", T(4));
-igual("antecipar sem trazer: nada muda", `${af.length}|${rt.prazo}|${rev.prazo}|${rs.prazo}|${rt.atualizado}`, `2|2026-11-01|2026-10-25|2026-10-28|${T(3)}`);
-mudarPrazoTarefa(rt, "2026-10-22", T(4), true);
+igual("antecipar sem escolha: nada muda", `${af.length}|${rt.prazo}|${rev.prazo}|${rs.prazo}|${rt.atualizado}`, `2|2026-11-01|2026-10-25|2026-10-28|${T(3)}`);
+mudarPrazoTarefa(rt, "2026-10-22", T(4), "trazer");
 igual("antecipar trazendo as etapas", `${rt.prazo}|${rev.prazo}|${rs.prazo}|${rt.etapas![0].prazo}`, "2026-10-22|2026-10-22|2026-10-22|2026-10-20");
 igual("antecipar com etapas afetadas: recusa", `${mudarPrazoTarefa(rt, "2026-10-21", T(5)).length}|${rt.prazo}`, "2|2026-10-22");
 mudarPrazoTarefa(rt, "2026-10-30", T(5));
@@ -251,19 +252,106 @@ igual("tarefa sem prazo: editar sem limite", prazoEtapa(rl, rl.etapas![0].id, "2
 igual("tarefa sem prazo: nada fora do prazo", etapasForaDoPrazo(rl).length, 0);
 igual("tirar o prazo da tarefa: nenhuma afetada", mudarPrazoTarefa(rt, null, T(7)).length + String(rt.prazo), "0null");
 igual("dar prazo antes das etapas: avisa", mudarPrazoTarefa(rl, "2026-12-01", T(7)).map((e) => e.titulo).join() + `|${rl.prazo}`, "Longe|null");
-// dado inconsistente vindo da sincronia (ou antigo): mescla não corrige sozinha; corrigir com um toque
+
+// --- alerta de mão dupla: trazer as etapas / usar o maior prazo entre as etapas / cancelar ---
+// várias etapas com prazo numa tarefa sem prazo; depois a tarefa ganha um prazo antes de algumas
+const mk = () => {
+  const x = criarTarefa(baseNova(), "geral", "Montar bancada", null, T(1));
+  for (const [n, d] of [["Comprar perfis", "2026-10-05"], ["Cortar", "2026-10-12"], ["Soldar", "2026-10-20"], ["Pintar", "2026-10-15"], ["Montar", null]] as const) adicionarEtapa(x, n, T(1), d);
+  return x;
+};
+const m0 = mk();
+const cf = conflitoPrazos(m0, { tarefa: "2026-10-10" })!;
+igual("conflito lista as afetadas (na ordem)", cf.afetadas.map((e) => `${e.titulo}:${e.prazo}`).join(), "Cortar:2026-10-12,Pintar:2026-10-15,Soldar:2026-10-20");
+igual("conflito: prazo da tarefa e maior prazo entre as etapas", `${cf.prazoTarefa}|${cf.maior}`, "2026-10-10|2026-10-20");
+igual("maior prazo entre várias etapas", maiorPrazoEtapas(m0), "2026-10-20");
+igual("conflito não muda nada", `${m0.prazo}|${m0.atualizado}`, `null|${T(1)}`);
+igual("sem conflito: null", conflitoPrazos(m0, { tarefa: "2026-10-25" }), null);
+igual("tirar o prazo: sem conflito", conflitoPrazos(m0, { tarefa: null }), null);
+// opção 1: trazer as etapas para o prazo da tarefa
+const m1 = mk();
+mudarPrazoTarefa(m1, "2026-10-10", T(2), "trazer");
+igual("trazer: tarefa com o prazo pedido", m1.prazo, "2026-10-10");
+igual("trazer: etapas no prazo da tarefa, na ordem", m1.etapas!.map((e) => `${e.titulo}:${e.prazo ?? "-"}`).join(), "Comprar perfis:2026-10-05,Cortar:2026-10-10,Pintar:2026-10-10,Soldar:2026-10-10,Montar:-");
+igual("trazer: atualiza a tarefa", m1.atualizado, T(2));
+// opção 2: usar na tarefa o maior prazo entre as etapas
+const m2 = mk();
+mudarPrazoTarefa(m2, "2026-10-10", T(2), "estender");
+igual("usar o maior prazo: tarefa = maior prazo entre as etapas", `${m2.prazo}|${etapasForaDoPrazo(m2).length}`, "2026-10-20|0");
+igual("usar o maior prazo: etapas não mudam", m2.etapas!.map((e) => e.prazo ?? "-").join(), "2026-10-05,2026-10-12,2026-10-15,2026-10-20,-");
+// opção 3: cancelar = não chamar com escolha (nada muda)
+const m3 = mk();
+igual("cancelar: nada muda", `${mudarPrazoTarefa(m3, "2026-10-10", T(2)).length}|${m3.prazo}|${m3.atualizado}`, `3|null|${T(1)}`);
+// o mesmo conflito pelo lado da etapa
+const m4 = mk();
+mudarPrazoTarefa(m4, "2026-10-25", T(2));
+const pin = m4.etapas!.find((e) => e.titulo === "Pintar")!;
+const c4 = conflitoPrazos(m4, { etapa: { id: pin.id, prazo: "2026-10-30" } })!;
+igual("conflito pela etapa: afetada já com a nova data", `${c4.afetadas.map((e) => `${e.titulo}:${e.prazo}`).join()}|${c4.maior}|${pin.prazo}`, "Pintar:2026-10-30|2026-10-30|2026-10-15");
+igual("conflito por etapa nova", conflitoPrazos(m4, { etapa: { id: null, prazo: "2026-11-02", titulo: "Entregar" } })!.afetadas.map((e) => e.titulo).join(), "Entregar");
+prazoEtapa(m4, pin.id, "2026-10-30", T(3), "trazer");
+igual("etapa + trazer: a etapa fica no prazo da tarefa (no fim do grupo da data)", `${pin.prazo}|${m4.prazo}|${ord(m4)}`, "2026-10-25|2026-10-25|Comprar perfis,Cortar,Soldar,Pintar,Montar");
+const m5 = mk();
+mudarPrazoTarefa(m5, "2026-10-25", T(2));
+adicionarEtapa(m5, "Entregar", T(3), "2026-11-02", "trazer");
+igual("etapa nova + trazer: entra no prazo da tarefa", `${m5.etapas!.find((e) => e.titulo === "Entregar")!.prazo}|${m5.prazo}`, "2026-10-25|2026-10-25");
+adicionarEtapa(m5, "Documentar", T(3), "2026-11-05", "estender");
+igual("etapa nova + usar o maior prazo", `${m5.prazo}|${ord(m5)}`, "2026-11-05|Comprar perfis,Cortar,Pintar,Soldar,Entregar,Documentar,Montar");
+
+// --- ordem automática das etapas por prazo ---
+const o = criarTarefa(baseNova(), "geral", "Ordem", null, T(1));
+const oA = adicionarEtapa(o, "A", T(1), "2026-10-10")!, oB = adicionarEtapa(o, "B", T(1), null)!, oC = adicionarEtapa(o, "C", T(1), "2026-10-05")!;
+const oD = adicionarEtapa(o, "D", T(1), "2026-10-10")!, oE = adicionarEtapa(o, "E", T(1), null)!;
+igual("criar já ordena (sem prazo no fim, empate na ordem de criação)", ord(o), "C,A,D,B,E");
+moverEtapa(o, oD.id, -1, T(2));
+igual("subir dentro da mesma data", ord(o), "C,D,A,B,E");
+igual("não sobe para outra data", `${podeMoverEtapa(o, oD.id, -1)}|${moverEtapa(o, oD.id, -1, T(3))}|${ord(o)}|${o.atualizado}`, `false|false|C,D,A,B,E|${T(2)}`);
+igual("primeira sem prazo não sobe para a última com prazo", podeMoverEtapa(o, oB.id, -1), false);
+moverEtapa(o, oE.id, -1, T(3));
+igual("ordem manual entre as sem prazo", ord(o), "C,D,A,E,B");
+igual("descer dentro da mesma data", `${moverEtapa(o, oD.id, 1, T(4))}|${ord(o)}`, "true|C,A,D,E,B");
+prazoEtapa(o, oB.id, "2026-10-01", T(5));
+igual("dar prazo reposiciona", ord(o), "B,C,A,D,E");
+prazoEtapa(o, oC.id, "2026-10-10", T(5));
+igual("mudar a data vai para o fim do grupo da nova data", ord(o), "B,A,D,C,E");
+prazoEtapa(o, oA.id, "", T(6));
+igual("tirar o prazo: vai para o fim (depois das sem prazo)", ord(o), "B,D,C,E,A");
+marcarEtapa(o, oD.id, true, T(7));
+igual("etapa feita não sai do lugar", ord(o), "B,D,C,E,A");
+igual("ordenar lista já em ordem: nada muda", ordenarEtapas(o), false);
+// sincronia entre aparelhos mantendo a ordem
+const so = baseNova();
+const st = criarTarefa(so, "geral", "Sincronia", null, T(1));
+const s1 = adicionarEtapa(st, "Um", T(1), "2026-10-10")!, s2 = adicionarEtapa(st, "Dois", T(1), "2026-10-10")!;
+adicionarEtapa(st, "Três", T(1), "2026-10-03");
+const outroAp = validarBase(JSON.parse(JSON.stringify(so)));
+moverEtapa(outroAp.tarefas[0], s2.id, -1, T(4)); // outro aparelho troca a ordem manual depois
+const sm = mesclar([so, outroAp], T(5));
+igual("sincronia: ordem manual do aparelho mais recente", ord(sm.tarefas[0]), "Três,Dois,Um");
+prazoEtapa(st, s1.id, "2026-10-01", T(6)); // este aparelho muda uma data por último
+igual("sincronia: data nova reposiciona nos dois", ord(mesclar([outroAp, so], T(7)).tarefas[0]), "Um,Três,Dois");
+const velha = validarBase(JSON.parse(JSON.stringify({ ...baseNova(), tarefas: [{ ...st, etapas: [{ id: "x", titulo: "Sem", feita: null }, { id: "y", titulo: "Tarde", feita: null, prazo: "2026-12-01" }, { id: "z", titulo: "Cedo", feita: null, prazo: "2026-10-01" }] }] })));
+igual("arquivo antigo fora de ordem: ordenado ao ler", ord(velha.tarefas[0]), "Cedo,Tarde,Sem");
+igual("ordenar ao ler não muda a data de alteração", velha.tarefas[0].atualizado, st.atualizado);
+igual("mescla de lista fora de ordem: ordenada", ord(mesclar([{ ...baseNova(), tarefas: [{ ...st, etapas: [{ id: "x", titulo: "Sem", feita: null }, { id: "z", titulo: "Cedo", feita: null, prazo: "2026-10-01" }] }] }], T(8)).tarefas[0]), "Cedo,Sem");
+
+// dado inconsistente vindo da sincronia (ou antigo): mescla não corrige sozinha; o selo oferece as 3 opções
 const dx = baseNova();
 const tx = criarTarefa(dx, "geral", "Vinda do outro aparelho", "2026-10-10", T(1));
 tx.etapas = [{ id: "e1", titulo: "Ok", feita: null, prazo: "2026-10-09" }, { id: "e2", titulo: "Passa", feita: null, prazo: "2026-10-15" }, { id: "e3", titulo: "Também", feita: T(2), prazo: "2026-10-12" }];
-const daSinc = mesclar([baseNova(), validarBase(JSON.parse(JSON.stringify(dx)))], T(9));
-const ty = daSinc.tarefas.find((x) => x.id === tx.id)!;
-igual("sincronia não altera os prazos errados", ty.etapas!.map((e) => e.prazo).join(), "2026-10-09,2026-10-15,2026-10-12");
-igual("sincronia: etapas marcadas", etapasForaDoPrazo(ty).map((e) => e.id).join(), "e2,e3");
+const daSinc = () => mesclar([baseNova(), validarBase(JSON.parse(JSON.stringify(dx)))], T(9)).tarefas.find((x) => x.id === tx.id)!;
+const ty = daSinc();
+igual("sincronia não altera os prazos errados", ty.etapas!.map((e) => `${e.id}:${e.prazo}`).join(), "e1:2026-10-09,e3:2026-10-12,e2:2026-10-15");
+igual("sincronia: etapas marcadas", etapasForaDoPrazo(ty).map((e) => e.id).join(), "e3,e2");
+const cs = conflitoPrazos(ty)!;
+igual("selo: conflito do dado como está", `${cs.afetadas.map((e) => e.id).join()}|${cs.prazoTarefa}|${cs.maior}`, "e3,e2|2026-10-10|2026-10-15");
 const antesSinc = ty.atualizado;
-igual("trazer só a etapa tocada", `${trazerEtapasAoPrazo(ty, T(10), ["e2"])}|${ty.etapas![1].prazo}|${ty.etapas![2].prazo}`, "1|2026-10-10|2026-10-12");
+igual("selo + trazer", `${resolverPrazos(ty, "trazer", T(10))}|${ty.etapas!.map((e) => e.prazo).join()}|${ty.prazo}`, "2|2026-10-09,2026-10-10,2026-10-10|2026-10-10");
 igual("corrigir atualiza a tarefa (vai pela sincronia)", ty.atualizado !== antesSinc, true);
-igual("estender a tarefa até a etapa", `${mudarPrazoTarefa(ty, "2026-10-12", T(11)).length}|${ty.prazo}|${etapasForaDoPrazo(ty).length}`, "0|2026-10-12|0");
-igual("nada a trazer: tarefa não muda", `${trazerEtapasAoPrazo(ty, T(12))}|${ty.atualizado}`, `0|${T(11)}`);
+const tz = daSinc();
+igual("selo + usar o maior prazo", `${resolverPrazos(tz, "estender", T(10))}|${tz.prazo}|${etapasForaDoPrazo(tz).length}`, "1|2026-10-15|0");
+igual("nada a resolver: tarefa não muda", `${resolverPrazos(tz, "trazer", T(12))}|${tz.atualizado}`, `0|${T(10)}`);
+igual("trazer só a etapa tocada", `${trazerEtapasAoPrazo(daSinc(), T(10), ["e2"])}`, "1");
 
 let erro = "";
 try {

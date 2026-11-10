@@ -113,6 +113,7 @@ export function validarBase(x: unknown): Base {
     tarefas: (Array.isArray(b.tarefas) ? b.tarefas : []).map((t) => {
       const x: Tarefa = { ...t, prazo: t.prazo || null, historico: Array.isArray(t.historico) ? t.historico : [] };
       if (x.etapas !== undefined && !Array.isArray(x.etapas)) delete x.etapas;
+      ordenarEtapas(x); // arquivo de versão antiga: etapas por prazo
       return x;
     }),
     config: { ...n.config, ...(b.config ?? {}) },
@@ -204,22 +205,46 @@ export function mudarEstado(t: Tarefa, estado: string, agora: string) {
 
 // ---------- etapas (sub-tarefas) ----------
 // Ficam dentro da tarefa: qualquer mudança nelas atualiza a tarefa (a sincronia leva a lista inteira).
+// Ordem: sempre crescente de prazo; mesma data mantém a ordem manual entre elas; sem prazo no fim (na
+// ordem manual). Etapas feitas não saem do lugar (a lista é a linha do tempo; marcar não faz pular).
+
+/** O que as funções de prazo mexem: a tarefa ou o rascunho da janela da tarefa. */
+export type ComEtapas = Pick<Tarefa, "prazo" | "etapas" | "atualizado">;
+
+/** Chave de ordem: sem prazo vai para o fim. */
+const chaveOrdem = (e: Etapa) => e.prazo || "￿";
 
 /**
- * Nova etapa no fim da lista; `prazo` (AAAA-MM-DD) opcional já na criação. Prazo depois do prazo da
- * tarefa: recusada (null) — com `estender`, a tarefa ganha esse prazo (a interface pergunta antes).
+ * Reordena as etapas por prazo (estável: a ordem manual vale dentro da mesma data e entre as sem
+ * prazo). As de `movidas` (data acabou de mudar) entram no fim do grupo da nova data. Não mexe em
+ * `atualizado` (é a mesma lista, só arrumada). Devolve true se a ordem mudou.
  */
-export function adicionarEtapa(t: Tarefa, titulo: string, agora: string, prazo?: string | null, estender = false): Etapa | null {
+export function ordenarEtapas(t: Pick<Tarefa, "etapas">, movidas?: Set<string>): boolean {
+  const l = t.etapas;
+  if (!l || l.length < 2) return false;
+  const pos = new Map(l.map((e, k) => [e.id, k]));
+  const m = (e: Etapa) => (movidas?.has(e.id) ? 1 : 0);
+  const n = [...l].sort((a, b) => (chaveOrdem(a) < chaveOrdem(b) ? -1 : chaveOrdem(a) > chaveOrdem(b) ? 1 : m(a) - m(b) || pos.get(a.id)! - pos.get(b.id)!));
+  if (n.every((e, k) => e === l[k])) return false;
+  t.etapas = n;
+  return true;
+}
+
+/**
+ * Nova etapa (`prazo` AAAA-MM-DD opcional), no lugar dela pela data (fim do grupo da data; sem prazo:
+ * no fim). Prazo depois do prazo da tarefa: recusada (null) sem `escolha` — com "trazer" a etapa entra no
+ * prazo da tarefa; com "estender" a tarefa passa para o maior prazo entre as etapas.
+ */
+export function adicionarEtapa(t: ComEtapas, titulo: string, agora: string, prazo?: string | null, escolha?: EscolhaPrazo): Etapa | null {
   const tt = titulo.trim();
   if (!tt) return null;
-  if (prazo && passaDoPrazo(t, prazo)) {
-    if (!estender) return null;
-    t.prazo = prazo;
-  }
+  if (prazo && passaDoPrazo(t, prazo) && !escolha) return null;
   const e: Etapa = { id: uid(), titulo: tt, feita: null };
   if (prazo) e.prazo = prazo;
   (t.etapas ??= []).push(e);
   t.atualizado = agora;
+  if (escolha) resolverPrazos(t, escolha, agora, new Set([e.id]));
+  ordenarEtapas(t, new Set([e.id]));
   return e;
 }
 
@@ -236,41 +261,54 @@ export function excluirEtapa(t: Tarefa, id: string, agora: string) {
   t.atualizado = agora;
 }
 
-/** Sobe (-1) ou desce (+1) a etapa na lista. */
-export function moverEtapa(t: Tarefa, id: string, passo: number, agora: string) {
+/** A etapa pode subir (-1) ou descer (+1)? Só dentro do mesmo grupo (mesma data ou ambas sem data). */
+export function podeMoverEtapa(t: Pick<Tarefa, "etapas">, id: string, passo: number): boolean {
   const l = t.etapas ?? [];
   const k = l.findIndex((x) => x.id === id), j = k + passo;
-  if (k < 0 || j < 0 || j >= l.length) return;
+  return k >= 0 && j >= 0 && j < l.length && (l[k].prazo || null) === (l[j].prazo || null);
+}
+
+/** Sobe (-1) ou desce (+1) a etapa dentro do grupo dela (a ordem por data não se quebra). */
+export function moverEtapa(t: ComEtapas, id: string, passo: number, agora: string): boolean {
+  if (!podeMoverEtapa(t, id, passo)) return false;
+  const l = t.etapas!;
+  const k = l.findIndex((x) => x.id === id), j = k + passo;
   [l[k], l[j]] = [l[j], l[k]];
   t.atualizado = agora;
+  return true;
 }
 
 /**
- * Prazo de entrega da etapa (null ou "" tira o prazo). Regra: prazo da etapa ≤ prazo da tarefa (tarefa
- * sem prazo = sem limite). Depois do prazo da tarefa: recusado (false, nada muda) — com `estender`, a
- * tarefa ganha esse prazo. Devolve true quando o prazo pedido ficou valendo.
+ * Prazo de entrega da etapa (null ou "" tira o prazo); a etapa vai para o lugar da nova data. Regra:
+ * prazo da etapa ≤ prazo da tarefa (tarefa sem prazo = sem limite). Depois do prazo da tarefa: recusado
+ * (false, nada muda) sem `escolha` — "trazer": as etapas que passariam vão para o prazo da tarefa;
+ * "estender": a tarefa passa para o maior prazo entre as etapas. Devolve true quando aplicou.
  */
-export function prazoEtapa(t: Tarefa, id: string, prazo: string | null, agora: string, estender = false): boolean {
+export function prazoEtapa(t: ComEtapas, id: string, prazo: string | null, agora: string, escolha?: EscolhaPrazo): boolean {
   const e = t.etapas?.find((x) => x.id === id);
   const p = prazo || null;
   if (!e) return false;
-  if (p && passaDoPrazo(t, p)) {
-    if (!estender) return false;
-    t.prazo = p;
+  if (p && passaDoPrazo(t, p) && !escolha) return false;
+  if ((e.prazo ?? null) !== p) {
+    if (p) e.prazo = p;
+    else delete e.prazo;
     t.atualizado = agora;
   }
-  if ((e.prazo ?? null) === p) return true;
-  if (p) e.prazo = p;
-  else delete e.prazo;
-  t.atualizado = agora;
+  if (escolha) resolverPrazos(t, escolha, agora, new Set([id]));
+  ordenarEtapas(t, new Set([id]));
   return true;
 }
 
 // ---------- prazo da etapa × prazo da tarefa ----------
 // Regra: prazo da etapa ≤ prazo da tarefa; tarefa sem prazo = etapas sem limite. As funções que mudam
-// prazos recusam o que quebra a regra (a interface só pergunta). Dados que já chegam errados (antigos ou
-// de outro aparelho pela sincronia) nunca são corrigidos sozinhos: `etapasForaDoPrazo` aponta, e
-// `trazerEtapasAoPrazo` / `mudarPrazoTarefa` corrigem quando o usuário pede.
+// prazos recusam o que quebra a regra (a interface só pergunta). O conflito tem sempre as mesmas três
+// saídas, venha de onde vier (prazo da tarefa, prazo da etapa ou dado errado da sincronia):
+// "trazer" as etapas para o prazo da tarefa, "estender" a tarefa até o maior prazo entre as etapas, ou
+// cancelar. Dado que já chega errado nunca é corrigido sozinho: `conflitoPrazos` aponta e
+// `resolverPrazos` corrige quando o usuário escolhe.
+
+/** Saída do conflito de prazos (cancelar = não chamar). */
+export type EscolhaPrazo = "trazer" | "estender";
 
 /** A data passa do prazo da tarefa? (tarefa sem prazo ou data vazia: nunca) */
 export function passaDoPrazo(t: Pick<Tarefa, "prazo">, prazo: string | null | undefined): boolean {
@@ -282,25 +320,75 @@ export function etapasForaDoPrazo(t: Pick<Tarefa, "prazo" | "etapas">, prazo: st
   return prazo ? (t.etapas ?? []).filter((e) => passaDoPrazo({ prazo }, e.prazo)) : [];
 }
 
+/** Maior prazo entre as etapas (null = nenhuma tem prazo). */
+export function maiorPrazoEtapas(t: Pick<Tarefa, "etapas">): string | null {
+  let m: string | null = null;
+  for (const e of t.etapas ?? []) if (e.prazo && (!m || e.prazo > m)) m = e.prazo;
+  return m;
+}
+
+export interface ConflitoPrazos {
+  /** prazo da tarefa considerado (a opção "trazer" leva as etapas para ele) */
+  prazoTarefa: string;
+  /** etapas que passam dele, já com a data pedida (cópias, na ordem da lista) */
+  afetadas: Etapa[];
+  /** maior prazo entre as etapas (a opção "estender" leva a tarefa para ele) */
+  maior: string;
+}
+
+/**
+ * Conflito de prazos (null = nenhum), já com a mudança pedida: novo prazo da tarefa (`tarefa`, inclusive
+ * null = sem prazo) ou nova data de uma etapa (`etapa.id` existente ou null para etapa nova). Sem mudança:
+ * o dado como está (selo de dado errado, vindo da sincronia).
+ */
+export function conflitoPrazos(t: Pick<Tarefa, "prazo" | "etapas">, mudar: { tarefa?: string | null; etapa?: { id: string | null; prazo: string | null; titulo?: string } } = {}): ConflitoPrazos | null {
+  const prazoTarefa = "tarefa" in mudar ? mudar.tarefa || null : t.prazo;
+  if (!prazoTarefa) return null;
+  const etapas = (t.etapas ?? []).map((e) => (mudar.etapa && e.id === mudar.etapa.id ? { ...e, prazo: mudar.etapa.prazo || undefined } : e));
+  if (mudar.etapa && mudar.etapa.id === null) etapas.push({ id: "", titulo: mudar.etapa.titulo ?? "", feita: null, prazo: mudar.etapa.prazo || undefined });
+  const simulada = { prazo: prazoTarefa, etapas };
+  const afetadas = etapasForaDoPrazo(simulada);
+  return afetadas.length ? { prazoTarefa, afetadas, maior: maiorPrazoEtapas(simulada)! } : null;
+}
+
+/**
+ * Resolve o conflito: "trazer" leva para o prazo da tarefa as etapas que passam dele; "estender" muda o
+ * prazo da tarefa para o maior prazo entre as etapas. `movidas`: etapas cuja data acabou de mudar (vão
+ * para o fim do grupo da nova data). Devolve quantos registros mudaram (0 = não havia conflito).
+ */
+export function resolverPrazos(t: ComEtapas, escolha: EscolhaPrazo, agora: string, movidas = new Set<string>()): number {
+  const fora = etapasForaDoPrazo(t);
+  if (!fora.length) return 0;
+  if (escolha === "estender") {
+    t.prazo = maiorPrazoEtapas(t);
+    t.atualizado = agora;
+    return 1;
+  }
+  for (const e of fora) (e.prazo = t.prazo!), movidas.add(e.id);
+  t.atualizado = agora;
+  ordenarEtapas(t, movidas);
+  return fora.length;
+}
+
 /** Traz para o prazo da tarefa as etapas que passam dele (todas ou só `ids`); devolve quantas mudaram. */
-export function trazerEtapasAoPrazo(t: Tarefa, agora: string, ids?: string[]): number {
+export function trazerEtapasAoPrazo(t: ComEtapas, agora: string, ids?: string[]): number {
   const l = etapasForaDoPrazo(t).filter((e) => !ids || ids.includes(e.id));
-  for (const e of l) e.prazo = t.prazo;
-  if (l.length) t.atualizado = agora;
+  for (const e of l) e.prazo = t.prazo!;
+  if (l.length) (t.atualizado = agora), ordenarEtapas(t, new Set(l.map((e) => e.id)));
   return l.length;
 }
 
 /**
- * Muda o prazo da tarefa (null = sem prazo). Etapas que passariam do novo prazo: sem `trazer`, nada muda
- * e elas são devolvidas (a interface avisa e pergunta); com `trazer`, elas vão para o novo prazo.
- * Devolve as etapas que passavam (lista vazia = nenhuma).
+ * Muda o prazo da tarefa (null = sem prazo). Etapas que passariam do novo prazo: sem `escolha`, nada muda
+ * e elas são devolvidas (a interface lista e pergunta); "trazer": elas vão para o novo prazo; "estender":
+ * a tarefa fica com o maior prazo entre as etapas. Devolve as etapas que passavam (vazia = nenhuma).
  */
-export function mudarPrazoTarefa(t: Tarefa, prazo: string | null, agora: string, trazer = false): Etapa[] {
+export function mudarPrazoTarefa(t: ComEtapas, prazo: string | null, agora: string, escolha?: EscolhaPrazo): Etapa[] {
   const p = prazo || null;
   const afetadas = etapasForaDoPrazo(t, p);
-  if (afetadas.length && !trazer) return afetadas;
+  if (afetadas.length && !escolha) return afetadas;
   if (t.prazo !== p) (t.prazo = p), (t.atualizado = agora);
-  trazerEtapasAoPrazo(t, agora);
+  resolverPrazos(t, escolha ?? "trazer", agora);
   return afetadas;
 }
 
@@ -633,6 +721,8 @@ export function mesclar(entrada: Base[], agora: string): Base {
   for (const t of r.tarefas) if (!ids.has(t.pasta)) t.pasta = raiz.id;
   const est = new Set(r.estados.map((e) => e.id));
   for (const t of r.tarefas) if (!est.has(t.estado)) t.estado = estadoInicial(r).id;
+  // etapas sempre por prazo (lista vinda de versão antiga); a ordem manual dentro da data fica
+  for (const t of r.tarefas) ordenarEtapas(t);
   r.pastas.sort((a, b) => a.id.localeCompare(b.id));
   r.tarefas.sort((a, b) => a.criada.localeCompare(b.criada) || a.id.localeCompare(b.id));
   return r;
