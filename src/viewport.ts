@@ -125,6 +125,7 @@ export class Viewport {
   topologia: Topologia | null = null;
   private grupoDestaque = new THREE.Group();
   private grupoPrevia = new THREE.Group();
+  private grupoRegiao = new THREE.Group();
   private grupoRefsExtras = new THREE.Group();
   private grupoSecao = new THREE.Group();
   private secao: THREE.Plane | null = null;
@@ -238,7 +239,7 @@ export class Viewport {
     this.grupoAlcas.renderOrder = 30;
     this.ouvintesCamera.add(() => { if (this.alcas.length) this.desenharAlcas(); });
     this.grupoPrevia.renderOrder = 4;
-    this.cena.add(this.grupoPeca, this.grupoContexto, this.grupoRefs, this.grupoRefsExtras, this.grupoSecao, this.grupoDestaque, this.grupoPrevia, this.grupoEsboco, this.grupoAlcas);
+    this.cena.add(this.grupoPeca, this.grupoContexto, this.grupoRefs, this.grupoRefsExtras, this.grupoSecao, this.grupoDestaque, this.grupoPrevia, this.grupoRegiao, this.grupoEsboco, this.grupoAlcas);
     this.renderer.domElement.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       // toque longo nativo do Android: quem decide é o nosso temporizador (tempo configurável)
@@ -1249,6 +1250,31 @@ export class Viewport {
       geoA.setAttribute("position", new THREE.BufferAttribute(m.arestas, 3));
       const arestas = new THREE.LineSegments(geoA, new THREE.LineBasicMaterial({ color: COR_REMOVIDO, transparent: true, opacity: 0.9, depthTest: false }));
       this.grupoPrevia.add(corpo, arestas);
+    }
+    this.precisaRender = true;
+  }
+
+  /** Destaque de uma região (sólido azul translúcido por cima da peça), ex.: lista do Dividir. */
+  mostrarRegiao(m: MalhaSimples | null) {
+    for (const o of [...this.grupoRegiao.children]) {
+      this.grupoRegiao.remove(o);
+      (o as THREE.Mesh).geometry?.dispose();
+      ((o as THREE.Mesh).material as THREE.Material)?.dispose();
+    }
+    if (m) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(m.vertices, 3));
+      geo.setAttribute("normal", new THREE.BufferAttribute(m.normais, 3));
+      geo.setIndex(new THREE.BufferAttribute(m.triangulos, 1));
+      const corpo = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        color: COR_SELECAO, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+        side: THREE.DoubleSide, clippingPlanes: this.secao ? [this.secao] : [],
+      }));
+      const geoA = new THREE.BufferGeometry();
+      geoA.setAttribute("position", new THREE.BufferAttribute(m.arestas, 3));
+      const arestas = new THREE.LineSegments(geoA, new THREE.LineBasicMaterial({ color: COR_SELECAO, depthTest: false }));
+      arestas.renderOrder = 6;
+      this.grupoRegiao.add(corpo, arestas);
     }
     this.precisaRender = true;
   }

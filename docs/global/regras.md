@@ -218,7 +218,13 @@
 - Referências a faces/arestas/corpos por **assinatura geométrica** (reencontra a mais parecida após
   reconstruir).
 - **Importar**: STEP/STP/STL criam o recurso `importado`. STL com mais de 10 000 triângulos = **corpo de
-  malha** (só exibido; janela "STL grande" oferece simplificar para sólido). Montagem STEP → `.wjasm`.
+  malha** (só exibido; janela "STL grande" oferece simplificar para sólido e, até 50 000 triângulos, **sólido na
+  forma exata**, sem simplificar — 10/11/2026: simplificar pode abrir a malha e os cortes perderem material).
+  Montagem STEP → `.wjasm`.
+- **Dividir com corpos resultantes** (10/11/2026, pedido do Johann, como no CAD de referência): o plano corta em
+  regiões (várias, se cruzar a peça várias vezes); a lista no painel destaca cada região ao tocar e marca quais viram
+  corpos separados (as desmarcadas ficam juntas); a escolha fica no recurso por assinatura. Corpo de malha: o painel
+  oferece "Converter em sólido" (forma exata ou simplificado).
 - **STEP AP214/AP242 abre com as cores do arquivo** (04/11/2026), na Peça e na Montagem.
 - **Cotas do esboço com teclado-calculadora** (09/11/2026; 10/11/2026: **abre pelo botão com símbolo de
   calculadora** na caixa do valor da cota): pequena calculadora ao lado da cota (normal ↔ científica,

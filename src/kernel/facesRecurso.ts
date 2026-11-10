@@ -12,10 +12,26 @@ const TOL = 1e-4;
 
 type Caixa = { min: Vec3; max: Vec3 };
 
+type FacePropria = { face: Face; caixa?: Caixa | null; consulta: DistanceQuery | null };
+
 interface FacesProprias {
   id: string;
   /** caixa: undefined = ainda não calculada (só quando um teste geométrico precisa) */
-  faces: { face: Face; caixa?: Caixa | null; consulta: DistanceQuery | null }[];
+  faces: FacePropria[];
+  /** índice das faces planas pelo plano e as não planas (montado na primeira consulta) */
+  indice?: { planas: IndicePlanos<FacePropria & { n: Vec3; d: number }>; curvas: FacePropria[] };
+}
+
+function indiceDe(r: FacesProprias): NonNullable<FacesProprias["indice"]> {
+  if (r.indice) return r.indice;
+  const planas: (FacePropria & { n: Vec3; d: number })[] = [];
+  const curvas: FacePropria[] = [];
+  for (const pr of r.faces) {
+    const pl = planoDe(pr.face);
+    if (pl) planas.push(Object.assign(pr, pl));
+    else curvas.push(pr);
+  }
+  return (r.indice = { planas: new IndicePlanos(planas), curvas });
 }
 
 function caixaDe(f: Face): Caixa | null {
@@ -43,7 +59,9 @@ function distancia(consulta: DistanceQuery, p: Vec3): number {
 function planoDe(f: Face): { n: Vec3; d: number } | null {
   try {
     if (f.geomType !== "PLANE") return null;
-    const c = f.center, v = f.normalAt(c);
+    // plano: normal no meio do domínio UV e um ponto qualquer da superfície (o centro de massa da face
+    // integra a superfície e projeta o ponto: ~0,5 ms por face, minutos num sólido vindo de STL)
+    const c = f.pointOnSurface(0.5, 0.5), v = f.normalAt();
     const n: Vec3 = [v.x, v.y, v.z];
     const d = n[0] * c.x + n[1] * c.y + n[2] * c.z;
     c.delete();
@@ -53,6 +71,43 @@ function planoDe(f: Face): { n: Vec3; d: number } | null {
     return null;
   }
 }
+
+/** Balde do plano pela distância à origem (|d|, passo de 1 µm): n e −n caem no mesmo balde. */
+const baldeDe = (d: number) => Math.round(Math.abs(d) * 1000);
+
+/**
+ * Faces planas agrupadas pelo plano (balde de |d|): uma face plana só pode estar sobre uma face do
+ * mesmo plano, então cada consulta olha só o próprio balde e os vizinhos, não as milhares de faces de
+ * um sólido vindo de STL (antes era quadrático: minutos no Mover corpo de uma peça de 15 mil faces).
+ */
+class IndicePlanos<T extends { n: Vec3; d: number }> {
+  private baldes = new Map<number, T[]>();
+  constructor(itens: T[]) {
+    for (const x of itens) {
+      const k = baldeDe(x.d);
+      const l = this.baldes.get(k);
+      if (l) l.push(x);
+      else this.baldes.set(k, [x]);
+    }
+  }
+  /** Itens do mesmo plano (normais paralelas, de qualquer sentido) que passam a até TOL do ponto. */
+  doPlano(n: Vec3, p: Vec3): T[] {
+    const k = baldeDe(n[0] * p[0] + n[1] * p[1] + n[2] * p[2]);
+    const out: T[] = [];
+    for (const kk of [k - 1, k, k + 1]) {
+      for (const g of this.baldes.get(kk) ?? []) {
+        const c = g.n[0] * n[0] + g.n[1] * n[1] + g.n[2] * n[2];
+        if (c < 0.9999 && c > -0.9999) continue;
+        if (Math.abs(g.n[0] * p[0] + g.n[1] * p[1] + g.n[2] * p[2] - g.d) > TOL) continue;
+        out.push(g);
+      }
+    }
+    return out;
+  }
+}
+
+/** Ponto qualquer do plano (para achar o balde antes de ter um ponto da face). */
+const pontoDoPlano = (pl: { n: Vec3; d: number }): Vec3 => [pl.n[0] * pl.d, pl.n[1] * pl.d, pl.n[2] * pl.d];
 
 /** Um ponto que está de fato na face (o centro paramétrico pode cair num furo). */
 function pontoNaFace(f: Face): Vec3 | null {
@@ -89,17 +144,18 @@ export class RastreadorFaces {
       let consultaAntes: DistanceQuery | null = null;
       type PlanoAntigo = { n: Vec3; d: number; face: Face; caixa?: Caixa | null; q?: DistanceQuery };
       let planosAntes: PlanoAntigo[] | null = null;
-      const sobreAntiga = (f: Face, p: Vec3): boolean => {
-        const plano = planoDe(f);
+      let indiceAntes: IndicePlanos<PlanoAntigo> | null = null;
+      const planosDaPeca = () => {
+        planosAntes ??= velhas.flatMap((g) => {
+          const pl = planoDe(g);
+          return pl ? [{ ...pl, face: g }] : [];
+        });
+        return (indiceAntes ??= new IndicePlanos(planosAntes));
+      };
+      const sobreAntiga = (f: Face, p: Vec3, plano: { n: Vec3; d: number } | null): boolean => {
         if (plano) {
           // face plana nova está sobre a peça anterior ⇔ está sobre uma face plana antiga do mesmo plano
-          planosAntes ??= velhas.flatMap((g) => {
-            const pl = planoDe(g);
-            return pl ? [{ ...pl, face: g }] : [];
-          });
-          for (const g of planosAntes) {
-            if (g.n[0] * plano.n[0] + g.n[1] * plano.n[1] + g.n[2] * plano.n[2] < 0.9999 && g.n[0] * plano.n[0] + g.n[1] * plano.n[1] + g.n[2] * plano.n[2] > -0.9999) continue;
-            if (Math.abs(g.n[0] * p[0] + g.n[1] * p[1] + g.n[2] * p[2] - g.d) > TOL) continue;
+          for (const g of planosDaPeca().doPlano(plano.n, p)) {
             if (g.caixa === undefined) g.caixa = caixaDe(g.face);
             if (!dentro(p, g.caixa, 1e-3)) continue;
             g.q ??= new DistanceQuery(g.face);
@@ -115,9 +171,13 @@ export class RastreadorFaces {
         for (const f of listarTopo(depois, "face")) {
           if (porHash.get(f.hashCode)?.some((g) => g.isSame(f))) continue; // face intacta: não é deste recurso
           if (antes) {
-            const p = pontoNaFace(f);
-            // face nova mas sobre a superfície antiga: só foi recortada
-            if (p && sobreAntiga(f, p)) continue;
+            const plano = planoDe(f);
+            // face plana sem nenhuma face antiga no mesmo plano: é nova (não precisa de ponto)
+            if (!plano || planosDaPeca().doPlano(plano.n, pontoDoPlano(plano)).length) {
+              const p = pontoNaFace(f);
+              // face nova mas sobre a superfície antiga: só foi recortada
+              if (p && sobreAntiga(f, p, plano)) continue;
+            }
           }
           faces.push({ face: f, consulta: null });
         }
@@ -163,9 +223,14 @@ export class RastreadorFaces {
         // antes do recurso da face idêntica, algum recurso tem uma face que contém esta?
         let p: Vec3 | null | undefined;
         let dono = igual < this.proprias.length ? igual : -1;
+        let plano: { n: Vec3; d: number } | null | undefined;
         for (let k = 0; k < igual; k++) {
           let achou = false;
-          for (const pr of this.proprias[k].faces) {
+          // face plana: só as faces do mesmo plano do recurso podem contê-la; curva: as curvas
+          plano ??= planoDe(f);
+          const ind = indiceDe(this.proprias[k]);
+          const candidatas = plano ? ind.planas.doPlano(plano.n, pontoDoPlano(plano)) : ind.curvas;
+          for (const pr of candidatas) {
             if (p === undefined) p = pontoNaFace(f);
             if (!p) break;
             if (pr.caixa === undefined) pr.caixa = caixaDe(pr.face);
