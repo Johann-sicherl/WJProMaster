@@ -21,6 +21,10 @@ arquivos de todos os apps. Página `calceng/`, código em `src/calceng/`, motor 
 | Plano inclinado | ✅ (08/11/2026) |
 | Força de atrito | ✅ (08/11/2026) |
 | Trabalho | ✅ (08/11/2026) |
+| Derivada | ✅ (10/11/2026) |
+| Integral indefinida | ✅ (10/11/2026) |
+| Integral definida | ✅ (10/11/2026) |
+| Editor de equações (teclado matemático, fórmula formatada, texto/LaTeX) | ✅ (10/11/2026) |
 
 Todas entregues em 08/11/2026 (pedido: "continue com o desenvolvimento de todas as outras matérias"); detalhes no §3.
 
@@ -113,6 +117,48 @@ desfazer/refazer. Respostas exatas aparecem também em fração ("2,5 (= 5/2)").
 | Força de atrito | plano horizontal, força com ângulo: N = m·g − F·sen θ, estático × cinético, a; diagrama |
 | Trabalho | W = F·d·cos θ (+ potência), teorema da energia cinética, trabalho do peso e ΔEp |
 
-## 4. Pendente / ideias
+## 4. Cálculo diferencial e integral e escrita de equações (10/11/2026)
+
+Pedido do Johann: "adicione a parte de cálculo de integral indefinida, integral definida e derivada.
+Preciso de uma parte que facilite a escrita de equações."
+
+**Motor de expressões** (`src/calceng/expressao.ts`, puro): lê o que se digita do jeito que se escreve
+à mão — `x^2 + 3x`, `x²`, `sen 2x` (sem parênteses), `sen x cos x`, `e^(x^2)`, `√(1 − x²)`, `|x|`,
+`2,5x` (vírgula decimal), `pi`/`π`, `e`, `ln`, `log` (base 10), `tg`/`tan`, `arcsen`/`asin`… — com
+multiplicação implícita (`2x`, `x(x + 1)`, `3sen(x)`) e mensagens de erro em português ("Falta fechar
+um parêntese."). Números **racionais exatos** (1/3 continua 1/3; 0,5 vira 1/2). Simplificação canônica:
+junta termos e potências (x²·x³ = x⁵, eˣ·e²ˣ = e³ˣ, √2·√2 = 2), distribui número sobre soma dentro de
+somas, paridade (sen(−x) = −sen x), valores exatos nos ângulos notáveis (sen π/6 = 1/2, arctg 1 = π/4).
+Imprime em **texto** (pt-BR: "x³/3", "4ac", "1 − x²"), **HTML** (frações empilhadas, expoentes, raiz com
+traço) e **LaTeX**. Outras letras além da variável são **parâmetros** (∫a·x dx = ax²/2).
+
+**Motor de cálculo** (`src/calceng/calculo.ts`, puro), sempre com a **regra de cada passo**:
+- **Derivada**: soma, constante, produto, **quociente** (quando há denominador), potência, raiz,
+  exponencial (eᵘ, aᵘ), logarítmica (uᵛ), todas as funções com **regra da cadeia**, ln|u|.
+  Ordem 1 a 4; num ponto (opcional): valor e **reta tangente**; gráfico de f, f′ e da tangente.
+- **Integral indefinida**: tabela com argumento linear (xⁿ, 1/x, eᵘ, aᵘ, trigonométricas, hiperbólicas,
+  ln, arcos, sec², 1/√(a² − x²), 1/√(x² + k), √(a² − x²) e √(x² + k) por substituição trigonométrica),
+  linearidade, **substituição** (procura u tal que f/u′ só dependa de u), **por partes** (LIATE, também
+  ∫ln²x com dv = dx), integral cíclica eᵃˣ·sen/cos, **frações parciais** com denominador de grau ≤ 2
+  (duas raízes, raiz dupla, completar quadrado → ln + arctg, com divisão de polinômios antes),
+  potências de seno e cosseno (ímpar com troca, par ≥ 4 por redução), produto em soma (sen A·cos B…).
+  **Toda primitiva é conferida derivando** (em vários pontos): se não bater, não é mostrada.
+  Sem primitiva elementar (e^(x²), sen(x)/x) ou fora das regras (denominador de grau ≥ 3): aviso claro.
+- **Integral definida**: Teorema Fundamental F(b) − F(a) com o valor **exato** (2, 8/3, π/4…) e o
+  decimal; limites aceitam `pi`, `e`, `ln(2)`; conferência pela integração numérica (Simpson
+  adaptativo); aviso de **integral imprópria** (descontinuidade no intervalo); sem primitiva → valor
+  numérico; "atenção ao sinal" com a área total quando a função troca de sinal; gráfico com a área.
+
+**Escrita de equações** (pedido do Johann):
+- Todo campo de expressão mostra a **fórmula formatada enquanto se digita** (ou o erro, em vermelho).
+- **Teclado matemático** (botão ⌨, lembrado por aparelho; aberto por padrão no toque): números,
+  operações, xⁿ, x², √, a/b (cursor cai dentro dos parênteses), |x|, π, e, sen, cos, tg, ln, log, eˣ,
+  arcsen/arccos/arctg, ⌫, ← →, C (limpar); "=" e "±" no editor. Com o teclado aberto o teclado do
+  sistema não sobe (`inputmode="none"`) e o toque na tecla não tira o cursor do campo.
+- Calculadora **Editor de equações** (matéria Ferramentas): escreve expressão ou equação (com "=" e
+  "±"), mostra **como foi escrita** (sem reordenar), copia em **texto** ou **LaTeX** e, sem variáveis,
+  dá o valor numérico (calculadora científica).
+
+## 5. Pendente / ideias
 - Figuras de massa pontual e eixo de referência escolhido pelo usuário (hoje: origem e CG).
 - Tocar a região no desenho para selecioná-la (hoje: pela lista do painel).

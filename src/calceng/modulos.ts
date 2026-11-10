@@ -47,6 +47,20 @@ export const MATERIAS: Materia[] = [
       { id: "trabalho", nome: "Trabalho", pronto: true, chaves: "energia forca deslocamento joule potencia" },
     ],
   },
+  {
+    id: "calculo", nome: "Cálculo diferencial e integral",
+    calculadoras: [
+      { id: "derivada", nome: "Derivada", pronto: true, chaves: "derivar regra da cadeia produto quociente tangente taxa de variacao diferencial f linha" },
+      { id: "integralIndefinida", nome: "Integral indefinida", pronto: true, chaves: "primitiva antiderivada substituicao por partes fracoes parciais integrar" },
+      { id: "integralDefinida", nome: "Integral definida", pronto: true, chaves: "area sob a curva teorema fundamental limites de integracao simpson integrar" },
+    ],
+  },
+  {
+    id: "ferramentas", nome: "Ferramentas",
+    calculadoras: [
+      { id: "editor", nome: "Editor de equações", pronto: true, chaves: "escrever formula equacao latex teclado matematico calculadora cientifica" },
+    ],
+  },
 ];
 
 /** Sem acentos, minúsculas, "×" = "x": a busca não depende de como se digita. */
