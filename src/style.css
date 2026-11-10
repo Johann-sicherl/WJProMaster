@@ -466,8 +466,14 @@ button svg { width: 22px; height: 22px; flex: none; }
   font-size: 12px;
   white-space: nowrap;
 }
-/* cota em edição: só o valor sendo digitado (o teclado-calculadora abre ao lado, src/ui/tecladoCota.ts) */
-.cota-edicao { padding: 4px 10px; background: var(--painel); border: 2px solid var(--acento); border-radius: 8px; box-shadow: var(--sombra); font-size: 17px; font-weight: 700; white-space: nowrap; pointer-events: none; }
+/* cota em edição: número + botão da calculadora (abre src/ui/tecladoCota.ts) + ✓ */
+.cota-edicao { display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--painel); border: 2px solid var(--acento); border-radius: 8px; box-shadow: var(--sombra); }
+.cota-edicao input { width: 96px; height: 40px; padding: 0 8px; border: 1px solid var(--linha); border-radius: 6px; font-size: 17px; font-weight: 700; text-align: center; user-select: text; }
+.cota-edicao .ce-un { font-size: 14px; color: var(--texto-2); padding-right: 2px; }
+.cota-edicao button { display: grid; place-items: center; min-width: 40px; min-height: 40px; padding: 0; border-radius: 6px; }
+.cota-edicao .ce-calc { background: var(--painel-2); color: var(--acento); border: 1px solid var(--linha); }
+.cota-edicao .ce-ok { background: var(--acento); color: #fff; border: 1px solid var(--acento); font-size: 18px; }
+body.disp-tablet .cota-edicao button, body.disp-celular .cota-edicao button { min-width: 44px; min-height: 44px; }
 .lupa {
   width: 132px;
   height: 132px;

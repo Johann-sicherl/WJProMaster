@@ -63,13 +63,20 @@ const ok = (nome, cond, extra = "") => {
   let e = await esb();
   ok("L desenhado com 6 linhas", e && e.geos.filter((g) => g.tipo === "linha").length === 6, `${e?.geos.length} geometrias`);
 
-  // 2. cota na base: o teclado-calculadora abre; 3, 0, ✓ → base de 30
+  // 2. cota na base: aparece a caixa do valor com o botão da calculadora (a calculadora não abre sozinha);
+  //    o botão abre a calculadora; 3, 0, ✓ → base de 30
   await botao("Cota").tap();
   await tocarMundo([25, 0, 0]);
   await tocarMundo([25, -10, 0]);
   await p.waitForTimeout(400);
   const tc = p.locator(".tc");
-  ok("teclado-calculadora abre ao criar a cota", await tc.isVisible());
+  ok("ao criar a cota aparece a caixa do valor com o botão da calculadora", await p.locator(".cota-edicao .ce-calc").isVisible());
+  ok("a calculadora não abre sozinha", (await tc.count()) === 0);
+  ok("no tablet a caixa não abre o teclado do sistema sozinha (sem foco)", await p.evaluate(() => document.activeElement?.tagName !== "INPUT"));
+  if (PASTA) await p.screenshot({ path: `${PASTA}/caixa-cota.png` });
+  await p.locator(".cota-edicao .ce-calc").tap();
+  await p.waitForTimeout(300);
+  ok("o botão da calculadora abre a calculadora", await tc.isVisible());
   const rTc = await tc.boundingBox(), rCota = await p.locator(".cota-edicao").boundingBox();
   const cobre = rTc && rCota && !(rTc.x > rCota.x + rCota.width || rTc.x + rTc.width < rCota.x || rTc.y > rCota.y + rCota.height || rTc.y + rTc.height < rCota.y);
   ok("teclado ao lado da cota, sem cobrir o número", !!rTc && !!rCota && !cobre);
@@ -91,6 +98,8 @@ const ok = (nome, cond, extra = "") => {
   await tocarMundo([0, 25, 0]);
   await tocarMundo([-10, 25, 0]);
   await p.waitForTimeout(400);
+  await p.locator(".cota-edicao .ce-calc").tap();
+  await p.waitForTimeout(300);
   await p.locator('.tc button[data-t="modo"]').tap();
   ok("modo científico mostra sen/cos/tan/√", (await tc.locator('button[data-k="sin"]').count()) === 1 && (await tc.locator('button[data-k="√"]').count()) === 1);
   await tecla("√"); await tecla("9"); await tecla("0"); await tecla("0"); await tecla(")");
@@ -114,10 +123,20 @@ const ok = (nome, cond, extra = "") => {
   await tocarMundo([60, 7, 0]);
   await tocarMundo([52, 6, 0]);
   await p.waitForTimeout(400);
-  ok("cota angular abre o teclado em graus", /°/.test(await tc.locator(".tc-expr").innerText()));
+  ok("cota angular: caixa em graus", /°/.test(await p.locator(".cota-edicao .ce-un").innerText()));
+  await p.locator(".cota-edicao .ce-calc").tap();
+  await p.waitForTimeout(300);
+  ok("cota angular: calculadora em graus", /°/.test(await tc.locator(".tc-expr").innerText()));
   if (PASTA) await p.screenshot({ path: `${PASTA}/cota-angular.png` });
   await p.locator(".tc .tc-cancelar").tap();
   await p.waitForTimeout(300);
+  // digitar direto na caixa (sem calculadora) e aplicar com o ✓ da caixa
+  const caixaAng = p.locator(".cota-edicao input");
+  await caixaAng.fill("45");
+  await p.locator(".cota-edicao .ce-ok").tap();
+  await p.waitForTimeout(500);
+  const ang = (await esb()).restricoes.find((r) => r.tipo === "angulo");
+  ok("cota angular digitada na caixa: 45°", ang && Math.abs(ang.valor - 45) < 1e-6, ang?.valor);
 
   // 5. arrastar a geometria com a Cota ainda ativa (desfaz um contorno cruzado sem trocar de ferramenta)
   e = await esb();

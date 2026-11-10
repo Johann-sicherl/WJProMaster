@@ -17,7 +17,10 @@ import { gerarContornos, OPCOES_TEXTO_PADRAO, type GuiaTexto } from "./texto";
 import type { Font } from "opentype.js";
 import { atualizarExternas, criarExterna, idsExternos, podarExternas, pontoNaProjecao, projetar, type ProjecaoExterna } from "./externas";
 import { referencial, type Referencial } from "./referencial";
-import { abrirTecladoCota, numeroVisor } from "../ui/tecladoCota";
+import { abrirTecladoCota, avaliarTeclado, numeroVisor } from "../ui/tecladoCota";
+
+/** Símbolo de calculadora do botão da caixa de cota. */
+const ICONE_CALCULADORA = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><rect x="8" y="6" width="8" height="3.5" rx=".6"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01" stroke-width="2.4"/></svg>`;
 import { aplicarValorGradual, type ResultadoSolver, type SolverEsboco } from "./solver";
 import { construirCamada, descartarCamada } from "./visual";
 import { celulaSilhueta, cortarMalha, entidadesDe, silhuetaMalha } from "./malhaPlano";
@@ -1810,7 +1813,14 @@ export class EditorEsboco {
     const antigo = c.valor;
     const copia = JSON.stringify(this.esb.pontos);
     const raios = this.esb.geos.map((g) => (g.tipo === "circulo" || g.tipo === "arco" ? g.r : 0));
-    const cruza = () => encontrarLacos(this.esb).some((l) => cruzamentoDoLaco(l));
+    // perfil aberto (linha solta) faz encontrarLacos lançar erro: aí não há laço para cruzar
+    const cruza = () => {
+      try {
+        return encontrarLacos(this.esb).some((l) => cruzamentoDoLaco(l));
+      } catch {
+        return false;
+      }
+    };
     const cruzavaAntes = cruza();
     const voltar = () => {
       c.valor = antigo;
@@ -1832,7 +1842,7 @@ export class EditorEsboco {
       return;
     }
     this.resolver(true);
-    if (!cruzavaAntes && encontrarLacos(this.esb).some((l) => cruzamentoDoLaco(l)))
+    if (!cruzavaAntes && cruza())
       this.h.avisar("Com esse valor o contorno passou a se cruzar (✕ vermelho). Arraste a geometria azul para desfazer o cruzamento, ou Desfazer (Ctrl+Z).");
   }
 
@@ -1856,32 +1866,87 @@ export class EditorEsboco {
     this.selecao = new Set([id]);
     this.redesenhar();
     this.h.atualizarInterface();
-    // na cota fica só o valor sendo digitado; o teclado-calculadora abre ao lado dela
-    const caixa = document.createElement("div");
-    caixa.className = "cota-edicao";
-    caixa.setAttribute("aria-live", "polite");
+    // caixa do valor na cota: número, botão da calculadora e ✓. A calculadora (normal ↔ científica) só
+    // abre pelo botão (pedido do Johann, 10/11/2026). No tablet/celular a caixa abre sem foco, para o
+    // teclado do sistema não subir sozinho; no computador já vem selecionada para digitar.
     const un = c.tipo === "angulo" ? "°" : "mm";
-    caixa.textContent = `${numeroVisor(c.valor, 3)} ${un}`;
+    const titulo = c.tipo === "angulo" ? "Ângulo" : c.tipo === "raio" ? "Raio" : c.tipo === "diametro" ? "Diâmetro" : "Distância";
+    const caixa = document.createElement("form");
+    caixa.className = "cota-edicao";
+    caixa.innerHTML = `<input inputmode="decimal" aria-label="Valor da cota (${un})" /><span class="ce-un">${un}</span>`
+      + `<button type="button" class="ce-calc" title="Calculadora (normal e científica)" aria-label="Abrir a calculadora">${ICONE_CALCULADORA}</button>`
+      + `<button type="submit" class="ce-ok" title="Aplicar (Enter)" aria-label="Aplicar">✓</button>`;
+    const inp = caixa.querySelector("input")!;
+    inp.value = numeroVisor(c.valor, 3);
+    // a caixa nasce onde o dedo tocou para pôr a cota: o clique desse mesmo toque não pode acionar
+    // o botão que apareceu embaixo dele
+    const criadaEm = performance.now();
+    const recente = () => performance.now() - criadaEm < 400;
+    let calc: { fechar(): void } | null = null;
+    let fechada = false;
+    const fechar = () => {
+      if (fechada) return;
+      fechada = true;
+      document.removeEventListener("pointerdown", fora, true);
+      calc?.fechar();
+      caixa.remove();
+      if (this.edicaoCota?.el === caixa) {
+        this.edicaoCota = null;
+        this.redesenhar();
+      }
+    };
+    const aplicar = () => {
+      const v = avaliarTeclado(inp.value);
+      fechar();
+      if (Number.isFinite(v)) this.definirValorCota(id, v);
+      else this.h.avisar("Valor da cota inválido: digite um número ou uma conta (ex.: 20/2).");
+    };
+    // toque fora da caixa e da calculadora: aplica o que estiver digitado (como antes)
+    const fora = (ev: PointerEvent) => {
+      const alvo = ev.target as Element | null;
+      if (alvo && (caixa.contains(alvo) || alvo.closest(".tc"))) return;
+      aplicar();
+    };
+    caixa.onsubmit = (ev) => {
+      ev.preventDefault();
+      if (recente() && ev.submitter) return;
+      aplicar();
+    };
+    inp.onkeydown = (ev) => {
+      if (ev.key === "Escape") {
+        fechar();
+        ev.stopPropagation();
+      }
+    };
+    const botaoCalc = caixa.querySelector<HTMLButtonElement>(".ce-calc")!;
+    botaoCalc.onpointerdown = (ev) => ev.preventDefault(); // não tira o foco do número
+    botaoCalc.onclick = () => {
+      if (recente()) return;
+      inp.blur(); // o teclado do sistema desce: a calculadora ocupa o lugar dele
+      const atual = avaliarTeclado(inp.value);
+      calc = abrirTecladoCota({
+        valor: Number.isFinite(atual) ? atual : c.valor,
+        unidade: un,
+        titulo,
+        ancora: () => (caixa.isConnected ? caixa.getBoundingClientRect() : null),
+        aoMudar: (texto) => (inp.value = texto),
+        aoAplicar: (v) => {
+          inp.value = numeroVisor(v);
+          calc = null;
+          aplicar();
+        },
+        aoFechar: () => (calc = null),
+      });
+    };
     this.edicaoCota = { el: caixa, id };
     this.h.overlay.appendChild(caixa);
-    this.redesenhar(); // tira a etiqueta normal desta cota (fica só a de edição)
+    this.redesenhar(); // tira a etiqueta normal desta cota (fica só a caixa de edição)
     this.posicionarOverlay();
-    const titulo = c.tipo === "angulo" ? "Ângulo" : c.tipo === "raio" ? "Raio" : c.tipo === "diametro" ? "Diâmetro" : "Distância";
-    abrirTecladoCota({
-      valor: c.valor,
-      unidade: un,
-      titulo,
-      ancora: () => (caixa.isConnected ? caixa.getBoundingClientRect() : null),
-      aoMudar: (texto) => (caixa.textContent = `${texto || "0"} ${un}`),
-      aoAplicar: (v) => this.definirValorCota(id, v),
-      aoFechar: () => {
-        caixa.remove();
-        if (this.edicaoCota?.el === caixa) {
-          this.edicaoCota = null;
-          this.redesenhar();
-        }
-      },
-    });
+    setTimeout(() => !fechada && document.addEventListener("pointerdown", fora, true), 0);
+    if (document.body.classList.contains("disp-computador")) {
+      inp.focus();
+      inp.select();
+    }
   }
   private edicaoCota: { el: HTMLElement; id: string } | null = null;
 
