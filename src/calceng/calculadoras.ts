@@ -17,13 +17,17 @@ export type Campo =
   | (CampoBase & { tipo: "numero"; padrao: number; unidade?: string })
   | (CampoBase & { tipo: "opcao"; opcoes: [string, string][]; padrao: string })
   /** Matriz editável; `colunas: "aumentada"` = linhas + 1 (sistema com a coluna dos termos independentes). */
-  | (CampoBase & { tipo: "matriz"; padrao: Matriz; linhas: [number, number]; colunas: [number, number] | "aumentada"; cabecalhos?: (c: number, total: number) => string });
+  | (CampoBase & { tipo: "matriz"; padrao: Matriz; linhas: [number, number]; colunas: [number, number] | "aumentada"; cabecalhos?: (c: number, total: number) => string })
+  /** Expressão digitada (teclado matemático + pré-visualização). `equacao` aceita "="; `opcional` aceita vazio. */
+  | (CampoBase & { tipo: "expressao"; padrao: string; equacao?: boolean; opcional?: boolean; dica?: string });
 
 export interface Passo {
   titulo: string;
   linhas?: string[];
   /** Matriz mostrada no passo; `barra` = coluna onde fica o traço da matriz aumentada. */
   matriz?: { m: string[][]; barra?: number };
+  /** As mesmas linhas como fórmulas em HTML (geradas pelo motor de expressões; a tela prefere estas). */
+  html?: string[];
 }
 export interface Resultado {
   destaques: [string, string][];
@@ -34,6 +38,8 @@ export interface Resultado {
   /** Texto de resultado (ex.: conjunto solução). */
   textos: Record<string, string>;
   svg?: string;
+  /** Resposta principal como fórmula em HTML (mostrada grande, no topo). */
+  formula?: string;
 }
 export interface DefCalculadora {
   id: string;
@@ -108,15 +114,26 @@ function termos(pares: [number, string][]): string {
 // ---------------------------------------------------------------------------------------------
 // gráfico de função (SVG puro)
 
-function grafico(f: (x: number) => number, x0: number, x1: number, marcas: { x: number; y: number; rotulo: string }[], faixas: [number, number][] = []): string {
+/** Mais curvas (com cor e nome) e área sob a curva principal entre a e b (integral definida). */
+export interface ExtrasGrafico {
+  curvas?: { f: (x: number) => number; cor: string; nome: string }[];
+  area?: [number, number];
+  nome?: string;
+}
+
+export function grafico(f: (x: number) => number, x0: number, x1: number, marcas: { x: number; y: number; rotulo: string }[], faixas: [number, number][] = [], extras: ExtrasGrafico = {}): string {
   const W = 420, H = 240, m = 28;
-  const n = 160;
-  const pts: [number, number][] = [];
-  for (let i = 0; i <= n; i++) {
+  const n = 200;
+  const amostrar = (g: (x: number) => number) => Array.from({ length: n + 1 }, (_, i) => {
     const x = x0 + ((x1 - x0) * i) / n;
-    pts.push([x, f(x)]);
-  }
-  const ys = [...pts.map((q) => q[1]), ...marcas.map((q) => q.y), 0].filter(Number.isFinite);
+    return [x, g(x)] as [number, number];
+  });
+  const pts = amostrar(f);
+  const outras = (extras.curvas ?? []).map((c) => ({ ...c, pts: amostrar(c.f) }));
+  // escala vertical robusta: ignora picos (assíntotas) pelos percentis
+  const todos = [...pts, ...outras.flatMap((c) => c.pts)].map((q) => q[1]).filter(Number.isFinite).sort((a, b) => a - b);
+  const corte = (q: number) => todos[Math.min(todos.length - 1, Math.max(0, Math.round(q * (todos.length - 1))))];
+  const ys = todos.length ? [corte(0.02), corte(0.98), ...marcas.map((q) => q.y), 0].filter(Number.isFinite) : [0, 1];
   let y0 = Math.min(...ys), y1 = Math.max(...ys);
   if (y1 - y0 < 1e-9) {
     y0 -= 1;
@@ -127,7 +144,24 @@ function grafico(f: (x: number) => number, x0: number, x1: number, marcas: { x: 
   y1 += folga;
   const X = (x: number) => m + ((x - x0) / (x1 - x0)) * (W - 2 * m);
   const Y = (y: number) => H - m - ((y - y0) / (y1 - y0)) * (H - 2 * m);
-  let s = `<svg viewBox="0 0 ${W} ${H}" class="ce-grafico" role="img" aria-label="Gráfico">`;
+  const Yc = (y: number) => Math.max(m - 40, Math.min(H - m + 40, Y(y)));
+  const linha = (ps: [number, number][]) => {
+    // quebra a linha onde a função não existe ou salta (assíntota)
+    const trechos: string[][] = [[]];
+    ps.forEach(([x, y], i) => {
+      const salto = i > 0 && Number.isFinite(ps[i - 1][1]) && Math.abs(y - ps[i - 1][1]) > (y1 - y0) * 3;
+      if (!Number.isFinite(y) || salto) trechos.push([]);
+      if (Number.isFinite(y)) trechos[trechos.length - 1].push(`${X(x).toFixed(1)},${Yc(y).toFixed(1)}`);
+    });
+    return trechos.filter((t) => t.length > 1);
+  };
+  let s = `<svg viewBox="0 0 ${W} ${H}" class="ce-grafico" role="img" aria-label="Gráfico"><defs><clipPath id="ce-clip"><rect x="${m}" y="${m - 6}" width="${W - 2 * m}" height="${H - 2 * m + 12}"/></clipPath></defs>`;
+  if (extras.area) {
+    const [a, b] = extras.area;
+    const k = 80;
+    const ps = Array.from({ length: k + 1 }, (_, i) => a + ((b - a) * i) / k).map((x) => [x, f(x)] as [number, number]).filter((q) => Number.isFinite(q[1]));
+    if (ps.length > 1) s += `<polygon clip-path="url(#ce-clip)" fill="rgba(47,127,208,.22)" points="${X(ps[0][0]).toFixed(1)},${Y(0).toFixed(1)} ${ps.map(([x, y]) => `${X(x).toFixed(1)},${Yc(y).toFixed(1)}`).join(" ")} ${X(ps[ps.length - 1][0]).toFixed(1)},${Y(0).toFixed(1)}"/>`;
+  }
   for (const [a, b] of faixas) {
     const xa = X(Math.max(a, x0)), xb = X(Math.min(b, x1));
     if (xb > xa) s += `<rect x="${xa.toFixed(1)}" y="${m}" width="${(xb - xa).toFixed(1)}" height="${H - 2 * m}" fill="rgba(46,139,87,.14)"/>`;
@@ -137,7 +171,12 @@ function grafico(f: (x: number) => number, x0: number, x1: number, marcas: { x: 
   if (x0 <= 0 && x1 >= 0) s += `<line y1="${m}" y2="${H - m}" x1="${X(0).toFixed(1)}" x2="${X(0).toFixed(1)}" stroke="#9aa6b2"/>`;
   s += `<text x="${W - m + 4}" y="${(y0 <= 0 && y1 >= 0 ? Y(0) : H - m) + 4}" class="eixo">x</text>`;
   s += `<text x="${W - m - 20}" y="${H - 8}" class="eixo">${fmt(x1, 2)}</text><text x="${m}" y="${H - 8}" class="eixo">${fmt(x0, 2)}</text>`;
-  s += `<polyline fill="none" stroke="#2f7fd0" stroke-width="2.2" points="${pts.filter((q) => Number.isFinite(q[1])).map(([x, y]) => `${X(x).toFixed(1)},${Y(y).toFixed(1)}`).join(" ")}"/>`;
+  for (const c of outras) for (const t of linha(c.pts)) s += `<polyline clip-path="url(#ce-clip)" fill="none" stroke="${c.cor}" stroke-width="2" stroke-dasharray="${c.cor === "#2e8b57" ? "6 4" : "none"}" points="${t.join(" ")}"/>`;
+  for (const t of linha(pts)) s += `<polyline clip-path="url(#ce-clip)" fill="none" stroke="#2f7fd0" stroke-width="2.2" points="${t.join(" ")}"/>`;
+  if (outras.length) {
+    const leg = [{ cor: "#2f7fd0", nome: extras.nome ?? "f" }, ...outras];
+    s += leg.map((c, i) => `<line x1="${m + 4 + i * 92}" x2="${m + 22 + i * 92}" y1="14" y2="14" stroke="${c.cor}" stroke-width="2.4"/><text x="${m + 26 + i * 92}" y="18" class="eixo">${c.nome}</text>`).join("");
+  }
   for (const q of marcas) {
     if (q.x < x0 || q.x > x1) continue;
     s += `<circle cx="${X(q.x).toFixed(1)}" cy="${Y(q.y).toFixed(1)}" r="4" fill="#e07a10"/><text x="${(X(q.x) + 6).toFixed(1)}" y="${(Y(q.y) - 6).toFixed(1)}" class="marca">${q.rotulo}</text>`;
@@ -787,6 +826,7 @@ export function valoresDe(def: DefCalculadora, guardados?: Valores): Valores {
   for (const c of def.campos) {
     const g = guardados?.[c.id];
     if (c.tipo === "numero") v[c.id] = typeof g === "number" && Number.isFinite(g) ? g : c.padrao;
+    else if (c.tipo === "expressao") v[c.id] = typeof g === "string" ? g : c.padrao;
     else if (c.tipo === "opcao") v[c.id] = typeof g === "string" && c.opcoes.some((o) => o[0] === g) ? g : c.padrao;
     else v[c.id] = Array.isArray(g) && g.length && Array.isArray(g[0]) ? (g as Matriz).map((l) => l.map((x) => num(x))) : c.padrao.map((l) => [...l]);
   }

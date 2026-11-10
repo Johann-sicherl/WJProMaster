@@ -18,6 +18,8 @@ import { SolverEsboco } from "../esboco/solver";
 import { abrirCalibracao, lerPxPorMm, pxPorMmAutomatico } from "../esboco/escalaReal";
 import { IC } from "../comum/icones";
 import { buscarCalculadoras, calculadora } from "./modulos";
+import { CALCULO } from "./calculo";
+import { html as htmlExpr, ler as lerExpr, lerEquacao } from "./expressao";
 import { CALCULADORAS, matrizDe, valoresDe, type Campo, type DefCalculadora, type Matriz, type Resultado, type Valores } from "./calculadoras";
 import { calcularDoc, docNovo, validarDoc, type DocCalc, type P2, type ResultadoCg } from "./cg2d";
 
@@ -655,7 +657,8 @@ function abrirSeletor(ancora: HTMLElement) {
 
 const formEl = $("#ce-form");
 const areaEl = $("#ce-calc-area");
-const defAtual = (): DefCalculadora | undefined => CALCULADORAS[doc.modulo];
+const TODAS: Record<string, DefCalculadora> = { ...CALCULADORAS, ...CALCULO };
+const defAtual = (): DefCalculadora | undefined => TODAS[doc.modulo];
 const valoresAtuais = (def: DefCalculadora): Valores => valoresDe(def, doc.calcs?.[def.id]);
 
 /** Troca a tela entre o esboço (centro de gravidade) e o formulário das outras calculadoras. */
@@ -712,7 +715,42 @@ function montarFaixaCalculadora(faixa: HTMLElement) {
   faixa.append(grupo);
 }
 
+// ---------- campo de expressão: pré-visualização da fórmula e teclado matemático ----------
+
+/** Teclas: rótulo, texto inserido, quantos caracteres o cursor volta (para cair dentro dos parênteses). */
+type Tecla = [string, string, number?] | ["⌫" | "←" | "→" | "Limpar", ""];
+function teclas(variavel: string, equacao: boolean): Tecla[] {
+  return [
+    ["7", "7"], ["8", "8"], ["9", "9"], ["÷", "/"], [variavel, variavel], ["xⁿ", "^()", 1], ["x²", "^2"], ["√", "√()", 1],
+    ["4", "4"], ["5", "5"], ["6", "6"], ["×", "·"], ["( )", "()", 1], ["a/b", "()/()", 4], ["|x|", "||", 1], ["π", "π"],
+    ["1", "1"], ["2", "2"], ["3", "3"], ["−", "−"], ["sen", "sen()", 1], ["cos", "cos()", 1], ["tg", "tg()", 1], ["e", "e"],
+    ["0", "0"], [",", ","], equacao ? ["=", " = "] : ["(", "("], ["+", "+"], ["ln", "ln()", 1], ["log", "log()", 1], ["eˣ", "e^()", 1], equacao ? ["±", " ± "] : [")", ")"],
+    ["arcsen", "arcsen()", 1], ["arccos", "arccos()", 1], ["arctg", "arctg()", 1], ["⌫", ""], ["←", ""], ["→", ""], ["Limpar", ""],
+  ];
+}
+
+/** Fórmula formatada do que está escrito (ou a mensagem do erro). */
+function previaExpressao(texto: string, equacao: boolean, opcional: boolean): string {
+  if (!texto.trim()) return opcional ? "" : `<span class="ce-previa-vazia">a fórmula aparece aqui</span>`;
+  try {
+    return equacao ? lerEquacao(texto).map((n) => htmlExpr(n, true)).join(" = ") : htmlExpr(lerExpr(texto), true);
+  } catch (e) {
+    return `<span class="ce-previa-erro">${escapar((e as Error).message)}</span>`;
+  }
+}
+
 function htmlCampo(c: Campo, v: Valores): string {
+  if (c.tipo === "expressao") {
+    const val = String(v[c.id] ?? "");
+    const variavel = typeof v.x === "string" ? v.x : "x";
+    return `<div class="ce-expr" data-expr="${c.id}">
+      <label class="ce-expr-rotulo" for="ce-expr-${c.id}">${escapar(c.rotulo)}</label>
+      <div class="ce-expr-linha"><input id="ce-expr-${c.id}" data-campo-expr="${c.id}" value="${escapar(val)}" autocomplete="off" autocapitalize="off" spellcheck="false" ${tecladoAberto ? 'inputmode="none"' : ""} /><button type="button" class="ce-teclado-bt" data-teclado aria-pressed="${tecladoAberto}" title="Teclado matemático">⌨</button></div>
+      <div class="ce-expr-previa">${previaExpressao(val, !!c.equacao, !!c.opcional)}</div>
+      ${c.dica ? `<small class="ce-expr-dica">${escapar(c.dica)}</small>` : ""}
+      <div class="ce-teclado" hidden>${teclas(variavel, !!c.equacao).map(([r, t, k]) => `<button type="button" data-tecla="${escapar(r)}" data-ins="${escapar(t)}" data-recuo="${k ?? 0}" class="${/^[0-9,]$/.test(r) ? "num" : r.length > 2 && r !== "Limpar" ? "fn" : ""}" title="${r === "Limpar" ? "Limpar o campo" : r === "⌫" ? "Apagar" : escapar(r)}">${escapar(r === "Limpar" ? "C" : r)}</button>`).join("")}</div>
+    </div>`;
+  }
   if (c.tipo === "numero") return `<label class="ce-campo"><span>${escapar(c.rotulo)}</span><input data-campo="${c.id}" value="${campo(v[c.id] as number)}" inputmode="decimal" autocomplete="off" /><em>${escapar(c.unidade ?? "")}</em></label>`;
   if (c.tipo === "opcao") return `<label class="ce-campo ce-campo-opcao"><span>${escapar(c.rotulo)}</span><select data-campo="${c.id}">${c.opcoes.map(([val, rot]) => `<option value="${escapar(val)}" ${val === v[c.id] ? "selected" : ""}>${escapar(rot)}</option>`).join("")}</select></label>`;
   const m = v[c.id] as Matriz;
@@ -752,6 +790,7 @@ function montarFormulario() {
     };
     inp.onkeydown = (e) => e.key === "Enter" && inp.blur();
   });
+  ligarExpressoes(def);
   formEl.querySelectorAll<HTMLSelectElement>("select[data-campo]").forEach((sel) => {
     sel.onchange = () => {
       guardarValores(def, { ...valoresAtuais(def), [sel.dataset.campo!]: sel.value }, true);
@@ -793,6 +832,85 @@ function montarFormulario() {
   });
 }
 
+let tecladoAberto = (() => {
+  try {
+    const t = JSON.parse(localStorage.getItem(CHAVE_PREFS) ?? "{}").teclado;
+    return typeof t === "boolean" ? t : matchMedia("(pointer: coarse)").matches;
+  } catch {
+    return false;
+  }
+})();
+let campoExprAtivo: string | null = null;
+let tempoHistorico = 0;
+
+function ligarExpressoes(def: DefCalculadora) {
+  formEl.querySelectorAll<HTMLElement>("[data-expr]").forEach((div) => {
+    const id = div.dataset.expr!;
+    const c = def.campos.find((x) => x.id === id) as Extract<Campo, { tipo: "expressao" }>;
+    const inp = div.querySelector<HTMLInputElement>("input")!;
+    const previa = div.querySelector<HTMLElement>(".ce-expr-previa")!;
+    const teclado = div.querySelector<HTMLElement>(".ce-teclado")!;
+    const mostrarTeclado = () => {
+      formEl.querySelectorAll<HTMLElement>(".ce-teclado").forEach((t) => (t.hidden = true));
+      teclado.hidden = !tecladoAberto;
+    };
+    const aoMudar = () => {
+      previa.innerHTML = previaExpressao(inp.value, !!c.equacao, !!c.opcional);
+      guardarValores(def, { ...valoresAtuais(def), [id]: inp.value }, false);
+      mostrarResolucao();
+      // o passo de desfazer fica para quando parar de digitar
+      clearTimeout(tempoHistorico);
+      tempoHistorico = window.setTimeout(() => guardarValores(def, valoresAtuais(def), true), 900);
+    };
+    inp.oninput = aoMudar;
+    inp.onfocus = () => {
+      campoExprAtivo = id;
+      mostrarTeclado();
+    };
+    if (campoExprAtivo === id) mostrarTeclado();
+    div.querySelector<HTMLElement>("[data-teclado]")!.onclick = () => {
+      tecladoAberto = !tecladoAberto;
+      try {
+        const p = JSON.parse(localStorage.getItem(CHAVE_PREFS) ?? "{}");
+        localStorage.setItem(CHAVE_PREFS, JSON.stringify({ ...p, teclado: tecladoAberto }));
+      } catch {
+        /* sem armazenamento */
+      }
+      formEl.querySelectorAll<HTMLInputElement>("[data-campo-expr]").forEach((x) => (tecladoAberto ? x.setAttribute("inputmode", "none") : x.removeAttribute("inputmode")));
+      formEl.querySelectorAll<HTMLElement>("[data-teclado]").forEach((b) => b.setAttribute("aria-pressed", String(tecladoAberto)));
+      campoExprAtivo = id;
+      mostrarTeclado();
+      inp.focus();
+    };
+    teclado.querySelectorAll<HTMLButtonElement>("[data-tecla]").forEach((b) => {
+      // o toque na tecla não tira o cursor do campo
+      b.onpointerdown = (e) => e.preventDefault();
+      b.onclick = () => {
+        const tecla = b.dataset.tecla!;
+        const ini = inp.selectionStart ?? inp.value.length, fim = inp.selectionEnd ?? ini;
+        let pos = ini;
+        if (tecla === "⌫") {
+          const de = ini === fim ? Math.max(0, ini - 1) : ini;
+          inp.value = inp.value.slice(0, de) + inp.value.slice(fim);
+          pos = de;
+        } else if (tecla === "←") pos = Math.max(0, ini - 1);
+        else if (tecla === "→") pos = Math.min(inp.value.length, fim + 1);
+        else if (tecla === "Limpar") {
+          inp.value = "";
+          pos = 0;
+        } else {
+          const t = b.dataset.ins!;
+          inp.value = inp.value.slice(0, ini) + t + inp.value.slice(fim);
+          pos = ini + t.length - Number(b.dataset.recuo ?? 0);
+        }
+        inp.focus();
+        inp.setSelectionRange(pos, pos);
+        if (tecla !== "←" && tecla !== "→") aoMudar();
+      };
+    });
+  });
+}
+
 let ultimaResolucao: Resultado | null = null;
 
 function mostrarResolucao() {
@@ -808,11 +926,12 @@ function mostrarResolucao() {
   ultimaResolucao = r;
   const tabela = (m: { m: string[][]; barra?: number }) => `<table class="ce-matriz">${m.m.map((l) => `<tr>${l.map((x, j) => `<td class="${m.barra !== undefined && j === m.barra ? "aum" : ""}">${escapar(x)}</td>`).join("")}</tr>`).join("")}</table>`;
   areaEl.innerHTML = `
+    ${r.formula ? `<div class="ce-formula">${r.formula}</div>` : ""}
     <div class="ce-destaques">${r.destaques.map(([k, x]) => `<div class="ce-cartao"><small>${escapar(k)}</small><b>${escapar(x)}</b></div>`).join("")}</div>
     ${r.avisos.map((a) => `<p class="ce-aviso">${escapar(a)}</p>`).join("")}
     ${r.svg ? `<div class="ce-figura">${r.svg}</div>` : ""}
     <h3>Resolução passo a passo</h3>
-    <ol class="ce-passos">${r.passos.map((ps) => `<li><b>${escapar(ps.titulo)}</b>${ps.matriz ? tabela(ps.matriz) : ""}${(ps.linhas ?? []).map((l) => `<div class="ce-linha">${escapar(l)}</div>`).join("")}</li>`).join("")}</ol>`;
+    <ol class="ce-passos">${r.passos.map((ps) => `<li><b>${escapar(ps.titulo)}</b>${ps.matriz ? tabela(ps.matriz) : ""}${ps.html ? ps.html.map((h) => `<div class="ce-linha ce-linha-m">${h}</div>`).join("") : (ps.linhas ?? []).map((l) => `<div class="ce-linha">${escapar(l)}</div>`).join("")}</li>`).join("")}</ol>`;
 }
 
 async function copiarResolucao() {

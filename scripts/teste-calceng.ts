@@ -5,6 +5,8 @@ import { calcular, calcularDoc, docNovo, integraisPoligono, nomearRegioes, regio
 import * as op from "../src/esboco/operacoes";
 import { buscarCalculadoras, MATERIAS } from "../src/calceng/modulos";
 import { CALCULADORAS, fracao, valoresDe, type Valores } from "../src/calceng/calculadoras";
+import { avaliar, ler, lerEquacao, latex, simplificar, texto, ErroExpressao } from "../src/calceng/expressao";
+import { CALCULO, conferir, derivar, integrar, integralNumerica } from "../src/calceng/calculo";
 import type { FeatureEsboco } from "../src/model";
 
 let falhas = 0;
@@ -202,14 +204,15 @@ function poli(e: FeatureEsboco, pts: [number, number][]) {
 // --- catálogo por matéria e busca da lupa ---
 {
   const nomes = (t: string) => buscarCalculadoras(t).flatMap((m) => m.calculadoras.map((c) => c.id)).join();
-  igual("busca vazia: as quatro matérias", buscarCalculadoras("").length, 4);
+  igual("busca vazia: as seis matérias", buscarCalculadoras("").length, 6);
   igual("busca sem acento acha 'Equação do 2º grau'", nomes("equacao 2"), "eq2");
   igual("busca por palavra-chave (bhaskara)", nomes("Bhaskara"), "eq2");
   igual("busca por 'centroide'", nomes("centróide"), "cg2d");
   igual("busca por 3x3 acha Cramer e Gauss", nomes("3x3"), "cramer,gauss,mult");
   igual("busca pelo nome da matéria", nomes("dinâmica"), "newton,plano,atrito,trabalho");
   igual("busca sem resultado", buscarCalculadoras("xyzw").length, 0);
-  igual("todas as calculadoras pedidas no catálogo", MATERIAS.flatMap((m) => m.calculadoras).length, 12);
+  igual("todas as calculadoras pedidas no catálogo", MATERIAS.flatMap((m) => m.calculadoras).length, 16);
+  igual("busca 'bhaskara' também acha o editor? não", nomes("primitiva"), "integralIndefinida");
 }
 
 // --- calculadoras de álgebra, matrizes e física ---
@@ -269,7 +272,134 @@ function poli(e: FeatureEsboco, pts: [number, number][]) {
   igual("trabalho: 60° → metade", R("trabalho", { th: 60 }).numeros.W, 250);
   igual("trabalho: ΔEc", R("trabalho", { modo: "cinetica" }).numeros.W, 100);
   igual("trabalho do peso na subida", R("trabalho", { modo: "peso" }).numeros.W, -2 * 9.81 * 5);
-  igual("todas as calculadoras do catálogo existem", MATERIAS.flatMap((m) => m.calculadoras).every((c) => c.id === "cg2d" || CALCULADORAS[c.id]), true);
+  igual("todas as calculadoras do catálogo existem", MATERIAS.flatMap((m) => m.calculadoras).every((c) => c.id === "cg2d" || CALCULADORAS[c.id] || CALCULO[c.id]), true);
+}
+
+// --- expressões: leitura, simplificação e impressão ---
+{
+  const T = (s: string) => texto(simplificar(ler(s)));
+  igual("lê 2x + 3x = 5x", T("2x + 3x"), "5x");
+  igual("frações exatas: x/3 + x/6 = x/2", T("x/3 + x/6"), "x/2");
+  igual("potências: x²·x³ = x⁵", T("x^2·x^3"), "x⁵");
+  igual("sobrescrito digitado: x² + x²", T("x² + x²"), "2x²");
+  igual("sen 2x sem parênteses", T("sen 2x"), "sen(2x)");
+  igual("sen x cos x", T("sen x cos x"), "cos(x)·sen(x)");
+  igual("raiz: √(x+1)", T("√(x+1)"), "√(x + 1)");
+  igual("raiz exata: √(4/9)", T("√(4/9)"), "2/3");
+  igual("√2·√2 = 2", T("√2·√2"), "2");
+  igual("decimal com vírgula: 0,5x", T("0,5x"), "x/2");
+  igual("e^x·e^(2x) = e^(3x)", T("e^x·e^(2x)"), "e^(3x)");
+  igual("ln(e) = 1", T("ln(e)"), "1");
+  igual("sen(π) = 0, cos(π) = −1", `${T("sen(pi)")} ${T("cos(pi)")}`, "0 −1");
+  igual("fração com denominador composto", T("1/(2x)"), "1/(2x)");
+  igual("negativos: x − 3", T("x - 3"), "x − 3");
+  igual("−x² (o menos vale depois da potência)", avaliar(ler("-x^2"), { x: 3 }), -9);
+  igual("valor numérico", avaliar(ler("2^10 + √(16)"), {}), 1028);
+  igual("|x| com barras", avaliar(ler("|x - 5|"), { x: 2 }), 3);
+  igual("LaTeX de fração e raiz", latex(simplificar(ler("√x/(x+1)"))), "\\frac{\\sqrt{x}}{x + 1}");
+  igual("equação com dois lados", lerEquacao("x^2 = 4").length, 2);
+  let erro = "";
+  try {
+    ler("(x + 1");
+  } catch (e) {
+    erro = e instanceof ErroExpressao ? e.message : "outro";
+  }
+  igual("parêntese aberto avisa", erro, "Falta fechar um parêntese.");
+}
+
+// --- derivadas (resultados de tabela) ---
+{
+  const D = (s: string) => texto(derivar(ler(s), "x"));
+  const DN = (s: string, t: number) => avaliar(derivar(ler(s), "x"), { x: t });
+  igual("d(x³ − 2x)", D("x^3 - 2x"), "3x² − 2");
+  igual("d(sen x) = cos x", D("sen(x)"), "cos(x)");
+  igual("d(e^(x²)) = 2x·e^(x²)", D("e^(x^2)"), "2x·e^(x²)");
+  igual("d(ln x) = 1/x", D("ln(x)"), "1/x");
+  igual("d(√x) = 1/(2√x)", D("√x"), "1/(2√x)");
+  igual("produto: d(x²·sen x)", D("x^2·sen(x)"), "x²·cos(x) + 2x·sen(x)");
+  igual("cadeia: d(sen(3x))", D("sen(3x)"), "3cos(3x)");
+  igual("d(tg x) = sec² x", D("tg(x)"), "sec²(x)");
+  igual("d(arctg x)", D("arctg(x)"), "1/(x² + 1)");
+  igual("d(2^x) = 2^x·ln 2", D("2^x"), "2^x·ln(2)");
+  igual("quociente: d(ln x / x) em x = 2", DN("ln(x)/x", 2), (1 - Math.log(2)) / 4);
+  igual("d(x^x) em x = 2 (logarítmica)", DN("x^x", 2), 4 * (Math.log(2) + 1));
+  igual("d(ln|x|) = 1/x", D("ln(|x|)"), "1/x");
+  const calc = CALCULO.derivada.resolver({ ...valoresDe(CALCULO.derivada), f: "x^3", ordem: "2", x0: "1" });
+  igual("2ª derivada de x³ = 6x", calc.textos.derivada, "6x");
+  igual("2ª derivada em x = 1", calc.numeros.valorNoPonto, 6);
+  const tg = CALCULO.derivada.resolver({ ...valoresDe(CALCULO.derivada), f: "x^2", x0: "3" });
+  igual("reta tangente de x² em 3: y = 6x − 9", tg.destaques.find((d) => d[0] === "Reta tangente")?.[1], "y = 6x − 9");
+  igual("derivada mostra a regra do produto", CALCULO.derivada.resolver(valoresDe(CALCULO.derivada)).passos.some((p) => p.titulo.startsWith("Regra do produto")), true);
+}
+
+// --- integrais (primitivas conferidas derivando) ---
+{
+  const I = (s: string) => {
+    const r = integrar(ler(s), "x");
+    return r ? texto(r.F) : "—";
+  };
+  const ok = (s: string) => {
+    const f = ler(s);
+    const r = integrar(f, "x");
+    return !!r && conferir(r.F, f, "x");
+  };
+  igual("∫x² = x³/3", I("x^2"), "x³/3");
+  igual("∫(3x² + 2) = x³ + 2x", I("3x^2 + 2"), "x³ + 2x");
+  igual("∫1/x = ln|x|", I("1/x"), "ln|x|");
+  igual("∫e^(3x) = e^(3x)/3", I("e^(3x)"), "e^(3x)/3");
+  igual("∫cos(2x) = sen(2x)/2", I("cos(2x)"), "sen(2x)/2");
+  igual("∫(2x + 1)^5", I("(2x+1)^5"), "(2x + 1)⁶/12");
+  igual("∫sec² x = tg x", I("sec(x)^2"), "tg(x)");
+  igual("∫1/(1 + x²) = arctg x", I("1/(1 + x^2)"), "arctg(x)");
+  igual("∫1/√(1 − x²) = arcsen x", I("1/√(1 - x^2)"), "arcsen(x)");
+  igual("substituição: ∫2x·e^(x²)", I("2x·e^(x^2)"), "e^(x²)");
+  igual("∫2x/(x² + 1) = ln(x² + 1)", I("2x/(x^2+1)"), "ln(x² + 1)");
+  igual("substituição: ∫x(x² + 1)³", ok("x(x^2+1)^3"), true);
+  igual("substituição: ∫sen x·cos x", ok("sen(x)·cos(x)"), true);
+  igual("substituição: ∫ln(x)/x = ln²x/2", I("ln(x)/x"), "ln²(x)/2");
+  igual("por partes: ∫x·e^x = x·e^x − e^x", ok("x·e^x"), true);
+  igual("por partes: ∫x·cos x", ok("x·cos(x)"), true);
+  igual("por partes duas vezes: ∫x²·e^x", ok("x^2·e^x"), true);
+  igual("por partes: ∫x·ln x", ok("x·ln(x)"), true);
+  igual("∫ln x = x·ln x − x", ok("ln(x)"), true);
+  igual("cíclica: ∫e^x·sen x", ok("e^x·sen(x)"), true);
+  igual("frações parciais: ∫1/(x² − 1)", ok("1/(x^2 - 1)"), true);
+  igual("frações parciais: ∫(x + 3)/(x² + 3x + 2)", ok("(x + 3)/(x^2 + 3x + 2)"), true);
+  igual("raiz dupla: ∫1/(x² + 2x + 1)", ok("1/(x^2 + 2x + 1)"), true);
+  igual("completar quadrado: ∫1/(x² + 2x + 5)", ok("1/(x^2 + 2x + 5)"), true);
+  igual("divisão: ∫(x³ + 1)/(x + 2)", ok("(x^3 + 1)/(x + 2)"), true);
+  igual("∫sen²x", ok("sen(x)^2"), true);
+  igual("∫sen³x (potência ímpar)", ok("sen(x)^3"), true);
+  igual("∫sen(3x)·cos(x) (produto em soma)", ok("sen(3x)·cos(x)"), true);
+  igual("∫tg x = −ln|cos x|", I("tg(x)"), "−ln|cos(x)|");
+  igual("∫√x = 2x√x/3", ok("√x"), true);
+  igual("∫a·x (parâmetro) = ax²/2", I("a·x"), "ax²/2");
+  igual("polinômio expandido: ∫x(x + 1)", I("x(x + 1)"), "x³/3 + x²/2");
+  igual("e^(x²) não tem primitiva elementar", integrar(ler("e^(x^2)"), "x"), null);
+  igual("passos da substituição aparecem", CALCULO.integralIndefinida.resolver({ ...valoresDe(CALCULO.integralIndefinida), f: "2x·cos(x^2)" }).passos.some((p) => p.titulo.startsWith("Substituição")), true);
+  igual("passos de por partes aparecem", CALCULO.integralIndefinida.resolver(valoresDe(CALCULO.integralIndefinida)).passos.some((p) => p.titulo.startsWith("Por partes")), true);
+}
+
+// --- integral definida ---
+{
+  const R = (f: string, a: string, b: string) => CALCULO.integralDefinida.resolver({ ...valoresDe(CALCULO.integralDefinida), f, a, b });
+  igual("∫₀² x² = 8/3", R("x^2", "0", "2").textos.exato, "8/3");
+  igual("∫₀^π sen x = 2", R("sen(x)", "0", "pi").textos.exato, "2");
+  igual("∫₁^e 1/x = 1", R("1/x", "1", "e").textos.exato, "1");
+  igual("∫₀¹ 1/(1 + x²) = π/4", R("1/(1 + x^2)", "0", "1").textos.exato, "π/4");
+  igual("∫₀¹ e^(x²) numérica", R("e^(x^2)", "0", "1").numeros.valor, 1.4626517459071817, 1e-9);
+  igual("imprópria avisa: ∫₋₁¹ 1/x", R("1/x", "-1", "1").avisos.some((a) => /imprópria/.test(a)), true);
+  igual("troca de sinal: área total de sen em [0, 2π]", R("sen(x)", "0", "2pi").numeros.areaTotal, 4, 1e-8);
+  igual("Simpson adaptativo", integralNumerica(Math.exp, 0, 1), Math.E - 1, 1e-10);
+}
+
+// --- editor de equações ---
+{
+  const r = CALCULO.editor.resolver({ eq: "x^2 + 2x + 1 = 0" });
+  igual("editor: texto", r.textos.texto, "x² + 2x + 1 = 0");
+  igual("editor: LaTeX", r.textos.latex, "x^{2} + 2 \\cdot x + 1 = 0".replace(" \\cdot ", ""));
+  igual("editor: valor de expressão numérica", CALCULO.editor.resolver({ eq: "2^10 - 24" }).numeros.valor, 1000);
+  igual("editor: ± (Bhaskara)", CALCULO.editor.resolver({ eq: "x = (−b ± √(b² − 4ac))/(2a)" }).textos.texto.includes("±"), true);
 }
 
 if (falhas) {

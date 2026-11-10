@@ -247,7 +247,10 @@
   outro = furo) e do conjunto, momentos de inércia de área e de massa e memória de cálculo. Calculadoras **organizadas por matéria** com **lupa de pesquisa** no seletor (07/11/2026). **Todas as
   calculadoras pedidas entregues (08/11/2026)**, sempre com a **resolução passo a passo**: equações de 1º
   e 2º grau, sistemas, inequações, matrizes 3×3 por Cramer e Gauss, multiplicação de matrizes, leis de
-  Newton, plano inclinado, atrito e trabalho. Detalhes em `docs/global/wjcalceng.md`.
+  Newton, plano inclinado, atrito e trabalho. **10/11/2026: derivada, integral indefinida e definida**
+  (simbólicas, com a regra de cada passo; primitiva sempre conferida derivando — resposta errada não
+  aparece) e a **escrita de equações**: fórmula formatada enquanto se digita, **teclado matemático** e o
+  **Editor de equações** (texto/LaTeX). Detalhes em `docs/global/wjcalceng.md`.
 - **WJGoldDiamond** (07/11/2026): face de **modelagem 3D de joias** (nome do Johann). Construtores
   paramétricos no mesmo kernel do WJCAD: aro por tamanho (BR/ISO/EUA), perfis e afunilado, cabeça
   "gema primeiro" (garras ou inglesa), pavé (graduado, fileiras, eternidade, contas ou trilho),
