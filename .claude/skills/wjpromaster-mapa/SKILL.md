@@ -76,7 +76,7 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 
 | Teste | Cobre |
 |---|---|
-| `teste-kernel.ts`, `teste-recursos.ts` | regeneração, features, chapa (kernel em Node) |
+| `teste-kernel.ts`, `teste-recursos.ts` | regeneração, features, chapa (kernel em Node); mesclar face com face, folga com aviso, origem fixa do plano e a TAMPA_JANELA real (`scripts/modelos/tampa-janela.wjcad`) |
 | `teste-esboco.ts` | geometria e operações do esboço (inclui filete/chanfro em canto unido por Coincidente) |
 | `teste-relacoes-auto.ts` | relações automáticas do esboço: candidatas, sem redundância/conflito, arrastar e soltar |
 | `teste-importar.ts` | STEP/STL, montagem STEP |

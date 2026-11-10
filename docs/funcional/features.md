@@ -32,7 +32,12 @@ Seleção inicial: se nada estiver selecionado, pede um **esboço** (ou plano/fa
   - Plano médio (Mid Plane) → profundidade total, simétrica ao plano do esboço
 - **Direção da extrusão**: campo opcional (aresta/linha/eixo) — extrudar fora da normal
 - Profundidade D1 (com seta de arrasto no viewport)
-- **Mesclar resultado** (Merge result) — só ressalto, com mais de um corpo
+- **Mesclar resultado** (Merge result) — só ressalto, com mais de um corpo. Sólidos que se tocam por
+  face ou se sobrepõem viram **um corpo** (vale para Extrusão, Revolução, Varredura, Loft, Nervura,
+  Espelhar, Padrões e Inserir peça com mesclar). A fusão cola sozinha só o **ruído numérico (≤ 0,001 mm)**;
+  folga real ou contato só por aresta/ponto deixa corpo separado e o recurso ganha **aviso** (amarelo na
+  árvore e no painel, sem erro) com a folga medida: "Um corpo ficou separado… folga de 0,0328 mm até a
+  peça" (decisão do Johann, 10/11/2026: não esconder folgas). ✅
 - **Inclinação** liga/desliga → ângulo + "Inclinação para fora"
 
 **Caixa "Direção 2"** (caixa de seleção no título)
@@ -430,6 +435,9 @@ plano + aresta → ângulo), eixo (2 planos, 2 vértices) e Medir.
   **Distância** (valor, inverter) · **Ângulo** (valor, inverter) · Plano médio
 - Nº de planos (para distância/ângulo repetidos)
 - Status: "Totalmente definido" quando as referências bastam
+- **Origem do esboço no plano** (10/11/2026): planos novos têm **origem fixa** = projeção da origem da
+  peça no plano (`origemFixa`); se a face de referência mudar, o esboço sem cotas não anda junto. Planos
+  criados antes continuam com a origem no centro da face (nada muda nos arquivos existentes). ✅
 
 ### Eixo
 Uma linha/aresta/eixo · Dois planos · Dois pontos/vértices · Face cilíndrica/cônica · Ponto e face/plano

@@ -102,6 +102,7 @@ Pontos de atenção: **Cônica** geral não existe no solver (PlaneGCS tem elips
 | Linhas de inferência | pontilhadas alinhando com pontos existentes (H/V a distância) | F3 |
 | Relações automáticas | ✅ (10/11/2026, pedido do Johann) — ver detalhes abaixo | ✅ |
 | Opções do esboço | relações automáticas ✅ (⚙ Configurações → Esboço); resolver automaticamente, detectar superdefinição | 🟡 |
+| Entidade minúscula | aviso amarelo no painel do esboço (sem bloquear) para linha < 0,5 mm ou arco/círculo de raio < 0,5 mm, com botão **Selecionar** (`entidadesMinusculas` em `geometria.ts`; 10/11/2026) | ✅ |
 
 **Relações automáticas ("magnetismo")** ✅ (10/11/2026) — `src/esboco/relacoesAuto.ts`, teste `scripts/teste-relacoes-auto.ts`:
 - **Ao desenhar** (como antes): terminar num ponto reaproveita o ponto; sobre curva/eixo → Coincidente (sobre);

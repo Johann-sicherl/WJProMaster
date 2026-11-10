@@ -232,6 +232,8 @@ button svg { width: 22px; height: 22px; flex: none; }
 .arvore .item.suprimida strong { text-decoration: line-through; }
 .arvore .item.com-erro { background: var(--erro-suave); border-left-color: var(--erro); }
 .arvore .item.com-erro .item-ic { color: var(--erro); }
+.arvore .item.com-aviso { background: #fff4e0; border-left-color: #e0a030; }
+.arvore .item.com-aviso .item-ic { color: #b9770e; }
 .item-ic { display: grid; place-items: center; color: var(--texto); }
 .item-ic svg { width: 22px; height: 22px; }
 .item-texto { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -342,6 +344,15 @@ button svg { width: 22px; height: 22px; flex: none; }
   font-weight: 600;
 }
 .prop-nome.fixo { display: flex; align-items: center; border-color: transparent; padding: 0; }
+.prop-aviso {
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff4e0;
+  border: 1px solid #f0c27a;
+  color: #7a4d00;
+  font-size: 13px;
+}
 .prop-erro {
   margin: 4px 0 8px;
   padding: 8px 10px;
@@ -938,7 +949,10 @@ textarea.texto-esboco { width: 100%; box-sizing: border-box; font: inherit; font
 }
 .cota-modelo-edicao.invalido { border-color: var(--erro); }
 body.disp-tablet .cota-modelo, body.disp-celular .cota-modelo { min-height: 40px; font-size: 16px; }
-.aviso-dinamico { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 8px 0; padding: 6px 8px 6px 10px; border-radius: 8px; background: #fff4e0; border: 1px solid #f0c27a; font-size: 13px; }
+.aviso-minusculas, .aviso-dinamico { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 8px 0; padding: 6px 8px 6px 10px; border-radius: 8px; background: #fff4e0; border: 1px solid #f0c27a; font-size: 13px; }
+.aviso-minusculas { flex-wrap: wrap; }
+.aviso-minusculas > span { flex: 1 1 200px; }
+.aviso-minusculas > button { flex: 0 0 auto; margin-left: auto; }
 textarea.campo-texto { width: 100%; box-sizing: border-box; font: 14px/1.4 ui-monospace, monospace; padding: 8px; border: 1px solid var(--linha); border-radius: 8px; resize: vertical; }
 
 /* tabela de configurações */

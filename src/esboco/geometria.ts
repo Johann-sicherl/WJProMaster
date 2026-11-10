@@ -802,3 +802,26 @@ export function cruzamentoDoLaco(l: Laco): P2 | null {
     }
   return null;
 }
+
+/** Tamanho abaixo do qual uma entidade do esboço quase sempre é involuntária (mm). */
+export const LIMITE_MINUSCULA = 0.5;
+
+/**
+ * Entidades minúsculas do perfil: linha mais curta, ou arco/círculo de raio menor que `limite`
+ * (construção e referências da peça ficam de fora). Só para avisar: o esboço não é bloqueado.
+ */
+export function entidadesMinusculas(esb: Pick<FeatureEsboco, "pontos" | "geos">, limite = LIMITE_MINUSCULA): { id: string; texto: string }[] {
+  const pts = mapaPontos(esb);
+  const mm = (v: number) => `${v.toLocaleString("pt-BR", { maximumFractionDigits: v < 0.1 ? 3 : 2 })} mm`;
+  const out: { id: string; texto: string }[] = [];
+  for (const g of esb.geos) {
+    if (g.construcao || g.externa || g.oculta) continue;
+    if (g.tipo === "linha") {
+      const a = pts.get(g.p1), b = pts.get(g.p2);
+      if (a && b && dist(a, b) < limite) out.push({ id: g.id, texto: `linha de ${mm(dist(a, b))}` });
+    } else if ((g.tipo === "arco" || g.tipo === "circulo") && g.r < limite) {
+      out.push({ id: g.id, texto: `${g.tipo === "arco" ? "arco" : "círculo"} R ${mm(g.r)}` });
+    }
+  }
+  return out;
+}
