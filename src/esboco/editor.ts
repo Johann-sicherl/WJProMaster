@@ -1810,8 +1810,19 @@ export class EditorEsboco {
     const antigo = c.valor;
     const copia = JSON.stringify(this.esb.pontos);
     const raios = this.esb.geos.map((g) => (g.tipo === "circulo" || g.tipo === "arco" ? g.r : 0));
-    const cruzavaAntes = encontrarLacos(this.esb).some((l) => cruzamentoDoLaco(l));
-    const res = aplicarValorGradual(this.h.solver, this.esb, c, valor);
+    const cruza = () => encontrarLacos(this.esb).some((l) => cruzamentoDoLaco(l));
+    const cruzavaAntes = cruza();
+    const voltar = () => {
+      c.valor = antigo;
+      this.esb.pontos = JSON.parse(copia);
+      this.esb.geos.forEach((g, i) => { if (g.tipo === "circulo" || g.tipo === "arco") g.r = raios[i]; });
+    };
+    let res = aplicarValorGradual(this.h.solver, this.esb, c, valor);
+    // passou a cruzar (ex.: espessura que vira para o outro lado): volta e reaplica em passos bem menores
+    if (res.ok && !cruzavaAntes && cruza()) {
+      voltar();
+      res = aplicarValorGradual(this.h.solver, this.esb, c, valor, true);
+    }
     if (!res.ok) {
       c.valor = antigo;
       this.esb.pontos = JSON.parse(copia);
