@@ -196,6 +196,9 @@
 - **Cotas do esboço com teclado-calculadora** (09/11/2026; 10/11/2026: **abre pelo botão com símbolo de
   calculadora** na caixa do valor da cota): pequena calculadora ao lado da cota (normal ↔ científica,
   trigonometria em graus), sem subir o teclado do sistema.
+- **Filete de esboço** (10/11/2026): cantos vão para a caixa **"Entidades a filetar"** e são aplicados juntos,
+  por padrão **iguais** (uma cota R controla todos); o canto tirado vira **canto virtual** (relações e cotas
+  continuam nele: mudar o raio não move o perfil). Vale também para o chanfro de esboço.
 - **✕ num recurso novo** (09/11/2026): cancelar não deixa o recurso (nem recurso com erro) na árvore; o
   esboço volta a ficar solto.
 - **Exportar = "Salvar como"** (07/11/2026): botão **Exportar** logo depois do 💾 Salvar (e no menu

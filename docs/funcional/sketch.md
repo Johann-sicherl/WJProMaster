@@ -184,6 +184,10 @@ Parâmetros: X/Y.
 ### Filete de esboço — ✅
 - Entidades a filetar (cantos/vértices) · raio · **Manter cantos com restrição** ·
   **Cotar cada filete** · filetes iguais
+- **Entidades a filetar** ✅ (10/11/2026, pedido do Johann): os cantos tocados entram na caixa (rosa) do painel
+  e um toque em **Aplicar filetes (N)** faz todos; **Filetes iguais** (padrão) liga os arcos com relação de
+  igualdade e uma cota R só — mudar essa cota muda todos os filetes do grupo; desligado, cada um com a sua
+  cota. Tocar de novo num canto tira da caixa; o × limpa.
 - **Manter cantos com restrição** ✅ (10/11/2026, filete e chanfro): o canto vira **canto virtual** (ponto de
   construção na interseção das duas linhas); relações e cotas do canto (origem, distâncias) continuam nele e
   as cotas de comprimento das linhas passam a medir do canto virtual — mudar o raio não move o perfil.

@@ -219,6 +219,41 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   }
 }
 
+// 4d4. "Entidades a filetar": vários cantos de uma vez, filetes iguais com uma cota só (mudar a cota
+// muda todos); sem iguais, cada um com a sua cota
+{
+  const ret = () => {
+    const e = plano();
+    const a = op.ponto(e, { x: 0, y: 0 }), c = op.ponto(e, { x: 60, y: 40 });
+    const ls = op.retangulo(e, a, c);
+    op.restringir(e, { tipo: "coincidente", a, b: ORIGEM });
+    op.restringir(e, { tipo: "distancia", a: ls[0].id, valor: 60 });
+    op.restringir(e, { tipo: "distancia", a: ls[1].id, valor: 40 });
+    solver.resolver(e);
+    const cantos = [...new Set(ls.flatMap((l) => [(l as { p1: string }).p1, (l as { p2: string }).p2]))].filter((p) => op.ehCantoDeLinhas(e, p));
+    return { e, cantos };
+  };
+  const g = ret();
+  verdade("retângulo: 4 cantos aceitam filete", g.cantos.length === 4);
+  const r = op.filetesEsboco(g.e, g.cantos, 5, true, true);
+  verdade("4 filetes criados de uma vez", r.arcos.length === 4 && !r.falharam.length);
+  const cotasR = g.e.restricoes.filter((x) => x.tipo === "raio");
+  verdade("filetes iguais: uma cota de raio só e 3 relações de igualdade", cotasR.length === 1 && g.e.restricoes.filter((x) => x.tipo === "igual").length === 3);
+  const c = cotasR[0] as { valor: number; tipo: string };
+  verdade("grupo resolve", aplicarValorGradual(solver, g.e, c, 8).ok);
+  const raios = g.e.geos.filter((x) => x.tipo === "arco").map((x) => (x as { r: number }).r);
+  verdade(`mudar a cota de um filete muda todos (${raios.map((x) => x.toFixed(2)).join(", ")})`, raios.length === 4 && raios.every((x) => Math.abs(x - 8) < 1e-6));
+  const pt = (id: string) => (id === ORIGEM ? { x: 0, y: 0 } : g.e.pontos.find((q) => q.id === id)!);
+  const oposto = g.cantos.map(pt).reduce((m, q) => (q.x + q.y > m.x + m.y ? q : m));
+  verdade("retângulo continua 60 × 40 (cantos virtuais)", Math.abs(oposto.x - 60) < 1e-6 && Math.abs(oposto.y - 40) < 1e-6);
+  const h = ret();
+  const r2 = op.filetesEsboco(h.e, h.cantos, 5, true, false);
+  verdade("sem iguais: cada filete com a sua cota", r2.arcos.length === 4 && h.e.restricoes.filter((x) => x.tipo === "raio").length === 4);
+  const k = ret();
+  const r3 = op.filetesEsboco(k.e, k.cantos, 45, true, true);
+  verdade("raio grande demais: os cantos que não cabem são avisados", r3.falharam.length === 4 && !r3.arcos.length);
+}
+
 // 4e. Teclado-calculadora das cotas: normal e científico (trigonométricas em graus)
 {
   const casos: [string, number][] = [

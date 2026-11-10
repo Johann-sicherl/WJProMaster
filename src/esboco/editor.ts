@@ -80,7 +80,7 @@ function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
     case "estender": return "Toque perto da ponta da linha a estender até a próxima interseção.";
     case "dividir": return "Toque na linha ou no arco onde quer dividir: vira duas entidades com um ponto em comum.";
     case "converter": return "Toque arestas, vértices ou uma face da peça (a face converte o contorno inteiro, com os furos): viram geometria do esboço.";
-    case "fileteEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
+    case "fileteEsboco": return "Toque os cantos (pontos onde duas linhas se encontram): entram na caixa \"Entidades a filetar\". Depois, Aplicar filetes.";
     case "chanfroEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
     case "selecionar": return ed?.modoSelecao === "traco" ? "Seleção por traço: risque com a caneta; tudo o que o traço encostar entra na seleção. Toque numa entidade para tirá-la; no vazio, limpa."
       : ed?.modoSelecao === "laco" ? "Seleção por laço: contorne com a caneta; o que ficar todo dentro entra na seleção. Toque no vazio para limpar."
@@ -198,6 +198,10 @@ export class EditorEsboco {
   poligonoCircunscrito = false;
   raioFilete = 3;
   cotarFilete = true;
+  /** filetes do grupo com raio igual (uma cota controla todos) */
+  filetesIguais = true;
+  /** "Entidades a filetar": cantos escolhidos, aplicados juntos */
+  cantosFilete: string[] = [];
   distChanfro = 2;
   distOffset = 5;
   /** Opções do aparar (painel "Aparar"). */
@@ -316,6 +320,7 @@ export class EditorEsboco {
     if (f === "espelhar") {
       this.espelho = { campo: this.geosSelecionadas().length ? "eixo" : "entidades", eixo: null, copiar: this.espelho.copiar };
     }
+    if (f !== "fileteEsboco" && this.ferramenta === "fileteEsboco") this.cantosFilete = []; // sair do filete esvazia a caixa
     this.ferramenta = f;
     this.cliques = [];
     this.cotaEntidades = [];
@@ -852,12 +857,23 @@ export class EditorEsboco {
     const esb = this.esb;
     const c = this.cliques;
 
-    if (f === "fileteEsboco" || f === "chanfroEsboco") {
+    if (f === "fileteEsboco") {
+      // os cantos tocados vão para a caixa "Entidades a filetar" (tocar de novo tira); Aplicar faz todos
       const alvo = this.achar(enc.p, tol);
       if (alvo?.tipo !== "ponto") return this.h.avisar("Toque o ponto do canto.");
-      const ok = f === "fileteEsboco"
-        ? op.fileteEsboco(esb, alvo.id, this.raioFilete, this.cotarFilete)
-        : op.chanfroEsboco(esb, alvo.id, this.distChanfro);
+      const i = this.cantosFilete.indexOf(alvo.id);
+      if (i >= 0) this.cantosFilete.splice(i, 1);
+      else if (op.ehCantoDeLinhas(esb, alvo.id)) this.cantosFilete.push(alvo.id);
+      else return this.h.avisar("Esse ponto não é um canto entre duas linhas.");
+      this.selecao = new Set(this.cantosFilete);
+      this.redesenhar();
+      this.h.atualizarInterface();
+      return;
+    }
+    if (f === "chanfroEsboco") {
+      const alvo = this.achar(enc.p, tol);
+      if (alvo?.tipo !== "ponto") return this.h.avisar("Toque o ponto do canto.");
+      const ok = op.chanfroEsboco(esb, alvo.id, this.distChanfro);
       if (!ok) return this.h.avisar("Esse ponto não é um canto entre duas linhas (ou o tamanho é grande demais).");
       this.resolver(true);
       return;
@@ -1804,6 +1820,26 @@ export class EditorEsboco {
     }
     this.resolver(true);
     return true;
+  }
+
+  /** Aplica os filetes de todos os cantos da caixa "Entidades a filetar". */
+  aplicarFiletes() {
+    if (!this.cantosFilete.length) return this.h.avisar("Toque os cantos que vão receber filete.");
+    const r = op.filetesEsboco(this.esb, this.cantosFilete, this.raioFilete, this.cotarFilete, this.filetesIguais);
+    this.cantosFilete = [];
+    this.selecao = new Set(r.arcos.map((a) => a.id));
+    this.resolver(true);
+    if (r.falharam.length)
+      this.h.avisar(`${r.falharam.length} canto${r.falharam.length > 1 ? "s" : ""} não recebeu filete: raio grande demais para as linhas desse canto.`);
+    else if (r.arcos.length > 1 && this.filetesIguais)
+      this.h.avisar(`${r.arcos.length} filetes iguais: mude a cota R de qualquer um e todos acompanham.`);
+  }
+
+  limparCantosFilete() {
+    this.cantosFilete = [];
+    this.selecao.clear();
+    this.redesenhar();
+    this.h.atualizarInterface();
   }
 
   definirValorCota(id: string, valor: number) {

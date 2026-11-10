@@ -991,6 +991,30 @@ export function fileteEsboco(esb: FeatureEsboco, p: string, raio: number, cotar 
   return a;
 }
 
+/** O ponto é um canto entre duas linhas que aceita filete/chanfro? */
+export function ehCantoDeLinhas(esb: FeatureEsboco, p: string): boolean {
+  const ci = cantoInfo(esb, p);
+  return !!ci && ci.theta > 1e-3 && ci.theta < Math.PI - 1e-3;
+}
+
+/**
+ * Filetes de esboço em vários cantos de uma vez ("Entidades a filetar"). Com `iguais`, os arcos ficam com
+ * relação de igualdade e só o primeiro ganha a cota (com `cotar`): mudar essa cota muda todos os filetes
+ * do grupo. Sem `iguais`, cada filete ganha a sua cota (com `cotar`). Devolve os arcos criados e os cantos
+ * que não deu para filetar (raio grande demais para as linhas daquele canto).
+ */
+export function filetesEsboco(esb: FeatureEsboco, cantos: string[], raio: number, cotar: boolean, iguais: boolean): { arcos: Geo<"arco">[]; falharam: string[] } {
+  const arcos: Geo<"arco">[] = [];
+  const falharam: string[] = [];
+  for (const p of cantos) {
+    const a = fileteEsboco(esb, p, raio, cotar && (!iguais || !arcos.length));
+    if (a) arcos.push(a);
+    else falharam.push(p);
+  }
+  if (iguais) for (const a of arcos.slice(1)) restringir(esb, { tipo: "igual", a: arcos[0].id, b: a.id });
+  return { arcos, falharam };
+}
+
 /** Chanfro de esboço (distâncias iguais ou d1/d2) num canto entre duas linhas. */
 export function chanfroEsboco(esb: FeatureEsboco, p: string, d1: number, d2 = d1): Geo<"linha"> | null {
   const ci = cantoInfo(esb, p);

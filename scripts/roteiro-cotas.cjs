@@ -157,6 +157,26 @@ const ok = (nome, cond, extra = "") => {
   ok("arrastar não criou cota nova", nCotas(e) === cotasAntes, `${cotasAntes} → ${nCotas(e)}`);
   if (PASTA) await p.screenshot({ path: `${PASTA}/apos-arrastar.png` });
 
+  // 5b. Filete de esboço com "Entidades a filetar": dois cantos na caixa, um toque em Aplicar, filetes iguais
+  e = await esb();
+  const usos = new Map();
+  for (const g of e.geos) if (g.tipo === "linha" && !g.construcao) for (const q of [g.p1, g.p2]) usos.set(q, (usos.get(q) ?? 0) + 1);
+  const cantos = [...usos].filter(([id, n]) => n === 2 && id !== "origem").map(([id]) => e.pontos.find((q) => q.id === id)).filter(Boolean).slice(0, 2);
+  await botao("Filete").tap();
+  await p.waitForTimeout(300);
+  for (const q of cantos) await tocarMundo([q.x, q.y, 0]);
+  const chips = await p.locator("#painel-comando .pc-chip, .prop-painel .pc-chip, .pc-refs .pc-chip").allInnerTexts();
+  ok("os cantos tocados entram na caixa \"Entidades a filetar\"", chips.length === 2, chips.join(", "));
+  if (PASTA) await p.screenshot({ path: `${PASTA}/entidades-filetar.png` });
+  const arcos0 = e.geos.filter((g) => g.tipo === "arco").length;
+  await p.locator("button", { hasText: /^Aplicar filetes \(2\)$/ }).tap();
+  await p.waitForTimeout(600);
+  e = await esb();
+  const novosArcos = e.geos.filter((g) => g.tipo === "arco").length - arcos0;
+  ok("Aplicar faz os 2 filetes de uma vez", novosArcos === 2, `${novosArcos} arcos`);
+  ok("filetes iguais: uma cota R só para o grupo", e.restricoes.filter((r) => r.tipo === "raio").length === 1 && e.restricoes.some((r) => r.tipo === "igual"));
+  await botao("Selecionar").tap();
+
   // 6. sair do esboço; Extrusão nova → ✕: nada de recurso novo na árvore, o esboço fica
   await aba("Sketch");
   await p.locator("#faixa-comandos button").first().tap();
