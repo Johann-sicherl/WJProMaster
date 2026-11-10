@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 08/11/2026 (WJSlicer3D).
+> Última consolidação: 10/11/2026.
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -29,7 +29,9 @@
    `hasTouch`, `isMobile` e perfil `{ dispositivo: "tablet" }` em `localStorage["jlscad:interface"]`
    (toque com `tap`/eventos de ponteiro `touch`/`pen`). Interface de computador testada também quando o
    recurso for de mouse.
-10. Ele prefere receber **arquivos/blocos de código completos** quando pedir código, não diffs parciais.
+10. **Resposta ao fim de cada entrega** (10/11/2026): resumo curto (o que entrou, como usar, pendências) e
+    o link do PR; **código completo só quando ele pedir** (aí o arquivo/bloco inteiro, não diff parcial).
+    O código fica completo no PR; imprimir no chat gasta tokens sem acrescentar qualidade.
 11. Gerenciador **pnpm** (nunca npm); dependência nova só com justificativa, de projeto conhecido,
     revisando o `pnpm-lock.yaml` (`minimumReleaseAge` de 3 dias, scripts de instalação bloqueados).
 12. Segurança: nunca usar nem versionar a chave secreta do cliente OAuth do Google; nunca force-push;

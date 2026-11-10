@@ -67,7 +67,8 @@
 
 Responda sempre em **português (Brasil)**. O dono do projeto é o Johann, engenheiro mecânico
 que usa CAD paramétrico profissionalmente; trate-o como usuário avançado de CAD.
-Ele prefere receber **arquivos/blocos de código completos** após cada mudança, não diffs parciais.
+**Resposta ao fim de cada entrega** (10/11/2026): resumo curto (o que entrou, como usar, pendências) e o
+link do PR; **código completo só quando ele pedir** (aí o arquivo/bloco inteiro, não diff parcial).
 
 
 ## Essencial (o resto em `.claude/skills/wjpromaster-mapa/tecnico.md`)

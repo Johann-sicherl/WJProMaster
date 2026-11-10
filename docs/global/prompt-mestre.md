@@ -83,7 +83,7 @@ MÉTODO DE TRABALHO (para cada pedido)
    - como usar;
    - o que ficou pendente e por quê;
    - sugestão do próximo passo.
-   Ele prefere arquivos/blocos de código completos quando pedir código.
+   Código completo no chat só quando ele pedir (o código fica no PR).
 
 DEFINIÇÃO DE PRONTO DE UMA FUNÇÃO
 - Comportamento igual ao especificado (campos, opções, padrões, mensagens em PT-BR).
