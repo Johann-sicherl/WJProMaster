@@ -12,7 +12,7 @@ import { IC } from "../comum/icones";
 import { lerLocal, gravarLocal, sincronizarTarefas } from "./copias";
 import { areaEscrita, permitirOnline, reconhecedor } from "./escrita";
 import {
-  alertas, alertasEtapas, estadoPelasEtapas, painelEtapas, prazoEtapa, type EtapaAtrasada, caminhoPasta, concluidaEm, criarPasta, criarTarefa, descendentes, diaLocal, diasEntre, duracao, estadoDe, estadosOrdenados, excluirEstado,
+  alertas, alertasEtapas, estadoPelasEtapas, painelEtapas, prazoEtapa, passaDoPrazo, etapasForaDoPrazo, trazerEtapasAoPrazo, mudarPrazoTarefa, type EtapaAtrasada, caminhoPasta, concluidaEm, criarPasta, criarTarefa, descendentes, diaLocal, diasEntre, duracao, estadoDe, estadosOrdenados, excluirEstado,
   excluirPasta, adicionarEtapa, definirNota, definirNotaEtapa, excluirEtapa, excluirTarefa, marcarEtapa, moverEtapa, progresso, filhas, mesclar, moverPasta, mudarEstado, painel, tabelaCSV, uid, type Base, type Etapa, type Estado, type Tarefa, type TipoEstado,
 } from "./regras";
 
@@ -145,16 +145,45 @@ function pedirTexto(titulo: string, rotulo: string, valor = ""): Promise<string 
   });
 }
 
-function confirmar(titulo: string, texto: string, rotuloOk = "Excluir"): Promise<boolean> {
+function confirmar(titulo: string, texto: string, rotuloOk = "Excluir", rotuloNao = "Cancelar"): Promise<boolean> {
   return new Promise((ok) => {
     let feito = false;
-    const { corpo } = janela(titulo, `<p>${texto}</p>`, [{ rotulo: "Cancelar" }, { rotulo: rotuloOk, destaque: true, acao: () => ((feito = true), ok(true)) }]);
+    const { corpo } = janela(titulo, `<p>${texto}</p>`, [{ rotulo: rotuloNao }, { rotulo: rotuloOk, destaque: true, acao: () => ((feito = true), ok(true)) }]);
     new MutationObserver((_, o) => {
       if (corpo.isConnected) return;
       o.disconnect();
       if (!feito) ok(false);
     }).observe(document.body, { childList: true });
   });
+}
+
+// ---------- prazo da etapa ≤ prazo da tarefa (a regra está em regras.ts; aqui só se pergunta) ----------
+
+/** Data completa? (o campo de data do computador entrega "0002-…" enquanto o ano é digitado) */
+const dataCompleta = (v: string | null | undefined) => !!v && v >= "1900";
+
+/** Etapa com prazo depois do da tarefa: estender a tarefa até essa data? */
+const perguntarEstender = (prazo: string) =>
+  confirmar("Prazo da etapa", `A etapa vence depois do prazo da tarefa. Estender o prazo da tarefa para <b>${dataBR(prazo)}</b>?`, "Sim", "Não");
+
+/** Novo prazo da tarefa antes de etapas com prazo: trazer essas etapas para o novo prazo? */
+function perguntarAntecipar(afetadas: Etapa[], prazo: string): Promise<boolean> {
+  const n = afetadas.length;
+  return confirmar("Prazo da tarefa", `${n === 1 ? "1 etapa passaria" : `${n} etapas passariam`} do novo prazo (<b>${dataBR(prazo)}</b>):
+    <ul class="tp-afetadas">${afetadas.map((e) => `<li>${escapar(e.titulo)} <small>(${dataBR(e.prazo!)})</small></li>`).join("")}</ul>`,
+    "Trazer essas etapas para o novo prazo");
+}
+
+/** Dado que já chegou errado (antigo ou de outro aparelho): corrigir com um toque, nada sozinho. */
+function corrigirEtapa(t: Tarefa, id: string) {
+  const e = t.etapas?.find((x) => x.id === id);
+  if (!e?.prazo || !t.prazo || !passaDoPrazo(t, e.prazo)) return;
+  const etapaP = e.prazo, tarefaP = t.prazo;
+  janela("Etapa passa do prazo da tarefa", `<p>"${escapar(e.titulo)}" vence em <b>${dataBR(etapaP)}</b>, depois do prazo da tarefa (<b>${dataBR(tarefaP)}</b>).</p>`, [
+    { rotulo: "Cancelar" },
+    { rotulo: `Estender a tarefa para ${dataBR(etapaP)}`, acao: () => alterar(() => mudarPrazoTarefa(t, etapaP, agoraISO())) },
+    { rotulo: `Trazer a etapa para ${dataBR(tarefaP)}`, destaque: true, acao: () => alterar(() => trazerEtapasAoPrazo(t, agoraISO(), [id])) },
+  ]);
 }
 
 /** Lista de pastas para um <select> (com recuo pela profundidade). */
@@ -371,6 +400,12 @@ function seloPrazo(t: Tarefa): string {
   return `<span class="wj-selo${cls}">${txt}</span>`;
 }
 
+/** Aviso na tarefa: etapas que já passam do prazo dela (dado antigo ou de outro aparelho); toque abre as etapas. */
+function seloForaDoPrazo(t: Tarefa): string {
+  const n = etapasForaDoPrazo(t).length;
+  return n ? ` <button class="wj-selo tp-atrasada tp-fora-prazo" data-fora-prazo title="Abrir as etapas para corrigir">⚠ ${n === 1 ? "1 etapa passa" : `${n} etapas passam`} do prazo da tarefa</button>` : "";
+}
+
 /** Seta ▸/▾ que expande ou recolhe as etapas (espaço vazio na tarefa sem etapas, para alinhar). */
 function setaEtapas(t: Tarefa): string {
   if (!progresso(t).total && !etapasAbertas.has(t.id)) return `<span class="tp-seta-etapas" aria-hidden="true"></span>`;
@@ -389,14 +424,14 @@ function seloEtapas(t: Tarefa): string {
 /** Etapas da tarefa na lista: marcar feita, subir, excluir e adicionar (teclado, S Pen ou caneta). */
 function listaEtapas(t: Tarefa): string {
   return `<div class="tp-etapas">
-    <ul>${(t.etapas ?? []).map((e, k) => `<li data-etapa="${e.id}" class="${e.feita ? "tp-etapa-feita" : ""}">
+    <ul>${(t.etapas ?? []).map((e, k) => `<li data-etapa="${e.id}" class="${e.feita ? "tp-etapa-feita" : ""}${passaDoPrazo(t, e.prazo) ? " tp-fora-prazo" : ""}">
       <label class="tp-chk"><input type="checkbox" data-etapa-feita ${e.feita ? "checked" : ""}/><span>${escapar(e.titulo)}${e.nota ? `<small class="tp-obs" data-etapa-nota title="Editar a observação">${escapar(e.nota)}</small>` : ""}</span></label>
-      ${situacaoEtapa(e)}
+      ${situacaoEtapa(e)}${passaDoPrazo(t, e.prazo) ? `<button class="wj-selo tp-atrasada tp-fora-prazo" data-etapa-corrigir title="Corrigir: trazer a etapa ou estender a tarefa">⚠ passa do prazo da tarefa</button>` : ""}
       <button class="tp-nota-bt${e.nota ? " tp-com-nota" : ""}" data-etapa-nota title="${e.nota ? "Editar a observação" : "Observação (nota/lembrete)"} da etapa">${IC.nota}</button>
-      <input type="date" data-etapa-prazo value="${e.prazo ?? ""}" title="Prazo de entrega da etapa (opcional)" aria-label="Prazo da etapa" />
+      <input type="date" data-etapa-prazo value="${e.prazo ?? ""}"${t.prazo ? ` max="${t.prazo}"` : ""} title="Prazo de entrega da etapa (opcional${t.prazo ? `, até ${dataBR(t.prazo)}` : ""})" aria-label="Prazo da etapa" />
       <button data-etapa-sobe ${k ? "" : "disabled"} title="Subir">↑</button><button data-etapa-tira title="Excluir etapa">✕</button></li>`).join("")}</ul>
     <div class="tp-linha tp-nova-etapa"><input data-etapa-nova placeholder="Nova etapa (Enter adiciona)" autocomplete="off" />
-      <input type="date" data-etapa-nova-prazo title="Prazo de entrega da nova etapa (opcional)" aria-label="Prazo da nova etapa" />
+      <input type="date" data-etapa-nova-prazo${t.prazo ? ` max="${t.prazo}"` : ""} title="Prazo de entrega da nova etapa (opcional${t.prazo ? `, até ${dataBR(t.prazo)}` : ""})" aria-label="Prazo da nova etapa" />
       <button data-etapa-add title="Adicionar etapa">${IC.mais}</button>
       <button data-etapa-caneta title="Escrever a etapa com a caneta">${IC.caneta}</button></div>
   </div>`;
@@ -467,7 +502,7 @@ function renderizarLista() {
         ${setaEtapas(t)}
         <div class="tp-texto" data-editar>
           <span class="tp-titulo">${escapar(t.titulo)}</span>
-          <span class="tp-meta">criada ${dataHora(t.criada)}${mostrarPasta ? ` · ${escapar(caminhoPasta(base, t.pasta))}` : ""} ${seloPrazo(t)}</span>
+          <span class="tp-meta">criada ${dataHora(t.criada)}${mostrarPasta ? ` · ${escapar(caminhoPasta(base, t.pasta))}` : ""} ${seloPrazo(t)}${seloForaDoPrazo(t)}</span>
           ${t.nota ? `<span class="tp-obs" data-nota title="Editar a observação">${escapar(t.nota)}</span>` : ""}
         </div>
         ${seloEtapas(t)}
@@ -508,7 +543,14 @@ conteudo.addEventListener("change", (e) => {
   if (alvo.matches("[data-etapa-prazo]")) {
     const t = base.tarefas.find((x) => x.id === alvo.closest<HTMLElement>(".tp-tarefa")?.dataset.id);
     const id = alvo.closest<HTMLElement>("[data-etapa]")?.dataset.etapa;
-    if (t && id) alterar(() => prazoEtapa(t, id, alvo.value, agoraISO()));
+    if (!t || !id) return;
+    const v = alvo.value;
+    if (!passaDoPrazo(t, v)) {
+      alterar(() => prazoEtapa(t, id, v, agoraISO()));
+      return;
+    }
+    // depois do prazo da tarefa (digitada ou de outro caminho): Sim estende a tarefa; Não, a etapa não muda
+    void perguntarEstender(v).then((sim) => (sim ? alterar(() => prazoEtapa(t, id, v, agoraISO(), true)) : renderizarLista()));
     return;
   }
   const s = (e.target as HTMLElement).closest<HTMLSelectElement>("[data-estado]");
@@ -525,6 +567,11 @@ conteudo.addEventListener("click", (e) => {
   if (alvo.closest("[data-menu]")) {
     const r = alvo.getBoundingClientRect();
     menuTarefa(t, r.left, r.bottom);
+  } else if (etapa && alvo.closest("[data-etapa-corrigir]")) {
+    corrigirEtapa(t, etapa);
+  } else if (alvo.closest("[data-fora-prazo]")) {
+    abrirEtapas(t.id, true);
+    renderizarLista();
   } else if (alvo.closest("[data-etapas]")) {
     abrirEtapas(t.id, !etapasAbertas.has(t.id));
     renderizarLista();
@@ -553,8 +600,17 @@ function novaEtapa(t: Tarefa, texto: string) {
   if (!texto.trim()) return;
   // prazo escolhido junto com o texto da nova etapa (opcional)
   const prazo = conteudo.querySelector<HTMLInputElement>(`.tp-tarefa[data-id="${t.id}"] [data-etapa-nova-prazo]`)?.value || null;
-  alterar(() => (adicionarEtapa(t, texto, agoraISO(), prazo), conferirConclusao(t)));
-  conteudo.querySelector<HTMLInputElement>(`.tp-tarefa[data-id="${t.id}"] [data-etapa-nova]`)?.focus();
+  const focar = () => conteudo.querySelector<HTMLInputElement>(`.tp-tarefa[data-id="${t.id}"] [data-etapa-nova]`)?.focus();
+  if (!passaDoPrazo(t, prazo)) {
+    alterar(() => (adicionarEtapa(t, texto, agoraISO(), prazo), conferirConclusao(t)));
+    focar();
+    return;
+  }
+  // Sim: a etapa entra e a tarefa ganha a data; Não: nada muda (o texto fica no campo para outra data)
+  void perguntarEstender(prazo!).then((sim) => {
+    if (sim) alterar(() => (adicionarEtapa(t, texto, agoraISO(), prazo, true), conferirConclusao(t)));
+    focar();
+  });
 }
 conteudo.addEventListener("contextmenu", (e) => {
   const id = (e.target as HTMLElement).closest<HTMLElement>(".tp-tarefa")?.dataset.id;
@@ -728,38 +784,50 @@ function escreverNota(titulo: string, valor = ""): Promise<string | null> {
   });
 }
 
-/** Lista editável de etapas (rascunho) dentro da janela da tarefa. */
-function editorEtapas(raiz: HTMLElement, etapas: Etapa[]) {
+/**
+ * Lista editável de etapas (rascunho) dentro da janela da tarefa. `prazo` lê o prazo da tarefa que está
+ * na janela (calendário das etapas limitado até ele); `estender` muda esse prazo quando o usuário aceita.
+ */
+function editorEtapas(raiz: HTMLElement, etapas: Etapa[], prazo: () => string | null, estender: (p: string) => void) {
   const lista = $("[data-etapas]", raiz);
   const nova = $<HTMLInputElement>("[data-nova-etapa]", raiz);
   const prazoNova = $<HTMLInputElement>("[data-prazo-nova]", raiz);
   const desenhar = () => {
+    const p = prazo();
+    const max = p ? ` max="${p}"` : "";
+    prazoNova.max = p ?? "";
     lista.innerHTML = etapas.map((e, k) => `<li data-k="${k}">
       <input type="checkbox" data-feita ${e.feita ? "checked" : ""} aria-label="Etapa feita" />
       <input data-texto value="${escapar(e.titulo)}" aria-label="Etapa ${k + 1}" />
-      <input type="date" data-prazo-etapa value="${e.prazo ?? ""}" title="Prazo de entrega da etapa (opcional)" aria-label="Prazo da etapa ${k + 1}" />
+      <input type="date" data-prazo-etapa value="${e.prazo ?? ""}"${max}${passaDoPrazo({ prazo: p }, e.prazo) ? ` class="tp-fora-prazo" title="Passa do prazo da tarefa"` : ` title="Prazo de entrega da etapa (opcional${p ? `, até ${dataBR(p)}` : ""})"`} aria-label="Prazo da etapa ${k + 1}" />
       <button data-sobe ${k ? "" : "disabled"} title="Subir">↑</button><button data-tira title="Excluir etapa">✕</button></li>`).join("");
   };
-  const adicionar = (texto: string) => {
+  /** Adiciona ao rascunho; data depois do prazo da tarefa pergunta (Não: nada entra). */
+  const adicionar = async (texto: string): Promise<boolean> => {
     const t = texto.trim();
-    if (!t) return;
-    etapas.push({ id: uid(), titulo: t, feita: null, ...(prazoNova.value ? { prazo: prazoNova.value } : {}) });
+    if (!t) return false;
+    const pz = prazoNova.value || null;
+    if (pz && passaDoPrazo({ prazo: prazo() }, pz)) {
+      if (!(await perguntarEstender(pz))) return false;
+      estender(pz);
+    }
+    etapas.push({ id: uid(), titulo: t, feita: null, ...(pz ? { prazo: pz } : {}) });
     prazoNova.value = "";
     desenhar();
+    return true;
+  };
+  const adicionarCampo = async () => {
+    if (await adicionar(nova.value)) nova.value = "";
   };
   nova.onkeydown = (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    adicionar(nova.value);
-    nova.value = "";
+    void adicionarCampo();
   };
-  $("[data-add-etapa]", raiz).onclick = () => {
-    adicionar(nova.value);
-    nova.value = "";
-  };
+  $("[data-add-etapa]", raiz).onclick = () => void adicionarCampo();
   $("[data-caneta-etapa]", raiz).onclick = async () => {
     const t = await escreverTexto("Nova etapa");
-    if (t) adicionar(t);
+    if (t) await adicionar(t);
   };
   lista.addEventListener("change", (ev) => {
     const alvo = ev.target as HTMLInputElement;
@@ -768,8 +836,18 @@ function editorEtapas(raiz: HTMLElement, etapas: Etapa[]) {
     if (alvo.matches("[data-feita]")) e.feita = alvo.checked ? agoraISO() : null;
     else if (alvo.matches("[data-texto]")) e.titulo = alvo.value.trim() || e.titulo;
     else if (alvo.matches("[data-prazo-etapa]")) {
-      if (alvo.value) e.prazo = alvo.value;
-      else delete e.prazo;
+      const v = alvo.value;
+      if (!passaDoPrazo({ prazo: prazo() }, v)) {
+        if (v) e.prazo = v;
+        else delete e.prazo;
+        desenhar();
+        return;
+      }
+      // depois do prazo da tarefa: Sim estende a tarefa; Não, a etapa não muda
+      void perguntarEstender(v).then((sim) => {
+        if (sim) (e.prazo = v), estender(v);
+        desenhar();
+      });
     }
   });
   lista.addEventListener("click", (ev) => {
@@ -781,10 +859,15 @@ function editorEtapas(raiz: HTMLElement, etapas: Etapa[]) {
     desenhar();
   });
   desenhar();
-  /** etapa digitada e ainda não adicionada também entra */
-  return () => {
-    adicionar(nova.value);
-    nova.value = "";
+  return {
+    desenhar,
+    /** etapa digitada e ainda não adicionada também entra (false = o usuário recusou estender o prazo) */
+    fechar: async () => {
+      if (!nova.value.trim()) return true;
+      if (!(await adicionar(nova.value))) return false;
+      nova.value = "";
+      return true;
+    },
   };
 }
 
@@ -816,10 +899,39 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
   ], true);
   const { campo, area, sit } = ligarEscrita(corpo, () => void ok());
   const etapas: Etapa[] = structuredClone(t?.etapas ?? []);
-  const fecharEtapas = editorEtapas(corpo, etapas);
   const temPrazo = $<HTMLInputElement>("[data-tem-prazo]", corpo);
   const prazo = $<HTMLInputElement>("[data-prazo]", corpo);
-  temPrazo.onchange = () => (prazo.disabled = !temPrazo.checked);
+  const prazoAtual = () => (temPrazo.checked && prazo.value ? prazo.value : null);
+  /** último prazo aceito (Cancelar no aviso volta para ele) */
+  let aceito = prazoAtual();
+  const ed = editorEtapas(corpo, etapas, prazoAtual, (p) => {
+    temPrazo.checked = true;
+    prazo.disabled = false;
+    prazo.value = aceito = p;
+  });
+  /** Prazo da tarefa novo antes de etapas com prazo: avisa e oferece trazer as etapas ou cancelar. */
+  async function conferirPrazo(): Promise<boolean> {
+    const p = prazoAtual();
+    const afetadas = etapasForaDoPrazo({ prazo: p, etapas });
+    if (afetadas.length && p && !(await perguntarAntecipar(afetadas, p))) {
+      temPrazo.checked = !!aceito;
+      prazo.disabled = !aceito;
+      if (aceito) prazo.value = aceito;
+      ed.desenhar();
+      return false;
+    }
+    if (p) for (const e of afetadas) e.prazo = p;
+    aceito = p;
+    ed.desenhar();
+    return true;
+  }
+  const mudouPrazo = () => {
+    prazo.disabled = !temPrazo.checked;
+    if (temPrazo.checked && !dataCompleta(prazo.value)) return; // ano ainda sendo digitado
+    void conferirPrazo();
+  };
+  temPrazo.onchange = mudouPrazo;
+  prazo.onchange = mudouPrazo;
 
   async function ok() {
     await area.concluir();
@@ -833,8 +945,9 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
       sit.textContent = "Crie uma pasta antes (botão + em Pastas).";
       return;
     }
-    fecharEtapas();
-    const dataPrazo = temPrazo.checked && prazo.value ? prazo.value : null;
+    if (prazoAtual() !== aceito && !(await conferirPrazo())) return;
+    if (!(await ed.fechar())) return;
+    const dataPrazo = prazoAtual();
     fechar();
     alterar((b) => {
       const agora = agoraISO();
@@ -842,7 +955,9 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
       // tarefa sem etapas continua sem o campo (nada muda nas tarefas antigas)
       const antes = JSON.stringify(nova.etapas ?? []);
       if (JSON.stringify(etapas) !== antes) (etapas.length ? (nova.etapas = etapas) : delete nova.etapas), (nova.atualizado = agora);
-      if (t && (t.titulo !== titulo || t.prazo !== dataPrazo || t.pasta !== p)) Object.assign(t, { titulo, prazo: dataPrazo, pasta: p, atualizado: agora });
+      if (t && (t.titulo !== titulo || t.pasta !== p)) Object.assign(t, { titulo, pasta: p, atualizado: agora });
+      // prazo pela regra pura (o usuário já aceitou trazer as etapas; dado antigo sem mudança de prazo fica como está)
+      if (t && t.prazo !== dataPrazo) mudarPrazoTarefa(t, dataPrazo, agora, true);
       conferirConclusao(nova);
     });
   }

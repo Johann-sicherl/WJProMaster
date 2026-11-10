@@ -173,3 +173,10 @@ body.disp-tablet .tp-todas-etapas { min-height: 44px; }
 .tp-etapas li .tp-chk span { display: grid; }
 .tp-escrita-nota .tp-transcrito { font-size: 17px !important; }
 body.disp-tablet .tp-nota-bt { width: 44px; min-height: 44px; }
+
+/* prazo da etapa depois do prazo da tarefa (dado antigo ou de outro aparelho): aviso que corrige com um toque */
+button.wj-selo.tp-fora-prazo { cursor: pointer; font: inherit; font-size: 11px; white-space: nowrap; }
+.tp-etapas li button.tp-fora-prazo { min-width: 0; padding: 0 8px; border: 1px solid var(--erro); background: #fbe9e7; color: var(--erro); }
+.tp-etapas li input[type="date"].tp-fora-prazo, .tp-etapas-ed li input[type="date"].tp-fora-prazo, .tp-etapas li.tp-fora-prazo input[type="date"] { border-color: var(--erro); color: var(--erro); opacity: 1; }
+.tp-afetadas { margin: 6px 0 0; padding-left: 20px; }
+.tp-afetadas small { color: var(--texto-2); }

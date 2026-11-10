@@ -326,6 +326,12 @@
   aparece. STL do cofre, do aparelho ou do WJCAD (menu → Estimar impressão 3D). Ajustes básicos:
   camada, paredes, topo/fundo, preenchimento, suporte, borda; calibração do tempo por impressora.
   Detalhes em `docs/global/wjslicer3d.md`.
+- **WJTaskPlan — prazo da etapa ≤ prazo da tarefa** (10/11/2026; tarefa sem prazo = etapas sem limite):
+  calendário da etapa limitado ao prazo da tarefa; data depois dele pergunta "Estender o prazo da tarefa
+  para dd/mm/aaaa?" (Não: a etapa não muda); antecipar o prazo da tarefa avisa as etapas que passariam
+  (com os nomes) e oferece "Trazer essas etapas para o novo prazo" ou Cancelar; dado já errado (antigo ou
+  da sincronia) **não é alterado sozinho**: fica marcado e se corrige com um toque. Regra nas funções puras
+  (`src/tarefas/regras.ts`), a interface só pergunta. Detalhes em `docs/global/taskplan.md`.
 - Especificação e estado de cada face: `docs/global/<face>.md`.
 
 ## 8. Hospedagem, versão e offline
