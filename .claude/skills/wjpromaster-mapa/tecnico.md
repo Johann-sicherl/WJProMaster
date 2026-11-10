@@ -212,6 +212,12 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
 
 ## Observações técnicas
 
+- **WJTaskPlan: prazo da etapa ≤ prazo da tarefa** (10/11/2026, `src/tarefas/regras.ts`): `adicionarEtapa` e
+  `prazoEtapa` recusam data depois do prazo da tarefa sem `estender`; `mudarPrazoTarefa` recusa (devolve as
+  afetadas) sem `trazer`; `etapasForaDoPrazo` marca dado já errado (nunca corrigido na carga nem na
+  `mesclar`). A interface (`main.ts`: `perguntarEstender`, `perguntarAntecipar`, `corrigirEtapa`) só pergunta.
+  **Armadilha**: `<input type="date">` no computador dispara `change` com ano parcial ("0002-…") enquanto se
+  digita — a janela da tarefa só confere o prazo com ano ≥ 1900 (`dataCompleta`) e confere de novo no OK.
 - **Mesclar / fusão** (10/11/2026, `src/kernel/regenerar.ts`): toda união de "mesclar" passa por `fundir()`
   (`aplicar` e Espelhar corpo). A fusão comum do OpenCascade já une face com face; só quando a ferramenta
   sobra solta (mais corpos que antes) tenta `BRepAlgoAPI_Fuse` com `SetFuzzyValue(FOLGA_NUMERICA = 0,001 mm)`

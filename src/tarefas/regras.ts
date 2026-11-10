@@ -205,10 +205,17 @@ export function mudarEstado(t: Tarefa, estado: string, agora: string) {
 // ---------- etapas (sub-tarefas) ----------
 // Ficam dentro da tarefa: qualquer mudança nelas atualiza a tarefa (a sincronia leva a lista inteira).
 
-/** Nova etapa no fim da lista; `prazo` (AAAA-MM-DD) opcional já na criação. */
-export function adicionarEtapa(t: Tarefa, titulo: string, agora: string, prazo?: string | null): Etapa | null {
+/**
+ * Nova etapa no fim da lista; `prazo` (AAAA-MM-DD) opcional já na criação. Prazo depois do prazo da
+ * tarefa: recusada (null) — com `estender`, a tarefa ganha esse prazo (a interface pergunta antes).
+ */
+export function adicionarEtapa(t: Tarefa, titulo: string, agora: string, prazo?: string | null, estender = false): Etapa | null {
   const tt = titulo.trim();
   if (!tt) return null;
+  if (prazo && passaDoPrazo(t, prazo)) {
+    if (!estender) return null;
+    t.prazo = prazo;
+  }
   const e: Etapa = { id: uid(), titulo: tt, feita: null };
   if (prazo) e.prazo = prazo;
   (t.etapas ??= []).push(e);
@@ -238,14 +245,63 @@ export function moverEtapa(t: Tarefa, id: string, passo: number, agora: string) 
   t.atualizado = agora;
 }
 
-/** Prazo de entrega da etapa (null ou "" tira o prazo). */
-export function prazoEtapa(t: Tarefa, id: string, prazo: string | null, agora: string) {
+/**
+ * Prazo de entrega da etapa (null ou "" tira o prazo). Regra: prazo da etapa ≤ prazo da tarefa (tarefa
+ * sem prazo = sem limite). Depois do prazo da tarefa: recusado (false, nada muda) — com `estender`, a
+ * tarefa ganha esse prazo. Devolve true quando o prazo pedido ficou valendo.
+ */
+export function prazoEtapa(t: Tarefa, id: string, prazo: string | null, agora: string, estender = false): boolean {
   const e = t.etapas?.find((x) => x.id === id);
   const p = prazo || null;
-  if (!e || (e.prazo ?? null) === p) return;
+  if (!e) return false;
+  if (p && passaDoPrazo(t, p)) {
+    if (!estender) return false;
+    t.prazo = p;
+    t.atualizado = agora;
+  }
+  if ((e.prazo ?? null) === p) return true;
   if (p) e.prazo = p;
   else delete e.prazo;
   t.atualizado = agora;
+  return true;
+}
+
+// ---------- prazo da etapa × prazo da tarefa ----------
+// Regra: prazo da etapa ≤ prazo da tarefa; tarefa sem prazo = etapas sem limite. As funções que mudam
+// prazos recusam o que quebra a regra (a interface só pergunta). Dados que já chegam errados (antigos ou
+// de outro aparelho pela sincronia) nunca são corrigidos sozinhos: `etapasForaDoPrazo` aponta, e
+// `trazerEtapasAoPrazo` / `mudarPrazoTarefa` corrigem quando o usuário pede.
+
+/** A data passa do prazo da tarefa? (tarefa sem prazo ou data vazia: nunca) */
+export function passaDoPrazo(t: Pick<Tarefa, "prazo">, prazo: string | null | undefined): boolean {
+  return !!(t.prazo && prazo && prazo > t.prazo);
+}
+
+/** Etapas com prazo depois de `prazo` (padrão: o prazo atual da tarefa), na ordem da lista. */
+export function etapasForaDoPrazo(t: Pick<Tarefa, "prazo" | "etapas">, prazo: string | null = t.prazo): Etapa[] {
+  return prazo ? (t.etapas ?? []).filter((e) => passaDoPrazo({ prazo }, e.prazo)) : [];
+}
+
+/** Traz para o prazo da tarefa as etapas que passam dele (todas ou só `ids`); devolve quantas mudaram. */
+export function trazerEtapasAoPrazo(t: Tarefa, agora: string, ids?: string[]): number {
+  const l = etapasForaDoPrazo(t).filter((e) => !ids || ids.includes(e.id));
+  for (const e of l) e.prazo = t.prazo;
+  if (l.length) t.atualizado = agora;
+  return l.length;
+}
+
+/**
+ * Muda o prazo da tarefa (null = sem prazo). Etapas que passariam do novo prazo: sem `trazer`, nada muda
+ * e elas são devolvidas (a interface avisa e pergunta); com `trazer`, elas vão para o novo prazo.
+ * Devolve as etapas que passavam (lista vazia = nenhuma).
+ */
+export function mudarPrazoTarefa(t: Tarefa, prazo: string | null, agora: string, trazer = false): Etapa[] {
+  const p = prazo || null;
+  const afetadas = etapasForaDoPrazo(t, p);
+  if (afetadas.length && !trazer) return afetadas;
+  if (t.prazo !== p) (t.prazo = p), (t.atualizado = agora);
+  trazerEtapasAoPrazo(t, agora);
+  return afetadas;
 }
 
 /**
