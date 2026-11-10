@@ -22,7 +22,8 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | Varredura / loft / curvas 3D / recursos do menu Inserir | `src/kernel/varredura.ts`, `loft.ts`, `curvas.ts`, `recursosExtras.ts` | `features.md` §13, §15 |
 | Furo assistido (tabelas ISO) | `src/kernel/furos.ts` | `features.md` |
 | Edição direta (mover/excluir/substituir face) | `src/kernel/edicaoDireta.ts` | `features.md` §18 |
-| Esboço: ferramenta, encaixe, seleção, arrasto | `src/esboco/editor.ts` (2 600 l) | `docs/funcional/sketch.md` |
+| Esboço: ferramenta, encaixe, seleção, arrasto | `src/esboco/editor.ts` (2 800 l) | `docs/funcional/sketch.md` |
+| Esboço: relações automáticas (H/V, colinear, paralela, perpendicular, coincidente ao soltar o arraste) | `src/esboco/relacoesAuto.ts` (puro) → chamado pelo `editor.ts`; chave em `PrefsCad.relacoesAuto` | `sketch.md` §2 |
 | Esboço: entidades compostas, aparar, offset, espelhar | `src/esboco/operacoes.ts` + `geometria.ts` | `sketch.md` |
 | Cotas/relações do esboço, solver | `src/esboco/cotas.ts`, `solver.ts` (PlaneGCS, `aplicarValorGradual`) · teclado-calculadora das cotas `src/ui/tecladoCota.ts` | `sketch.md` |
 | Camada 3D do esboço, referencial do plano | `src/esboco/visual.ts`, `src/esboco/referencial.ts` | — |
@@ -75,7 +76,8 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 | Teste | Cobre |
 |---|---|
 | `teste-kernel.ts`, `teste-recursos.ts` | regeneração, features, chapa (kernel em Node) |
-| `teste-esboco.ts` | geometria e operações do esboço |
+| `teste-esboco.ts` | geometria e operações do esboço (inclui filete/chanfro em canto unido por Coincidente) |
+| `teste-relacoes-auto.ts` | relações automáticas do esboço: candidatas, sem redundância/conflito, arrastar e soltar |
 | `teste-importar.ts` | STEP/STL, montagem STEP |
 | `teste-imagem3d.ts` | gerador imagens → 3D (silhueta, medidas, casco, faces, STL) |
 | `teste-montagem.ts` / `teste-desenho.ts` | solver de mates / projeção e desenho |
@@ -83,7 +85,7 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 | `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts`, `teste-joia.ts`, `teste-slicer.ts` | motores das outras faces |
 | `teste-configuracoes.ts` | preferências do WJCAD: passo e sentido do zoom da roda (vista 3D e folha do Desenho) |
 | `teste-mapa.ts` | este mapa em dia com `src/` e `scripts/` |
-| `estresse-*.{ts,cjs}`, `roteiro-ui.cjs`, `roteiro-aviso-conexoes.cjs`, `roteiro-cotas.cjs`, `roteiro-configuracoes.cjs` | estresse e roteiros de interface com Playwright (não entram no `pnpm teste`); o do aviso confere a faixa "Cofre:" e o "Não mostrar de novo" em todas as páginas; o das cotas, teclado-calculadora, cota angular, arraste com a Cota ativa e ✕ de recurso novo; o das configurações, a ⚙ e a roda do mouse nos três ambientes (computador, tablet, celular) |
+| `estresse-*.{ts,cjs}`, `roteiro-ui.cjs`, `roteiro-aviso-conexoes.cjs`, `roteiro-cotas.cjs`, `roteiro-configuracoes.cjs`, `roteiro-relacoes-auto.cjs` | estresse e roteiros de interface com Playwright (não entram no `pnpm teste`); o do aviso confere a faixa "Cofre:" e o "Não mostrar de novo" em todas as páginas; o das cotas, teclado-calculadora, cota angular, arraste com a Cota ativa e ✕ de recurso novo; o das configurações, a ⚙ e a roda do mouse nos três ambientes (computador, tablet, celular); o das relações automáticas, prévia do símbolo, arrastar e soltar (Coincidente/origem), filete no canto unido por relação, chave e Ctrl |
 
 ## 3. Validar no navegador (tablet simulado)
 

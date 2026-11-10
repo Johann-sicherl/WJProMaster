@@ -15,6 +15,8 @@ export interface PrefsCad {
   estilo?: string;
   /** Esboço em escala real 1:1. */
   escalaReal?: boolean;
+  /** Relações automáticas ao desenhar/arrastar no esboço (padrão ligado; Ctrl segurado suprime no gesto). */
+  relacoesAuto?: boolean;
   /** Sentido da roda: true = rolar para a frente afasta (padrão: rolar para a frente aproxima). */
   rodaFrenteAfasta?: boolean;
   /** Passo do zoom por clique da roda, em % (padrão 5 %, faixa 2–50 %). */
@@ -53,6 +55,9 @@ export function aoMudarPrefsCad(f: (p: PrefsCad) => void) {
     if (e.key === CHAVE_PREFS_CAD) f(lerPrefsCad());
   });
 }
+
+/** Relações automáticas do esboço ligadas? (sem escolha = ligadas) */
+export const relacoesAutoLigadas = (p: PrefsCad): boolean => p.relacoesAuto !== false;
 
 /** Passo do zoom em %, dentro da faixa (valor inválido = padrão). */
 export function passoZoom(p: PrefsCad): number {

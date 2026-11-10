@@ -193,7 +193,7 @@
 - **⚙ Configurações do WJCAD** (10/11/2026): engrenagem no canto direito da barra superior da Peça, da
   Montagem e do Desenho (e "Ferramentas → Configurações…" no menu) abre uma tela à parte, por seções:
   **Dispositivo** (perfil, toque longo, caixa flutuante), **Mouse e zoom**, **Esboço** (escala real 1:1,
-  calibrar a tela; recebe a seguir "Relações automáticas"), **Exibição** (estilo da vista 3D) e **Cofre**
+  calibrar a tela, **Relações automáticas**), **Exibição** (estilo da vista 3D) e **Cofre**
   (atalho para Cópias do cofre). Vale na hora, guardado por aparelho, e as outras janelas abertas seguem a
   mudança. O item antigo "Ferramentas → Dispositivo" saiu (a janela de dispositivo só aparece na primeira
   vez). A ⚙ da página inicial continua como está.
@@ -212,6 +212,12 @@
 - **Filete de esboço** (10/11/2026): cantos vão para a caixa **"Entidades a filetar"** e são aplicados juntos,
   por padrão **iguais** (uma cota R controla todos); o canto tirado vira **canto virtual** (relações e cotas
   continuam nele: mudar o raio não move o perfil). Vale também para o chanfro de esboço.
+- **Relações automáticas no esboço** (10/11/2026): ao desenhar e arrastar, como nos CADs profissionais —
+  soltar um ponto sobre outro ponto/curva cria Coincidente; linha nova ganha Colinear, Horizontal/Vertical,
+  Paralela ou Perpendicular (com linha ligada), tolerância ±1° e o raio de encaixe; o símbolo aparece antes
+  de soltar; **nunca** relação redundante ou que superdefina (o solver confere). **Ligadas por padrão**,
+  chave em ⚙ Configurações → Esboço; **segurar Ctrl** suprime no momento. Ctrl+Z tira a linha com as relações
+  dela. Filete/chanfro de esboço aceitam canto unido por Coincidente (inclusive preso à origem).
 - **✕ num recurso novo** (09/11/2026): cancelar não deixa o recurso (nem recurso com erro) na árvore; o
   esboço volta a ficar solto.
 - **Exportar = "Salvar como"** (07/11/2026): botão **Exportar** logo depois do 💾 Salvar (e no menu
