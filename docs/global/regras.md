@@ -43,7 +43,8 @@
     regras? dúvida real?) e só então executa. Pergunta simples: uma linha basta.
 14. **Mapa do código** (07/11/2026): skill `wjpromaster-mapa` em `.claude/skills/` — `SKILL.md` (qual
     arquivo abrir por tipo de pedido, testes, validação no tablet, publicação, armadilhas) e `tecnico.md`
-    (detalhes técnicos que saíram do `CLAUDE.md`). Invocar em toda tarefa antes de explorar. Manter viva
+    (detalhes técnicos que saíram do `CLAUDE.md`). O mapa é injetado no início de toda sessão pelo gancho
+    `SessionStart` (`.claude/settings.json`, 10/11/2026); sem ele no contexto, invocar a skill antes de explorar. Manter viva
     no mesmo PR; `scripts/teste-mapa.ts` (no `pnpm teste` e no CI) barra arquivo de `src/` ou teste fora
     do mapa e caminho citado que não existe.
 15. **Qualidade acima de economia** (08/11/2026): qualidade e aprimoramento do software com o menor risco

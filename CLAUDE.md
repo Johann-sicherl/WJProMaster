@@ -50,9 +50,10 @@
    um caminho mais simples, uma contradição com `regras.md` ou uma dúvida real, ajustar o plano ou
    perguntar (regra 3) — e só então executar o pedido aprimorado. Pergunta simples ou conversa:
    uma linha só basta.
-10. **Skill `wjpromaster-mapa` sempre** (`.claude/skills/wjpromaster-mapa/`): em toda tarefa de código
-   ou documentação, invocar a skill **antes** de procurar com grep/find e ir direto aos arquivos do mapa
-   (`SKILL.md`); detalhes técnicos, stack, tabela das faces, roteiro e observações ficam em `tecnico.md`
+10. **Skill `wjpromaster-mapa` sempre** (`.claude/skills/wjpromaster-mapa/`): o mapa (`SKILL.md`) é
+   **injetado no início de toda sessão** pelo gancho `SessionStart` de `.claude/settings.json` (também ao
+   retomar e depois de resumir a conversa); se não aparecer no contexto, invocar a skill **antes** de
+   procurar com grep/find. Ir direto aos arquivos do mapa; detalhes técnicos, stack, tabela das faces, roteiro e observações ficam em `tecnico.md`
    (ler só a seção da tarefa). **Manter a skill viva no mesmo PR**: arquivo criado, renomeado ou removido
    → linha no mapa; decisão técnica nova, armadilha descoberta ou fase entregue → `tecnico.md` (e
    `docs/global/regras.md` se for decisão do Johann). A conferência `scripts/teste-mapa.ts` (dentro do
