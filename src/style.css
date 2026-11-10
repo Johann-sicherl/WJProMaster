@@ -609,6 +609,22 @@ input[type="range"] { width: 100%; accent-color: var(--acento); }
 .canto-confirmacao button { width: 52px; height: 52px; padding: 0; font-size: 24px; font-weight: 700; box-shadow: var(--sombra); }
 #cc-ok { color: #24883f; background: #edf8f0; border-color: #a8d5b3; }
 #cc-cancelar { color: var(--erro); background: var(--erro-suave); border-color: #efc2be; }
+/* no esboço: Sair do esboço / Descartar lado a lado, com ícone próprio (diferente do ✓/✕ da ferramenta) */
+.canto-confirmacao.modo-esboco { flex-direction: row; }
+.canto-confirmacao.modo-esboco button { width: auto; min-width: 52px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.canto-confirmacao.modo-esboco svg { width: 26px; height: 26px; flex: none; }
+body.disp-celular .canto-confirmacao.modo-esboco .cc-rotulo { display: none; }
+/* ✓/✕ da ferramenta do esboço: canto superior direito do painel lateral */
+.esb-ferr-barra {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px;
+  margin: 0 -2px 8px; padding: 6px 2px; background: var(--painel); border-bottom: 1px solid var(--linha);
+}
+.esb-ferr-nome { margin-right: auto; font-weight: 600; font-size: 13px; color: var(--texto-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.esb-ferr-btn { width: 36px; height: 36px; padding: 0; font-size: 20px; font-weight: 700; flex: none; }
+.esb-ferr-ok { color: #24883f; background: #edf8f0; border-color: #a8d5b3; }
+.esb-ferr-cancelar { color: var(--erro); background: var(--erro-suave); border-color: #efc2be; }
+body.disp-tablet .esb-ferr-btn, body.disp-celular .esb-ferr-btn { width: 48px; height: 48px; font-size: 24px; }
 .arvore-flutuante {
   position: absolute;
   top: 8px;

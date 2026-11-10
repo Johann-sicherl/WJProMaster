@@ -227,6 +227,12 @@
   por aresta/ponto fica como corpo separado, com **aviso** no recurso dizendo a folga (não esconder folgas).
   **Planos novos** a partir de face têm **origem fixa** (projeção da origem da peça), para o esboço não andar
   quando a face muda; planos antigos ficam como estão. Esboço avisa (sem bloquear) entidade **< 0,5 mm**.
+- **✓/✕ de cada ferramenta do esboço** (10/11/2026): lado a lado no canto superior direito do painel
+  lateral; ✓ (Enter) conclui/aplica e sai; ✕ sai desfazendo o que foi feito na ferramenta (comandos com
+  seleção: cancela sem aplicar). **Esc seguro**: nas ferramentas de desenho o Esc só sai mantendo o desenho
+  (como no CAD de referência; só o botão ✕ desfaz); nos comandos com seleção Esc = ✕. O par do canto da vista
+  é **Sair do esboço / Descartar** (esboço inteiro), lado a lado e com ícone próprio. Tocar numa cota abre a
+  caixa do valor com a Cota ou a Selecionar ativa; duplo clique/toque abre com qualquer ferramenta.
 - **✕ num recurso novo** (09/11/2026): cancelar não deixa o recurso (nem recurso com erro) na árvore; o
   esboço volta a ficar solto.
 - **Exportar = "Salvar como"** (07/11/2026): botão **Exportar** logo depois do 💾 Salvar (e no menu

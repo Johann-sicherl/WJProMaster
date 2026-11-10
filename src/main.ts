@@ -1227,6 +1227,7 @@ function mostrarPainel(modo: "arvore" | "comando" | "esboco") {
   $("arvore-flutuante").hidden = !emComando;
   $("arvore-mini").hidden = true;
   $("canto-confirmacao").hidden = !emComando;
+  rotularCantoConfirmacao(modo === "esboco");
   if (!emComando) $("painel-comando").innerHTML = "";
   // celular: o painel do comando abre a gaveta (menos com a caixa flutuante); esboço e árvore deixam o modelo livre
   abrirGaveta(modo === "comando" && !caixasFlutuantesDoComando());
@@ -1236,6 +1237,32 @@ $("st-filtro").onclick = () => {
   prefs.filtroAnterior = prefs.filtroSelecao;
   alternarFiltro("limpar");
 };
+/** Ícones próprios do canto no esboço: folha de esboço com ✓ (sair) e com ✕ (descartar). */
+const ICONE_SAIR_ESBOCO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h11v6M4 4v16h8"/><path d="M7 15l4-6 3 3"/><path d="M14 18l3 3 5-6"/></svg>`;
+const ICONE_DESCARTAR_ESBOCO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h11v6M4 4v16h8"/><path d="M7 15l4-6 3 3"/><path d="M15 15l6 6M21 15l-6 6"/></svg>`;
+let cantoEmEsboco: boolean | null = null;
+
+/** Canto da vista: no esboço o par é Sair do esboço / Descartar (lado a lado); nos comandos, OK / Cancelar. */
+function rotularCantoConfirmacao(esboco: boolean) {
+  if (cantoEmEsboco === esboco) return;
+  cantoEmEsboco = esboco;
+  const ok = $("cc-ok"), x = $("cc-cancelar");
+  $("canto-confirmacao").classList.toggle("modo-esboco", esboco);
+  if (esboco) {
+    ok.innerHTML = `${ICONE_SAIR_ESBOCO}<span class="cc-rotulo">Sair do esboço</span>`;
+    ok.title = "Sair do esboço (guarda as alterações do esboço inteiro)";
+    x.innerHTML = `${ICONE_DESCARTAR_ESBOCO}<span class="cc-rotulo">Descartar</span>`;
+    x.title = "Descartar todas as alterações do esboço e sair";
+  } else {
+    ok.textContent = "✓";
+    ok.title = "OK (Enter)";
+    x.textContent = "✕";
+    x.title = "Cancelar (Esc)";
+  }
+  ok.setAttribute("aria-label", ok.title);
+  x.setAttribute("aria-label", x.title);
+}
+
 $("cc-ok").onclick = () => (editor ? sairEsboco() : avaliacao && !comando ? fecharAvaliacaoMantendo() : confirmarComando());
 $("cc-cancelar").onclick = () => (editor ? descartarEsboco() : avaliacao && !comando ? fecharAvaliacao() : cancelarComando());
 $("btn-arvore-flutuante").innerHTML = ICONES.peca;
