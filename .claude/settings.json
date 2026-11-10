@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/skills/wjpromaster-mapa/SKILL.md\"; [ -f \"$f\" ] && { echo 'Mapa do código do WJProMaster (skill wjpromaster-mapa, injetado no início da sessão — regra 10; não precisa invocar a skill de novo):'; sed '1,/^---$/{/^---$/!d}; 1,/^---$/d' \"$f\"; } || true"
+          }
+        ]
+      }
+    ]
+  }
+}
