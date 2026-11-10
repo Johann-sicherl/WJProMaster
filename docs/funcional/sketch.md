@@ -184,6 +184,9 @@ Parâmetros: X/Y.
 ### Filete de esboço — ✅
 - Entidades a filetar (cantos/vértices) · raio · **Manter cantos com restrição** ·
   **Cotar cada filete** · filetes iguais
+- **Manter cantos com restrição** ✅ (10/11/2026, filete e chanfro): o canto vira **canto virtual** (ponto de
+  construção na interseção das duas linhas); relações e cotas do canto (origem, distâncias) continuam nele e
+  as cotas de comprimento das linhas passam a medir do canto virtual — mudar o raio não move o perfil.
 ### Chanfro de esboço — ✅ (distância igual)
 - Ângulo-distância · Distância-distância · Distâncias iguais; D1, D2, ângulo
 

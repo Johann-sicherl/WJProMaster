@@ -931,6 +931,23 @@ function linhasNoCanto(esb: FeatureEsboco, p: string): [Geo<"linha">, Geo<"linha
   return ls.length === 2 ? [ls[0], ls[1]] : null;
 }
 
+/**
+ * Canto virtual (como no CAD de referência): o canto que o filete/chanfro tira continua existindo como
+ * ponto de construção na interseção das duas linhas. As relações e cotas que estavam nele (origem,
+ * distâncias) continuam valendo — mudar o raio não "puxa" o esboço — e as cotas de comprimento das
+ * linhas passam a medir do canto virtual até a outra ponta.
+ */
+function cantoVirtual(esb: FeatureEsboco, p: string, ls: [Geo<"linha">, Geo<"linha">], outras: [string, string]) {
+  // as cotas de comprimento das duas linhas (antes de elas encurtarem) viram canto → outra ponta
+  for (const r of esb.restricoes)
+    if (r.tipo === "distancia" && !r.b) {
+      const i = ls.findIndex((l) => l.id === r.a);
+      if (i >= 0) Object.assign(r, { a: p, b: outras[i] });
+    }
+  if (!IDS_IMPLICITOS.has(p)) pontoSolto(esb, p, true); // a origem não precisa (já é fixa)
+  for (const l of ls) restringir(esb, { tipo: "coincidente", a: p, b: l.id });
+}
+
 function cantoInfo(esb: FeatureEsboco, p: string) {
   const ls = linhasNoCanto(esb, p);
   if (!ls) return null;
@@ -957,11 +974,13 @@ export function fileteEsboco(esb: FeatureEsboco, p: string, raio: number, cotar 
   const bis = soma(ci.dirs[0].u, ci.dirs[1].u);
   const lb = Math.hypot(bis.x, bis.y) || 1;
   const c = soma(ci.P, mult({ x: bis.x / lb, y: bis.y / lb }, raio / Math.sin(ci.theta / 2)));
+  const outras = ci.ls.map((l) => (l.p1 === p ? l.p2 : l.p1)) as [string, string];
   ci.ls.forEach((l, i) => {
     const novo = i === 0 ? t1 : t2;
     if (l.p1 === p) l.p1 = novo;
     else l.p2 = novo;
   });
+  cantoVirtual(esb, p, ci.ls, outras);
   const idc = ponto(esb, c);
   const pts = mapaPontos(esb);
   const a = cruz2(sub(pts.get(t1)!, c), sub(pts.get(t2)!, c)) > 0 ? arco(esb, idc, t1, t2) : arco(esb, idc, t2, t1);
@@ -978,11 +997,13 @@ export function chanfroEsboco(esb: FeatureEsboco, p: string, d1: number, d2 = d1
   if (!ci || d1 >= ci.dirs[0].len || d2 >= ci.dirs[1].len) return null;
   const t1 = ponto(esb, soma(ci.P, mult(ci.dirs[0].u, d1)));
   const t2 = ponto(esb, soma(ci.P, mult(ci.dirs[1].u, d2)));
+  const outras = ci.ls.map((l) => (l.p1 === p ? l.p2 : l.p1)) as [string, string];
   ci.ls.forEach((l, i) => {
     const novo = i === 0 ? t1 : t2;
     if (l.p1 === p) l.p1 = novo;
     else l.p2 = novo;
   });
+  cantoVirtual(esb, p, ci.ls, outras);
   const l = linha(esb, t1, t2);
   limpar(esb);
   return l;

@@ -187,6 +187,38 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   confere("perfil 80 → 30: aba com 30", Math.hypot(pt(linha0.p2).x - pt(linha0.p1).x, pt(linha0.p2).y - pt(linha0.p1).y), 30, 1e-6);
 }
 
+// 4d3. Filete de esboço no canto da origem (Johann, 10/11/2026): o canto vira canto virtual; mudar o raio
+// 3 → 8 não "puxa" o esboço e a cota de 67 (comprimento da linha) passa a medir do canto virtual
+{
+  for (const modo of ["origem como ponta", "coincidente com a origem", "chanfro"]) {
+    const e = plano();
+    const xy = [[0, 0], [67, 0], [67, -41], [40, -41], [40, -67], [0, -67]];
+    const P = xy.map(([x, y], i) => (i === 0 && modo === "origem como ponta" ? ORIGEM : op.ponto(e, { x, y })));
+    if (modo !== "origem como ponta") op.restringir(e, { tipo: "coincidente", a: P[0], b: ORIGEM });
+    const L = P.map((p, i) => op.linha(e, p, P[(i + 1) % 6]));
+    L.forEach((l, i) => op.restringir(e, { tipo: i % 2 ? "vertical" : "horizontal", a: l.id }));
+    op.restringir(e, { tipo: "distancia", a: L[0].id, valor: 67 });
+    op.restringir(e, { tipo: "distancia", a: L[1].id, valor: 41 });
+    solver.resolver(e);
+    const pt = (id: string) => (id === ORIGEM ? { x: 0, y: 0 } : e.pontos.find((q) => q.id === id)!);
+    if (modo === "chanfro") {
+      op.chanfroEsboco(e, P[0], 5);
+      const r = solver.resolver(e);
+      verdade(`chanfro no canto da origem: resolve e o canto oposto fica em (67; −41)`, r.ok && Math.abs(pt(P[2]).x - 67) < 1e-6 && Math.abs(pt(P[2]).y + 41) < 1e-6);
+      continue;
+    }
+    op.fileteEsboco(e, P[0], 3, true);
+    solver.resolver(e);
+    confere(`filete (${modo}): canto oposto x antes do raio mudar`, pt(P[2]).x, 67, 1e-6);
+    const cota = e.restricoes.find((r) => r.tipo === "raio") as { valor: number; tipo: string };
+    const r = aplicarValorGradual(solver, e, cota, 8);
+    verdade(`filete (${modo}): raio 3 → 8 resolve`, r.ok);
+    confere(`filete (${modo}): canto oposto x depois do raio 8`, pt(P[2]).x, 67, 1e-6);
+    confere(`filete (${modo}): canto oposto y depois do raio 8`, pt(P[2]).y, -41, 1e-6);
+    if (modo !== "origem como ponta") confere(`filete (${modo}): canto virtual continua na origem`, Math.hypot(pt(P[0]).x, pt(P[0]).y), 0, 1e-6);
+  }
+}
+
 // 4e. Teclado-calculadora das cotas: normal e científico (trigonométricas em graus)
 {
   const casos: [string, number][] = [
