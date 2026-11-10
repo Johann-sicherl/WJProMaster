@@ -264,23 +264,62 @@ function carregarGoogle(): Promise<Google> {
   }));
 }
 
-/** Pede o acesso (janela do Google). `consentir`: mostra a tela de permissão (1ª vez). */
-async function pedirAcesso(consentir: boolean): Promise<boolean> {
-  const g = await carregarGoogle();
-  return new Promise((ok) => {
+/**
+ * Um pedido por vez, que sempre termina (10/11/2026): enquanto um pedido está aberto, quem pedir de
+ * novo recebe a mesma promessa; e ela termina com `valorNoPrazo` depois de `prazo` ms mesmo que a
+ * resposta nunca chegue. Causa do GO-IN travado: a renovação do primeiro toque e o toque do GO-IN
+ * pediam a janela do Google juntos, o Google respondia a um só e a sincronia esperava para sempre.
+ */
+export function pedidoUnico<T>(fazer: (terminar: (v: T) => void) => void, prazo: number, valorNoPrazo: T): () => Promise<T> {
+  let aberto: Promise<T> | null = null;
+  return () =>
+    (aberto ??= new Promise<T>((ok) => {
+      let feito = false;
+      const terminar = (v: T) => {
+        if (feito) return;
+        feito = true;
+        clearTimeout(relogio);
+        aberto = null;
+        ok(v);
+      };
+      const relogio = setTimeout(() => terminar(valorNoPrazo), prazo);
+      try {
+        fazer(terminar);
+      } catch {
+        terminar(valorNoPrazo);
+      }
+    }));
+}
+
+const PRAZO_GOOGLE = 120000; // a janela do Google nunca segura o app mais que isto
+const ESPERA_AO_VOLTAR = 4000; // voltou para o app sem resposta: a janela foi fechada sem aviso
+
+let consentirPedido = false;
+const pedirUmaVez = pedidoUnico<boolean>((terminar) => {
+  void carregarGoogle().then((g) => {
+    // fechada sem o Google avisar (acontece no Android): ao voltar para o app, desiste em 4 s
+    const aoVoltar = () => setTimeout(() => terminar(false), ESPERA_AO_VOLTAR);
+    addEventListener("focus", aoVoltar, { once: true });
     const c = g.accounts.oauth2.initTokenClient({
       client_id: CLIENTE_GOOGLE,
       scope: ESCOPO,
       callback: (r) => {
-        if (!r.access_token) return ok(false);
+        removeEventListener("focus", aoVoltar);
+        if (!r.access_token) return terminar(false);
         localStorage.setItem(CHAVE, JSON.stringify({ token: r.access_token, expira: Date.now() + (r.expires_in ?? 3600) * 1000 }));
         localStorage.setItem("wjgoogle:autorizado", "1");
-        ok(true);
+        terminar(true);
       },
-      error_callback: () => ok(false), // janela fechada ou bloqueada
+      error_callback: () => terminar(false), // janela fechada ou bloqueada
     });
-    c.requestAccessToken({ prompt: consentir ? "consent" : "" });
-  });
+    c.requestAccessToken({ prompt: consentirPedido ? "consent" : "" });
+  }, () => terminar(false));
+}, PRAZO_GOOGLE, false);
+
+/** Pede o acesso (janela do Google). `consentir`: mostra a tela de permissão (1ª vez). */
+async function pedirAcesso(consentir: boolean): Promise<boolean> {
+  consentirPedido = consentir;
+  return pedirUmaVez();
 }
 
 const valido = () => {

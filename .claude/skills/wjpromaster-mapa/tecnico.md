@@ -123,6 +123,18 @@ impressão 3D manda a malha para o WJSlicer3D. Tudo local no aparelho até o ser
   mostra só os arquivos. Arquivos antigos `soLocal` ("só no dispositivo") continuam até o GO-IN. Aba **Cofre** na lateral direita de cada app
   (`instalarPainelCofre`): dados da peça (pasta, estado, revisão, versão, GO-OUT), GO-OUT / GO-IN /
   Desfazer GO-OUT e "Meus arquivos em GO-OUT" (todos os apps) com GO-IN por item ou dos marcados.
+  **GO-IN com comentário** (10/11/2026): `janelaGoIn` (comentário + manter) → `goInLocal` (versão criada na
+  hora; devolve `sincronia`, a publicação nas cópias) ou `goIn` (espera tudo, WJPDM); `goInComJanela`
+  junta janela + `antes` (salvar o que está na tela; a sincronia desse salvar fica adiada, `sincroniaAdiada`).
+  **Abrir no WJCAD** (`abrirArquivoNoApp` → `perguntarModoDeAbrir`, regra pura `modoDeAbrir`): GO-OUT ou
+  consulta; em consulta, `salvarNoCofre` das faces `cad/asm/drw` pede o GO-OUT antes. Montagem: situação
+  de cada peça em cache (`situacaoNoCofre`, atualizado por `aoMudarCofre`) para o menu abrir na hora;
+  painel com `opcoes.componentes`. **Armadilha (GO-IN travado, 10/11/2026)**: a renovação do Google no
+  `pointerup` (`sincroniaAutomatica`) e o clique do GO-IN pediam a janela juntos; o Google responde a um só
+  e a promessa do outro nunca terminava, prendendo a fila de sincronia e o painel esmaecido. Agora
+  `pedirAcesso` é `pedidoUnico` (um pedido por vez, prazo de 2 min, desiste 4 s depois de o app voltar ao
+  foco sem resposta) e a sincronia espera a renovação no máximo 150 s (`comPrazo`). Roteiros:
+  `scripts/roteiro-cofre-goin.cjs [primeiro|nenhum|normal]` e `scripts/roteiro-cofre-montagem.cjs`.
   O cofre tem até três cópias além do banco do aparelho: **pendrive** (WJPDM/ na raiz), **Google
   Drive** e **pasta padrão do dispositivo** (mesma estrutura nas três). Ao salvar/publicar e **a cada
   abertura de um app** (`sincronizarAoAbrir`, também na página inicial e no WJTaskPlan, sem pedir permissão;

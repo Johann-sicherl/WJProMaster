@@ -27,8 +27,10 @@ cada app — o mesmo explorador abre e escolhe arquivos) e **já publica a vers�
 dispositivo, no pendrive e no Drive (GO-IN automático, 29/10/2026); o arquivo segue em GO-OUT com
 quem salvou. Depois, **salvar grava a cópia de trabalho** (✎) e a leva também para todas as cópias
 (pendrive, Drive, pasta do dispositivo) no índice interno `.wjpdm` (06/11/2026: abre em qualquer
-aparelho). **GO-IN** — sem comentário nem escolha de conteúdo: é só a cópia — cria a versão e
-**publica**: os arquivos visíveis do pendrive e do Drive só mostram o que passou por GO-IN. **GO-IN da pasta** (menu da pasta no WJPDM e botão
+aparelho). **GO-IN** — abre uma janela com **comentário opcional** sobre o que foi feito e "Manter em
+GO-OUT" (10/11/2026, decisão do Johann, no lugar do antigo "GO-IN sem comentário"; GO-IN dos marcados
+ou da pasta: um comentário para todos; o comentário vai para a versão e aparece nas Versões do painel
+Cofre e do WJPDM) — cria a versão e **publica**: os arquivos visíveis do pendrive e do Drive só mostram o que passou por GO-IN. **GO-IN da pasta** (menu da pasta no WJPDM e botão
 "GO-IN da pasta"): todos os arquivos da pasta e das subpastas em GO-OUT com você; os de outras
 pessoas ficam de fora com aviso.
 ✅ **Pastas de versões nas cópias**: ao lado de cada arquivo, `<nome> (versões)/<nome> v1.wjcad`,
@@ -37,7 +39,10 @@ pasta do dispositivo dá para abrir qualquer versão. Renomear/mover leva a past
 excluir apaga. O banco (`arquivos.versoes`) registra cada versão (data, autor, revisão, estado). Desfazer GO-OUT descarta a cópia de trabalho. "Abrir do cofre" em
 cada app. WJPDM e WJERP (cópias de segurança) entram direto na pasta da face, sem perguntar.
 ✅ Aba **Cofre** na lateral direita de cada app de documento: arquivo, pasta, estado, revisão,
-versão, GO-OUT; botões GO-OUT / GO-IN (manter em GO-OUT; salva antes de publicar) /
+versão, GO-OUT; botões GO-OUT / GO-IN (janela do comentário com "manter em GO-OUT"; salva antes de
+publicar; o painel volta na hora com os botões do novo estado e a publicação nas cópias segue, com a
+mensagem atualizada ao terminar — 10/11/2026) / últimas versões com os comentários / componentes da
+Montagem (cada peça com estado e GO-OUT / GO-IN / Desfazer GO-OUT) /
 Desfazer GO-OUT / Salvar; lista **Meus arquivos em GO-OUT** de todos os apps com GO-IN por item ou
 dos marcados; número de arquivos em GO-OUT na própria aba.
 ✅ **Sincronia global a cada abertura** de qualquer app (WJCAD depois do kernel carregar): iguala
@@ -338,3 +343,20 @@ referências, integração com o WJERP.
 
 - Ctrl+Shift+G obter versão mais recente · Ctrl+Shift+O check-out · Ctrl+Shift+I check-in.
 - F3 pesquisar · F5 atualizar a lista.
+
+## 10. Abrir e editar no WJCAD (10/11/2026, decisões do Johann)
+
+- **Perguntar ao abrir**: abrir qualquer arquivo do cofre na Peça, Montagem ou Desenho (explorador,
+  WJPDM, "Abrir peça" da Montagem, modelo do Desenho) mostra a mesma janela: **"Abrir com GO-OUT (para
+  editar)"** ou **"Abrir só para consulta"**. Já em GO-OUT com você: não pergunta. Em GO-OUT com outra
+  pessoa (ou estado travado): avisa e abre só para consulta. Regra pura `modoDeAbrir` (`src/pdm/regras.ts`).
+- **Só para consulta**: dá para olhar; **salvar pede o GO-OUT antes** ("GO-OUT e salvar" / Cancelar). Vale
+  também depois de um GO-IN sem "manter GO-OUT". Os outros apps continuam com o GO-OUT automático ao salvar.
+- **Montagem**: GO-OUT, GO-IN (com comentário) e Desfazer GO-OUT da montagem principal e de cada peça,
+  separadamente — pelo menu do componente (botão direito / toque longo), pelo menu da raiz da árvore e do
+  fundo (montagem principal) e no painel Cofre. GO-IN de uma peça alterada na montagem grava antes as
+  alterações no arquivo dela. **Desfazer GO-OUT** pede confirmação, descarta o que não foi publicado e volta
+  à última versão (a peça embutida é recarregada; o documento aberto é reaberto na última versão).
+- **GO-IN nunca trava o painel** (defeito corrigido em 10/11/2026): a renovação do Google é um pedido por
+  vez com prazo (`pedidoUnico` em `src/comum/drive.ts`), a sincronia não espera a renovação mais que 150 s e
+  o painel sempre devolve os botões (sucesso ou erro).

@@ -4,7 +4,7 @@
 
 import "./pdm.css";
 import { $, baixar, Casca, el, escapar, janela, menu, registrarOffline, salvarArquivo } from "../comum/casca";
-import { abrirArquivoNoApp, abrirCopias, aoMudarCofre, APPS, goIn, sincronizarCofre } from "../comum/cofre";
+import { abrirArquivoNoApp, abrirCopias, aoMudarCofre, APPS, goIn, janelaGoIn, sincronizarCofre } from "../comum/cofre";
 import { IC } from "../comum/icones";
 import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
@@ -244,7 +244,7 @@ function menuArquivo(x: number, y: number) {
     { rotulo: "Obter (baixar)", icone: "exportar", acao: () => void obter(a) },
     "-",
     { rotulo: "GO-OUT (retirar para editar)", icone: "checkout", acao: () => void checkout(a) },
-    { rotulo: "GO-IN (publicar)", icone: "checkin", acao: () => checkin(a) },
+    { rotulo: "GO-IN (publicar)", icone: "checkin", acao: () => void checkin(a) },
     { rotulo: "Desfazer GO-OUT", icone: "desfazer", acao: () => void desfazerCheckout(a) },
     { rotulo: "Alterar estado…", icone: "estado", acao: () => alterarEstado(a) },
     "-",
@@ -663,13 +663,14 @@ async function novaVersao(a: Arquivo, dados: Blob | { trabalho: true }, comentar
   renderizar();
 }
 
-/** GO-IN direto: a cópia de trabalho vira a próxima versão e tudo é publicado (sem perguntas). */
-function checkin(a: Arquivo) {
+/** GO-IN: janela com o comentário (opcional) e "manter GO-OUT"; a versão é criada e tudo é publicado. */
+async function checkin(a: Arquivo) {
   if (a.checkout?.usuario !== usuario()) return casca.avisar(a.checkout ? `O GO-OUT é de ${a.checkout.usuario}.` : "Faça o GO-OUT antes do GO-IN.");
-  void goIn([a.id], false).then(async (m) => {
-    await carregar();
-    casca.avisar(m, 6000);
-  });
+  const e = await janelaGoIn([a.nome]);
+  if (!e) return;
+  const m = await goIn([a.id], e.manter, e.renovacao, e.comentario);
+  await carregar();
+  casca.avisar(m, 6000);
 }
 
 /** GO-IN de uma pasta inteira (com as subpastas): todos os arquivos em GO-OUT com você. */
@@ -680,8 +681,10 @@ function goInPasta(id: string) {
   const deOutros = dentro.filter((a) => a.checkout && a.checkout.usuario !== usuario());
   const nome = id === RAIZ ? "cofre" : `pasta "${pastas.find((p) => p.id === id)?.nome ?? ""}"`;
   if (!meus.length) return casca.avisar(`Nada para o GO-IN na ${nome}: nenhum arquivo em GO-OUT com você${deOutros.length ? ` (${deOutros.length} em GO-OUT com outras pessoas)` : ""}.`, 6000);
-  // goIn pede o acesso ao Google já no toque (antes de qualquer espera)
-  void goIn(meus.map((a) => a.id), false).then(async (m) => {
+  // um comentário para todos; o acesso ao Google é pedido no toque do botão da janela
+  void janelaGoIn(meus.map((a) => a.nome)).then(async (e) => {
+    if (!e) return;
+    const m = await goIn(meus.map((a) => a.id), e.manter, e.renovacao, e.comentario);
     await carregar();
     casca.avisar(`${m}${deOutros.length ? ` ${deOutros.length} arquivo(s) em GO-OUT com outras pessoas ficaram de fora.` : ""}`, 8000);
   });
@@ -689,7 +692,8 @@ function goInPasta(id: string) {
 
 async function abrirNoApp(a: Arquivo) {
   if (!APPS[extensao(a.nome)]) return obter(a);
-  if (a.checkout?.usuario !== usuario()) casca.avisar("Aberto sem GO-OUT: ao salvar no app, o GO-OUT é feito sozinho (se o arquivo estiver livre).", 6000);
+  // WJCAD: o próprio abrir pergunta GO-OUT ou consulta; os outros apps fazem o GO-OUT ao salvar
+  if (a.checkout?.usuario !== usuario() && !["cad", "asm", "drw"].includes(APPS[extensao(a.nome)].face)) casca.avisar("Aberto sem GO-OUT: ao salvar no app, o GO-OUT é feito sozinho (se o arquivo estiver livre).", 6000);
   const erro = await abrirArquivoNoApp(a, db);
   if (erro) casca.avisar(erro);
 }
@@ -1114,7 +1118,7 @@ const casca: Casca = new Casca({
         ],
         [
           { id: "co", rotulo: "GO-OUT", icone: "checkout", acao: exigeArquivo((a) => void checkout(a)) },
-          { id: "ci", rotulo: "GO-IN", icone: "checkin", acao: exigeArquivo((a) => checkin(a)) },
+          { id: "ci", rotulo: "GO-IN", icone: "checkin", acao: exigeArquivo((a) => void checkin(a)) },
           { id: "cip", rotulo: "GO-IN da pasta", icone: "checkin", peq: true, dica: "GO-IN de todos os arquivos da pasta aberta (e subpastas) em GO-OUT com você", acao: () => (local.tipo === "pasta" ? goInPasta(local.id) : casca.avisar("Abra uma pasta do cofre.")) },
           { id: "dco", rotulo: "Desfazer GO-OUT", icone: "desfazer", peq: true, acao: exigeArquivo((a) => void desfazerCheckout(a)) },
         ],

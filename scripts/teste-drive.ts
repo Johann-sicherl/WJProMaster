@@ -2,7 +2,7 @@
 // responde como a API REST v3 (consulta q, pastas, upload multipart, atualização de conteúdo,
 // download e exclusão). Confere a estrutura Meu Drive/WJPDM/..., atualização no lugar (mesmo id,
 // o Drive guarda as revisões), exclusão e acesso vencido (401).
-import { RepositorioDrive } from "../src/comum/drive";
+import { pedidoUnico, RepositorioDrive } from "../src/comum/drive";
 import { caminhoDoArquivo, indiceVazio, sincronizar, type Indice, type Repositorio } from "../src/pdm/sincronia";
 import type { Arquivo } from "../src/pdm/regras";
 
@@ -164,6 +164,33 @@ tab.indice.pastas = tab.indice.pastas.filter((p) => p.id !== "p2" && p.id !== "p
 tab.indice.exclusoes.push({ id: "p2", tipo: "pasta", data: "2026-10-28T11:55:00.000Z" }, { id: "p4", tipo: "pasta", data: "2026-10-28T11:55:00.000Z" });
 r = await sincronizar([tab, repo()], AGORA);
 igual("pasta excluída vai para a lixeira do Drive", [pastaNoDrive("Projetos")?.lixo, pastaNoDrive("Sub")?.lixo, pastaNoDrive("Vazia")?.lixo], [true, true, undefined]);
+
+// 10. janela do Google: um pedido por vez e sempre termina (GO-IN travado, 10/11/2026)
+{
+  let aberturas = 0;
+  let responder: ((v: boolean) => void) | null = null;
+  const pedir = pedidoUnico<boolean>((terminar) => {
+    aberturas++;
+    responder = terminar;
+  }, 200, false);
+  // renovação do primeiro toque + toque do GO-IN no mesmo gesto: uma janela só, a mesma resposta
+  const a = pedir(), b = pedir();
+  igual("dois pedidos juntos abrem uma janela só", [aberturas, a === b], [1, true]);
+  responder!(true);
+  igual("os dois recebem a resposta do Google", await Promise.all([a, b]), [true, true]);
+  // o Google nunca responde (janela fechada sem aviso): termina no prazo, sem travar a sincronia
+  const c = pedir();
+  igual("pedido novo depois da resposta abre outra janela", aberturas, 2);
+  const t0 = Date.now();
+  igual("sem resposta: termina no prazo com false", await c, false);
+  igual("terminou perto do prazo (200 ms)", Date.now() - t0 < 1000, true);
+  responder!(true); // resposta tardia não quebra nada
+  // erro ao abrir: termina na hora
+  const d = pedidoUnico<boolean>(() => {
+    throw new Error("bloqueada");
+  }, 60000, false)();
+  igual("erro ao abrir a janela: termina com false", await d, false);
+}
 
 console.log(falhas ? `\ndrive: ${falhas} falha(s)` : "\ndrive: tudo certo");
 if (falhas) process.exit(1);
