@@ -9,7 +9,7 @@ import { Armazem } from "./armazem";
 import { permissao, RepositorioAparelho, RepositorioPasta, type PastaDisco } from "./repositorios";
 import { sincronizar, type MetaCofre, type Repositorio, type ResultadoSincronia } from "../pdm/sincronia";
 import { nuvemGoogle, type DestinoNuvem } from "./drive";
-import { bloqueioDoCheckout, estadoDe, extensao, fluxoAtual, nomeLivre, trocarReferencias, usarFluxo, type Arquivo, type DadosModelo, type Pasta, type ReferenciaArquivo } from "../pdm/regras";
+import { acoesDoCofre, bloqueioDoCheckout, estadoDe, extensao, fluxoAtual, modoDeAbrir, nomeLivre, textoDaVersao, trocarReferencias, usarFluxo, type Arquivo, type DadosModelo, type Pasta, type ReferenciaArquivo } from "../pdm/regras";
 import { abrirEmNovaJanela, fixarNaJanela, gravarNaJanela, lerDaJanela, removerDaJanela } from "./janelas";
 
 export type ChaveApp = "cad" | "asm" | "drw" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp" | "flow" | "calc" | "joia" | "video";
@@ -87,6 +87,13 @@ const usuarioDo = async (db: Armazem) => {
 // ---------- sincronia ----------
 
 let ultima: { quando: string; texto: string } | null = null;
+/** A renovação do Google nunca segura a fila de sincronia mais que isto (GO-IN travado, 10/11/2026). */
+const PRAZO_RENOVACAO = 150000;
+const comPrazo = <T,>(p: Promise<T>, ms: number, valor: T): Promise<T> =>
+  new Promise((ok) => {
+    const t = setTimeout(() => ok(valor), ms);
+    p.then((v) => (clearTimeout(t), ok(v)), () => (clearTimeout(t), ok(valor)));
+  });
 let fila: Promise<unknown> = Promise.resolve();
 
 /** Situação de cada cópia do cofre na última sincronia. */
@@ -140,7 +147,7 @@ export function sincronizarCofre(o: OpcoesSincronia = {}): Promise<string> {
       }
     }
     if (publicar) {
-      if (nuvem && navigator.onLine && ((await renovacao) || nuvem.conectado())) {
+      if (nuvem && navigator.onLine && ((await comPrazo(renovacao, PRAZO_RENOVACAO, false)) || nuvem.conectado())) {
         const r = nuvem.repositorio();
         repos.push(r);
         repoDe.set(r.nome, "drive");
@@ -667,6 +674,9 @@ export interface ExtrasSalvar {
   arquivo?: string;
 }
 
+/** Salvar feito logo antes de um GO-IN: não espera a própria sincronia (a do GO-IN vem em seguida). */
+let sincroniaAdiada = false;
+
 export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: Blob, renomear?: (nome: string) => void, extras: ExtrasSalvar = {}): Promise<string> {
   const db = await abrirCofre();
   const usuario = await usuarioDo(db);
@@ -685,6 +695,11 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
       aviso = ` (${a.nome}: ${b} Salve como arquivo novo.)`;
       a = undefined;
     }
+  }
+  // WJCAD aberto só para consulta (sem GO-OUT): salvar pede o GO-OUT antes (10/11/2026)
+  if (a && a.checkout?.usuario !== usuario && FACES_COM_CONSULTA.includes(app)) {
+    const r = await perguntar(`Salvar — ${a.nome}`, `${a.nome} está aberto só para consulta (sem GO-OUT).\nFaça o GO-OUT para salvar as alterações nele.`, [["nao", "Cancelar"], ["goout", "GO-OUT e salvar", true]]);
+    if (r !== "goout") return extras.arquivo ? `${a.nome}: não salvo (só para consulta: faça o GO-OUT).` : "Salvamento cancelado: o arquivo está só para consulta (faça o GO-OUT para salvar).";
   }
   let local: { pasta: string; nome: string } | null = null;
   let primeiro = false;
@@ -738,10 +753,12 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
   if (extras.referencias) await gravarReferencias(db, a.id, extras.referencias);
   if (!extras.arquivo) ligar(app, a.id);
   avisarMudanca();
+  const onde = caminhoDaPasta(await db.todos<Pasta>("pastas"), a.pasta);
+  // salvar logo antes do GO-IN: a sincronia do GO-IN, logo em seguida, leva tudo às cópias
+  if (sincroniaAdiada) return `✓ Salvo: ${onde ? `${onde}/` : ""}${a.nome}.${aviso}`;
   // todo salvar vai para todas as cópias (06/11/2026): abre em qualquer aparelho. Os arquivos
   // visíveis do pendrive/Drive só mudam no GO-IN (o primeiro salvar já publica a versão 1)
   const sinc = await sincronizarCofre({ pedir: true, publicar: true });
-  const onde = caminhoDaPasta(await db.todos<Pasta>("pastas"), a.pasta);
   const destino = ondeChegou(sinc);
   if (destino.faltou) faixaConexoes(sinc); // fica à vista até chegar (tenta de novo sozinho)
   const caminho = `${onde ? `${onde}/` : ""}${a.nome}`;
@@ -915,8 +932,11 @@ function avisarMudanca() {
   for (const f of ouvintes) f();
 }
 
-/** GO-OUT: retira o arquivo para editar (trava com o seu nome). */
-export async function goOut(id: string): Promise<string> {
+/**
+ * GO-OUT: retira o arquivo para editar (trava com o seu nome). `sincronizar`: false quando a página
+ * vai recarregar logo em seguida (abrir com GO-OUT) — a sincronia ao abrir leva a mudança.
+ */
+export async function goOut(id: string, sincronizar = true): Promise<string> {
   const db = await abrirCofre();
   const usuario = await usuarioDo(db);
   const a = await db.ler<Arquivo>("arquivos", id);
@@ -929,20 +949,28 @@ export async function goOut(id: string): Promise<string> {
   a.mod = t;
   await db.por("arquivos", a);
   avisarMudanca();
-  await sincronizarCofre({ pedir: true, publicar: false });
+  if (sincronizar) void sincronizarCofre({ pedir: true, publicar: false }).then(avisarMudanca, () => {});
   return `${a.nome} em GO-OUT com você.`;
 }
 
+/** Resultado do GO-IN: a parte local já terminou; `sincronia` termina quando as cópias receberem. */
+export interface ResultadoGoIn {
+  texto: string;
+  feitos: string[];
+  sincronia: Promise<string>;
+}
+
 /**
- * GO-IN: a cópia de trabalho vira a próxima versão (uma cópia do arquivo, sem comentário), o
- * arquivo nunca publicado ganha a versão e tudo aparece publicado no pendrive e no Drive. `manter`:
- * continua em GO-OUT. `renovacao`: pedida no toque (janela do Google).
+ * GO-IN em duas partes (10/11/2026): a versão é criada na hora no aparelho (o painel volta ao
+ * normal) e a publicação no pendrive e no Drive segue em seguida (`sincronia`). `comentario` vai para
+ * a versão criada (o mesmo para todos os `ids`); `manter`: continua em GO-OUT.
  */
-export async function goIn(ids: string[], manter: boolean, renovacao?: Promise<boolean>): Promise<string> {
-  renovacao ??= renovarNuvem(true);
+export async function goInLocal(ids: string[], manter: boolean, comentario = "", renovacao?: Promise<boolean>): Promise<ResultadoGoIn> {
+  renovacao ??= renovarNuvem(true); // a janela do Google precisa abrir no toque
   const db = await abrirCofre();
   const usuario = await usuarioDo(db);
   const feitos: string[] = [], recusados: string[] = [];
+  const nota = comentario.trim();
   for (const id of ids) {
     const a = await db.ler<Arquivo>("arquivos", id);
     if (!a) continue;
@@ -953,9 +981,14 @@ export async function goIn(ids: string[], manter: boolean, renovacao?: Promise<b
     const t = agora();
     if (a.trabalho) {
       const n = a.versoes[a.versoes.length - 1].n + 1;
-      a.versoes.push({ n, blob: a.trabalho.blob, tamanho: a.trabalho.tamanho, autor: usuario, data: t, comentario: "", revisao: a.revisao, estado: a.estado });
-      a.historico.push({ data: t, usuario, texto: `Versão ${n}` });
+      a.versoes.push({ n, blob: a.trabalho.blob, tamanho: a.trabalho.tamanho, autor: usuario, data: t, comentario: nota, revisao: a.revisao, estado: a.estado });
+      a.historico.push({ data: t, usuario, texto: textoDaVersao(n, nota) });
       a.trabalho = undefined;
+    } else if (nota) {
+      // nada salvo desde a última versão: o comentário fica na versão atual (se ainda não tiver)
+      const v = a.versoes[a.versoes.length - 1];
+      v.comentario = v.comentario ? `${v.comentario} — ${nota}` : nota;
+      a.historico.push({ data: t, usuario, texto: `GO-IN sem alteração — ${nota}` });
     }
     if (a.soLocal) a.historico.push({ data: t, usuario, texto: "Publicado (primeiro GO-IN)" });
     a.soLocal = undefined;
@@ -968,9 +1001,18 @@ export async function goIn(ids: string[], manter: boolean, renovacao?: Promise<b
     feitos.push(a.nome);
   }
   avisarMudanca();
-  const sinc = feitos.length ? await sincronizarCofre({ pedir: true, publicar: true, renovacao }) : "";
-  avisarMudanca();
-  return [feitos.length ? `GO-IN: ${feitos.join(", ")}. ${sinc}` : "", recusados.length ? `Sem GO-IN: ${recusados.join("; ")}.` : ""].filter(Boolean).join(" ");
+  const sincronia = feitos.length
+    ? sincronizarCofre({ pedir: true, publicar: true, renovacao }).then((m) => (avisarMudanca(), m), (e) => `Publicação não concluída: ${(e as Error).message}`)
+    : Promise.resolve("");
+  const texto = [feitos.length ? `GO-IN: ${feitos.join(", ")}${manter ? " (segue em GO-OUT)" : ""}.` : "", recusados.length ? `Sem GO-IN: ${recusados.join("; ")}.` : ""].filter(Boolean).join(" ");
+  return { texto, feitos, sincronia };
+}
+
+/** GO-IN completo (espera a publicação nas cópias). */
+export async function goIn(ids: string[], manter: boolean, renovacao?: Promise<boolean>, comentario = ""): Promise<string> {
+  const r = await goInLocal(ids, manter, comentario, renovacao);
+  const sinc = await r.sincronia;
+  return [r.texto, sinc].filter(Boolean).join(" ");
 }
 
 /** Desfaz o GO-OUT: descarta a cópia de trabalho (o arquivo volta à última versão publicada). */
@@ -989,15 +1031,74 @@ export async function desfazerGoOut(id: string): Promise<string> {
   a.mod = t;
   await db.por("arquivos", a);
   avisarMudanca();
-  await sincronizarCofre({ pedir: true, publicar: false });
+  void sincronizarCofre({ pedir: true, publicar: false }).then(avisarMudanca, () => {});
   return `GO-OUT de ${a.nome} desfeito: voltou à versão ${a.versoes[a.versoes.length - 1].n}.`;
 }
 
-/** Abre um arquivo do cofre no app (grava o salvamento automático do app e recarrega a página). */
-export async function abrirArquivoNoApp(a: Arquivo, db?: Armazem, novaJanela = false): Promise<string | null> {
+/** Situação no cofre de vários arquivos (menu do componente na Montagem, sem esperar o banco). */
+export interface SituacaoNoCofre {
+  id: string;
+  nome: string;
+  goOut: boolean;
+  goIn: boolean;
+  desfazer: boolean;
+  /** "com você", "livre", "com Maria", "em revisão"… */
+  texto: string;
+  trabalho: boolean;
+}
+export async function situacaoNoCofre(ids: string[]): Promise<Map<string, SituacaoNoCofre>> {
+  const db = await abrirCofre();
+  const usuario = await usuarioDo(db);
+  const r = new Map<string, SituacaoNoCofre>();
+  for (const id of new Set(ids)) {
+    const a = await db.ler<Arquivo>("arquivos", id);
+    if (!a || a.lixeira) continue;
+    const ac = acoesDoCofre(a, usuario);
+    const texto = ac.goIn ? "em GO-OUT com você" : a.checkout ? `em GO-OUT com ${a.checkout.usuario}` : ac.goOut ? "livre (publicado)" : estadoDe(a.estado).nome;
+    r.set(id, { id, nome: a.nome, goOut: ac.goOut, goIn: ac.goIn, desfazer: ac.desfazer, texto, trabalho: !!a.trabalho || !!a.soLocal });
+  }
+  return r;
+}
+
+/** Faces em que abrir pergunta GO-OUT ou consulta e salvar em consulta pede o GO-OUT (10/11/2026). */
+const FACES_COM_CONSULTA: ChaveApp[] = ["cad", "asm", "drw"];
+
+/**
+ * Ao abrir um arquivo do WJCAD (Peça, Montagem, Desenho): a mesma janela pergunta "Abrir com GO-OUT
+ * (para editar)" ou "Abrir só para consulta". Já em GO-OUT com você: não pergunta. Em GO-OUT com
+ * outra pessoa (ou travado pelo estado): avisa e abre só para consulta. null = cancelado.
+ */
+export async function perguntarModoDeAbrir(a: Arquivo, db?: Armazem): Promise<"editar" | "consulta" | null> {
+  db ??= await abrirCofre();
+  const m = modoDeAbrir(a, await usuarioDo(db));
+  if (m.modo === "editar") return "editar";
+  if (m.modo === "consulta") {
+    const r = await perguntar(`Abrir — ${a.nome}`, `${m.aviso}\nO arquivo abre só para consulta: dá para olhar, mas não para salvar alterações nele.`, [["nao", "Cancelar"], ["consulta", "Abrir só para consulta", true]]);
+    return r === "consulta" ? "consulta" : null;
+  }
+  const r = await perguntar(`Abrir — ${a.nome}`, "Vai editar este arquivo?\nCom GO-OUT ele fica reservado para você até o GO-IN. Só para consulta dá para olhar; para salvar, o GO-OUT é pedido antes.", [["consulta", "Abrir só para consulta"], ["goout", "Abrir com GO-OUT (para editar)", true]]);
+  return r === "goout" ? "editar" : r === "consulta" ? "consulta" : null;
+}
+
+/**
+ * Abre um arquivo do cofre no app (grava o salvamento automático do app e recarrega a página).
+ * Arquivos do WJCAD perguntam antes GO-OUT ou consulta (`perguntarModo` false: não pergunta, ex.:
+ * depois do Desfazer GO-OUT, que recarrega a última versão).
+ */
+export async function abrirArquivoNoApp(a: Arquivo, db?: Armazem, novaJanela = false, perguntarModo = true): Promise<string | null> {
   const app = APPS[extensao(a.nome)];
   if (!app) return "Este arquivo não abre em nenhum app do WJProMaster.";
   db ??= await abrirCofre();
+  if (perguntarModo && FACES_COM_CONSULTA.includes(app.face) && !a.lixeira) {
+    const modo = await perguntarModoDeAbrir(a, db);
+    if (!modo) return null;
+    if (modo === "editar" && a.checkout?.usuario !== (await usuarioDo(db))) {
+      const m = await goOut(a.id, false);
+      const x = await db.ler<Arquivo>("arquivos", a.id);
+      if (!x?.checkout) return m;
+      a = x;
+    }
+  }
   const blob = a.trabalho?.blob ?? a.versoes[a.versoes.length - 1]?.blob;
   const b = blob ? await db.blob(blob) : undefined;
   if (!b) return "Conteúdo não encontrado no cofre.";
@@ -1066,6 +1167,11 @@ body.disp-celular .wjc-aba{width:26px;min-height:72px;font-size:12px}
 .wjc-go li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eef1f5}
 .wjc-go li input{width:22px;height:22px}.wjc-go li span{flex:1;min-width:0;overflow-wrap:anywhere}.wjc-go small{color:#55606d}
 .wjc-msg{min-height:1em}
+.wjc-goin textarea{width:100%;box-sizing:border-box;min-height:88px;margin:6px 0;padding:8px 10px;border:1px solid #c9d3de;border-radius:8px;font:inherit;resize:vertical}
+.wjc-rotulo{display:block;font-size:13px;color:#55606d}
+.wjc-pergunta{width:min(480px,100%)}
+.wjc-versoes{list-style:none;margin:4px 0;padding:0}.wjc-versoes li{padding:4px 0;border-bottom:1px solid #eef1f5;font-size:13px}.wjc-versoes small{color:#55606d}.wjc-versoes q{display:block;color:#1d2733;quotes:none}
+.wjc-comp{list-style:none;margin:6px 0;padding:0}.wjc-comp li{padding:6px 0;border-bottom:1px solid #eef1f5}.wjc-comp li .wjc-botoes{margin-top:4px}.wjc-comp small{color:#55606d}
 .wjc-faixa{position:fixed;left:50%;top:calc(8px + env(safe-area-inset-top));transform:translateX(-50%);z-index:980;display:flex;align-items:center;gap:8px;width:min(720px,calc(100% - 16px));padding:8px 8px 8px 14px;background:#fff8e6;color:#4a3500;border:1px solid #e0b44a;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);font:14px system-ui,sans-serif}
 .wjc-faixa span{flex:1;min-width:0}
 .wjc-faixa button{flex:none;min-height:40px;padding:0 12px;border:1px solid #c9d3de;border-radius:8px;background:#fff;font:inherit;cursor:pointer}
@@ -1105,13 +1211,17 @@ body.disp-celular .wje-cab,body.disp-celular .wje-lista li{grid-template-columns
 body.disp-celular .wje-d,body.disp-celular .wje-t{display:none}
 @media (max-width:600px){.wje-cab,.wje-lista li{grid-template-columns:minmax(0,1fr) 110px}.wje-t{display:none}}`;
 
-function janela(titulo: string): { caixa: HTMLElement; fechar: () => void } {
+function janela(titulo: string, aoFechar?: () => void): { caixa: HTMLElement; fechar: () => void } {
   if (!document.getElementById("wjc-css")) document.head.append(Object.assign(document.createElement("style"), { id: "wjc-css", textContent: CSS }));
   const fundo = document.createElement("div");
   fundo.className = "wjc-fundo";
   fundo.innerHTML = `<div class="wjc-janela" role="dialog" aria-modal="true"><header><span></span><button data-fechar title="Fechar">✕</button></header><div data-corpo></div></div>`;
   fundo.querySelector("header span")!.textContent = titulo;
-  const fechar = () => fundo.remove();
+  const fechar = () => {
+    if (!fundo.isConnected) return;
+    fundo.remove();
+    aoFechar?.();
+  };
   fundo.addEventListener("pointerdown", (e) => e.target === fundo && fechar());
   fundo.addEventListener("keydown", (e) => e.key === "Escape" && fechar());
   fundo.querySelector<HTMLElement>("[data-fechar]")!.onclick = fechar;
@@ -1120,6 +1230,89 @@ function janela(titulo: string): { caixa: HTMLElement; fechar: () => void } {
 }
 const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const quando = (s: string) => `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)} ${s.slice(11, 16)}`;
+
+/**
+ * Pergunta numa janela do cofre (no lugar do confirm do navegador, alvos de 44 px para o dedo).
+ * `opcoes`: [resposta, rótulo, destaque]. Fechar (✕, Esc, toque fora) = null.
+ */
+export function perguntar(titulo: string, texto: string, opcoes: [string, string, boolean?][]): Promise<string | null> {
+  return new Promise((ok) => {
+    let resposta: string | null = null;
+    const { caixa, fechar } = janela(titulo, () => ok(resposta));
+    caixa.closest(".wjc-janela")!.classList.add("wjc-pergunta");
+    caixa.innerHTML = `<section>${texto.split("\n").map((l) => `<p>${esc(l)}</p>`).join("")}</section>
+      <footer>${opcoes.map(([r, rot, d]) => `<button data-r="${esc(r)}"${d ? ' class="destaque"' : ""}>${esc(rot)}</button>`).join("")}</footer>`;
+    caixa.querySelectorAll<HTMLButtonElement>("[data-r]").forEach((b) => (b.onclick = () => ((resposta = b.dataset.r!), fechar())));
+    caixa.querySelector<HTMLButtonElement>("button.destaque")?.focus();
+  });
+}
+
+/** Escolha da janela do GO-IN. `renovacao`: pedida no toque do botão (janela do Google). */
+export interface EscolhaGoIn {
+  comentario: string;
+  manter: boolean;
+  renovacao: Promise<boolean>;
+}
+
+/**
+ * Janela do GO-IN (10/11/2026, decisão do Johann): comentário opcional sobre o que foi feito (vai
+ * para a versão criada e aparece no histórico) e "Manter em GO-OUT". Vários arquivos: um comentário
+ * para todos.
+ */
+export function janelaGoIn(nomes: string[], manter = false): Promise<EscolhaGoIn | null> {
+  return new Promise((ok) => {
+    let escolha: EscolhaGoIn | null = null;
+    const { caixa, fechar } = janela(nomes.length === 1 ? `GO-IN — ${nomes[0]}` : `GO-IN de ${nomes.length} arquivos`, () => ok(escolha));
+    caixa.closest(".wjc-janela")!.classList.add("wjc-goin");
+    caixa.innerHTML = `<section>
+        ${nomes.length > 1 ? `<p>${nomes.map(esc).join(", ")}</p>` : ""}
+        <label class="wjc-rotulo" for="wjc-coment">Comentário (opcional): o que foi feito nesta versão${nomes.length > 1 ? " — o mesmo para todos" : ""}</label>
+        <textarea id="wjc-coment" rows="3" maxlength="500" placeholder="Ex.: furo de fixação passou para M8"></textarea>
+        <label class="wjc-aviso"><input type="checkbox" data-manter ${manter ? "checked" : ""} /> Manter em GO-OUT (continuar editando)</label>
+        <p>O GO-IN cria a versão e publica no pendrive e no Google Drive.</p>
+      </section>
+      <footer><button data-cancelar>Cancelar</button><button data-ok class="destaque">GO-IN (publicar)</button></footer>`;
+    const campo = caixa.querySelector<HTMLTextAreaElement>("textarea")!;
+    const confirmar = () => {
+      // a janela do Google só abre durante o toque: pedida aqui, antes de qualquer espera
+      escolha = { comentario: campo.value.trim(), manter: caixa.querySelector<HTMLInputElement>("[data-manter]")!.checked, renovacao: renovarNuvem(true) };
+      fechar();
+    };
+    caixa.querySelector<HTMLButtonElement>("[data-ok]")!.onclick = confirmar;
+    caixa.querySelector<HTMLButtonElement>("[data-cancelar]")!.onclick = fechar;
+    campo.addEventListener("keydown", (e) => e.key === "Enter" && (e.ctrlKey || e.metaKey) && confirmar());
+    // no tablet o teclado do sistema não sobe sozinho; no computador já dá para digitar
+    if (!document.body.classList.contains("disp-tablet") && !document.body.classList.contains("disp-celular")) campo.focus();
+  });
+}
+
+/**
+ * GO-IN com a janela do comentário (painel Cofre, menu do componente). `antes`: grava o que está na
+ * tela antes de publicar. Devolve null se cancelado; a publicação nas cópias segue em `sincronia`.
+ */
+export async function goInComJanela(ids: string[], o: { antes?: () => Promise<unknown>; manter?: boolean } = {}): Promise<ResultadoGoIn | null> {
+  const db = await abrirCofre();
+  const nomes = (await Promise.all(ids.map((id) => db.ler<Arquivo>("arquivos", id)))).filter((a): a is Arquivo => !!a).map((a) => a.nome);
+  if (!nomes.length) return null;
+  const e = await janelaGoIn(nomes, o.manter);
+  if (!e) return null;
+  sincroniaAdiada = true;
+  try {
+    await o.antes?.();
+  } finally {
+    sincroniaAdiada = false;
+  }
+  return goInLocal(ids, e.manter, e.comentario, e.renovacao);
+}
+
+/** Desfazer GO-OUT pedindo confirmação (descarta o que não foi publicado). null = cancelado. */
+export async function desfazerConfirmando(id: string): Promise<string | null> {
+  const a = await (await abrirCofre()).ler<Arquivo>("arquivos", id);
+  if (!a) return "Arquivo não encontrado no cofre.";
+  const v = a.versoes[a.versoes.length - 1]?.n ?? 1;
+  const r = await perguntar(`Desfazer GO-OUT — ${a.nome}`, `O que foi salvo e não publicado${a.trabalho ? ` (em ${quando(a.trabalho.data)})` : ""} será descartado e ${a.nome} volta à versão ${v}.\nNão dá para desfazer.`, [["nao", "Cancelar"], ["sim", "Desfazer GO-OUT", true]]);
+  return r === "sim" ? desfazerGoOut(id) : null;
+}
 
 /** Pastas que cada app grava na raiz escolhida (o cofre e as pastas irmãs dele). */
 const PASTAS_DOS_APPS = ["WJPDM", "WJTaskPlan"];
@@ -1226,13 +1419,30 @@ export async function abrirDoCofre(app: ChaveApp, novaJanela = false) {
 
 // ---------- painel lateral do cofre (GO-OUT / GO-IN em cada app) ----------
 
+/** Componente com arquivo próprio no cofre (peças da Montagem): GO-OUT/GO-IN/Desfazer separados. */
+export interface ComponenteDoCofre {
+  /** id do arquivo no cofre */
+  id: string;
+  nome: string;
+  /** grava as alterações feitas na montagem no arquivo dele antes do GO-IN */
+  antesDoGoIn?: () => Promise<unknown>;
+}
+export interface OpcoesPainelCofre {
+  /** arquivos que o documento aberto usa (Montagem: as peças), cada um com estado e botões */
+  componentes?: () => ComponenteDoCofre[];
+  /** depois do Desfazer GO-OUT de um componente (recarregar a cópia dele) */
+  aoDesfazerComponente?: (id: string) => void;
+}
+
+const MSG_ERRO = /desconectado|não encontrado|sem permissão|vencido|Sem GO-IN|Não foi|não concluída|cancelado|Nenhuma cópia|conflito|não salvo|só para consulta/;
+
 /**
  * Aba fixa na lateral direita do app que abre o painel do cofre: dados do documento aberto
- * (pasta, estado, revisão, versão, GO-OUT), botões GO-OUT / GO-IN / Desfazer GO-OUT e a lista de
- * todos os seus arquivos em GO-OUT (de todos os apps) para publicar. `salvar` grava o documento
- * aberto antes do GO-IN dele.
+ * (pasta, estado, revisão, versão, GO-OUT), botões GO-OUT / GO-IN / Desfazer GO-OUT, as versões
+ * com os comentários, os componentes (Montagem) e a lista de todos os seus arquivos em GO-OUT (de
+ * todos os apps) para publicar. `salvar` grava o documento aberto antes do GO-IN dele.
  */
-export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown>) {
+export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown>, opcoes: OpcoesPainelCofre = {}) {
   if (!document.getElementById("wjc-css")) document.head.append(Object.assign(document.createElement("style"), { id: "wjc-css", textContent: CSS }));
   const aba = document.createElement("button");
   aba.className = "wjc-aba";
@@ -1241,6 +1451,7 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
   let gaveta: HTMLElement | null = null;
   let msg = "";
   let ocupado = false;
+  let publicando = 0; // publicações nas cópias ainda em andamento (o painel já está livre)
 
   const meusGoOut = async (db: Armazem) => {
     const usuario = await usuarioDo(db);
@@ -1261,11 +1472,15 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
     const atual = a && !a.lixeira ? a : undefined;
     const ultimaV = atual?.versoes[atual.versoes.length - 1];
     const meu = atual?.checkout?.usuario === usuario;
+    const ac = atual ? acoesDoCofre(atual, usuario) : null;
+    const comps = (opcoes.componentes?.() ?? []).filter((c, i, l) => c.id !== atual?.id && l.findIndex((x) => x.id === c.id) === i);
+    const sitComps = await situacaoNoCofre(comps.map((c) => c.id));
     const onde = (x: Arquivo) => caminhoDaPasta(ps, x.pasta) || "(raiz)";
     const appDe = (x: Arquivo) => APPS[extensao(x.nome)]?.app ?? extensao(x.nome).toUpperCase();
     // o painel pode ter sido fechado enquanto o banco respondia
     if (!gaveta) return;
     const corpo = gaveta.querySelector<HTMLElement>(".wjc-painel")!;
+    const versoes = atual && !atual.soLocal ? [...atual.versoes].reverse().slice(0, 6) : [];
     corpo.innerHTML = `
       <header><span>Cofre — ${NOME_APP[app]}</span><button data-b="fechar" title="Fechar">✕</button></header>
       <section><h3>Documento aberto</h3>${atual ? `
@@ -1274,28 +1489,40 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
           <dt>Estado</dt><dd style="color:${estadoDe(atual.estado).cor}">${esc(estadoDe(atual.estado).nome)}</dd>
           <dt>Revisão</dt><dd>${esc(atual.revisao || "—")}</dd>
           <dt>Versão</dt><dd>${atual.soLocal ? "nunca publicado" : `${ultimaV?.n ?? "—"}${ultimaV ? ` (${quando(ultimaV.data)})` : ""}`}</dd>
-          <dt>GO-OUT</dt><dd>${atual.checkout ? (meu ? `com você desde ${quando(atual.checkout.data)}` : `com ${esc(atual.checkout.usuario)}`) : "livre (publicado)"}</dd>
+          <dt>GO-OUT</dt><dd>${atual.checkout ? (meu ? `com você desde ${quando(atual.checkout.data)}` : `com ${esc(atual.checkout.usuario)} (aberto só para consulta)`) : "livre — aberto só para consulta"}</dd>
           <dt>Trabalho</dt><dd>${atual.trabalho ? `salvo em ${quando(atual.trabalho.data)} (não publicado)` : atual.soLocal ? "nunca publicado" : "igual à última versão"}</dd></dl>
         ${atual.soLocal ? `<p><span class="wjc-tag">não publicado</span> já está nas cópias do cofre (abre em outros aparelhos); o GO-IN publica a versão.</p>` : ""}
+        ${ac?.motivo && !atual.checkout ? `<p>${esc(ac.motivo)}</p>` : ""}
         <div class="wjc-botoes">
-          ${!atual.checkout ? `<button data-b="goout" class="destaque">GO-OUT</button>` : ""}
-          ${meu ? `<button data-b="goin" class="destaque">GO-IN (publicar)</button>` : ""}
-          ${meu && !atual.soLocal ? `<button data-b="desfazer">Desfazer GO-OUT</button>` : ""}
+          ${ac?.goOut ? `<button data-b="goout" class="destaque">GO-OUT</button>` : ""}
+          ${ac?.goIn ? `<button data-b="goin" class="destaque">GO-IN (publicar)…</button>` : ""}
+          ${ac?.desfazer ? `<button data-b="desfazer">Desfazer GO-OUT</button>` : ""}
           <button data-b="salvar">Salvar</button>
         </div>
-        ${meu ? `<label><input type="checkbox" data-manter /> Manter em GO-OUT depois do GO-IN</label>` : ""}`
+        ${versoes.length ? `<h3 style="margin-top:10px">Versões</h3><ul class="wjc-versoes">${versoes.map((v) => `<li><b>v${v.n}</b>${v.revisao ? ` · rev ${esc(v.revisao)}` : ""} <small>${quando(v.data)} · ${esc(v.autor)}</small>${v.comentario ? `<q>${esc(v.comentario)}</q>` : ""}</li>`).join("")}</ul>${atual.versoes.length > versoes.length ? `<p>Todas as ${atual.versoes.length} versões no WJPDM.</p>` : ""}` : ""}`
       : `<p>Este documento ainda não está no cofre. Ao salvar, você escolhe a pasta: a versão 1 é publicada no dispositivo, no pendrive e no Drive e ele segue em GO-OUT com você.</p>
         <div class="wjc-botoes"><button data-b="salvar" class="destaque">Salvar no cofre…</button></div>`}
       </section>
+      ${comps.length ? `<section><h3>Componentes (${comps.length})</h3><ul class="wjc-comp">${comps.map((c) => {
+        const st = sitComps.get(c.id);
+        if (!st) return `<li>${esc(c.nome)}<br><small>não está no cofre</small></li>`;
+        return `<li><b>${esc(st.nome)}</b><br><small>${esc(st.texto)}${st.goIn && st.trabalho ? " · alterações não publicadas" : ""}</small>
+          <div class="wjc-botoes">${st.goOut ? `<button data-c="goout" data-id="${c.id}">GO-OUT</button>` : ""}${st.goIn ? `<button data-c="goin" data-id="${c.id}" class="destaque">GO-IN…</button>` : ""}${st.desfazer ? `<button data-c="desfazer" data-id="${c.id}">Desfazer GO-OUT</button>` : ""}</div></li>`;
+      }).join("")}</ul></section>` : ""}
       <section><h3>Meus arquivos em GO-OUT (${lista.length})</h3>
-        ${lista.length ? `<ul class="wjc-go">${lista.map((x) => `<li><input type="checkbox" data-x="${x.id}" checked aria-label="Marcar ${esc(x.nome)}" /><span>${esc(x.nome)}${x.id === atual?.id ? " <small>(aberto)</small>" : ""}<br><small>${esc(appDe(x))} · ${esc(onde(x))}${x.trabalho ? ` · salvo ${quando(x.trabalho.data)}` : ""}</small> ${x.soLocal ? `<span class="wjc-tag">não publicado</span>` : ""}</span><button data-i="${x.id}">GO-IN</button></li>`).join("")}</ul>
-          <div class="wjc-botoes"><button data-b="goinMarcados" class="destaque">GO-IN dos marcados</button></div>
-          <p>O GO-IN cria a versão e publica no pendrive e no Google Drive.</p>`
+        ${lista.length ? `<ul class="wjc-go">${lista.map((x) => `<li><input type="checkbox" data-x="${x.id}" checked aria-label="Marcar ${esc(x.nome)}" /><span>${esc(x.nome)}${x.id === atual?.id ? " <small>(aberto)</small>" : ""}<br><small>${esc(appDe(x))} · ${esc(onde(x))}${x.trabalho ? ` · salvo ${quando(x.trabalho.data)}` : ""}</small> ${x.soLocal ? `<span class="wjc-tag">não publicado</span>` : ""}</span><button data-i="${x.id}">GO-IN…</button></li>`).join("")}</ul>
+          <div class="wjc-botoes"><button data-b="goinMarcados" class="destaque">GO-IN dos marcados…</button></div>
+          <p>O GO-IN pede um comentário (opcional), cria a versão e publica no pendrive e no Google Drive.</p>`
         : "<p>Nenhum arquivo em GO-OUT com você.</p>"}
       </section>
-      <section><p class="wjc-msg ${/desconectado|não encontrado|sem permissão|vencido|Sem GO-IN|Não foi|cancelado|Nenhuma cópia|conflito/.test(msg) ? "wjc-nao" : msg ? "wjc-ok" : ""}">${esc(msg || (ultima ? `Última sincronia: ${quando(ultima.quando)} — ${ultima.texto}` : ""))}</p>
+      <section><p class="wjc-msg ${MSG_ERRO.test(msg) ? "wjc-nao" : msg ? "wjc-ok" : ""}">${esc(msg || (ultima ? `Última sincronia: ${quando(ultima.quando)} — ${ultima.texto}` : ""))}</p>
         <div class="wjc-botoes"><button data-b="sinc">Sincronizar agora</button><button data-b="copias">Cópias do cofre…</button><button data-b="pdm">Abrir o WJPDM</button></div></section>`;
 
+    /**
+     * Roda uma ação com os botões esmaecidos e SEMPRE os devolve (sucesso ou erro): o painel é
+     * redesenhado com os botões do novo estado. Defeito de 10/11/2026: a espera pela janela do
+     * Google não terminava e o painel ficava esmaecido para sempre.
+     */
     const executar = async (f: () => Promise<unknown>) => {
       if (ocupado) return;
       ocupado = true;
@@ -1303,32 +1530,62 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
       corpo.querySelector<HTMLElement>(".wjc-msg")!.textContent = "Trabalhando…";
       try {
         const r = await f();
-        msg = typeof r === "string" ? r : "";
+        if (typeof r === "string") msg = r;
       } catch (e) {
         msg = `Não foi possível: ${(e as Error).message}`;
+      } finally {
+        ocupado = false;
+        try {
+          await desenhar();
+        } catch {
+          corpo.querySelectorAll("button").forEach((b) => (b.disabled = false));
+        }
+        void contar();
       }
-      ocupado = false;
-      await desenhar();
-      await contar();
     };
-    /** GO-IN: a janela do Google precisa abrir no toque, antes de qualquer espera. */
-    const publicar = (ids: string[]) => {
-      const renovacao = renovarNuvem(true);
-      const manter = !!corpo.querySelector<HTMLInputElement>("[data-manter]")?.checked;
-      return executar(async () => {
-        if (atual && ids.includes(atual.id)) await salvar(); // publica o que está na tela
-        return goIn(ids, manter, renovacao);
+    /** GO-IN com a janela do comentário: o painel volta na hora; a publicação segue e atualiza a mensagem. */
+    const publicar = async (ids: string[]) => {
+      if (ocupado) return;
+      const daTela = !!atual && ids.includes(atual.id);
+      const feito: { r: ResultadoGoIn | null } = { r: null };
+      await executar(async () => {
+        feito.r = await goInComJanela(ids, { antes: async () => {
+          if (daTela) await salvar(); // publica o que está na tela
+          for (const c of comps) if (ids.includes(c.id)) await c.antesDoGoIn?.();
+        } });
+        if (!feito.r) return; // cancelado: nada muda
+        return feito.r.feitos.length ? `${feito.r.texto} Publicando no pendrive e no Google Drive…` : feito.r.texto;
       });
+      const r = feito.r;
+      if (!r?.feitos.length) return;
+      publicando++;
+      const sinc = await r.sincronia;
+      publicando--;
+      msg = `${r.texto} ${sinc}`;
+      if (gaveta && !ocupado) void desenhar();
+      void contar();
+    };
+    const desfazerDoc = async () => {
+      if (!atual) return;
+      const m = await desfazerConfirmando(atual.id);
+      if (m === null) return;
+      msg = m;
+      await executar(async () => undefined);
+      // descarta o que está na tela: reabre a última versão publicada (só para consulta)
+      if (/desfeito/.test(m)) {
+        const x = await (await abrirCofre()).ler<Arquivo>("arquivos", atual.id);
+        if (x) await abrirArquivoNoApp(x, undefined, false, false);
+      }
     };
     const acoes: Record<string, () => unknown> = {
       fechar: fecharPainel,
       salvar: () => executar(salvar),
       goout: () => atual && executar(() => goOut(atual.id)),
       goin: () => atual && publicar([atual.id]),
-      desfazer: () => atual && confirm(`Desfazer o GO-OUT de ${atual.nome}? A cópia de trabalho é descartada e o arquivo volta à última versão publicada (o que está na tela não muda; salve de novo para retomar).`) && executar(() => desfazerGoOut(atual.id)),
+      desfazer: desfazerDoc,
       goinMarcados: () => {
         const ids = [...corpo.querySelectorAll<HTMLInputElement>("[data-x]:checked")].map((x) => x.dataset.x!);
-        if (!ids.length) return void (msg = "Marque ao menos um arquivo.", desenhar());
+        if (!ids.length) return void ((msg = "Marque ao menos um arquivo."), desenhar());
         return publicar(ids);
       },
       sinc: () => {
@@ -1340,6 +1597,17 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
     };
     corpo.querySelectorAll<HTMLButtonElement>("[data-b]").forEach((b) => (b.onclick = () => void acoes[b.dataset.b!]?.()));
     corpo.querySelectorAll<HTMLButtonElement>("[data-i]").forEach((b) => (b.onclick = () => void publicar([b.dataset.i!])));
+    corpo.querySelectorAll<HTMLButtonElement>("[data-c]").forEach((b) => (b.onclick = () => {
+      const cid = b.dataset.id!;
+      if (b.dataset.c === "goout") return void executar(() => goOut(cid));
+      if (b.dataset.c === "goin") return void publicar([cid]);
+      void desfazerConfirmando(cid).then((m) => {
+        if (m === null) return;
+        msg = m;
+        if (/desfeito/.test(m)) opcoes.aoDesfazerComponente?.(cid);
+        void executar(async () => undefined);
+      });
+    }));
   };
 
   function fecharPainel() {
@@ -1354,7 +1622,7 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
     gaveta.addEventListener("pointerdown", (e) => e.target === gaveta && fecharPainel());
     gaveta.addEventListener("keydown", (e) => e.key === "Escape" && fecharPainel());
     document.body.append(gaveta);
-    msg = "";
+    msg = publicando ? msg : "";
     void desenhar();
   };
   const atualizar = () => {

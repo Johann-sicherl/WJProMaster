@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 10/11/2026.
+> Última consolidação: 10/11/2026 (inclui o cofre no WJCAD: GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -137,8 +137,22 @@
   "Cofre:" fica à vista e a sincronia automática tenta de novo sozinha. O explorador "Abrir do cofre"
   sincroniza ao abrir e atualiza a lista quando chegam arquivos de outro aparelho.
 - Aba **Cofre** na lateral direita de cada app: dados do documento (pasta, estado, revisão, versão, GO-OUT),
-  GO-OUT / GO-IN / Desfazer GO-OUT e "Meus arquivos em GO-OUT" (todos os apps) com GO-IN por item ou dos
-  marcados.
+  GO-OUT / GO-IN / Desfazer GO-OUT, as últimas versões com os comentários e "Meus arquivos em GO-OUT"
+  (todos os apps) com GO-IN por item ou dos marcados. Terminado o GO-IN, o painel **volta na hora** com os
+  botões do novo estado (a publicação nas cópias segue e a mensagem se atualiza); erro → mensagem clara e
+  botões de volta.
+- **GO-IN com comentário** (10/11/2026, mudança de decisão do Johann: antes era "GO-IN sem comentário"):
+  janela com **comentário opcional** sobre o que foi feito e **"Manter em GO-OUT"**; o comentário vai para a
+  versão criada e aparece no histórico de versões (painel Cofre e WJPDM). GO-IN dos marcados (e da pasta,
+  no WJPDM): **um comentário para todos**.
+- **Abrir no WJCAD pergunta** (10/11/2026): abrir arquivo do cofre na Peça, Montagem ou Desenho → a mesma
+  janela: **"Abrir com GO-OUT (para editar)"** ou **"Abrir só para consulta"**. Já em GO-OUT com você: não
+  pergunta. Em GO-OUT com outra pessoa: avisa e abre só para consulta. **Só para consulta: dá para olhar,
+  mas salvar pede o GO-OUT antes.**
+- **Montagem: cofre por componente** (10/11/2026): GO-OUT, GO-IN (com comentário) e Desfazer GO-OUT da
+  montagem principal e de cada peça separadamente, pelo menu do componente (botão direito / toque longo) e
+  no painel Cofre (a montagem e suas peças, cada uma com estado e botões). **Desfazer GO-OUT** descarta o que
+  não foi publicado e volta à última versão, **pedindo confirmação**.
 - **Fluxo de trabalho editável** (um por cofre; de fábrica: Protótipo / Pré-série / Série × em
   desenvolvimento / em produção / em revisão + Obsoleto; revisão por fase P1 → 01 → A). "Em revisão" =
   travado.

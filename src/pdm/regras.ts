@@ -416,3 +416,26 @@ export function bomDasReferencias(arquivos: Arquivo[], refs: ReferenciaArquivo[]
   }
   return { bom, semItem };
 }
+
+// ---------- GO-OUT / GO-IN no app (painel Cofre, menu do componente, abrir) ----------
+
+/** Ações de cofre possíveis para um arquivo, conforme quem está com o GO-OUT (botões coerentes). */
+export function acoesDoCofre(a: Arquivo, usuario: string): { goOut: boolean; goIn: boolean; desfazer: boolean; motivo: string } {
+  const meu = a.checkout?.usuario === usuario;
+  const b = meu ? null : bloqueioDoCheckout(a, usuario);
+  return { goOut: !a.checkout && !b, goIn: meu, desfazer: meu && !a.soLocal, motivo: b ?? "" };
+}
+
+/**
+ * Como abrir um arquivo do cofre no WJCAD (10/11/2026): já em GO-OUT com você → edita sem perguntar;
+ * livre → pergunta (GO-OUT para editar ou só consulta); em GO-OUT com outra pessoa ou travado pelo
+ * estado → avisa e abre só para consulta.
+ */
+export function modoDeAbrir(a: Arquivo, usuario: string): { modo: "editar" | "perguntar" | "consulta"; aviso: string } {
+  if (a.checkout?.usuario === usuario) return { modo: "editar", aviso: "" };
+  const b = bloqueioDoCheckout(a, usuario);
+  return b ? { modo: "consulta", aviso: b } : { modo: "perguntar", aviso: "" };
+}
+
+/** Texto do histórico para a versão criada no GO-IN (com o comentário, se houver). */
+export const textoDaVersao = (n: number, comentario: string) => `Versão ${n}${comentario.trim() ? ` — ${comentario.trim()}` : ""}`;

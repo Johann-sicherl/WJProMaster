@@ -34,8 +34,8 @@ import { centroDaCaixa, centroDoComponente, componenteDoTriangulo, facesDoCompon
 import type { Topologia } from "../kernel/topologia";
 import { compRel, NOME_TIPO, primitivaLocal, resolverMontagem, tiposPossiveis, transformar, type ResultadoSolver } from "./solver";
 import {
-  abrirArquivoNoApp, abrirCopias, abrirDoCofre, desligar, documentosDoCofre, escolherDoCofre, instalarPainelCofre, lerDoCofre, salvarNoCofre,
-  sincronizarAoAbrir, vinculo,
+  abrirArquivoNoApp, abrirCopias, abrirDoCofre, aoMudarCofre, desfazerConfirmando, desligar, documentosDoCofre, escolherDoCofre, goInComJanela, goOut,
+  instalarPainelCofre, lerDoCofre, salvarNoCofre, sincronizarAoAbrir, situacaoNoCofre, vinculo, type SituacaoNoCofre,
 } from "../comum/cofre";
 import { renderizarFormulario, type ContextoFormulario, type Esquema } from "../ui/formulario";
 import {
@@ -594,6 +594,13 @@ function renderizarArvore() {
   raiz.className = "raiz";
   raiz.innerHTML = `${ICONES.montagem}<strong></strong>`;
   raiz.querySelector("strong")!.textContent = doc.nome;
+  // montagem principal no cofre: GO-OUT / GO-IN / Desfazer (botão direito ou toque longo)
+  raiz.oncontextmenu = (ev) => {
+    ev.preventDefault();
+    const acoes = acoesDaMontagemNoCofre();
+    const r = raiz.getBoundingClientRect();
+    if (acoes.length) mostrarBarra(acoes, r.right, r.top + 40);
+  };
   lista.append(raiz);
 
   // planos e origem (recolhidos numa pasta, como os planos na peça)
@@ -881,9 +888,83 @@ function acoesDoComponente(): AcaoContexto[] {
   ];
   if (um) out.push({ rotulo: "Editar peça", icone: "esboco", acao: () => void editarPecaEmContexto(um) });
   if (um) out.push({ rotulo: "Abrir peça", icone: "peca", acao: () => void abrirPeca(um) });
+  if (um) out.push(...acoesDaPecaNoCofre(pecaDe(um)));
   out.push({ rotulo: "Aparência", icone: "aparencia", acao: () => abrirAparenciaComponente(cs) });
   out.push({ rotulo: "Excluir", icone: "fechar", acao: () => excluirSelecao() });
   return out;
+}
+
+// ---------- cofre por componente: GO-OUT / GO-IN / Desfazer GO-OUT (10/11/2026) ----------
+
+/** Situação no cofre da montagem e das peças (o menu abre na hora, sem esperar o banco). */
+let situacaoCofre = new Map<string, SituacaoNoCofre>();
+async function atualizarSituacaoCofre() {
+  if (!doc) return;
+  const ids = [vinculo("asm"), ...doc.pecas.map((p) => p.arquivo)].filter((x): x is string => !!x);
+  situacaoCofre = await situacaoNoCofre(ids).catch(() => situacaoCofre);
+}
+aoMudarCofre(() => void atualizarSituacaoCofre());
+
+/** Itens de cofre do menu para um arquivo, conforme quem está com o GO-OUT. */
+function acoesDeCofre(id: string | undefined, antes: () => Promise<unknown>, aposDesfazer: () => void): AcaoContexto[] {
+  const st = id ? situacaoCofre.get(id) : undefined;
+  if (!id || !st) return [];
+  const out: AcaoContexto[] = [];
+  if (st.goOut) out.push({ rotulo: "GO-OUT", icone: "goOut", acao: () => void goOut(id).then((m) => (avisar(m, 5000), atualizarSituacaoCofre())) });
+  if (st.goIn) out.push({ rotulo: "GO-IN…", icone: "goIn", acao: () => void goInDoMenu(id, antes) });
+  if (st.desfazer) out.push({ rotulo: "Desfazer GO-OUT", icone: "desfazer", acao: () => void desfazerConfirmando(id).then((m) => {
+    if (m === null) return;
+    avisar(m, 6000);
+    if (/desfeito/.test(m)) aposDesfazer();
+  }) });
+  return out;
+}
+
+/** GO-IN com a janela do comentário; a publicação nas cópias segue e atualiza o aviso. */
+async function goInDoMenu(id: string, antes: () => Promise<unknown>) {
+  try {
+    const r = await goInComJanela([id], { antes });
+    if (!r) return;
+    avisar(r.feitos.length ? `${r.texto} Publicando no pendrive e no Google Drive…` : r.texto, 6000);
+    renderizarArvore();
+    if (r.feitos.length) void r.sincronia.then((m) => avisar(`${r.texto} ${m}`, 6000));
+  } catch (e) {
+    avisar(`GO-IN não feito: ${(e as Error).message}`, 7000);
+  }
+}
+
+/** Peça (componente): alterações feitas na montagem são gravadas no arquivo dela antes do GO-IN. */
+function acoesDaPecaNoCofre(p: PecaEmbutida): AcaoContexto[] {
+  return acoesDeCofre(p.arquivo, async () => {
+    if (!p.modificada) return;
+    const m = await salvarPecaModificada(p);
+    if (p.modificada) throw new Error(m);
+    renderizarArvore();
+  }, () => void recarregarPecaDoCofre(p.arquivo!));
+}
+
+/** Montagem principal (menu do fundo, sem componente selecionado). */
+function acoesDaMontagemNoCofre(): AcaoContexto[] {
+  return acoesDeCofre(vinculo("asm") ?? undefined, salvar, () => void reabrirMontagemDoCofre());
+}
+
+/** Desfazer GO-OUT de uma peça: descarta o que foi alterado na montagem e volta à última versão. */
+async function recarregarPecaDoCofre(arquivo: string) {
+  if (!doc) return;
+  for (const p of doc.pecas) if (p.arquivo === arquivo) p.modificada = false;
+  await atualizarDoCofre();
+  await atualizarCena(true);
+  resolver();
+  montarCena();
+  renderizarArvore();
+  atualizarStatus();
+}
+
+/** Desfazer GO-OUT da montagem: reabre a última versão publicada (o que está na tela é descartado). */
+async function reabrirMontagemDoCofre() {
+  const id = vinculo("asm");
+  const r = id ? await lerDoCofre(id) : null;
+  if (r) await abrirArquivoNoApp(r.arquivo, undefined, false, false);
 }
 
 function acoesDoPosicionamento(m: Posicionamento): AcaoContexto[] {
@@ -1128,6 +1209,7 @@ viewport.aoMenuContexto = (e) => {
   }
   mostrarBarra([
     ...acoesDoComponente(),
+    ...(selComps.length ? [] : acoesDaMontagemNoCofre()),
     { rotulo: "Inserir componentes", icone: "inserirComponente", acao: () => abrirInserir() },
     { rotulo: "Enquadrar", icone: "enquadrar", acao: () => viewport.enquadrar() },
     { rotulo: "Desfazer", icone: "desfazer", acao: desfazer },
@@ -2379,6 +2461,7 @@ function abrirMontagem(d: DocumentoMontagem) {
   renderizarArvore();
   void (async () => {
     await atualizarDoCofre();
+    await atualizarSituacaoCofre();
     await atualizarCena(true);
     resolver();
     montarCena();
@@ -2683,7 +2766,16 @@ if (sessionStorage.getItem("wjcad:voltarDesenho")) {
   b.onclick = () => (location.href = new URL(`${RAIZ}cad/desenho/#abrir-autosave`, location.href).href);
   $("rapidas").prepend(b);
 }
-instalarPainelCofre("asm", salvar);
+instalarPainelCofre("asm", salvar, {
+  // a montagem e cada peça com GO-OUT / GO-IN / Desfazer separados (10/11/2026)
+  componentes: () => (doc?.pecas ?? []).filter((p) => p.arquivo).map((p) => ({ id: p.arquivo!, nome: p.nome, antesDoGoIn: async () => {
+    if (!p.modificada) return;
+    const m = await salvarPecaModificada(p);
+    if (p.modificada) throw new Error(m);
+    renderizarArvore();
+  } })),
+  aoDesfazerComponente: (id) => void recarregarPecaDoCofre(id),
+});
 void sincronizarAoAbrir(kernel.pronto)?.catch(() => {});
 {
   let inicial: DocumentoMontagem | null = null;

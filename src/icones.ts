@@ -10,6 +10,8 @@ export const ICONES = {
   // ---------- arquivo / ações rápidas ----------
   nova: svg(`<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M12 11v6M9 14h6" stroke="${C}"/>`),
   abrir: svg(`<path d="M3 7V5h6l2 2h8v3"/><path d="M3 7v12h15l3-9H6l-3 9"/>`),
+  goOut: svg(`<path d="M12 4v11m-4-4 4 4 4-4" stroke="${C}"/><rect x="4" y="15" width="16" height="6" rx="1"/>`),
+  goIn: svg(`<path d="M12 15V4m-4 4 4-4 4 4" stroke="${C}"/><rect x="4" y="15" width="16" height="6" rx="1"/>`),
   salvar: svg(`<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3"/><rect x="8" y="13" width="8" height="6" stroke="${C}"/>`),
   exportar: svg(`<path d="M5 14v6h14v-6"/><path d="M12 4v11M8 8l4-4 4 4" stroke="${C}"/>`),
   desfazer: svg(`<path d="M9 7 5 11l4 4"/><path d="M5 11h9a5 5 0 0 1 0 10h-3"/>`),

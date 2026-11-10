@@ -1,6 +1,6 @@
 // Teste das regras do cofre do WJPDM em Node.
 import {
-  aplicarTransicao, bloqueioDaTransicao, bloqueioDoCheckout, copiaDoFluxo, estadoDe, explodirBOM, FLUXO_PADRAO, fluxoAtual, nomeLivre, ondeEUsado,
+  acoesDoCofre, aplicarTransicao, bloqueioDaTransicao, modoDeAbrir, textoDaVersao, bloqueioDoCheckout, copiaDoFluxo, estadoDe, explodirBOM, FLUXO_PADRAO, fluxoAtual, nomeLivre, ondeEUsado,
   proximaRevisao, proximaRevisaoNoEsquema, proximoCodigo, transicoesDe, trocarReferencias, bomDasReferencias, usarFluxo, validarFluxo, type Arquivo, type Item,
 } from "../src/pdm/regras";
 
@@ -119,6 +119,31 @@ igual("ciclo na lista", typeof explodirBOM(itens, "conj"), "string");
     [ref("M", "A", 2), ref("M", "B", 4), ref("M", "C", 1), ref("D", "M", 1, "desenho"), ref("Z", "A", 1)]);
   igual("estrutura da montagem: A×2, B×4", r.bom.get("itM"), [{ item: "itA", qtd: 2 }, { item: "itB", qtd: 4 }]);
   igual("peça sem item fica de fora (avisa); desenho e lixeira não contam", [r.semItem, r.bom.has("itD"), r.bom.has("itZ")], [1, false, false]);
+}
+
+// GO-OUT / GO-IN no app (10/11/2026): botões coerentes, modo de abrir e comentário da versão
+{
+  usarFluxo(undefined);
+  const base = (extra: Partial<Arquivo> = {}) => ({ id: "a", nome: "Eixo.wjcad", pasta: "raiz", versoes: [{ n: 1 }], revisao: "", estado: fluxoAtual().inicial, cartao: {}, historico: [], ...extra }) as unknown as Arquivo;
+  const comigo = base({ checkout: { usuario: "Johann", data: "2026-11-10T10:00:00Z" } });
+  const outro = base({ checkout: { usuario: "Maria", data: "2026-11-10T10:00:00Z" } });
+  const ac = (a: Arquivo) => { const x = acoesDoCofre(a, "Johann"); return [x.goOut, x.goIn, x.desfazer]; };
+  igual("livre: só GO-OUT", ac(base()), [true, false, false]);
+  igual("GO-OUT comigo: GO-IN e Desfazer", ac(comigo), [false, true, true]);
+  igual("GO-OUT comigo, nunca publicado: sem Desfazer", ac({ ...comigo, soLocal: true } as Arquivo), [false, true, false]);
+  igual("GO-OUT de outra pessoa: nada", ac(outro), [false, false, false]);
+  const travado = FLUXO_PADRAO.estados.find((e) => e.bloqueado);
+  if (travado) {
+    const x = acoesDoCofre(base({ estado: travado.id }), "Johann");
+    igual("estado travado: sem GO-OUT e com motivo", [x.goOut, !!x.motivo], [false, true]);
+    igual("estado travado: abre só para consulta", modoDeAbrir(base({ estado: travado.id }), "Johann").modo, "consulta");
+  }
+  igual("abrir: GO-OUT comigo não pergunta", modoDeAbrir(comigo, "Johann").modo, "editar");
+  igual("abrir: livre pergunta", modoDeAbrir(base(), "Johann").modo, "perguntar");
+  const m = modoDeAbrir(outro, "Johann");
+  igual("abrir: GO-OUT de outra pessoa = consulta com aviso", [m.modo, /Maria/.test(m.aviso)], ["consulta", true]);
+  igual("histórico da versão com comentário", textoDaVersao(3, "  furo M8 "), "Versão 3 — furo M8");
+  igual("histórico da versão sem comentário", textoDaVersao(3, " "), "Versão 3");
 }
 
 console.log(falhas ? `\npdm: ${falhas} falha(s)` : "\npdm: tudo certo");
