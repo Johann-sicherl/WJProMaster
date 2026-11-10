@@ -164,6 +164,29 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   verdade("cota em passos: braço continua em cima (y > 0)", q.y > 0);
 }
 
+// 4d2. Perfil do Johann (10/11/2026): aba de cima com cota 80, perna à direita com cota 3 entre as
+// verticais, canto interno na origem. Reduzir 80 → 30 de uma vez espelhava a perna (canto em x = −3)
+// e o contorno se cruzava; em passos a perna fica do lado certo (x = +3) e nada cruza.
+{
+  const { encontrarLacos, cruzamentoDoLaco } = await import("../src/esboco/geometria");
+  const e = novoEsboco(1, { tipo: "plano", plano: "YZ", deslocamento: 0 });
+  const P = [[-77, 3], [3, 3], [3, -52], [0, -52], [0, 0], [-77, 0]].map(([x, y], i) => (i === 4 ? ORIGEM : op.ponto(e, { x, y })));
+  const L = P.map((p, i) => op.linha(e, p, P[(i + 1) % 6]));
+  L.forEach((l, i) => op.restringir(e, { tipo: i % 2 ? "vertical" : "horizontal", a: l.id }));
+  const id80 = op.restringir(e, { tipo: "distancia", a: L[0].id, valor: 80 });
+  op.restringir(e, { tipo: "distancia", a: L[1].id, b: L[3].id, valor: 3 });
+  solver.resolver(e);
+  const c = e.restricoes.find((r) => r.id === id80) as { valor: number; tipo: string };
+  const r = aplicarValorGradual(solver, e, c, 30);
+  const canto = e.pontos.find((q) => q.id === P[1])!;
+  verdade("perfil 80 → 30: resolveu", r.ok);
+  confere("perfil 80 → 30: perna do lado certo (canto em x = +3)", canto.x, 3, 1e-6);
+  verdade("perfil 80 → 30: contorno sem cruzamento", !encontrarLacos(e).some((l) => cruzamentoDoLaco(l)));
+  const linha0 = e.geos.find((g) => g.id === L[0].id) as { p1: string; p2: string };
+  const pt = (id: string) => (id === ORIGEM ? { x: 0, y: 0 } : e.pontos.find((q) => q.id === id)!);
+  confere("perfil 80 → 30: aba com 30", Math.hypot(pt(linha0.p2).x - pt(linha0.p1).x, pt(linha0.p2).y - pt(linha0.p1).y), 30, 1e-6);
+}
+
 // 4e. Teclado-calculadora das cotas: normal e científico (trigonométricas em graus)
 {
   const casos: [string, number][] = [

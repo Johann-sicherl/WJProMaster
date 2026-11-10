@@ -116,4 +116,5 @@ teste, build sobre o PR juntado com o `main`) → corrigir → merge **pelo núm
 - Comando novo: o recurso entra no documento antes do painel; a fotografia do ✕ (`abrirComando`) é o documento **sem** ele (senão cancelar deixa o recurso com erro).
 - Selos de relação (H, V…) ficam no meio da linha e roubavam o toque da Cota: só aceitam toque em Selecionar/Exibir relações.
 - `direction: rtl` para "rolar" texto à direita embaralha símbolos e unidade (bidi): usar flex com `justify-content: flex-end` e `overflow: hidden`.
+- Cota de distância entre linhas não tem sinal: um salto grande de outra cota pode "espelhar" a espessura (perfil do Johann 80 → 30). Mudar cota sempre por `aplicarValorGradual` (2ª tentativa fina se cruzar), nunca `valor = x` + um `resolver`.
 - Nunca o nome de produto de terceiros na interface; o fluxo segue o CAD de referência, os nomes são nossos.
