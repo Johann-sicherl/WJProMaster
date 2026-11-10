@@ -6,6 +6,8 @@
 import { registrarComAtualizacao } from "../comum/atualizacao";
 import { instalarLateralAjustavel } from "../ui/lateral";
 import { abrirEmNovaJanela, gravarNaJanela, lerDaJanela, podarJanelas } from "../comum/janelas";
+import { abrirConfiguracoesCad, calibrarTelaCad, type IdSecao } from "../ui/configuracoesCad";
+import { aoMudarPrefsCad, gravarPrefsCad, ampliacaoDaRoda, lerPrefsCad, type PrefsCad } from "../ui/preferenciasCad";
 import "../style.css";
 import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
@@ -696,9 +698,18 @@ function zoomEm(cx: number, cy: number, fator: number) {
   aplicarVb();
 }
 
+let prefsCad = lerPrefsCad();
+/** Opções do aparelho mudaram (aqui na ⚙ ou em outra janela do WJCAD): aplica na hora. */
+function aplicarPrefsCad(p: PrefsCad) {
+  prefsCad = p;
+  aplicarDispositivo();
+}
+aoMudarPrefsCad(aplicarPrefsCad);
+
 svg.addEventListener("wheel", (e) => {
   e.preventDefault();
-  zoomEm(e.clientX, e.clientY, Math.exp(e.deltaY * 0.0015));
+  // Configurações → Mouse e zoom (sentido e passo por clique, os mesmos da vista 3D)
+  zoomEm(e.clientX, e.clientY, 1 / ampliacaoDaRoda(e.deltaY, prefsCad, e.deltaMode, e.ctrlKey));
 }, { passive: false });
 
 svg.addEventListener("pointerdown", (e) => {
@@ -2647,6 +2658,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   salvar: { rotulo: "Salvar (.wjdrw)", icone: "salvar", fazer: () => void salvar(), doc: true },
   pdf: { rotulo: "Imprimir / PDF…", icone: "pdf", fazer: () => void imprimir(), doc: true },
   fechar: { rotulo: "Fechar desenho", icone: "fechar", fazer: fecharDesenho, doc: true },
+  configuracoes: { rotulo: "Configurações…", icone: "engrenagem", fazer: () => abrirConfiguracoes() },
   locais: { rotulo: "Cópias do cofre (pendrive, Drive, dispositivo)…", icone: "pasta", fazer: () => void abrirCopias() },
   atalhos: { rotulo: "Atalhos", icone: "menu", fazer: () => abrirJanela("Atalhos do desenho", `<table class="tabela"><tbody>${[
     ["F", "Ajustar a folha na tela"], ["Delete", "Excluir vista/nota selecionada"], ["Ctrl+P", "Imprimir / PDF"],
@@ -2675,6 +2687,7 @@ function montarMenu() {
   titulo("Arquivo");
   ["novo", "abrirCofre", "abrir", "salvar", "pdf", "fechar"].forEach(item);
   titulo("Ferramentas");
+  item("configuracoes");
   item("locais");
   titulo("Ajuda");
   item("atalhos");
@@ -2700,6 +2713,20 @@ function montarMenu() {
     rap.append(b);
   }
 }
+/** ⚙ Configurações do WJCAD (as mesmas da Peça e da Montagem). */
+function abrirConfiguracoes(secao?: IdSecao) {
+  fecharMenu();
+  abrirConfiguracoesCad({
+    ambiente: "desenho",
+    ler: () => prefsCad,
+    mudar: (m) => aplicarPrefsCad(gravarPrefsCad(m)),
+    calibrar: calibrarTelaCad,
+    copias: () => void abrirCopias(),
+  }, secao);
+}
+$("btn-config").innerHTML = ICONES.engrenagem;
+$("btn-config").onclick = () => abrirConfiguracoes();
+
 function fecharMenu() {
   $("menu-arquivo").hidden = true;
   $("btn-menu").setAttribute("aria-expanded", "false");

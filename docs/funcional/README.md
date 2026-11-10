@@ -45,10 +45,10 @@ Arquivos:
   - **Caixa flutuante do comando** (piloto na **Extrusão**): em celular e tablet, as opções de
     Direção 1/Direção 2 e o ✓/✕ aparecem numa caixa pequena ao lado da peça, arrastável pelo
     título (a posição fica guardada). No celular o painel completo continua no ☰ da caixa.
-    Ligar/desligar em Ferramentas → Dispositivo. Próximos comandos: revolução, filete, chanfro, casca.
+    Ligar/desligar na ⚙ Configurações → Dispositivo. Próximos comandos: revolução, filete, chanfro, casca.
   - **Cotas D1/D2 no modelo** durante a extrusão: tocar edita no lugar (aceita `=expressão`).
   - **Toque longo** (caneta ou dedo parado; padrão 0,6 s, ajustável até 5 s ou desligado em
-    Ferramentas → Dispositivo) abre o mesmo menu do botão direito. Durante um comando: OK,
+    ⚙ Configurações → Dispositivo) abre o mesmo menu do botão direito. Durante um comando: OK,
     Cancelar, Selecionar outro, Enquadrar.
   - **Exibir todas as cotas** (menu do toque longo/botão direito e menu ☰): cotas de todos os
     esboços e valores de todos os recursos ativos sobre o modelo, editáveis no lugar.

@@ -35,6 +35,7 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | Importar STEP/STL, cores do STEP | `src/kernel/importar.ts`, `stl.ts`, `coresStep.ts`, `coresImportadas.ts` | `CLAUDE.md` (Modelo) |
 | Seleção de faces/arestas, referências persistentes | `src/kernel/topologia.ts`, `facesRecurso.ts` | — |
 | Vista 3D, câmera, mouse/toque no modelo | `src/viewport.ts` (1 600 l) | `regras.md` §3 |
+| ⚙ Configurações do WJCAD (Peça, Montagem, Desenho): seções, opções do aparelho, roda do mouse | tela `src/ui/configuracoesCad.ts` (itens por seção) · preferências puras e contas do zoom `src/ui/preferenciasCad.ts` (`jlscad:interface`) | `regras.md` §6 |
 | Peça: barra, árvore, menus, atalhos, abrir/salvar | `src/main.ts` (5 000 l — sempre buscar por `grep -n`) | `regras.md` §4 |
 | Abas e botões de comando | `src/comandos.ts` · ícones `src/icones.ts` | — |
 | Painel de comando ✓/✕ genérico | `src/ui/formulario.ts` | — |
@@ -80,8 +81,9 @@ Rodar só o teste da área enquanto trabalha (`pnpm exec tsx scripts/teste-<x>.t
 | `teste-montagem.ts` / `teste-desenho.ts` | solver de mates / projeção e desenho |
 | `teste-pdm.ts`, `teste-sincronia.ts`, `teste-drive.ts` | regras do cofre, sincronia das cópias, Drive simulado |
 | `teste-formulas.ts`, `teste-agenda.ts`, `teste-erp.ts`, `teste-tarefas.ts`, `teste-video.ts`, `teste-flow.ts`, `teste-calceng.ts`, `teste-joia.ts`, `teste-slicer.ts` | motores das outras faces |
+| `teste-configuracoes.ts` | preferências do WJCAD: passo e sentido do zoom da roda (vista 3D e folha do Desenho) |
 | `teste-mapa.ts` | este mapa em dia com `src/` e `scripts/` |
-| `estresse-*.{ts,cjs}`, `roteiro-ui.cjs`, `roteiro-aviso-conexoes.cjs`, `roteiro-cotas.cjs` | estresse e roteiros de interface com Playwright (não entram no `pnpm teste`); o do aviso confere a faixa "Cofre:" e o "Não mostrar de novo" em todas as páginas; o das cotas, teclado-calculadora, cota angular, arraste com a Cota ativa e ✕ de recurso novo |
+| `estresse-*.{ts,cjs}`, `roteiro-ui.cjs`, `roteiro-aviso-conexoes.cjs`, `roteiro-cotas.cjs`, `roteiro-configuracoes.cjs` | estresse e roteiros de interface com Playwright (não entram no `pnpm teste`); o do aviso confere a faixa "Cofre:" e o "Não mostrar de novo" em todas as páginas; o das cotas, teclado-calculadora, cota angular, arraste com a Cota ativa e ✕ de recurso novo; o das configurações, a ⚙ e a roda do mouse nos três ambientes (computador, tablet, celular) |
 
 ## 3. Validar no navegador (tablet simulado)
 

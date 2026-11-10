@@ -91,6 +91,7 @@ button svg { width: 22px; height: 22px; flex: none; }
   background: transparent;
   font-weight: 600;
 }
+.btn-config { margin-left: auto; }
 .nome-doc:hover { border-color: var(--linha); }
 .nome-doc:focus { border-color: var(--acento); background: var(--painel); outline: none; }
 
@@ -1176,3 +1177,51 @@ body.disp-celular .painel-cor { left: 0; right: 0; width: auto; top: auto; botto
 .er-popup input { min-height: 44px; padding: 0 8px; border: 1px solid #c9d3de; border-radius: 8px; font: inherit; }
 .er-popup p { margin: 0; font-size: 13px; color: #55606d; }
 .er-popup p.er-erro { color: #b3261e; font-weight: 600; }
+
+/* ---------- Configurações do WJCAD (⚙ na barra superior) ---------- */
+/* acima da aba e da gaveta do cofre (900/950); a faixa "Cofre:", as Cópias e a calibração (980/1000) ficam por cima */
+.cfg-fundo { z-index: 960; }
+.cfg { width: min(880px, 100%); height: min(620px, calc(100dvh - 32px)); display: flex; flex-direction: column; }
+.cfg-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 6px 16px !important; }
+.cfg-fechar { font-size: 18px; }
+.cfg-corpo { flex: 1; min-height: 0; display: grid; grid-template-columns: 210px minmax(0, 1fr); }
+.cfg-secoes { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-right: 1px solid var(--linha); background: var(--painel-2); overflow: auto; }
+.cfg-secoes button { display: flex; align-items: center; gap: 10px; min-height: var(--toque); padding: 6px 10px; border: 0; border-radius: 8px; background: none; text-align: left; cursor: pointer; }
+.cfg-secoes button svg { width: 22px; height: 22px; flex: none; }
+.cfg-secoes button[aria-selected="true"] { background: var(--acento-suave); color: var(--acento); font-weight: 600; }
+.cfg-conteudo { overflow: auto; padding: 12px 20px 20px; user-select: text; }
+.cfg-conteudo h3 { margin: 4px 0 12px; font-size: 17px; }
+.cfg-item { display: grid; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--linha); }
+.cfg-item:last-child { border-bottom: 0; }
+.cfg-rotulo { font-weight: 600; font-size: 14px; }
+.cfg-nota { margin: 0; font-size: 13px; color: var(--texto-2); }
+.cfg-opcoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.cfg-opcoes button { min-height: var(--toque); padding: 6px 14px; border: 1px solid var(--linha-forte); border-radius: 8px; background: var(--painel); cursor: pointer; }
+.cfg-opcoes button strong { font-weight: 500; }
+.cfg-opcoes button[aria-checked="true"] { border-color: var(--acento); background: var(--acento-suave); color: var(--acento); }
+.cfg-opcoes button[aria-checked="true"] strong { font-weight: 600; }
+.cfg-cartoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.cfg-cartoes button { display: grid; justify-items: center; gap: 4px; padding: 12px 8px; border-width: 2px; text-align: center; }
+.cfg-cartoes button svg { width: 40px; height: 40px; color: var(--texto); }
+.cfg-cartoes button small { font-size: 12px; color: var(--texto-2); line-height: 1.25; }
+.cfg-passo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cfg-passo input[type=range] { flex: 1; min-width: 140px; height: var(--toque); accent-color: var(--acento); }
+.cfg-passo button { min-width: var(--toque); min-height: var(--toque); border: 1px solid var(--linha-forte); border-radius: 8px; background: var(--painel); cursor: pointer; }
+.cfg-passo .cfg-padrao { padding: 0 12px; }
+.cfg-valor { min-width: 52px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cfg-botao { display: inline-flex; align-items: center; gap: 8px; justify-self: start; min-height: var(--toque); padding: 6px 14px; border: 1px solid var(--linha-forte); border-radius: 8px; background: var(--painel); cursor: pointer; }
+.cfg-botao svg { width: 20px; height: 20px; }
+.cfg-rodape { margin: 0; padding: 8px 16px; border-top: 1px solid var(--linha); font-size: 12.5px; color: var(--texto-2); }
+body.disp-celular .cfg-fundo { padding: 0; }
+body.disp-celular .cfg { width: 100%; height: 100dvh; border-radius: 0; }
+body.disp-celular .cfg-corpo { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+body.disp-celular .cfg-secoes { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--linha); overflow-x: auto; }
+body.disp-celular .cfg-secoes button { flex: none; }
+body.disp-celular .cfg-conteudo { padding: 8px 14px 16px; }
+@media (max-width: 640px) {
+  .cfg-fundo { padding: 0; }
+  .cfg { width: 100%; height: 100dvh; border-radius: 0; }
+  .cfg-corpo { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .cfg-secoes { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--linha); overflow-x: auto; }
+  .cfg-secoes button { flex: none; }
+}

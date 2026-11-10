@@ -104,8 +104,8 @@ impressão 3D manda a malha para o WJSlicer3D. Tudo local no aparelho até o ser
 - **Nome:** **WJCAD** (face do WJProMaster; antes JLSCAD); arquivo de peça **`.wjcad`** (abre também
   `.jlscad` e `.cadt` dos nomes antigos). Chaves internas (`jlscad:` no localStorage, cache `jlscad-`)
   ficam como estão para não perder o autosave e as preferências de quem já usa.
-- **Perfil de dispositivo** escolhido na janela inicial (Celular / Tablet / Computador; trocar em
-  Ferramentas → Dispositivo): cada perfil mostra só as adaptações do seu operador. Celular: ícones
+- **Perfil de dispositivo** escolhido na janela inicial (Celular / Tablet / Computador; trocar na
+  ⚙ Configurações → Dispositivo): cada perfil mostra só as adaptações do seu operador. Celular: ícones
   sem texto, árvore/painéis em gaveta, dedo desenha. Tablet: caneta + dedo, alvos ≥ 44 px, lupa.
   Computador: botões compactos, mouse e atalhos. Classe `disp-*` no `body`.
 - **Cofre único (WJPDM):** todo arquivo de todos os apps vive no cofre do WJPDM (`src/comum/cofre.ts`).
@@ -199,6 +199,18 @@ Referências a faces/arestas são por assinatura geométrica (`src/kernel/topolo
 a entidade mais parecida após regenerar; mudanças grandes na peça podem trocar a referência.
 
 ## Observações técnicas
+
+- **⚙ Configurações do WJCAD** (`src/ui/configuracoesCad.ts`): itens declarativos por seção (`itensDaSecao`:
+  escolha, interruptor, passo, botão, nota) e um adaptador por ambiente (`ler`/`mudar`/extras). A Peça grava
+  no objeto `prefs` dela (senão o próximo `salvarPrefs` apagaria a mudança); Montagem e Desenho usam
+  `gravarPrefsCad` (junta campos, não apaga os da Peça). Outras janelas seguem pelo evento `storage`
+  (`aoMudarPrefsCad`); a Peça só reaplica a interface se dispositivo/toque longo/caixa mudaram (não refaz o
+  painel do comando à toa). Opção nova = um item na seção certa.
+- **Roda do mouse** (`src/ui/preferenciasCad.ts`): 1 clique = 100 px de `deltaY` (linha ×16, página ×100). Vista
+  3D: `OrbitControls.zoomSpeed = ln(1 − passo)/ln(0,95)` (5 % = 1, o comportamento antigo) e o sentido invertido
+  troca o sinal em `_customWheelEvent` (sobrescrito na instância, em `viewport.ts`; conferir ao atualizar o
+  three). Ctrl + roda (pinça do touchpad) não inverte. Folha do Desenho: `ampliacaoDaRoda`. A escala 1:1 desliga
+  `enableZoom`. Roteiro de navegador: `scripts/roteiro-configuracoes.cjs`.
 
 - Erros do OpenCascade chegam como `WebAssembly.Exception` sem texto: traduzir para mensagem útil
   e marcar a feature com erro na árvore, sem interromper a regeneração das demais.

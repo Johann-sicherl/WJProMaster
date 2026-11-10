@@ -75,6 +75,8 @@ import type { Analise } from "./analises";
 import { absorvidosDe, excluirRecursos, filhosDe } from "./dependencias";
 import { registrarComAtualizacao } from "./comum/atualizacao";
 import { instalarLateralAjustavel } from "./ui/lateral";
+import { abrirConfiguracoesCad, type IdSecao } from "./ui/configuracoesCad";
+import { aoMudarPrefsCad, type PrefsCad } from "./ui/preferenciasCad";
 import { abrirEmNovaJanela, gravarNaJanela, lerDaJanela, podarJanelas } from "./comum/janelas";
 
 const CHAVE_AUTOSAVE = "jlscad:documento";
@@ -117,6 +119,9 @@ interface Prefs {
   posCaixaFlutuante?: { x: number; y: number };
   /** Esboço em escala real 1:1 (vista travada em tamanho real, com a calibração da tela). */
   escalaReal?: boolean;
+  /** Configurações → Mouse e zoom: sentido da roda e passo do zoom por clique (%). */
+  rodaFrenteAfasta?: boolean;
+  passoZoom?: number;
   /** já aplicou "planos ocultos por padrão" (04/11/2026) nas preferências antigas */
   planosOcultosPadrao?: boolean;
 }
@@ -3123,14 +3128,8 @@ async function comandoEsboco(c: Comando, botao: HTMLElement) {
       return;
     case "escalaReal":
       return void alternarEscalaReal();
-    case "calibrarTela": {
-      const v = await abrirCalibracao();
-      if (v === null) return;
-      aplicarEscalaReal();
-      atualizarStatus();
-      avisar(prefs.escalaReal ? "Calibração salva: a escala real 1:1 já usa o valor novo." : "Calibração salva. Ligue Escala real 1:1 para desenhar em tamanho real.");
-      return;
-    }
+    case "calibrarTela":
+      return void calibrarTela();
     case "selecionarTudo":
       if (!editor) return avisar("Selecionar tudo: abra um esboço primeiro.");
       editor.selecionarTudo();
@@ -3322,6 +3321,14 @@ async function alternarEscalaReal(ligar = !prefs.escalaReal) {
   atualizarStatus();
   avisar(!ligar ? "Escala real desligada: zoom e rotação livres de novo."
     : `${fonte ? `Escala calibrada pela ficha do ${fonte}. ` : ""}${editor ? "Escala real 1:1: 1 mm na tela = 1 mm no esboço. Desenhe com a caneta (a régua pode ficar sobre a tela); um dedo arrasta a vista." : "Escala real 1:1 ligada: vale ao abrir um esboço."}`, 8000);
+}
+
+async function calibrarTela() {
+  const v = await abrirCalibracao();
+  if (v === null) return;
+  aplicarEscalaReal();
+  atualizarStatus();
+  avisar(prefs.escalaReal ? "Calibração salva: a escala real 1:1 já usa o valor novo." : "Calibração salva. Ligue Escala real 1:1 para desenhar em tamanho real.");
 }
 
 /** Aplica a escala real ao esboço aberto (ou solta a vista quando não há esboço/está desligada). */
@@ -4255,7 +4262,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   cotas: { rotulo: "Exibir todas as cotas", icone: "cota", fazer: () => (recursoComCotas === TODAS_AS_COTAS ? fecharCotasNoModelo() : mostrarTodasAsCotas()) },
   reconstruir: { rotulo: "Reconstruir (Ctrl+B)", icone: "desempenho", fazer: () => regenerar() },
   fechar: { rotulo: "Fechar documento", icone: "fechar", fazer: fecharDocumento },
-  dispositivo: { rotulo: "Dispositivo (celular, tablet, computador)…", icone: "tablet", fazer: () => escolherDispositivo(false) },
+  configuracoes: { rotulo: "Configurações…", icone: "engrenagem", fazer: () => abrirConfiguracoes() },
   atalhos: { rotulo: "Atalhos de teclado e mouse", icone: "menu", fazer: mostrarAtalhos },
   sobre: { rotulo: "Sobre e licenças", icone: "menu", fazer: mostrarSobre },
 };
@@ -4309,6 +4316,8 @@ document.querySelectorAll<HTMLButtonElement>("[data-acao]").forEach((b) => {
     a.fazer();
   };
 });
+$("btn-config").innerHTML = ICONES.engrenagem;
+$("btn-config").onclick = () => abrirConfiguracoes();
 $("btn-desfazer").innerHTML = ICONES.desfazer;
 $("btn-refazer").innerHTML = ICONES.refazer;
 
@@ -4327,7 +4336,7 @@ function fecharMenu() {
 function mostrarAtalhos() {
   abrirJanela("Atalhos", tabela([
     ["Mouse: botão do meio", "Girar (Ctrl + meio: arrastar a vista)"],
-    ["Mouse: roda", "Aproximar/afastar no cursor"],
+    ["Mouse: roda", "Aproximar/afastar no cursor (sentido e passo na ⚙ Configurações)"],
     ["Mouse: botão direito", "Menu de contexto"],
     ["Toque: 1 dedo / 2 dedos", "Girar / aproximar e arrastar"],
     ["Ctrl+1…7 · Ctrl+8", "Vistas padrão · Normal a"],
@@ -4512,7 +4521,7 @@ function escolherDispositivo(obrigatorio: boolean) {
             .map(([v, r]) => `<option value="${v}"${v === (prefs.toqueLongoMs ?? 600) ? " selected" : ""}>${r}</option>`).join("")}</select></label>
         <label class="interruptor"><input type="checkbox" data-c="caixa"${caixaFlutuanteLigada() ? " checked" : ""}><span>Comandos com caixa flutuante perto da peça</span></label>
       </div>
-      <p class="dialogo-nota">A interface se adapta só ao aparelho escolhido. Dá para trocar depois no menu (Ferramentas → Dispositivo).</p>
+      <p class="dialogo-nota">A interface se adapta só ao aparelho escolhido. Dá para trocar depois na ⚙ Configurações (barra superior).</p>
       <footer>${obrigatorio ? "" : `<button data-b="cancelar">Cancelar</button>`}<button data-b="ok" class="destaque">OK</button></footer>
     </div>`;
   const lista = fundo.querySelector(".dispositivos")!;
@@ -4541,11 +4550,7 @@ function escolherDispositivo(obrigatorio: boolean) {
     if (caixa.checked !== caixaAntes) prefs.caixaFlutuante = caixa.checked;
     salvarPrefs();
     fechar();
-    aplicarDispositivo();
-    atualizarAreaDeTrabalho();
-    renderizarAbas();
-    if (editor) renderizarPainelEdicaoEsboco();
-    if (comando) renderizarComando();
+    aplicarPrefsGerais();
   };
   const teclas = (e: KeyboardEvent) => {
     if (e.key === "Enter") ok();
@@ -4560,6 +4565,56 @@ function escolherDispositivo(obrigatorio: boolean) {
   document.addEventListener("keydown", teclas, true);
   document.body.append(fundo);
 }
+
+/** Perfil, toque longo, caixa flutuante e mouse mudaram: aplica em toda a interface. */
+function aplicarPrefsGerais() {
+  aplicarDispositivo();
+  atualizarAreaDeTrabalho();
+  renderizarAbas();
+  if (editor) renderizarPainelEdicaoEsboco();
+  if (comando) renderizarComando();
+}
+
+/** Campos que valem para a Peça, a Montagem e o Desenho (as outras preferências são só da Peça). */
+const GERAIS = ["dispositivo", "toqueLongoMs", "caixaFlutuante"] as const;
+const DA_RODA = ["rodaFrenteAfasta", "passoZoom"] as const;
+
+/** ⚙ Configurações do WJCAD (barra superior): todas as opções do aparelho, por seção. */
+function abrirConfiguracoes(secao?: IdSecao) {
+  fecharMenu();
+  abrirConfiguracoesCad({
+    ambiente: "peca",
+    ler: () => prefs,
+    mudar: (m) => {
+      Object.assign(prefs, m);
+      salvarPrefs();
+      if (GERAIS.some((k) => k in m)) aplicarPrefsGerais();
+      else viewport.definirRoda(prefs);
+    },
+    caixaFlutuante: caixaFlutuanteLigada,
+    estilo: {
+      atual: () => prefs.estilo,
+      mudar: (e) => {
+        prefs.estilo = e as EstiloExibicao;
+        salvarPrefs();
+        viewport.definirEstilo(prefs.estilo);
+        renderizarBarraVistas();
+      },
+    },
+    escalaReal: (ligar) => alternarEscalaReal(ligar),
+    calibrar: calibrarTela,
+    copias: () => void abrirCopias(),
+  }, secao);
+}
+
+/** Outra janela (Peça, Montagem ou Desenho) mudou as opções gerais: segue aqui também. */
+aoMudarPrefsCad((p: PrefsCad) => {
+  const mudou = (ks: readonly (keyof PrefsCad)[]) => ks.filter((k) => prefs[k] !== p[k]);
+  const gerais = mudou(GERAIS), roda = mudou(DA_RODA);
+  for (const k of [...gerais, ...roda]) Object.assign(prefs, { [k]: p[k] });
+  if (gerais.length) aplicarPrefsGerais();
+  else if (roda.length) viewport.definirRoda(prefs);
+});
 
 /** Celular: fecha a gaveta para o usuário tocar faces/arestas; ☰ ou ✓ continuam acessíveis. */
 function recolherGavetaParaSelecionar() {
@@ -4584,7 +4639,7 @@ function atualizarAreaDeTrabalho() {
   $("ti-abrir").onclick = ACOES.abrirCofre.fazer;
   const disp = DISPOSITIVOS.find((d) => d.id === prefs.dispositivo);
   $("ti-dispositivo").innerHTML = disp ? `${ICONES[disp.icone]}<span>Usando: ${disp.rotulo} · trocar</span>` : "";
-  $("ti-dispositivo").onclick = () => escolherDispositivo(false);
+  $("ti-dispositivo").onclick = () => abrirConfiguracoes("dispositivo");
   const recentes = $("ti-recentes");
   recentes.innerHTML = "";
   const ultimo = carregarAutosave();

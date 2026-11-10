@@ -14,6 +14,7 @@ import type { Topologia } from "./kernel/topologia";
 import { coresCurvatura, coresEspessura, coresInclinacao, materialZebra, type Analise } from "./analises";
 import type { Plano, Vec3 } from "./model";
 import type { Referencial } from "./esboco/referencial";
+import { lerPrefsCad, velocidadeZoom3D, type PrefsCad } from "./ui/preferenciasCad";
 
 export type Vista = "iso" | "frontal" | "traseira" | "superior" | "inferior" | "esquerda" | "direita";
 export type EstiloExibicao = "sombreado-arestas" | "sombreado" | "arestas";
@@ -203,6 +204,17 @@ export class Viewport {
     this.controles.zoomToCursor = true; // pinça e roda do mouse aproximam onde se aponta
     this.controles.minZoom = 1e-4;
     this.controles.maxZoom = 1e5;
+    // sentido da roda (Configurações → Mouse e zoom): inverte o deltaY que os controles recebem; a
+    // pinça do touchpad (Ctrl + roda) mantém o sentido natural do gesto
+    const ctl = this.controles as unknown as { _customWheelEvent?: (e: WheelEvent) => { deltaY: number } };
+    const original = ctl._customWheelEvent?.bind(this.controles);
+    if (original)
+      ctl._customWheelEvent = (e) => {
+        const n = original(e);
+        if (this.rodaFrenteAfasta && !e.ctrlKey) n.deltaY = -n.deltaY;
+        return n;
+      };
+    this.definirRoda(lerPrefsCad());
     this.modoEsboco(false);
     this.controles.enableDamping = true;
     this.controles.dampingFactor = 0.12;
@@ -485,6 +497,18 @@ export class Viewport {
         this.ouvintesCamera.forEach((f) => f());
       }
     }
+  }
+
+  /** Sentido da roda: true = rolar para a frente afasta. */
+  private rodaFrenteAfasta = false;
+  /** Configurações → Mouse e zoom: sentido da roda e passo do zoom por clique (a escala 1:1 trava o zoom). */
+  definirRoda(p: PrefsCad) {
+    this.rodaFrenteAfasta = !!p.rodaFrenteAfasta;
+    this.controles.zoomSpeed = velocidadeZoom3D(p);
+  }
+
+  get estiloExibicao(): EstiloExibicao {
+    return this.estilo;
   }
 
   get escalaReal(): number | null {

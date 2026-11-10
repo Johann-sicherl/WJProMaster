@@ -20,6 +20,8 @@ export const ICONES = {
   computador: svg(`<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/><path d="M14 9.5l2 2-1 .2.8 1.6-.8.4-.8-1.6-.7.7z" stroke="${C}"/>`),
   arvore: svg(`<path d="M5 4v16M5 8h5M5 14h5"/><rect x="11" y="6" width="8" height="4" rx="1" stroke="${C}"/><rect x="11" y="12" width="8" height="4" rx="1" stroke="${C}"/>`),
   fechar: svg(`<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="m9.5 11.5 5 5M14.5 11.5l-5 5" stroke="${C}"/>`),
+  engrenagem: svg(`<circle cx="12" cy="12" r="3" stroke="${C}"/><path d="M10.3 3h3.4l.5 2.4 1.7.9 2.3-.9 1.7 2.9-1.8 1.6v2.2l1.8 1.6-1.7 2.9-2.3-.9-1.7.9-.5 2.4h-3.4l-.5-2.4-1.7-.9-2.3.9-1.7-2.9 1.8-1.6v-2.2L3.9 8.3l1.7-2.9 2.3.9 1.7-.9z"/>`),
+  mouse: svg(`<rect x="6.5" y="3" width="11" height="18" rx="5.5"/><path d="M12 3v6M6.5 9h11"/><path d="M12 5.2v1.6" stroke="${C}" stroke-width="2.4"/>`),
 
   // ---------- Features ----------
   extrusao: svg(
