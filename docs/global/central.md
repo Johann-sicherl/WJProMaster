@@ -53,15 +53,23 @@ Atualizar o status em docs/funcional/<arquivo>.md.
 | 10/11 | Tela ⚙ Configurações do WJCAD + sentido e passo do zoom da roda | WJCAD settings screen with mouse zoom (arquivada) | #110 | US$ 5,94 | 3/3 | pendente |
 | 10/11 | Filete/chanfro em canto unido por Coincidente (inclusive com a origem) | Filete/Chanfro e relações automáticas (arquivada) | #111 | US$ 7,98 (as duas) | 1/1 | pendente |
 | 10/11 | Relações automáticas no esboço (H/V, colinear, paralela, perpendicular, coincidente ao soltar; chave e Ctrl) | idem | #111 | (acima) | 7/7 | pendente |
+| 10/11 | Esboço sobre a peça: cota até aresta sem criar linha, esboço com prioridade na seleção, caixa no Espelhar/Deslocar/Padrões | Esboço: cota, seleção e caixa (arquivada) | #113 | US$ 5,92 | 3/3 | pendente |
+| 10/11 | Cota reabre para edição com a Cota ativa; ✓/✕ de cada ferramenta lado a lado no painel; sair/descartar lado a lado na vista | Cota reabre para edição e confirmação de ferramentas | #114 | US$ 5,93 | 2/2 | pendente |
+| 10/11 | Mesclar: cola ruído ≤ 0,001 mm, aviso com a folga medida quando o corpo fica separado; planos novos com origem fixa; aviso de entidade < 0,5 mm | Mesclar/unir corpos em contato | #115 | ≈ US$ 3 | 1/1 (causa real ≠ diagnóstico da central) | pendente |
+| 10/11 | Cofre: GO-IN não trava (janela do Google pedida 2×), comentário no GO-IN, GO-OUT/GO-IN/Desfazer por componente na Montagem, perguntar GO-OUT ou consulta ao abrir | Cofre GO-IN/GO-OUT e comentários | #116 | ≈ US$ 2,50 | 4/4 | pendente |
 
 Referência do método antigo: conversa "Software CAD" (21/10 → 10/11), 68 PRs, ≈ US$ 688 ≈ US$ 10,10 por
-entrega, contexto até 773 mil tokens. Método novo até aqui: ≈ US$ 4,60 por entrega (amostra pequena).
+entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11): ≈ US$ 31 ≈ US$ 4,50 por entrega (amostra pequena).
 
 ## 5. Pendências e conversas em andamento
 
-- **Em andamento:** "Esboço: cota, seleção e caixa" (aberta 10/11) — cota até aresta da peça sem criar
-  linha no esboço; entidades do esboço com prioridade sobre arestas da peça; seleção por caixa dentro
-  do Espelhar, Deslocar e Padrões. Conferir quando terminar.
+- **Nada em andamento** (10/11, depois do #116). Conversas a arquivar: as do #114, #115 e #116.
+- **TAMPA_JANELA (ação do Johann):** a peça continua com 3 corpos de propósito (folga real de 0,0328 mm
+  no gancho da Extrusão2; Extrusão3 apoiada só por aresta) — prender a base do gancho no piso no Esboço2,
+  apoiar a nervura numa face, apagar os 2 arcos de 0,27 mm e trocar os "Fixo" por cotas.
+- **Ideia anotada (não pedida):** recurso de gancho de encaixe (snap-fit) pronto.
+- **Lição da central:** o diagnóstico "faces só encostam" estava errado (era folga real). Nos pedidos,
+  dar a causa como *provável* e pedir para medir/reproduzir antes de corrigir — foi o que salvou.
 - **Ideia em aberto:** jeito rápido de suprimir relações automáticas no tablet (hoje só Ctrl no teclado
   ou a chave em ⚙ Configurações) — o Johann ainda não pediu.
 - **Pendências das entregas:** linhas de inferência pontilhadas e Tangente automática em arcos (F3,
