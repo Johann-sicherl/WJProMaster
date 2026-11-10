@@ -47,6 +47,12 @@ export type TipoLinha = "normal" | "centro" | "pontoMedio";
 export type TipoCirculo = "centro" | "perimetro";
 export type TipoArco = "3pontos" | "centro" | "tangente";
 export type TipoRasgo = "reto" | "centro" | "arco3" | "arcoCentro";
+/**
+ * Comandos com seleção: juntam entidades/cantos numa caixa e só mudam o esboço ao aplicar. Neles o ✓
+ * aplica e o Esc vale como ✕ (cancela sem aplicar); nas outras ferramentas o Esc só encerra a ferramenta
+ * mantendo o que foi desenhado (como no CAD de referência) e só o botão ✕ desfaz.
+ */
+export const COMANDOS_SELECAO: Ferramenta[] = ["espelhar", "fileteEsboco", "offset", "padraoLinearEsboco", "padraoCircularEsboco"];
 /** Ferramentas que desenham geometria nova (as que o espelhamento dinâmico acompanha). */
 const FERRAMENTAS_DESENHO: string[] = ["ponto", "linha", "retangulo", "circulo", "arco", "rasgo", "poligono", "spline", "elipse", "elipseParcial", "parabola"];
 
@@ -340,6 +346,9 @@ export class EditorEsboco {
       this.espelho = { campo: this.geosSelecionadas().length ? "eixo" : "entidades", eixo: null, copiar: this.espelho.copiar };
     }
     if (f !== "fileteEsboco" && this.ferramenta === "fileteEsboco") this.cantosFilete = []; // sair do filete esvazia a caixa
+    // ferramenta nova: guarda o esboço como estava, para o ✕ da ferramenta desfazer só o que foi feito nela
+    // (trocar só o tipo/variante da mesma ferramenta não reinicia o ponto)
+    if (f !== this.ferramenta || !this.inicioFerramenta) this.inicioFerramenta = f === "selecionar" ? null : JSON.stringify(this.esb);
     this.ferramenta = f;
     this.cliques = [];
     this.cotaEntidades = [];
@@ -891,6 +900,14 @@ export class EditorEsboco {
     }
   }
 
+  /** Seleciona só estas entidades (ex.: as minúsculas apontadas pelo aviso do painel). */
+  selecionarSomente(ids: string[]) {
+    this.selecao.clear();
+    for (const id of ids) this.selecao.add(id);
+    this.redesenhar();
+    this.h.atualizarInterface();
+  }
+
   /** Seleciona todas as entidades do esboço (Ctrl+A). */
   selecionarTudo() {
     if (this.ferramenta !== "selecionar") this.definirFerramenta("selecionar");
@@ -1398,10 +1415,75 @@ export class EditorEsboco {
     this.resolver(true);
   }
 
-  /** Esc: cancela a etapa em andamento; sem etapa, volta para Selecionar. */
+  /** Esboço como estava ao abrir a ferramenta atual (o ✕ da ferramenta volta para ele). */
+  private inicioFerramenta: string | null = null;
+
+  /**
+   * ✓ da ferramenta (Enter): conclui o que estiver pendente — a spline em andamento ou, nos comandos com
+   * seleção (espelhar, filete, deslocar, padrões), aplica — e sai da ferramenta (volta para Selecionar).
+   */
+  confirmarFerramenta() {
+    const f = this.ferramenta;
+    if (f === "selecionar") return;
+    const n = this.geosSelecionadas().length;
+    if (f === "spline" && this.cliques.length >= 2) this.concluirSpline();
+    else if (f === "fileteEsboco" && this.cantosFilete.length) this.aplicarFiletes();
+    else if (f === "espelhar" && n && this.espelho.eixo) this.aplicarEspelho();
+    else if ((f === "padraoLinearEsboco" || f === "padraoCircularEsboco") && n) this.aplicarPadrao();
+    else if (f === "offset" && n && this.distOffset) this.aplicarOffset();
+    else if (f === "texto") this.confirmarTexto();
+    this.inicioFerramenta = null;
+    if (this.ferramenta !== "selecionar") this.definirFerramenta("selecionar");
+    else {
+      // aplicar já voltou para Selecionar: só refaz o painel (sem o ✓/✕ da ferramenta)
+      this.redesenhar();
+      this.h.atualizarInterface();
+    }
+  }
+
+  /**
+   * ✕ da ferramenta: sai dela desfazendo tudo o que foi feito desde que abriu (nos comandos com seleção,
+   * cancela sem aplicar). Vira um passo de desfazer: Ctrl+Z traz o que foi desfeito de volta.
+   */
+  cancelarFerramenta() {
+    if (this.ferramenta === "selecionar") return;
+    const ini = this.inicioFerramenta;
+    this.inicioFerramenta = null;
+    this.edicaoCota?.fechar();
+    this.cliques = [];
+    this.cotaEntidades = [];
+    this.cantosFilete = [];
+    this.espelho = { campo: "entidades", eixo: null, copiar: this.espelho.copiar };
+    this.selecao.clear();
+    const mudou = ini !== null && ini !== JSON.stringify(this.esb);
+    if (mudou) {
+      const antes = JSON.parse(ini) as FeatureEsboco;
+      const alvo = this.esb as unknown as Record<string, unknown>;
+      for (const k of Object.keys(alvo)) if (!(k in antes)) delete alvo[k];
+      Object.assign(this.esb, antes);
+      this.geosConhecidas = new Set(this.esb.geos.map((g) => g.id));
+      this.ultimoPoligono = null;
+      this.ultimoTexto = null;
+    }
+    this.definirFerramenta("selecionar");
+    if (mudou) {
+      this.resolver(true);
+      this.h.avisar("Ferramenta cancelada: o que foi feito nela foi desfeito (Ctrl+Z traz de volta).");
+    }
+  }
+
+  /**
+   * Esc: cancela a etapa em andamento; sem etapa, sai da ferramenta. Nos comandos com seleção o Esc vale
+   * como ✕ (cancela sem aplicar); nas ferramentas de desenho mantém o que foi desenhado (decisão do Johann,
+   * 10/11/2026: Esc seguro, só o botão ✕ desfaz).
+   */
   cancelar() {
     if (this.ferramenta === "spline" && this.cliques.length >= 2) {
       this.concluirSpline();
+      return;
+    }
+    if (COMANDOS_SELECAO.includes(this.ferramenta)) {
+      this.cancelarFerramenta();
       return;
     }
     if (this.cliques.length || this.cotaEntidades.length) {
@@ -2043,6 +2125,8 @@ export class EditorEsboco {
   abrirEdicaoCota(id: string) {
     const c = this.esb.restricoes.find((r) => r.id === id);
     if (!c || !ehCota(c) || c.referencia) return;
+    if (this.edicaoCota?.id === id) return; // já aberta nesta cota
+    this.edicaoCota?.fechar(); // outra cota em edição: fecha sem aplicar
     this.selecao = new Set([id]);
     this.redesenhar();
     this.h.atualizarInterface();
@@ -2118,7 +2202,7 @@ export class EditorEsboco {
         aoFechar: () => (calc = null),
       });
     };
-    this.edicaoCota = { el: caixa, id };
+    this.edicaoCota = { el: caixa, id, fechar };
     this.h.overlay.appendChild(caixa);
     this.redesenhar(); // tira a etiqueta normal desta cota (fica só a caixa de edição)
     this.posicionarOverlay();
@@ -2128,7 +2212,12 @@ export class EditorEsboco {
       inp.select();
     }
   }
-  private edicaoCota: { el: HTMLElement; id: string } | null = null;
+  private edicaoCota: { el: HTMLElement; id: string; fechar: () => void } | null = null;
+  private ultimoToqueCota: { id: string; t: number } | null = null;
+  /** Cota com a caixa de edição aberta (null: nenhuma). */
+  get cotaEmEdicao(): string | null {
+    return this.edicaoCota?.id ?? null;
+  }
 
   // ---------- seleção, relações, exclusão ----------
 
@@ -2404,7 +2493,13 @@ export class EditorEsboco {
     if (e.ctrlKey || e.metaKey || e.altKey) return false;
     if (e.key === "Escape") { this.cancelar(); return true; }
     if (e.key === "Enter") {
-      if (this.ferramenta === "spline") this.concluirSpline();
+      // Enter = ✓ da ferramenta (conclui/aplica e sai); com Selecionar só limpa a etapa
+      if (this.edicaoCota) {
+        // caixa do valor aberta (sem foco, no tablet): Enter aplica o valor digitado
+        (this.edicaoCota.el as HTMLFormElement).requestSubmit();
+        return true;
+      }
+      if (this.ferramenta !== "selecionar") this.confirmarFerramenta();
       else { this.cliques = []; this.redesenhar(); }
       return true;
     }
@@ -2850,7 +2945,11 @@ export class EditorEsboco {
     let ini: { x: number; y: number; moveu: boolean } | null = null;
     el.onpointerdown = (e) => {
       e.stopPropagation();
-      el.setPointerCapture(e.pointerId);
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* etiqueta refeita no meio do toque (caixa de outra cota aplicada): segue sem captura */
+      }
       ini = { x: e.clientX, y: e.clientY, moveu: false };
     };
     el.onpointermove = (e) => {
@@ -2866,9 +2965,20 @@ export class EditorEsboco {
       if (!ini) return;
       const moveu = ini.moveu;
       ini = null;
+      // duplo clique / duplo toque (dois toques na mesma cota em até 0,45 s) abre a edição com qualquer
+      // ferramenta; o dblclick do navegador não serve, porque o 1º toque refaz a etiqueta
+      const agora = performance.now();
+      const duplo = !moveu && this.ultimoToqueCota?.id === c.id && agora - this.ultimoToqueCota.t < 450;
+      this.ultimoToqueCota = moveu ? null : { id: c.id, t: agora };
       if (moveu) this.h.alterou(true);
-      else if (this.ferramenta === "selecionar" && !c.referencia) this.abrirEdicaoCota(c.id);
-      else this.alternarSelecao(c.id);
+      else if (duplo && !c.referencia) {
+        this.cotaEntidades = [];
+        this.abrirEdicaoCota(c.id);
+      } else if ((this.ferramenta === "selecionar" || this.ferramenta === "cota") && !c.referencia) {
+        // com a Cota ativa, tocar numa cota existente edita o valor (não começa cota nova)
+        this.cotaEntidades = [];
+        this.abrirEdicaoCota(c.id);
+      } else this.alternarSelecao(c.id);
     };
   }
 

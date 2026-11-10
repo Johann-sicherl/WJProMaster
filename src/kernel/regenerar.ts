@@ -95,6 +95,11 @@ export interface ResultadoRegeneracao {
   corpos?: InfoCorpo[];
   malha: MalhaPeca | null;
   erros: ErroFeature[];
+  /**
+   * Avisos que não impedem o recurso (ex.: "mesclar" que deixou um corpo separado porque não há
+   * face em comum). Mostrados na árvore e no painel do recurso, sem marcá-lo como erro.
+   */
+  avisos?: ErroFeature[];
   volume: number | null; // mm³
   topologia: Topologia | null;
   /** cor de cada face (índices de `topologia.faces`; -1 = sem cor) vinda do arquivo importado */
@@ -184,11 +189,110 @@ function exigirPeca(ctx: Ctx, oque = "Este recurso"): Shape3D {
   return ctx.peca;
 }
 
+/**
+ * Folga que o "mesclar" fecha sozinho: só ruído numérico do kernel (≤ 0,001 mm). Folga real fica
+ * como corpo separado, com aviso no recurso (decisão do Johann, 10/11/2026: não esconder folgas).
+ */
+export const FOLGA_NUMERICA = 1e-3;
+
+/**
+ * União do "mesclar". Face com face (ou sobreposição) já vira um corpo na fusão comum; se a
+ * ferramenta ficou solta (mais corpos que antes), tenta de novo colando só o ruído numérico.
+ */
+export function fundir(peca: Shape3D, tool: Shape3D): Shape3D {
+  const r = peca.fuse(tool);
+  const n = listarSolidos(r).length;
+  if (n <= Math.max(1, listarSolidos(peca).length)) return r;
+  const c = fundirComFolga(peca, tool, FOLGA_NUMERICA);
+  if (!c || listarSolidos(c).length >= n) return r;
+  // a colagem não pode mudar a peça além do ruído (senão fica a fusão comum)
+  const vr = measureVolume(r), vc = measureVolume(c);
+  return Math.abs(vc - vr) <= 1e-4 * Math.abs(vr) + 1e-3 ? c : r;
+}
+
+function fundirComFolga(a: Shape3D, b: Shape3D, folga: number): Shape3D | null {
+  const oc = getOC() as never as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const op = new oc.BRepAlgoAPI_Fuse();
+  const args = new oc.NCollection_List_TopoDS_Shape();
+  const ferr = new oc.NCollection_List_TopoDS_Shape();
+  try {
+    args.Append(a.wrapped);
+    ferr.Append(b.wrapped);
+    op.SetArguments(args);
+    op.SetTools(ferr);
+    op.SetFuzzyValue(folga);
+    op.SetRunParallel(false);
+    op.Build();
+    if (!op.IsDone() || op.HasErrors()) return null;
+    op.SimplifyResult(true, true, 1e-3);
+    return cast(op.Shape()) as unknown as Shape3D;
+  } catch (e) {
+    if (ehFatal(e)) throw e;
+    return null;
+  } finally {
+    op.delete();
+    args.delete();
+    ferr.delete();
+  }
+}
+
+/** Recursos cujo material novo deve se unir à peça (opção "mesclar"/unir). */
+function mesclaNaPeca(f: Feature): boolean {
+  switch (f.tipo) {
+    case "extrusao": case "revolucao": case "varredura": case "loft":
+      return f.operacao === "adicionar" && f.mesclar !== false;
+    case "inserirPeca":
+      return f.mesclar === true;
+    case "nervura": case "espelhar": case "padraoLinear": case "padraoCircular":
+      return true;
+    default:
+      return false;
+  }
+}
+
+const mmTexto = (v: number) => `${v.toLocaleString("pt-BR", { maximumFractionDigits: v < 0.1 ? 4 : 2 })} mm`;
+
+/**
+ * Aviso para o "mesclar" que deixou corpo separado: mede a menor distância de cada corpo aos outros
+ * e diz a maior delas (o corpo mais solto). Distância ~0 = encosta só por aresta ou ponto.
+ */
+function avisoCorpoSeparado(peca: Shape3D, nAntes: number): string {
+  const sol = listarSolidos(peca);
+  const novos = sol.length - nAntes;
+  const quem = novos === 1 ? "Um corpo ficou separado" : `${novos} corpos ficaram separados`;
+  let motivo = "não há face em comum com a peça";
+  if (sol.length <= 12) {
+    const oc = getOC() as never as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const minimo = sol.map(() => Infinity);
+    for (let i = 0; i < sol.length; i++) for (let j = i + 1; j < sol.length; j++) {
+      const d = new oc.BRepExtrema_DistShapeShape();
+      try {
+        d.LoadS1(sol[i].wrapped);
+        d.LoadS2(sol[j].wrapped);
+        d.Perform();
+        if (!d.IsDone()) continue;
+        const v = d.Value() as number;
+        minimo[i] = Math.min(minimo[i], v);
+        minimo[j] = Math.min(minimo[j], v);
+      } finally {
+        d.delete();
+      }
+    }
+    const folga = Math.max(...minimo.filter(Number.isFinite));
+    if (Number.isFinite(folga)) {
+      motivo = folga <= FOLGA_NUMERICA
+        ? "ele encosta na peça só por uma aresta ou um ponto, sem face em comum"
+        : `há uma folga de ${mmTexto(folga)} até a peça (não encosta)`;
+    }
+  }
+  return `${quem} (a peça tem ${sol.length} corpos): ${motivo}. Para unir, faça o perfil tocar a peça por uma face (por exemplo, relação Coincidente no esboço).`;
+}
+
 function aplicar(ctx: Ctx, id: string, ferramentas: Ferramenta[], mesclar = true) {
   for (const f of ferramentas) {
     // "Mesclar resultado" desmarcado: o ressalto vira um corpo separado (multicorpo)
     if (f.op === "adicionar" && !mesclar && ctx.peca) ctx.peca = makeCompound([...listarSolidos(ctx.peca), f.tool] as never) as unknown as Shape3D;
-    else if (f.op === "adicionar") ctx.peca = ctx.peca ? ctx.peca.fuse(f.tool) : f.tool;
+    else if (f.op === "adicionar") ctx.peca = ctx.peca ? fundir(ctx.peca, f.tool) : f.tool;
     else ctx.peca = exigirPeca(ctx, "O corte").cut(f.tool);
   }
   ctx.ferramentas.set(id, ferramentas);
@@ -2078,6 +2182,7 @@ function juntarMalhas(solido: MalhaPeca | null, malhas: MalhaStl[]): MalhaPeca {
 
 function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { planificar?: boolean; previa?: string }): ResultadoRegeneracao {
   const erros: ErroFeature[] = [];
+  const avisos: ErroFeature[] = [];
   const tempos: { id: string; ms: number }[] = [];
   const ctx = novoCtx();
   const rastreador = new RastreadorFaces();
@@ -2088,8 +2193,13 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     const t0 = performance.now();
     try {
       const antes = ctx.peca;
+      const nAntes = antes && mesclaNaPeca(f) ? listarSolidos(antes).length : 0;
       regenerarFeature(f, ctx);
       rastreador.registrar(f.id, antes, ctx.peca);
+      // "mesclar" que deixou corpo novo separado: avisa com a folga medida (não é erro)
+      if (nAntes && ctx.peca && ctx.peca !== antes && listarSolidos(ctx.peca).length > nAntes) {
+        avisos.push({ id: f.id, mensagem: avisoCorpoSeparado(ctx.peca, nAntes) });
+      }
       if (opcoes.previa === f.id) previaRemovido = materialRemovido(antes, ctx.peca, tolerancia);
     } catch (e) {
       // memória do kernel possivelmente corrompida: não dá para continuar nesta instância
@@ -2132,7 +2242,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     // só corpos de malha: exibidos sem faces/arestas selecionáveis
     const malha = ctx.malhas.length ? juntarMalhas(null, ctx.malhas) : null;
     const volume = ctx.malhas.length && ctx.malhas.every((m) => m.volume !== null) ? ctx.malhas.reduce((s, m) => s + m.volume!, 0) : null;
-    return { malha, erros, volume, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes, corpos: corposDaMalha(ctx, 0) };
+    return { malha, erros, avisos, volume, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes, corpos: corposDaMalha(ctx, 0) };
   }
 
   const m = peca.mesh({ tolerance: tolerancia, angularTolerance: 15 });
@@ -2155,6 +2265,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
   return {
     malha: ctx.malhas.length ? juntarMalhas(malhaSolido, ctx.malhas) : malhaSolido,
     erros,
+    avisos,
     volume,
     topologia: topologia(peca).topo,
     coresFaces: ctx.coresArquivo.length ? Array.from(casarFaces(topologia(peca).topo.faces, ctx.coresArquivo)) : undefined,
@@ -2859,7 +2970,7 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       const pl = new Plane(p.origem, p.x, p.normal);
       if (f.corpo) {
         const peca = exigirPeca(ctx, "Espelhar corpo");
-        ctx.peca = peca.fuse(peca.clone().mirror(pl));
+        ctx.peca = fundir(peca, peca.clone().mirror(pl));
         return;
       }
       const base = ferramentasDe(f.recursos, ctx);
@@ -2888,6 +2999,8 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
         const x = normalizar(ax.dir);
         r = { origem: ax.origem, normal, x, y: cruz(normal, x) };
       }
+      // origem fixa: projeção da origem da peça no plano (não depende do centro da face)
+      if (f.origemFixa) r = { ...r, origem: mul3(r.normal, esc3(r.origem, r.normal)) };
       ctx.planos.set(f.id, r);
       ctx.refsSaida.push({ id: f.id, tipo: "plano", ref: r, tamanho: 0 });
       return;

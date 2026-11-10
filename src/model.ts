@@ -479,6 +479,12 @@ export interface FeaturePlanoRef extends FeatureBase {
   distancia: number;
   angulo: number;
   inverter: boolean;
+  /**
+   * Origem do esboço = projeção da origem da peça no plano (fixa: não anda quando a face de
+   * referência muda). Planos criados a partir de 10/11/2026; os antigos ficam sem (origem no
+   * centro da face), para nada mudar de lugar nos arquivos existentes.
+   */
+  origemFixa?: boolean;
 }
 
 /** Ponto de referência (features.md §15). */
@@ -1045,7 +1051,7 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco" | "importado
     case "espelhar":
       return { ...base, tipo, nome: `Espelhar${indice}`, recursos: [], corpo: false };
     case "planoRef":
-      return { ...base, tipo, nome: `Plano${indice}`, modo: "deslocamento", distancia: 20, angulo: 45, inverter: false };
+      return { ...base, tipo, nome: `Plano${indice}`, modo: "deslocamento", distancia: 20, angulo: 45, inverter: false, origemFixa: true };
     case "eixoRef":
       return { ...base, tipo, nome: `Eixo${indice}`, modo: "aresta" };
     case "flangeBase":

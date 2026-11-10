@@ -7,7 +7,11 @@ import { createRequire } from "node:module";
 import {
   documentoExemplo, documentoImportado, nomeUnico, novaFeature, novoEsboco, validarDocumento, type Feature, type FeatureEsboco, type FeatureExcluirFace, type FeatureExtrusao, type FeatureFilete, type FeatureMoverFace, type FeatureSubstituirFace, type Referencia,
 } from "../src/model";
-import { exportar, exportarDxf, regenerar } from "../src/kernel/regenerar";
+import { exportar, exportarDxf, fundir, regenerar } from "../src/kernel/regenerar";
+import { listarSolidos } from "../src/kernel/topologia";
+import { makeBox } from "replicad";
+import { readFileSync } from "node:fs";
+import { entidadesMinusculas } from "../src/esboco/geometria";
 import { medidasFuro } from "../src/kernel/furos";
 import { topologia } from "../src/kernel/topologia";
 import * as op from "../src/esboco/operacoes";
@@ -1156,6 +1160,94 @@ verdade("nome repetido ganha o próximo número", nomeUnico(["Extrusão1", "Cort
   verdade("contorno que se cruza: erro com o ponto do cruzamento", ruim.erros.length === 1 && /cruza a si mesmo perto de \(20\.4; -55\.3\)/.test(ruim.erros[0].mensagem));
   const bom = montar(-50);
   confere("curva ajustada: sem erro e 17 faces desenhadas (com as tampas)", bom.erros.length ? NaN : (bom.malha?.faces.length ?? 0) / 3, 17, 1e-9);
+}
+
+// ---------- "mesclar": face com face vira um corpo; folga real fica separada com aviso (10/11/2026) ----------
+{
+  const corpos = (r: ReturnType<typeof regenerar>) => (r.corpos ?? []).filter((c) => !c.malha).length;
+  // (a) dois blocos face com face (encosto parcial) → 1 corpo, volume somado
+  {
+    const e1 = retangulo(20, 20, "XY"), x1 = ext(e1, 10);
+    const e2 = retangulo(10, 6, "XY", 15, 2), x2 = ext(e2, 4);
+    const r = regenerar([e1, x1, e2, x2]);
+    semErros("blocos face com face", r);
+    verdade("blocos face com face: 1 corpo, sem aviso", corpos(r) === 1 && !r.avisos?.length);
+    confere("blocos face com face: volume = 4000 + 240", r.volume, 4240);
+  }
+  // ruído numérico (folga de 0,000001 mm) é colado; folga real (0,05 mm) não
+  {
+    const a = makeBox([0, 0, 0], [10, 10, 10]);
+    verdade("folga de 1e-6 mm: colada num corpo só", listarSolidos(fundir(a, makeBox([10.000001, 2, 2], [20, 8, 8]))).length === 1);
+    verdade("folga de 0,05 mm: continua separada", listarSolidos(fundir(a, makeBox([10.05, 2, 2], [20, 8, 8]))).length === 2);
+    verdade("face com face: 1 corpo", listarSolidos(fundir(a, makeBox([10, 2, 2], [20, 8, 8]))).length === 1);
+  }
+  // (b) a situação da TAMPA_JANELA recriada: caixa com casca de 2 mm, gancho extrudado encostando
+  // na parede interna (face com face, solto do piso) e espelhar o corpo → 1 corpo
+  const caixaComGancho = (folga: number, corpo: boolean) => {
+    const e1 = retangulo(60, 40, "XZ"), x1 = ext(e1, 12); // x −30…30, z −20…20, y 0…12
+    const casca = { ...(novaFeature("casca", 1) as any), espessura: 2, faces: [face([e1, x1], [0, 1, 0], [0, 12, 0])] } as Feature;
+    const e2 = retangulo(8, 10, "XZ", 24 - folga); // gancho x 20…28 encostando na parede interna x = 28
+    const x2 = ext(e2, 6, { de: { tipo: "deslocamento", dist: 6, inverter: false } }); // y 6…12 (solto do piso)
+    const esp = { ...(novaFeature("espelhar", 1) as any), plano: { tipo: "plano", id: "YZ" }, corpo, recursos: corpo ? [] : [x2.id] } as Feature;
+    return { feats: [e1, x1, casca, e2, x2, esp], x2, esp };
+  };
+  for (const corpo of [true, false]) {
+    const { feats, x2 } = caixaComGancho(0, corpo);
+    const ate = feats.indexOf(x2) + 1;
+    const r1 = regenerar(feats.slice(0, ate));
+    verdade(`casca + gancho encostando: 1 corpo (${corpo ? "espelhar corpo" : "espelhar recurso"})`, corpos(r1) === 1);
+    const r = regenerar(feats);
+    semErros(`casca + gancho + espelhar (${corpo ? "corpo" : "recurso"})`, r);
+    verdade(`casca + gancho + espelhar (${corpo ? "corpo" : "recurso"}): 1 corpo, sem aviso`, corpos(r) === 1 && !r.avisos?.length);
+    // casca: 60·40·12 − 56·36·10 = 8640; gancho 8·10·6 = 480 (dois)
+    confere(`casca + gancho + espelhar (${corpo ? "corpo" : "recurso"}): volume`, r.volume, 8640 + 2 * 480);
+  }
+  {
+    const { feats, x2 } = caixaComGancho(0.05, false);
+    const r = regenerar(feats);
+    const av = r.avisos?.find((a) => a.id === x2.id)?.mensagem ?? "";
+    verdade("gancho com folga de 0,05 mm: separado, com aviso dizendo a folga", corpos(r) === 3 && /folga de 0,05 mm/.test(av));
+  }
+  // a peça real do Johann (TAMPA_JANELA.wjcad, 10/11/2026): o 2º gancho do Esboço2 ficou 0,033 mm
+  // acima do piso (perfil sem relações; o Plano1 tem origem no centro da face, que mudou) → avisos
+  {
+    const doc = validarDocumento(JSON.parse(readFileSync(new URL("./modelos/tampa-janela.wjcad", import.meta.url), "utf8")));
+    const r = regenerar(doc.features);
+    semErros("TAMPA_JANELA", r);
+    const av = (nome: string) => r.avisos?.find((a) => a.id === doc.features.find((f) => f.nome === nome)?.id)?.mensagem ?? "";
+    verdade("TAMPA_JANELA: Extrusão2 avisa a folga de 0,0328 mm até a peça", /folga de 0,0328 mm/.test(av("Extrusão2")));
+    verdade("TAMPA_JANELA: Espelhar1 avisa que encosta só por aresta", /só por uma aresta ou um ponto/.test(av("Espelhar1")));
+    confere("TAMPA_JANELA: volume (3 corpos, como no aparelho)", r.volume, 11799.615, 1e-5);
+    // gancho corrigido (pontos de baixo do 2º perfil no piso, v = −1) → Extrusão2 vira 1 corpo
+    const esb2 = doc.features.find((f) => f.nome === "Esboço2") as FeatureEsboco;
+    const corr = structuredClone(doc.features);
+    const e2c = corr.find((f) => f.id === esb2.id) as FeatureEsboco;
+    for (const q of e2c.pontos) if (q.id === "dkiymt5y" || q.id === "w607iojr") q.y = -1;
+    const ate = corr.findIndex((f) => f.nome === "Extrusão2") + 1;
+    const rc = regenerar(corr.slice(0, ate));
+    verdade("TAMPA_JANELA corrigida: Extrusão2 = 1 corpo, sem aviso", corpos(rc) === 1 && !rc.avisos?.length);
+    // volume: casca 11171,948 + gancho A + gancho B (0,0328 mm mais alto: + 1 · 10 · 0,0328)
+    confere("TAMPA_JANELA corrigida: volume da Extrusão2", rc.volume, 11385.795 + 0.328, 1e-5);
+    const rf = regenerar(corr);
+    verdade("TAMPA_JANELA corrigida inteira (até Espelhar1): 1 corpo, sem aviso", corpos(rf) === 1 && !rf.avisos?.length);
+    // mesmo volume da peça com folga + os dois ganchos (original e espelhado) 0,0328 mm mais altos
+    confere("TAMPA_JANELA corrigida: volume final", rf.volume, 11799.615 + 2 * 0.328, 1e-5);
+    // aviso de entidade minúscula: os 2 arcos de r ≈ 0,27 mm sem cota do Esboço2
+    const miudas = entidadesMinusculas(esb2);
+    verdade("TAMPA_JANELA: Esboço2 com 2 entidades minúsculas (arcos R 0,27 mm)", miudas.length === 2 && miudas.every((m) => /^arco R 0,27 mm$/.test(m.texto)));
+    verdade("Esboço1 sem entidades minúsculas (R 1,5 e R 8)", entidadesMinusculas(doc.features[0] as FeatureEsboco).length === 0);
+  }
+  // plano novo a partir de face: origem fixa (projeção da origem); plano antigo segue o centro da face
+  {
+    const e1 = retangulo(40, 20, "XY", 10, 0), x1 = ext(e1, 10); // x −10…30, y −10…10, z 0…10
+    const ref = face([e1, x1], [0, 0, 1], [10, 0, 10]);
+    const novo = { ...(novaFeature("planoRef", 1) as any), ref1: ref, distancia: 5 } as Feature;
+    const antigo = { ...novo, id: "planoAntigo", origemFixa: undefined } as Feature;
+    const r = regenerar([e1, x1, novo, antigo]);
+    const o = (id: string) => (r.referencias.find((x) => x.id === id) as { ref: { origem: number[] } }).ref.origem.map((v) => +v.toFixed(6));
+    verdade("plano novo: origem fixa (0; 0; 15)", JSON.stringify(o(novo.id)) === "[0,0,15]");
+    verdade("plano antigo: origem no centro da face (10; 0; 15)", JSON.stringify(o("planoAntigo")) === "[10,0,15]");
+  }
 }
 
 if (falhas) {

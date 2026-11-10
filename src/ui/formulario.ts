@@ -42,6 +42,8 @@ export interface ContextoFormulario {
   ok(): void;
   cancelar(): void;
   erro?: string;
+  /** aviso que não impede o recurso (ex.: corpo separado no "mesclar") */
+  aviso?: string;
   /** Campo de seleção que recebe os cliques no viewport/árvore. */
   campoAtivo: string | null;
   ativarCampo(cam: string | null, aceita: TipoSel[], multiplo: boolean): void;
@@ -97,6 +99,7 @@ export function renderizarFormulario<F>(painel: HTMLElement, f: F, esq: Esquema<
   cab.append(ok, cancelar);
   painel.append(cab);
   if (ctx.erro) painel.append(el("p", "prop-erro", ctx.erro));
+  else if (ctx.aviso) painel.append(el("p", "prop-aviso", `⚠ ${ctx.aviso}`));
 
   if (esq.abas?.length) {
     const abas = el("div", "pc-abas");

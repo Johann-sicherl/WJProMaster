@@ -203,6 +203,8 @@ let selPeca: Referencia[] = [];
 /** Ponto tocado na última face selecionada (posição inicial de furo). */
 let pontoTocado: Vec3 | null = null;
 let errosPorFeature = new Map<string, string>();
+/** avisos que não impedem o recurso (corpo separado no "mesclar") */
+let avisosPorFeature = new Map<string, string>();
 let tempos: { id: string; ms: number }[] = [];
 let referenciasKernel: InfoReferencia[] = [];
 /** Faces da peça final de cada recurso (destaque ao selecionar na árvore). */
@@ -354,6 +356,7 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
     primeiraRegeneracao = false;
   }
   errosPorFeature = new Map(r.erros.map((e) => [e.id, e.mensagem]));
+  avisosPorFeature = new Map((r.avisos ?? []).map((e) => [e.id, e.mensagem]));
   tempos = r.tempos;
   referenciasKernel = r.referencias;
   facesPorRecurso = r.facesPorRecurso ?? {};
@@ -372,6 +375,12 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
     const el = $("painel-comando").querySelector<HTMLElement>(".prop-erro");
     if (msg && !el) renderizarComando();
     else if (el) msg ? (el.textContent = msg) : el.remove();
+    if (!msg) {
+      const aviso = avisosPorFeature.get(comando.f.id);
+      const ea = $("painel-comando").querySelector<HTMLElement>(".prop-aviso");
+      if (aviso && !ea) renderizarComando();
+      else if (ea) aviso ? (ea.textContent = `⚠ ${aviso}`) : ea.remove();
+    }
   }
   if (avaliacao?.tipo === "analise") mostrarLegendaAnalise();
   // cotas abertas sobre o modelo: refeitas na peça nova (posições mudam com os valores)
@@ -408,6 +417,8 @@ function atualizarStatus() {
   }
   if (selPeca.length) estado = `${selPeca.length} entidade${selPeca.length > 1 ? "s" : ""} selecionada${selPeca.length > 1 ? "s" : ""}`;
   if (nErros) estado += ` · ${nErros} recurso${nErros > 1 ? "s" : ""} com erro`;
+  const nAvisos = [...avisosPorFeature.keys()].filter((id) => !errosPorFeature.has(id)).length;
+  if (nAvisos) estado += ` · ${nAvisos} aviso${nAvisos > 1 ? "s" : ""}`;
   if (doc.retrocesso !== undefined) estado += " · retrocedido";
   if (aguardando) estado = aguardando.para === "furo" ? "Furo: toque a face plana onde ficam os furos" : "Novo esboço: toque um plano na árvore ou uma face plana";
   if (editor) estado = `Editando ${editor.esb.nome} · ${editor.textoDefinicao}${viewport.escalaReal ? " · Escala real 1:1" : ""}`;
@@ -1031,6 +1042,7 @@ function renderizarComando() {
   const esq = esquemaComando(c);
   const ctx: ContextoFormulario = {
     erro: errosPorFeature.get(c.f.id),
+    aviso: avisosPorFeature.get(c.f.id),
     aoMudar: (final) => {
       salvarAutosave();
       regenerarPrevia(final ? 80 : 300);
@@ -1215,6 +1227,7 @@ function mostrarPainel(modo: "arvore" | "comando" | "esboco") {
   $("arvore-flutuante").hidden = !emComando;
   $("arvore-mini").hidden = true;
   $("canto-confirmacao").hidden = !emComando;
+  rotularCantoConfirmacao(modo === "esboco");
   if (!emComando) $("painel-comando").innerHTML = "";
   // celular: o painel do comando abre a gaveta (menos com a caixa flutuante); esboço e árvore deixam o modelo livre
   abrirGaveta(modo === "comando" && !caixasFlutuantesDoComando());
@@ -1224,6 +1237,32 @@ $("st-filtro").onclick = () => {
   prefs.filtroAnterior = prefs.filtroSelecao;
   alternarFiltro("limpar");
 };
+/** Ícones próprios do canto no esboço: folha de esboço com ✓ (sair) e com ✕ (descartar). */
+const ICONE_SAIR_ESBOCO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h11v6M4 4v16h8"/><path d="M7 15l4-6 3 3"/><path d="M14 18l3 3 5-6"/></svg>`;
+const ICONE_DESCARTAR_ESBOCO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h11v6M4 4v16h8"/><path d="M7 15l4-6 3 3"/><path d="M15 15l6 6M21 15l-6 6"/></svg>`;
+let cantoEmEsboco: boolean | null = null;
+
+/** Canto da vista: no esboço o par é Sair do esboço / Descartar (lado a lado); nos comandos, OK / Cancelar. */
+function rotularCantoConfirmacao(esboco: boolean) {
+  if (cantoEmEsboco === esboco) return;
+  cantoEmEsboco = esboco;
+  const ok = $("cc-ok"), x = $("cc-cancelar");
+  $("canto-confirmacao").classList.toggle("modo-esboco", esboco);
+  if (esboco) {
+    ok.innerHTML = `${ICONE_SAIR_ESBOCO}<span class="cc-rotulo">Sair do esboço</span>`;
+    ok.title = "Sair do esboço (guarda as alterações do esboço inteiro)";
+    x.innerHTML = `${ICONE_DESCARTAR_ESBOCO}<span class="cc-rotulo">Descartar</span>`;
+    x.title = "Descartar todas as alterações do esboço e sair";
+  } else {
+    ok.textContent = "✓";
+    ok.title = "OK (Enter)";
+    x.textContent = "✕";
+    x.title = "Cancelar (Esc)";
+  }
+  ok.setAttribute("aria-label", ok.title);
+  x.setAttribute("aria-label", x.title);
+}
+
 $("cc-ok").onclick = () => (editor ? sairEsboco() : avaliacao && !comando ? fecharAvaliacaoMantendo() : confirmarComando());
 $("cc-cancelar").onclick = () => (editor ? descartarEsboco() : avaliacao && !comando ? fecharAvaliacao() : cancelarComando());
 $("btn-arvore-flutuante").innerHTML = ICONES.peca;
@@ -2623,6 +2662,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     li.classList.toggle("suprimida", f.suprimida);
     li.classList.toggle("retrocedida", i >= limite);
     li.classList.toggle("com-erro", errosPorFeature.has(f.id));
+    li.classList.toggle("com-aviso", !errosPorFeature.has(f.id) && avisosPorFeature.has(f.id));
     li.classList.toggle("editando", f.id === editor?.esb.id);
     li.innerHTML = `
       ${seta === null ? `<span class="item-seta vazia"></span>` : `<button class="item-seta" aria-expanded="${seta}" aria-label="${seta ? "Recolher" : "Mostrar elementos usados"}">${seta ? "▾" : "▸"}</button>`}
@@ -2634,7 +2674,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     const opr = "operacao" in f && f.operacao === "cortar" ? " · corte" : "";
     const ms = tempos.find((t) => t.id === f.id)?.ms;
     li.querySelector("small")!.textContent = `${ROTULO_TIPO[f.tipo]}${opr}${f.id === editor?.esb.id ? " · editando" : ""}${ms && ms > 300 ? ` · ${(ms / 1000).toFixed(1)} s` : ""}`;
-    li.title = errosPorFeature.get(f.id) ?? "";
+    li.title = errosPorFeature.get(f.id) ?? avisosPorFeature.get(f.id) ?? "";
     li.onclick = (ev) => {
       if ((ev.target as HTMLElement).closest(".item-seta")) {
         if (expandidos.has(f.id)) expandidos.delete(f.id);

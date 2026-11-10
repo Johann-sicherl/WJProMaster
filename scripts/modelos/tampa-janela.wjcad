@@ -1,0 +1,1141 @@
+{
+ "formato": "wjcad",
+ "versao": 3,
+ "nome": "TAMPA_JANELA",
+ "features": [
+  {
+   "id": "rmjuu3e0",
+   "tipo": "esboco",
+   "nome": "Esboço1",
+   "suprimida": false,
+   "suporte": {
+    "tipo": "plano",
+    "plano": "XZ",
+    "deslocamento": 0
+   },
+   "pontos": [
+    {
+     "id": "d1veyv6s",
+     "x": 67,
+     "y": -4.513898307157584e-36
+    },
+    {
+     "id": "eskxgvl8",
+     "x": 67,
+     "y": -40
+    },
+    {
+     "id": "qz6o4ncz",
+     "x": 40,
+     "y": -40
+    },
+    {
+     "id": "dpmmkjrs",
+     "x": 40,
+     "y": -67
+    },
+    {
+     "id": "u0344y9c",
+     "x": 3.009265538105056e-36,
+     "y": -67
+    },
+    {
+     "id": "nitu825i",
+     "x": 0,
+     "y": 0
+    },
+    {
+     "id": "gtkre1z3",
+     "x": 3.009265538105056e-36,
+     "y": -7.999999999999999
+    },
+    {
+     "id": "p059uvnh",
+     "x": 8.000000000000002,
+     "y": -4.513898307157584e-36
+    },
+    {
+     "id": "3fgpcrdb",
+     "x": 8,
+     "y": -8
+    },
+    {
+     "id": "z1y8butm",
+     "x": 41.499999999993996,
+     "y": -40
+    },
+    {
+     "id": "lth671dg",
+     "x": 40,
+     "y": -41.499999999993996
+    },
+    {
+     "id": "j3fmjbxk",
+     "x": 41.500000000000064,
+     "y": -41.500000000000064
+    }
+   ],
+   "geos": [
+    {
+     "id": "8r53k3vd",
+     "tipo": "linha",
+     "p1": "d1veyv6s",
+     "p2": "eskxgvl8"
+    },
+    {
+     "id": "8zt13gwx",
+     "tipo": "linha",
+     "p1": "eskxgvl8",
+     "p2": "z1y8butm"
+    },
+    {
+     "id": "ur17t2v8",
+     "tipo": "linha",
+     "p1": "lth671dg",
+     "p2": "dpmmkjrs"
+    },
+    {
+     "id": "9tw35dth",
+     "tipo": "linha",
+     "p1": "dpmmkjrs",
+     "p2": "u0344y9c"
+    },
+    {
+     "id": "8o43fouo",
+     "tipo": "linha",
+     "p1": "u0344y9c",
+     "p2": "gtkre1z3"
+    },
+    {
+     "id": "vo9edxvs",
+     "tipo": "linha",
+     "p1": "p059uvnh",
+     "p2": "d1veyv6s"
+    },
+    {
+     "id": "8hvhnw0h",
+     "tipo": "ponto",
+     "p": "nitu825i",
+     "construcao": true
+    },
+    {
+     "id": "mg96vcig",
+     "tipo": "arco",
+     "c": "3fgpcrdb",
+     "ini": "p059uvnh",
+     "fim": "gtkre1z3",
+     "r": 8
+    },
+    {
+     "id": "4r3y4919",
+     "tipo": "ponto",
+     "p": "qz6o4ncz",
+     "construcao": true
+    },
+    {
+     "id": "1x6sqxfo",
+     "tipo": "arco",
+     "c": "j3fmjbxk",
+     "ini": "z1y8butm",
+     "fim": "lth671dg",
+     "r": 1.5
+    }
+   ],
+   "restricoes": [
+    {
+     "tipo": "vertical",
+     "a": "8r53k3vd",
+     "id": "xkx623v5"
+    },
+    {
+     "tipo": "horizontal",
+     "a": "8zt13gwx",
+     "id": "wg9ky9st"
+    },
+    {
+     "tipo": "vertical",
+     "a": "ur17t2v8",
+     "id": "p7aq8ct3"
+    },
+    {
+     "tipo": "horizontal",
+     "a": "9tw35dth",
+     "id": "788fably"
+    },
+    {
+     "tipo": "vertical",
+     "a": "8o43fouo",
+     "id": "tx46yuf8"
+    },
+    {
+     "id": "ud1fvlo9",
+     "valor": 67,
+     "texto": {
+      "x": 40.785425101214564,
+      "y": 12.6824138133166
+     },
+     "tipo": "distancia",
+     "a": "8o43fouo",
+     "b": "8r53k3vd"
+    },
+    {
+     "tipo": "igual",
+     "a": "8r53k3vd",
+     "b": "9tw35dth",
+     "id": "224ldwj5"
+    },
+    {
+     "tipo": "horizontal",
+     "a": "vo9edxvs",
+     "id": "rz78wx3e"
+    },
+    {
+     "tipo": "coincidente",
+     "a": "nitu825i",
+     "b": "origem",
+     "id": "u1k6b27z"
+    },
+    {
+     "id": "prozd9i9",
+     "valor": 40,
+     "texto": {
+      "x": 81.31749535174977,
+      "y": -20.457506173646323
+     },
+     "tipo": "distancia",
+     "a": "8r53k3vd"
+    },
+    {
+     "tipo": "igual",
+     "a": "8o43fouo",
+     "b": "vo9edxvs",
+     "id": "9948wfkf"
+    },
+    {
+     "tipo": "coincidente",
+     "a": "nitu825i",
+     "b": "8o43fouo",
+     "id": "h7bhrvqd"
+    },
+    {
+     "tipo": "coincidente",
+     "a": "nitu825i",
+     "b": "vo9edxvs",
+     "id": "28oe818b"
+    },
+    {
+     "tipo": "tangente",
+     "a": "8o43fouo",
+     "b": "mg96vcig",
+     "id": "v9bdwz9c"
+    },
+    {
+     "tipo": "tangente",
+     "a": "vo9edxvs",
+     "b": "mg96vcig",
+     "id": "5o4gsg9g"
+    },
+    {
+     "tipo": "raio",
+     "a": "mg96vcig",
+     "valor": 8,
+     "id": "dbj4lht1"
+    },
+    {
+     "tipo": "coincidente",
+     "a": "qz6o4ncz",
+     "b": "8zt13gwx",
+     "id": "lkybrz0f"
+    },
+    {
+     "tipo": "coincidente",
+     "a": "qz6o4ncz",
+     "b": "ur17t2v8",
+     "id": "h4ox8jja"
+    },
+    {
+     "tipo": "tangente",
+     "a": "8zt13gwx",
+     "b": "1x6sqxfo",
+     "id": "2dzuwcfr"
+    },
+    {
+     "tipo": "tangente",
+     "a": "ur17t2v8",
+     "b": "1x6sqxfo",
+     "id": "2olq6198"
+    },
+    {
+     "tipo": "raio",
+     "a": "1x6sqxfo",
+     "valor": 1.5,
+     "id": "69dqli7i"
+    }
+   ]
+  },
+  {
+   "id": "jrbxp8rn",
+   "suprimida": false,
+   "tipo": "extrusao",
+   "nome": "Extrusão1",
+   "mesclar": true,
+   "operacao": "adicionar",
+   "plano": "XZ",
+   "deslocamento": 0,
+   "centroU": 0,
+   "centroV": 0,
+   "perfil": {
+    "tipo": "retangulo",
+    "largura": 40,
+    "altura": 40,
+    "raioCanto": 0
+   },
+   "profundidade": 12,
+   "de": {
+    "tipo": "plano",
+    "dist": 0,
+    "inverter": false
+   },
+   "condicao": {
+    "tipo": "cego",
+    "dist": 10
+   },
+   "inclinacao": {
+    "ativa": false,
+    "angulo": 5,
+    "paraFora": false
+   },
+   "direcao2": {
+    "ativa": false,
+    "condicao": {
+     "tipo": "cego",
+     "dist": 10
+    },
+    "inclinacao": {
+     "ativa": false,
+     "angulo": 5,
+     "paraFora": false
+    }
+   },
+   "fino": {
+    "ativo": false,
+    "tipo": "uma",
+    "t1": 2,
+    "t2": 2,
+    "inverter": false
+   },
+   "esboco": "rmjuu3e0"
+  },
+  {
+   "id": "5xfvu9av",
+   "suprimida": false,
+   "tipo": "casca",
+   "nome": "Casca1",
+   "espessura": 2,
+   "faces": [
+    {
+     "tipo": "face",
+     "ass": {
+      "geom": "plano",
+      "centro": [
+       20.5,
+       6,
+       66.99999999999167
+      ],
+      "area": 492,
+      "normal": [
+       0,
+       0,
+       1
+      ]
+     }
+    },
+    {
+     "tipo": "face",
+     "ass": {
+      "geom": "plano",
+      "centro": [
+       29.977865851561344,
+       12,
+       29.977865851557166
+      ],
+      "area": 3802.6991118427363,
+      "normal": [
+       0,
+       1,
+       0
+      ]
+     }
+    },
+    {
+     "tipo": "face",
+     "ass": {
+      "geom": "plano",
+      "centro": [
+       67,
+       6,
+       20.5
+      ],
+      "area": 492,
+      "normal": [
+       1,
+       0,
+       0
+      ]
+     }
+    }
+   ],
+   "paraFora": false
+  },
+  {
+   "id": "gbzi6dix",
+   "suprimida": false,
+   "tipo": "planoRef",
+   "nome": "Plano1",
+   "modo": "deslocamento",
+   "distancia": 15,
+   "angulo": 45,
+   "inverter": true,
+   "ref1": {
+    "tipo": "face",
+    "ass": {
+     "geom": "plano",
+     "centro": [
+      67,
+      2.9672131147540983,
+      20.499999999999993
+     ],
+     "area": 122,
+     "normal": [
+      1,
+      0,
+      0
+     ]
+    }
+   }
+  },
+  {
+   "id": "glca9vq6",
+   "tipo": "esboco",
+   "nome": "Esboço2",
+   "suprimida": false,
+   "suporte": {
+    "tipo": "planoRef",
+    "id": "gbzi6dix"
+   },
+   "pontos": [
+    {
+     "id": "cxj2g79a",
+     "x": -18,
+     "y": -1.0000000000000004
+    },
+    {
+     "id": "a8r4zh12",
+     "x": -17,
+     "y": -1.0000000000000004
+    },
+    {
+     "id": "7p6ybldj",
+     "x": -17,
+     "y": 8
+    },
+    {
+     "id": "vsicmw56",
+     "x": -16.133974596215563,
+     "y": 8.5
+    },
+    {
+     "id": "d5gv8coy",
+     "x": -16.23509319624875,
+     "y": 9
+    },
+    {
+     "id": "p8typgz8",
+     "x": -16.268507287441214,
+     "y": 8.733017456481802
+    },
+    {
+     "id": "dkiymt5y",
+     "x": -2.5000000000000036,
+     "y": -0.9672131147540983
+    },
+    {
+     "id": "yt6zjlxd",
+     "x": -2.5000000000000036,
+     "y": 8.032786885245901
+    },
+    {
+     "id": "vm30a8qa",
+     "x": -3.366025404035327,
+     "y": 8.532786885390749
+    },
+    {
+     "id": "w607iojr",
+     "x": -1.5000000000000036,
+     "y": -0.9672131147540983
+    },
+    {
+     "id": "6ctc2b8u",
+     "x": -1.5000000000000036,
+     "y": 9.032786885245901
+    },
+    {
+     "id": "q0yrpyns",
+     "x": -3.232050807858578,
+     "y": 8.764837692892403
+    },
+    {
+     "id": "ja35ubg6",
+     "x": -3.2320508078585775,
+     "y": 9.032786885245901
+    },
+    {
+     "id": "nvy7c8q3",
+     "x": -18,
+     "y": 9
+    },
+    {
+     "id": "lvjpyccv",
+     "x": -20,
+     "y": -3.0000000000000004
+    },
+    {
+     "id": "pq3k6qqr",
+     "x": -20,
+     "y": 9
+    }
+   ],
+   "geos": [
+    {
+     "id": "3cvlfdkf",
+     "tipo": "ponto",
+     "p": "cxj2g79a",
+     "construcao": true,
+     "externa": {
+      "tipo": "vertice",
+      "p": [
+       42,
+       2,
+       38
+      ]
+     }
+    },
+    {
+     "id": "8v389rtl",
+     "tipo": "linha",
+     "p1": "cxj2g79a",
+     "p2": "a8r4zh12"
+    },
+    {
+     "id": "iukb53uf",
+     "tipo": "linha",
+     "p1": "a8r4zh12",
+     "p2": "7p6ybldj"
+    },
+    {
+     "id": "o57uiuh1",
+     "tipo": "linha",
+     "p1": "7p6ybldj",
+     "p2": "vsicmw56"
+    },
+    {
+     "id": "i659hokg",
+     "tipo": "arco",
+     "c": "p8typgz8",
+     "ini": "vsicmw56",
+     "fim": "d5gv8coy",
+     "r": 0.26906538245130085
+    },
+    {
+     "id": "7gea2g56",
+     "tipo": "linha",
+     "p1": "dkiymt5y",
+     "p2": "yt6zjlxd"
+    },
+    {
+     "id": "46bp4voh",
+     "tipo": "linha",
+     "p1": "yt6zjlxd",
+     "p2": "vm30a8qa"
+    },
+    {
+     "id": "gtnugguw",
+     "tipo": "linha",
+     "p1": "w607iojr",
+     "p2": "6ctc2b8u"
+    },
+    {
+     "id": "f3ldpp4u",
+     "tipo": "arco",
+     "c": "q0yrpyns",
+     "ini": "ja35ubg6",
+     "fim": "vm30a8qa",
+     "r": 0.2679491923534984
+    },
+    {
+     "id": "jaqs1z9r",
+     "tipo": "linha",
+     "p1": "ja35ubg6",
+     "p2": "6ctc2b8u",
+     "construcao": true
+    },
+    {
+     "id": "41bytv63",
+     "tipo": "linha",
+     "p1": "dkiymt5y",
+     "p2": "w607iojr",
+     "construcao": true
+    },
+    {
+     "id": "urnuco2s",
+     "tipo": "linha",
+     "p1": "ja35ubg6",
+     "p2": "6ctc2b8u"
+    },
+    {
+     "id": "qkkjlhdg",
+     "tipo": "linha",
+     "p1": "dkiymt5y",
+     "p2": "w607iojr"
+    },
+    {
+     "id": "xc0cced4",
+     "tipo": "ponto",
+     "p": "nvy7c8q3",
+     "construcao": true,
+     "externa": {
+      "tipo": "vertice",
+      "p": [
+       42,
+       12,
+       38
+      ]
+     }
+    },
+    {
+     "id": "e9irjapz",
+     "tipo": "linha",
+     "p1": "cxj2g79a",
+     "p2": "nvy7c8q3"
+    },
+    {
+     "id": "ylmc5iaa",
+     "tipo": "linha",
+     "p1": "nvy7c8q3",
+     "p2": "d5gv8coy"
+    },
+    {
+     "id": "yumruwst",
+     "tipo": "linha",
+     "p1": "lvjpyccv",
+     "p2": "pq3k6qqr",
+     "construcao": true,
+     "externa": {
+      "tipo": "aresta",
+      "ass": {
+       "geom": "linha",
+       "meio": [
+        67,
+        6,
+        40
+       ],
+       "a": [
+        67,
+        0,
+        40
+       ],
+       "b": [
+        67,
+        12,
+        40
+       ],
+       "comprimento": 12
+      }
+     }
+    }
+   ],
+   "restricoes": [
+    {
+     "tipo": "vertical",
+     "a": "iukb53uf",
+     "id": "kn6vpu53"
+    },
+    {
+     "tipo": "tangente",
+     "a": "o57uiuh1",
+     "b": "i659hokg",
+     "id": "6tb2vimd"
+    },
+    {
+     "id": "md9u2mr3",
+     "valor": 9,
+     "texto": {
+      "x": -14.96331886822724,
+      "y": 2.281335962480616
+     },
+     "tipo": "distancia",
+     "a": "iukb53uf"
+    },
+    {
+     "id": "9ulhxodu",
+     "valor": 60,
+     "texto": {
+      "x": -15.416588369897845,
+      "y": 9.76692920016802
+     },
+     "tipo": "angulo",
+     "a": "iukb53uf",
+     "b": "o57uiuh1"
+    },
+    {
+     "tipo": "fixo",
+     "a": "cxj2g79a",
+     "id": "ifdpq6cl",
+     "x": -18,
+     "y": -1.0000000000000004
+    },
+    {
+     "tipo": "fixo",
+     "a": "nvy7c8q3",
+     "id": "wsj0y9wq",
+     "x": -18,
+     "y": 9
+    },
+    {
+     "tipo": "horizontal",
+     "a": "8v389rtl",
+     "id": "8ccvmgee"
+    },
+    {
+     "tipo": "horizontal",
+     "a": "ylmc5iaa",
+     "id": "lh6awmqm"
+    },
+    {
+     "tipo": "fixo",
+     "a": "lvjpyccv",
+     "id": "nkpb09rc",
+     "x": -20,
+     "y": -3.0000000000000004
+    },
+    {
+     "tipo": "fixo",
+     "a": "pq3k6qqr",
+     "id": "ax518qbj",
+     "x": -20,
+     "y": 9
+    },
+    {
+     "id": "i4vivnip",
+     "valor": 3,
+     "texto": {
+      "x": -18.49613054883835,
+      "y": 10.406212537095012
+     },
+     "tipo": "distancia",
+     "a": "yumruwst",
+     "b": "iukb53uf"
+    },
+    {
+     "id": "vxte0wwd",
+     "valor": 9.5,
+     "texto": {
+      "x": -13.611990509499618,
+      "y": 3.7446398631700184
+     },
+     "tipo": "distanciaV",
+     "a": "vsicmw56",
+     "b": "a8r4zh12"
+    }
+   ]
+  },
+  {
+   "id": "djk57gts",
+   "suprimida": false,
+   "tipo": "extrusao",
+   "nome": "Extrusão2",
+   "mesclar": true,
+   "operacao": "adicionar",
+   "plano": "XZ",
+   "deslocamento": 0,
+   "centroU": 0,
+   "centroV": 0,
+   "perfil": {
+    "tipo": "retangulo",
+    "largura": 40,
+    "altura": 40,
+    "raioCanto": 0
+   },
+   "profundidade": 10,
+   "de": {
+    "tipo": "plano",
+    "dist": 0,
+    "inverter": false
+   },
+   "condicao": {
+    "tipo": "cego",
+    "dist": 10
+   },
+   "inclinacao": {
+    "ativa": false,
+    "angulo": 5,
+    "paraFora": false
+   },
+   "direcao2": {
+    "ativa": false,
+    "condicao": {
+     "tipo": "cego",
+     "dist": 10
+    },
+    "inclinacao": {
+     "ativa": false,
+     "angulo": 5,
+     "paraFora": false
+    }
+   },
+   "fino": {
+    "ativo": false,
+    "tipo": "uma",
+    "t1": 2,
+    "t2": 2,
+    "inverter": false
+   },
+   "esboco": "glca9vq6",
+   "inverter": true
+  },
+  {
+   "id": "cfx6a1g4",
+   "tipo": "esboco",
+   "nome": "Esboço3",
+   "suprimida": false,
+   "suporte": {
+    "tipo": "face",
+    "origem": [
+     52,
+     0,
+     0
+    ],
+    "normal": [
+     1,
+     0,
+     0
+    ],
+    "eixoX": [
+     0,
+     0,
+     -1
+    ],
+    "face": {
+     "geom": "plano",
+     "centro": [
+      52,
+      7.33169099037622,
+      22.059421922811058
+     ],
+     "area": 10.692057963253252,
+     "normal": [
+      1,
+      0,
+      0
+     ]
+    }
+   },
+   "pontos": [
+    {
+     "id": "itfflfru",
+     "x": -21.500000000000004,
+     "y": 12.032786885245901
+    },
+    {
+     "id": "0abey1oq",
+     "x": -19.500268762987712,
+     "y": 2
+    },
+    {
+     "id": "4o14jtz5",
+     "x": -8,
+     "y": 2
+    },
+    {
+     "id": "ahs4riu2",
+     "x": -67,
+     "y": 2
+    },
+    {
+     "id": "sxdn6ick",
+     "x": -21.500000000000004,
+     "y": 2.0327868852459017
+    }
+   ],
+   "geos": [
+    {
+     "id": "cllds5yl",
+     "tipo": "ponto",
+     "p": "itfflfru",
+     "construcao": true,
+     "externa": {
+      "tipo": "vertice",
+      "p": [
+       42,
+       12.032786885245901,
+       21.500000000000004
+      ]
+     }
+    },
+    {
+     "id": "fga39vh1",
+     "tipo": "linha",
+     "p1": "4o14jtz5",
+     "p2": "ahs4riu2",
+     "construcao": true,
+     "externa": {
+      "tipo": "aresta",
+      "ass": {
+       "geom": "linha",
+       "meio": [
+        2,
+        2,
+        37.5
+       ],
+       "a": [
+        2,
+        2,
+        8
+       ],
+       "b": [
+        2,
+        2,
+        67
+       ],
+       "comprimento": 59
+      }
+     }
+    },
+    {
+     "id": "4fuuym18",
+     "tipo": "linha",
+     "p1": "itfflfru",
+     "p2": "0abey1oq"
+    },
+    {
+     "id": "asriglj3",
+     "tipo": "ponto",
+     "p": "sxdn6ick",
+     "construcao": true,
+     "externa": {
+      "tipo": "vertice",
+      "p": [
+       52,
+       2.0327868852459017,
+       21.500000000000004
+      ]
+     }
+    },
+    {
+     "id": "eiivzru7",
+     "tipo": "linha",
+     "p1": "0abey1oq",
+     "p2": "sxdn6ick"
+    },
+    {
+     "id": "o5ksmmys",
+     "tipo": "linha",
+     "p1": "sxdn6ick",
+     "p2": "itfflfru"
+    }
+   ],
+   "restricoes": [
+    {
+     "tipo": "fixo",
+     "a": "itfflfru",
+     "id": "ns3xr72o",
+     "x": -21.500000000000004,
+     "y": 12.032786885245901
+    },
+    {
+     "tipo": "fixo",
+     "a": "4o14jtz5",
+     "id": "e1rnenyi",
+     "x": -8,
+     "y": 2
+    },
+    {
+     "tipo": "fixo",
+     "a": "ahs4riu2",
+     "id": "6i5xq4vu",
+     "x": -67,
+     "y": 2
+    },
+    {
+     "tipo": "coincidente",
+     "a": "0abey1oq",
+     "b": "fga39vh1",
+     "id": "3nn8lk1r"
+    },
+    {
+     "tipo": "fixo",
+     "a": "sxdn6ick",
+     "id": "pygrwszz",
+     "x": -21.500000000000004,
+     "y": 2.0327868852459017
+    },
+    {
+     "id": "pwhvbad1",
+     "valor": 2,
+     "texto": {
+      "x": -20.591295495973352,
+      "y": -1.6875741910570898
+     },
+     "tipo": "distancia",
+     "a": "eiivzru7"
+    }
+   ]
+  },
+  {
+   "id": "zxcaky1g",
+   "suprimida": false,
+   "tipo": "extrusao",
+   "nome": "Extrusão3",
+   "mesclar": true,
+   "operacao": "adicionar",
+   "plano": "XZ",
+   "deslocamento": 0,
+   "centroU": 0,
+   "centroV": 0,
+   "perfil": {
+    "tipo": "retangulo",
+    "largura": 40,
+    "altura": 40,
+    "raioCanto": 0
+   },
+   "profundidade": 10,
+   "de": {
+    "tipo": "superficie",
+    "dist": 0,
+    "inverter": false,
+    "ref": {
+     "tipo": "face",
+     "ass": {
+      "geom": "plano",
+      "centro": [
+       42,
+       7.33169099037622,
+       22.059421922811058
+      ],
+      "area": 10.692057963253252,
+      "normal": [
+       -1,
+       0,
+       0
+      ]
+     }
+    }
+   },
+   "condicao": {
+    "tipo": "cego",
+    "dist": 10
+   },
+   "inclinacao": {
+    "ativa": false,
+    "angulo": 5,
+    "paraFora": false
+   },
+   "direcao2": {
+    "ativa": false,
+    "condicao": {
+     "tipo": "cego",
+     "dist": 10
+    },
+    "inclinacao": {
+     "ativa": false,
+     "angulo": 5,
+     "paraFora": false
+    }
+   },
+   "fino": {
+    "ativo": false,
+    "tipo": "uma",
+    "t1": 2,
+    "t2": 2,
+    "inverter": false
+   },
+   "esboco": "cfx6a1g4"
+  },
+  {
+   "id": "tw8kwcna",
+   "suprimida": false,
+   "tipo": "eixoRef",
+   "nome": "Eixo2",
+   "modo": "cilindro",
+   "ref1": {
+    "tipo": "face",
+    "ass": {
+     "geom": "cilindro",
+     "centro": [
+      4.180281365643385,
+      7,
+      4.180281365643385
+     ],
+     "area": 94.24777960769379,
+     "eixo": [
+      0,
+      -1,
+      0
+     ],
+     "pontoEixo": [
+      7.999999999999999,
+      0,
+      8
+     ],
+     "raio": 6
+    }
+   }
+  },
+  {
+   "id": "3xit6z0s",
+   "suprimida": false,
+   "tipo": "planoRef",
+   "nome": "Plano2",
+   "modo": "angulo",
+   "distancia": 20,
+   "angulo": 45,
+   "inverter": false,
+   "ref1": {
+    "tipo": "face",
+    "ass": {
+     "geom": "plano",
+     "centro": [
+      54.24999999999999,
+      6,
+      40
+     ],
+     "area": 306.00000000000193,
+     "normal": [
+      0,
+      0,
+      1
+     ]
+    }
+   },
+   "ref2": {
+    "tipo": "eixo",
+    "id": "tw8kwcna"
+   }
+  },
+  {
+   "id": "noa2cl83",
+   "suprimida": false,
+   "tipo": "espelhar",
+   "nome": "Espelhar1",
+   "recursos": [
+    "zxcaky1g",
+    "djk57gts"
+   ],
+   "corpo": true,
+   "plano": {
+    "tipo": "plano",
+    "id": "3xit6z0s"
+   }
+  }
+ ]
+}
