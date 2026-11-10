@@ -149,8 +149,13 @@ export function renderizarPainelEsboco(
     }
   }
   if (ed.ferramenta === "fileteEsboco") {
+    const n = ed.cantosFilete.length;
+    painel.append(...campoSelecao("Entidades a filetar", false, true, "Toque os cantos no esboço",
+      ed.cantosFilete.map((_, i) => `Canto ${i + 1}`), () => {}, () => ed.limparCantosFilete()));
     painel.append(campoNumero("Raio", ed.raioFilete, "mm", (v) => (ed.raioFilete = Math.abs(v))));
-    painel.append(interruptor("Cotar cada filete", ed.cotarFilete, (v) => (ed.cotarFilete = v)));
+    painel.append(interruptor("Filetes iguais (uma cota para todos)", ed.filetesIguais, (v) => (ed.filetesIguais = v)));
+    painel.append(interruptor(ed.filetesIguais ? "Cotar o filete" : "Cotar cada filete", ed.cotarFilete, (v) => (ed.cotarFilete = v)));
+    painel.append(botao(n ? `Aplicar filete${n > 1 ? "s" : ""} (${n})` : "Aplicar filetes", () => ed.aplicarFiletes(), `destaque largo${n ? "" : " desabilitado"}`));
   }
   if (ed.ferramenta === "chanfroEsboco") painel.append(campoNumero("Distância", ed.distChanfro, "mm", (v) => (ed.distChanfro = Math.abs(v))));
   if (ed.ferramenta === "espelhar") {

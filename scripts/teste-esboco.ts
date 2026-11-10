@@ -187,6 +187,73 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   confere("perfil 80 → 30: aba com 30", Math.hypot(pt(linha0.p2).x - pt(linha0.p1).x, pt(linha0.p2).y - pt(linha0.p1).y), 30, 1e-6);
 }
 
+// 4d3. Filete de esboço no canto da origem (Johann, 10/11/2026): o canto vira canto virtual; mudar o raio
+// 3 → 8 não "puxa" o esboço e a cota de 67 (comprimento da linha) passa a medir do canto virtual
+{
+  for (const modo of ["origem como ponta", "coincidente com a origem", "chanfro"]) {
+    const e = plano();
+    const xy = [[0, 0], [67, 0], [67, -41], [40, -41], [40, -67], [0, -67]];
+    const P = xy.map(([x, y], i) => (i === 0 && modo === "origem como ponta" ? ORIGEM : op.ponto(e, { x, y })));
+    if (modo !== "origem como ponta") op.restringir(e, { tipo: "coincidente", a: P[0], b: ORIGEM });
+    const L = P.map((p, i) => op.linha(e, p, P[(i + 1) % 6]));
+    L.forEach((l, i) => op.restringir(e, { tipo: i % 2 ? "vertical" : "horizontal", a: l.id }));
+    op.restringir(e, { tipo: "distancia", a: L[0].id, valor: 67 });
+    op.restringir(e, { tipo: "distancia", a: L[1].id, valor: 41 });
+    solver.resolver(e);
+    const pt = (id: string) => (id === ORIGEM ? { x: 0, y: 0 } : e.pontos.find((q) => q.id === id)!);
+    if (modo === "chanfro") {
+      op.chanfroEsboco(e, P[0], 5);
+      const r = solver.resolver(e);
+      verdade(`chanfro no canto da origem: resolve e o canto oposto fica em (67; −41)`, r.ok && Math.abs(pt(P[2]).x - 67) < 1e-6 && Math.abs(pt(P[2]).y + 41) < 1e-6);
+      continue;
+    }
+    op.fileteEsboco(e, P[0], 3, true);
+    solver.resolver(e);
+    confere(`filete (${modo}): canto oposto x antes do raio mudar`, pt(P[2]).x, 67, 1e-6);
+    const cota = e.restricoes.find((r) => r.tipo === "raio") as { valor: number; tipo: string };
+    const r = aplicarValorGradual(solver, e, cota, 8);
+    verdade(`filete (${modo}): raio 3 → 8 resolve`, r.ok);
+    confere(`filete (${modo}): canto oposto x depois do raio 8`, pt(P[2]).x, 67, 1e-6);
+    confere(`filete (${modo}): canto oposto y depois do raio 8`, pt(P[2]).y, -41, 1e-6);
+    if (modo !== "origem como ponta") confere(`filete (${modo}): canto virtual continua na origem`, Math.hypot(pt(P[0]).x, pt(P[0]).y), 0, 1e-6);
+  }
+}
+
+// 4d4. "Entidades a filetar": vários cantos de uma vez, filetes iguais com uma cota só (mudar a cota
+// muda todos); sem iguais, cada um com a sua cota
+{
+  const ret = () => {
+    const e = plano();
+    const a = op.ponto(e, { x: 0, y: 0 }), c = op.ponto(e, { x: 60, y: 40 });
+    const ls = op.retangulo(e, a, c);
+    op.restringir(e, { tipo: "coincidente", a, b: ORIGEM });
+    op.restringir(e, { tipo: "distancia", a: ls[0].id, valor: 60 });
+    op.restringir(e, { tipo: "distancia", a: ls[1].id, valor: 40 });
+    solver.resolver(e);
+    const cantos = [...new Set(ls.flatMap((l) => [(l as { p1: string }).p1, (l as { p2: string }).p2]))].filter((p) => op.ehCantoDeLinhas(e, p));
+    return { e, cantos };
+  };
+  const g = ret();
+  verdade("retângulo: 4 cantos aceitam filete", g.cantos.length === 4);
+  const r = op.filetesEsboco(g.e, g.cantos, 5, true, true);
+  verdade("4 filetes criados de uma vez", r.arcos.length === 4 && !r.falharam.length);
+  const cotasR = g.e.restricoes.filter((x) => x.tipo === "raio");
+  verdade("filetes iguais: uma cota de raio só e 3 relações de igualdade", cotasR.length === 1 && g.e.restricoes.filter((x) => x.tipo === "igual").length === 3);
+  const c = cotasR[0] as { valor: number; tipo: string };
+  verdade("grupo resolve", aplicarValorGradual(solver, g.e, c, 8).ok);
+  const raios = g.e.geos.filter((x) => x.tipo === "arco").map((x) => (x as { r: number }).r);
+  verdade(`mudar a cota de um filete muda todos (${raios.map((x) => x.toFixed(2)).join(", ")})`, raios.length === 4 && raios.every((x) => Math.abs(x - 8) < 1e-6));
+  const pt = (id: string) => (id === ORIGEM ? { x: 0, y: 0 } : g.e.pontos.find((q) => q.id === id)!);
+  const oposto = g.cantos.map(pt).reduce((m, q) => (q.x + q.y > m.x + m.y ? q : m));
+  verdade("retângulo continua 60 × 40 (cantos virtuais)", Math.abs(oposto.x - 60) < 1e-6 && Math.abs(oposto.y - 40) < 1e-6);
+  const h = ret();
+  const r2 = op.filetesEsboco(h.e, h.cantos, 5, true, false);
+  verdade("sem iguais: cada filete com a sua cota", r2.arcos.length === 4 && h.e.restricoes.filter((x) => x.tipo === "raio").length === 4);
+  const k = ret();
+  const r3 = op.filetesEsboco(k.e, k.cantos, 45, true, true);
+  verdade("raio grande demais: os cantos que não cabem são avisados", r3.falharam.length === 4 && !r3.arcos.length);
+}
+
 // 4e. Teclado-calculadora das cotas: normal e científico (trigonométricas em graus)
 {
   const casos: [string, number][] = [

@@ -184,6 +184,13 @@ Parâmetros: X/Y.
 ### Filete de esboço — ✅
 - Entidades a filetar (cantos/vértices) · raio · **Manter cantos com restrição** ·
   **Cotar cada filete** · filetes iguais
+- **Entidades a filetar** ✅ (10/11/2026, pedido do Johann): os cantos tocados entram na caixa (rosa) do painel
+  e um toque em **Aplicar filetes (N)** faz todos; **Filetes iguais** (padrão) liga os arcos com relação de
+  igualdade e uma cota R só — mudar essa cota muda todos os filetes do grupo; desligado, cada um com a sua
+  cota. Tocar de novo num canto tira da caixa; o × limpa.
+- **Manter cantos com restrição** ✅ (10/11/2026, filete e chanfro): o canto vira **canto virtual** (ponto de
+  construção na interseção das duas linhas); relações e cotas do canto (origem, distâncias) continuam nele e
+  as cotas de comprimento das linhas passam a medir do canto virtual — mudar o raio não move o perfil.
 ### Chanfro de esboço — ✅ (distância igual)
 - Ângulo-distância · Distância-distância · Distâncias iguais; D1, D2, ângulo
 
@@ -287,8 +294,10 @@ Outros tipos — F3/⏸: horizontal/vertical dedicadas, linha de base, cadeia, c
 chanfro.
 
 ### Diálogo "Modificar" (ao criar e ao editar) — 🟡
-- **Teclado-calculadora** ✅ (09/11/2026, pedido do Johann): abre ao criar ou editar **qualquer** cota, ao
-  lado do número (sem cobri-lo); visor que não sobe o teclado do sistema; **normal** (algarismos, vírgula,
+- **Teclado-calculadora** ✅ (09/11/2026, pedido do Johann; 10/11/2026: **abre pelo botão com símbolo de
+  calculadora** na caixa do valor, não sozinho): a caixa da cota (número + 🖩 + ✓) aparece ao criar ou editar
+  qualquer cota — no tablet/celular sem foco (o teclado do sistema não sobe sozinho), no computador já
+  selecionada; a calculadora abre ao lado do número (sem cobri-lo); visor que não sobe o teclado do sistema; **normal** (algarismos, vírgula,
   ±, + − × ÷, parênteses) ↔ **científico** (sen/cos/tan em graus e inversas, √, x², xʸ, π, log, ln),
   lembrado por aparelho; resultado ao vivo; teclado físico vale (Enter/Esc); tocar fora aplica
   (`src/ui/tecladoCota.ts`). O valor atual vem selecionado: o 1º algarismo troca, um operador continua dele.
