@@ -497,3 +497,22 @@ function gravar(esb: FeatureEsboco, w: GcsWrapper, ids: Ids) {
     if ((g.tipo === "circulo" && s.type === "circle") || (g.tipo === "arco" && s.type === "arc")) g.r = s.radius as number;
   }
 }
+
+/**
+ * Leva a cota ao valor novo em passos (até 20, de no máximo ~15% do valor antigo cada), resolvendo a
+ * cada passo: a geometria acompanha a mudança continuamente em vez de saltar e "dobrar" o perfil
+ * (o solver parte sempre da posição anterior, perto da solução). Devolve o resultado do último passo.
+ */
+export function aplicarValorGradual(solver: Pick<SolverEsboco, "resolver">, esb: FeatureEsboco, cota: { valor: number; tipo: string }, valor: number): ResultadoSolver {
+  const antigo = cota.valor;
+  const delta = valor - antigo;
+  const escala = Math.max(Math.abs(antigo), Math.abs(valor), 1e-9);
+  const n = Math.min(20, Math.max(1, Math.ceil(Math.abs(delta) / (0.15 * escala))));
+  let res: ResultadoSolver | null = null;
+  for (let i = 1; i <= n; i++) {
+    cota.valor = antigo + (delta * i) / n;
+    res = solver.resolver(esb);
+    if (!res.ok) break;
+  }
+  return res!;
+}

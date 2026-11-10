@@ -193,6 +193,10 @@
 - **Importar**: STEP/STP/STL criam o recurso `importado`. STL com mais de 10 000 triângulos = **corpo de
   malha** (só exibido; janela "STL grande" oferece simplificar para sólido). Montagem STEP → `.wjasm`.
 - **STEP AP214/AP242 abre com as cores do arquivo** (04/11/2026), na Peça e na Montagem.
+- **Cotas do esboço com teclado-calculadora** (09/11/2026): criar ou editar qualquer cota abre ao lado dela
+  uma pequena calculadora (normal ↔ científica, trigonometria em graus), sem subir o teclado do sistema.
+- **✕ num recurso novo** (09/11/2026): cancelar não deixa o recurso (nem recurso com erro) na árvore; o
+  esboço volta a ficar solto.
 - **Exportar = "Salvar como"** (07/11/2026): botão **Exportar** logo depois do 💾 Salvar (e no menu
   Arquivo); nada de STEP/STL no canto superior. Abre o **mesmo explorador do primeiro salvar**, já **na
   pasta onde a peça está no cofre** (peça ainda não salva: última pasta usada), com nome sugerido,
