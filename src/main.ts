@@ -8,14 +8,14 @@ import { atualizarRefsDeContexto, devolverPeca, itensDoContexto, type PedidoCont
 import { juntar, localDaEntidade, type Cena } from "./montagem/cena";
 import type { Topologia } from "./kernel/topologia";
 import { rotuloComponente, validarMontagem, type DocumentoMontagem } from "./montagem/modelo";
-import { contarTriangulosStl, LIMITE_TRIANGULOS_SOLIDO, triangulosVaziosStl } from "./kernel/stl";
+import { contarTriangulosStl, LIMITE_SOLIDO_EXATO, LIMITE_TRIANGULOS_SOLIDO, triangulosDoStlBase64, triangulosVaziosStl } from "./kernel/stl";
 import { pecasDoStep } from "./montagem/step";
 import "./style.css";
 import { ABAS, type Comando, type IdAba } from "./comandos";
 import { ICONES, type NomeIcone } from "./icones";
 import { iconeFeature } from "./ui/iconeRecurso";
 import { ClienteKernel } from "./kernel/cliente";
-import type { InfoCorpo, InfoReferencia, ResultadoRegeneracao } from "./kernel/regenerar";
+import type { InfoCorpo, InfoReferencia, RegiaoDividirInfo, ResultadoRegeneracao } from "./kernel/regenerar";
 import type { PropriedadesMassa } from "./kernel/avaliar";
 import {
   documentoExemplo,
@@ -45,7 +45,9 @@ import {
   type Referencia,
   type Aparencia,
   type SuporteEsboco,
-  type Vec3, nomeUnico, type AssinaturaFace
+  type Vec3, nomeUnico, type AssinaturaFace,
+  deBase64,
+  paraBase64,
 } from "./model";
 import { Viewport, type Entidade, type EstiloExibicao, type IdReferencia, type TipoEntidade, type Vista } from "./viewport";
 import { EditorEsboco, type Ferramenta, type Hospedeiro } from "./esboco/editor";
@@ -217,6 +219,9 @@ const corposTransparentes = new Set<string>();
 let pastaCorposAberta = false;
 /** corpo selecionado na pasta (índice em `corpos`) */
 let corpoSel: number | null = null;
+/** Dividir em edição: regiões da última prévia e a destacada na vista (índice) */
+let regioesDividir: RegiaoDividirInfo[] | null = null;
+let regiaoDestaque: number | null = null;
 const historico: string[] = [];
 const refazer: string[] = [];
 let primeiraRegeneracao = true;
@@ -351,6 +356,7 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
     void atualizarReferenciasDoContexto();
   }
   viewport.mostrarPrevia(previaAtiva() ? r.previaRemovido : null);
+  const regioesMudaram = atualizarRegioesDividir(comando?.f.tipo === "dividir" ? r.regioes ?? null : null);
   if (primeiraRegeneracao && r.malha) {
     viewport.enquadrar(false);
     primeiraRegeneracao = false;
@@ -370,7 +376,8 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   renderizarArvore();
   if (!editor) desenharEsbocos();
   atualizarDestaques();
-  if (comando) {
+  if (comando && regioesMudaram) renderizarComando();
+  else if (comando) {
     const msg = errosPorFeature.get(comando.f.id);
     const el = $("painel-comando").querySelector<HTMLElement>(".prop-erro");
     if (msg && !el) renderizarComando();
@@ -947,6 +954,122 @@ function alternarRecursoNoComando(x: Feature): boolean {
   return true;
 }
 
+// ---------- Dividir: corpos resultantes (regiões) ----------
+
+/** Guarda as regiões da prévia do Dividir e refaz o destaque; true se a lista mudou (redesenhar o painel). */
+function atualizarRegioesDividir(novas: RegiaoDividirInfo[] | null): boolean {
+  const chave = (l: RegiaoDividirInfo[] | null) => (l ? l.map((r) => `${r.volume.toFixed(3)}:${r.centro.map((v) => v.toFixed(3)).join(",")}:${r.separar}`).join("|") : "");
+  const mudou = chave(novas) !== chave(regioesDividir);
+  regioesDividir = novas;
+  if (regiaoDestaque !== null && !novas?.[regiaoDestaque]) regiaoDestaque = null;
+  viewport.mostrarRegiao(regiaoDestaque !== null && novas ? novas[regiaoDestaque].malha : null);
+  return mudou;
+}
+
+/**
+ * Lista do painel do Dividir: uma linha por região (trecho da peça entre os cortes). A marca diz se
+ * a região vira corpo separado; as desmarcadas ficam juntas. Tocar no nome destaca a região na vista.
+ */
+function listaRegioesDividir(f: Feature, ctx: ContextoFormulario): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "lista-regioes";
+  const regs = regioesDividir;
+  if (f.tipo !== "dividir" || !regs?.length) {
+    const p = document.createElement("p");
+    p.className = "dica";
+    p.textContent = f.tipo === "dividir" && f.ferramentas.length ? "Calculando as regiões…" : "Escolha o plano de corte: as regiões resultantes aparecem aqui.";
+    box.append(p);
+    return box;
+  }
+  const gravarEscolha = (sep: boolean[]) => {
+    f.regioes = regs.map((r, i) => ({ centro: r.centro, volume: r.volume, separar: sep[i] }));
+    ctx.aoMudar(true);
+  };
+  const fmt = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: v < 100 ? 2 : 0 });
+  regs.forEach((r, i) => {
+    const linha = document.createElement("div");
+    linha.className = "regiao";
+    linha.classList.toggle("ativa", regiaoDestaque === i);
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = r.separar;
+    cb.title = "Marcada: vira um corpo separado";
+    cb.setAttribute("aria-label", `Região ${i + 1}: corpo separado`);
+    cb.onchange = () => {
+      regiaoDestaque = i;
+      gravarEscolha(regs.map((x, k) => (k === i ? cb.checked : x.separar)));
+    };
+    const nome = document.createElement("button");
+    nome.className = "regiao-nome";
+    nome.innerHTML = `<strong></strong><small></small>`;
+    nome.querySelector("strong")!.textContent = `Região ${i + 1}`;
+    nome.querySelector("small")!.textContent = `${fmt(r.volume)} mm³ · ${r.separar ? "corpo separado" : "junta"}`;
+    nome.title = "Destacar no modelo";
+    nome.onclick = () => {
+      regiaoDestaque = regiaoDestaque === i ? null : i;
+      viewport.mostrarRegiao(regiaoDestaque === null ? null : r.malha);
+      box.querySelectorAll(".regiao").forEach((el, k) => el.classList.toggle("ativa", k === regiaoDestaque));
+    };
+    linha.append(cb, nome);
+    box.append(linha);
+  });
+  const nSep = regs.filter((r) => r.separar).length, nJunta = regs.length - nSep;
+  const resumo = document.createElement("p");
+  resumo.className = "dica";
+  resumo.textContent = `${regs.length} regiões: ${nSep} ${nSep === 1 ? "vira corpo separado" : "viram corpos separados"}${nJunta ? `; ${nJunta} ficam juntas${nJunta > 1 ? " (unidas entre si)" : " (com o resto do corpo)"}` : ""}. Marque as que viram corpos; toque no nome para ver a região.`;
+  const botoes = document.createElement("div");
+  botoes.className = "regioes-botoes";
+  for (const [rot, v] of [["Separar todas", true], ["Juntar todas", false]] as const) {
+    const b = document.createElement("button");
+    b.textContent = rot;
+    b.onclick = () => gravarEscolha(regs.map(() => v));
+    botoes.append(b);
+  }
+  box.append(resumo, botoes);
+  return box;
+}
+
+/**
+ * Corpo de malha (STL) → sólido. Forma exata: o mesmo conteúdo vira sólido (todos os triângulos);
+ * simplificado: até o limite do sólido (a conta da janela "STL grande"). Refs ao corpo de malha seguem
+ * para o sólido. A troca entra no desfazer.
+ */
+async function converterMalhaEmSolido(id: string, simplificar: boolean) {
+  const f = doc.features.find((x) => x.id === id);
+  if (f?.tipo !== "importado" || !f.malha) return;
+  const fmt = (x: number) => x.toLocaleString("pt-BR");
+  try {
+    if (!simplificar) {
+      delete f.malha;
+      f.nome = f.nome.replace(/^Malha/, "Importado");
+      alterou(true);
+      if (comando) renderizarComando();
+      avisar(`${f.nome}: convertendo a malha em sólido na forma exata (pode levar alguns segundos)…`, 8000);
+      return;
+    }
+    const original = deBase64(f.dados);
+    const n = contarTriangulosStl(original);
+    avisar(`Convertendo ${f.nome} em sólido (${fmt(n)} → até ${fmt(LIMITE_TRIANGULOS_SOLIDO)} triângulos)…`, 15000);
+    await kernel.pronto;
+    let alvo = LIMITE_TRIANGULOS_SOLIDO;
+    let r = await kernel.simplificarStl(original.slice(), alvo); // a cópia vai transferida ao kernel
+    for (let k = 0; k < 3 && r.triangulos > LIMITE_TRIANGULOS_SOLIDO; k++) {
+      alvo = Math.floor(alvo * 0.9);
+      r = await kernel.simplificarStl(original.slice(), alvo);
+    }
+    if (r.triangulos > LIMITE_TRIANGULOS_SOLIDO) throw new Error("não foi possível simplificar o bastante");
+    f.dados = paraBase64(r.bytes);
+    delete f.malha;
+    f.nome = f.nome.replace(/^Malha/, "Importado");
+    f.arquivo = f.arquivo.replace(/( \(simplificado \d+\))?\.stl$/i, ` (simplificado ${r.triangulos}).stl`);
+    alterou(true);
+    if (comando) renderizarComando();
+    avisar(`${f.nome}: malha convertida em sólido (${fmt(n)} → ${fmt(r.triangulos)} triângulos).`);
+  } catch (e) {
+    avisar(`Não foi possível converter a malha em sólido: ${e instanceof Error ? e.message : String(e)}`, 10000);
+  }
+}
+
 // ---------- painel de comando ----------
 
 function dadosEsquema(f: Feature): DadosEsquema {
@@ -968,6 +1091,9 @@ function dadosEsquema(f: Feature): DadosEsquema {
       });
     },
     sistemasAntes: antes.filter((x) => x.tipo === "sistemaCoord" && !x.suprimida).map((x) => [x.id, x.nome]),
+    regioesDividir: f.tipo === "dividir" ? listaRegioesDividir : undefined,
+    malhasAntes: antes.flatMap((x): [string, string, number][] => (x.tipo === "importado" && x.malha && !x.suprimida ? [[x.id, x.nome, triangulosDoStlBase64(x.dados)]] : [])),
+    converterMalha: (id, simplificar) => void converterMalhaEmSolido(id, simplificar),
     linhasEsboco: (id) => {
       const e = doc.features.find((x) => x.id === id);
       if (e?.tipo !== "esboco") return [];
@@ -1214,6 +1340,7 @@ function fecharComando() {
   esconderCaixaFlutuante();
   cotasDoComando.limpar();
   viewport.mostrarPrevia(null);
+  atualizarRegioesDividir(null);
   viewport.mostrarAlcas([]);
   mostrarPainel(editor ? "esboco" : "arvore");
   atualizarDestaques();
@@ -3793,7 +3920,8 @@ function mostrarLegendaAnalise() {
 }
 
 /**
- * STL grande ao abrir: simplificar para quantos triângulos (0 = abrir como está; null = desistir).
+ * STL grande ao abrir: simplificar para quantos triângulos (0 = abrir como está; -1 = sólido na forma
+ * exata, sem simplificar; null = desistir).
  * Até o limite do sólido o STL vira sólido editável; acima, corpo de malha (ver e medir).
  */
 /** STL com triângulos vazios (0, 0, 0): o arquivo veio incompleto do programa que o exportou. */
@@ -3821,8 +3949,10 @@ function escolherSimplificacao(nome: string, n: number, tamanho: number, vazios 
         ${vazios ? `<p class="aviso-stl">${textoVazios(vazios, n)}</p>` : ""}
         <p class="dica">Até ${fmt(LIMITE_TRIANGULOS_SOLIDO)} triângulos o STL vira <strong>sólido editável</strong>
           (cortes, furos, filetes, mover/deslocar faces). Acima disso fica como corpo de malha: só ver e medir.
-          Simplificar junta vértices próximos e mantém a forma (o volume muda pouco).</p>
+          Simplificar junta vértices próximos e mantém a forma (o volume muda pouco), mas pode abrir a malha:
+          para cortar/dividir prefira a <strong>forma exata</strong>.</p>
         <div class="lista-simplificar">
+          ${n <= LIMITE_SOLIDO_EXATO ? `<button data-alvo="-1">Sólido editável sem simplificar — forma exata (${fmt(n)} triângulos; abrir e editar ficam mais lentos)</button>` : ""}
           ${opcoes.map(([x, d]) => `<button data-alvo="${x}">Simplificar para ${fmt(x)} — ${d}</button>`).join("")}
           <label class="campo">Outro número de triângulos <input id="simp-outro" type="number" min="100" step="1000" value="20000" inputmode="numeric"></label>
           <button data-alvo="outro">Simplificar para o número acima</button>
@@ -4748,12 +4878,14 @@ async function abrirArquivoEscolhido(arq: File) {
       }
       // STL acima do limite do sólido: simplificar antes de abrir (ou abrir como está)
       let simplificado: { de: number; para: number } | null = null;
+      let solidoExato = false;
       const nTri = ehStl ? contarTriangulosStl(bytes) : 0;
       const vazios = ehStl ? triangulosVaziosStl(bytes) : 0;
       if (nTri > LIMITE_TRIANGULOS_SOLIDO) {
         const alvo = await escolherSimplificacao(arq.name, nTri, arq.size, vazios);
         if (alvo === null) return;
-        if (alvo > 0) {
+        if (alvo < 0) solidoExato = true;
+        else if (alvo > 0) {
           avisar(`Simplificando ${nTri.toLocaleString("pt-BR")} → ${alvo.toLocaleString("pt-BR")} triângulos…`);
           await kernel.pronto;
           const r = await kernel.simplificarStl(bytes, alvo); // os bytes vão transferidos ao kernel
@@ -4772,7 +4904,11 @@ async function abrirArquivoEscolhido(arq: File) {
       const d = documentoImportado(simplificado ? arq.name.replace(/\.stl$/i, ` (simplificado ${simplificado.para}).stl`) : arq.name, bytes, base64);
       if (simplificado) d.nome = arq.name.replace(/\.[^.]+$/, "");
       const imp = d.features[0];
-      if (simplificado)
+      if (solidoExato && imp.tipo === "importado") {
+        delete imp.malha;
+        imp.nome = "Importado1";
+        avisar(`STL com ${nTri.toLocaleString("pt-BR")} triângulos: abrindo como sólido na forma exata (pode levar alguns segundos)…`, 8000);
+      } else if (simplificado)
         avisar(`Simplificado: ${simplificado.de.toLocaleString("pt-BR")} → ${simplificado.para.toLocaleString("pt-BR")} triângulos — ${imp.tipo === "importado" && imp.malha ? "corpo de malha (ver e medir)" : "sólido editável (cortes, furos, filetes, edição de faces)"}.`);
       else if (imp.tipo === "importado" && imp.malha)
         avisar(`STL com ${contarTriangulosStl(bytes).toLocaleString("pt-BR")} triângulos: entra como corpo de malha (só exibição e volume; acima de ${LIMITE_TRIANGULOS_SOLIDO.toLocaleString("pt-BR")} triângulos não vira sólido).`);

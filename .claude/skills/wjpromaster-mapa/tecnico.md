@@ -297,6 +297,17 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
   passando por aresta do perfil): aparar 0,6·r ou folgar 0,02 mm deixa 3–5× mais rápido e correto.
   Superfícies analíticas (toro, cilindro, plano) são bem mais rápidas que B-spline (loft) nos cortes.
   Fio de Ø variável: varredura com `Law_Linear` (`genericSweep` com `law`), não loft (autointercepta em voltas fechadas).
+- **Dividir com regiões (10/11/2026)**: `cortarPorFaces` em `regenerar.ts` usa um `BRepAlgoAPI_Splitter` só (todas as
+  faces de corte de uma vez) e confere a soma dos volumes (o par intersect/cut com prisma no sólido facetado de STL
+  devolvia lascas de 0,0007 mm³ sem erro). Regiões casadas por assinatura em `casarRegioes` (um para um, tolerância
+  0,5·∛V); desmarcadas do mesmo corpo original são unidas com `fundir`. As malhas das regiões (destaque do painel)
+  saem só na prévia (`ctx.previa`) e **antes** do `makeCompound`, que apaga as formas de entrada.
+- **STL → sólido**: o STL do Johann (HeadPhones Holder, 16 286 triângulos, fechado) vira sólido válido em 12 s na forma
+  exata; simplificado para 10 000 fica **inválido** (+2 % de volume, corte perde metade). Por isso a janela "STL grande"
+  e o "Converter em sólido" do Dividir oferecem a forma exata (até `LIMITE_SOLIDO_EXATO` = 50 000) e o kernel avisa
+  sólido de STL inválido (`BRepCheck_Analyzer`). Tempos nessa peça (Node): reconstruir só o importado ≈ 8,6 s (malha
+  e topologia de 14 784 faces); Mover corpo 16 s → 2,3 s e Dividir ≈ 3,6 s depois do índice por plano no
+  rastreador de faces (`facesRecurso.ts`) e do plano da face sem `f.center`.
 - **Malha × B-Rep (WJGoldDiamond J8)**: escultura fica em malha; para peso/área/STL a joia do OpenCascade é
   tesselada (`mesh`, tol. 0,01 mm; volume ~0,5 % abaixo do exato), soldada (`Mesh.merge`) e unida no
   `manifold-3d` (centenas de ms). Não unir malha densa no OpenCascade (milhares de faces = minutos).

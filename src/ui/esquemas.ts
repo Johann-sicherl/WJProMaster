@@ -9,8 +9,9 @@ import type {
   FeaturePontoRef, FeatureSistemaCoord, FeatureEscala, FeatureDomo, FeatureMoverCorpo,
 } from "../model";
 import { TABELA_CHAPA } from "../model";
+import { LIMITE_SOLIDO_EXATO } from "../kernel/stl";
 import { FIXADORES, ISO, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
-import type { Caixa, Campo, Esquema } from "./formulario";
+import type { Caixa, Campo, ContextoFormulario, Esquema } from "./formulario";
 
 export interface DadosEsquema {
   esbocosAntes: [string, string][];
@@ -22,6 +23,12 @@ export interface DadosEsquema {
   linhasEsboco(esbocoId: string | undefined): [string, string][];
   contornos(esbocoId: string | undefined): [string, string][];
   editarPosicoesFuro(f: FeatureFuro): void;
+  /** Dividir: lista das regiões resultantes (marcar quais viram corpos, tocar para destacar) */
+  regioesDividir?(f: Feature, ctx: ContextoFormulario): HTMLElement;
+  /** corpos de malha (STL) antes do recurso: id do recurso importado, nome e nº de triângulos (0 = não sei) */
+  malhasAntes?: [string, string, number][];
+  /** converte o corpo de malha (STL) do recurso importado em sólido: forma exata ou simplificada */
+  converterMalha?(id: string, simplificar: boolean): void;
 }
 
 const CONDICOES: Record<TipoCondicao, string> = {
@@ -242,10 +249,20 @@ function esquemaBase(f: Feature, d: DadosEsquema): Esquema<Feature> {
         ] },
       ] };
     case "dividir":
-      return { titulo: "Dividir", caixas: [{ titulo: "Ferramentas de corte", campos: [
-        { t: "refs", rot: "Planos / faces planas", cam: "ferramentas", aceita: ["plano", "face"], multiplo: true },
-        { t: "info", texto: () => "Cada plano corta os corpos que atravessa; cada lado vira um corpo (pasta Corpos sólidos)." },
-      ] }] };
+      return { titulo: "Dividir", caixas: [
+        { titulo: "Ferramentas de corte", campos: [
+          { t: "refs", rot: "Planos / faces planas", cam: "ferramentas", aceita: ["plano", "face"], multiplo: true },
+          { t: "info", texto: () => "O plano corta os corpos que atravessa em regiões (se cruzar a peça várias vezes, sai uma região por trecho)." },
+        ] },
+        ...(d.malhasAntes?.length ? [{ titulo: "Corpo de malha (STL)", campos: [
+          { t: "info" as const, texto: () => `Corpo de malha não se corta: converta em sólido e divida. "Forma exata" mantém todos os triângulos (até ${LIMITE_SOLIDO_EXATO.toLocaleString("pt-BR")}; recomendado: simplificar pode abrir a malha e o corte perder material); "simplificado" fica com até 10 000 triângulos, mais leve.` },
+          ...d.malhasAntes.flatMap(([id, nome, n]): Campo<Feature>[] => [
+            ...(n <= LIMITE_SOLIDO_EXATO ? [{ t: "botao" as const, rot: `Converter ${nome} em sólido — forma exata${n ? ` (${n.toLocaleString("pt-BR")} triângulos)` : ""}`, destaque: true, acao: () => d.converterMalha?.(id, false) }] : []),
+            { t: "botao", rot: `Converter ${nome} em sólido — simplificado (10 000 triângulos)`, acao: () => d.converterMalha?.(id, true) },
+          ]),
+        ] }] : []),
+        ...(d.regioesDividir ? [{ titulo: "Corpos resultantes", campos: [{ t: "elemento" as const, criar: d.regioesDividir }] }] : []),
+      ] };
   }
 }
 

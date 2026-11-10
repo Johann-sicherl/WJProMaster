@@ -557,10 +557,25 @@ export interface FeatureCombinar extends FeatureBase {
   corpos: Referencia[];
 }
 
-/** Dividir (features.md §13): corta os corpos por planos/faces planas; cada lado vira um corpo. */
+/**
+ * Região resultante do Dividir: reencontrada ao reconstruir pela assinatura (centro e volume mais
+ * parecidos); `separar` = vira um corpo à parte; desmarcada = volta a se unir às outras desmarcadas.
+ */
+export interface RegiaoDividir {
+  centro: Vec3;
+  volume: number;
+  separar: boolean;
+}
+
+/**
+ * Dividir (features.md §13): os planos/faces planas cortam os corpos em regiões (num "S" o plano pode
+ * cruzar a peça várias vezes); cada região marcada vira um corpo, as desmarcadas ficam juntas.
+ * Sem `regioes` (ou região nova que não estava na lista): vira corpo separado.
+ */
 export interface FeatureDividir extends FeatureBase {
   tipo: "dividir";
   ferramentas: Referencia[];
+  regioes?: RegiaoDividir[];
 }
 
 /** Rosca modelada (features.md §13): sulco ISO em V de 60° numa face cilíndrica (pino ou furo). */

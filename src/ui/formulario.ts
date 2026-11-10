@@ -20,6 +20,8 @@ export type Campo<F> = Vis<F> & (
   /** Texto em várias linhas (ex.: tabela de pontos XYZ); grava ao sair da caixa. */
   | { t: "texto"; rot: string; cam: string; linhas?: number; dica?: string }
   | { t: "botao"; rot: string; acao: (f: F) => void; destaque?: boolean }
+  /** Conteúdo próprio do comando (ex.: lista de regiões do Dividir com marcas e destaque). */
+  | { t: "elemento"; criar: (f: F, ctx: ContextoFormulario) => HTMLElement }
 );
 
 export interface Caixa<F> {
@@ -169,6 +171,8 @@ function campo<F>(f: F, c: Campo<F>, ctx: ContextoFormulario): HTMLElement {
       l.append(ta);
       return l;
     }
+    case "elemento":
+      return c.criar(f, ctx);
     case "botao": {
       const b = el("button", c.destaque ? "destaque largo" : "largo", c.rot);
       b.onclick = () => c.acao(f);

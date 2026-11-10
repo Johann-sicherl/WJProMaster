@@ -72,6 +72,12 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
   dar a causa como *provável* e pedir para medir/reproduzir antes de corrigir — foi o que salvou.
 - **Ideia em aberto:** jeito rápido de suprimir relações automáticas no tablet (hoje só Ctrl no teclado
   ou a chave em ⚙ Configurações) — o Johann ainda não pediu.
+- **Pendentes por decisão do Johann (limite semanal, 10/11; prompts já prontos):** as 3 conversas da
+  integração CAD/PDM/ERP — (1) grupos e codificação no WJERP; (2) cadastro com código ao salvar;
+  (3) GO-IN sobe a revisão + BOM multinível — e o ajuste de etapas do WJTaskPlan (alerta de mão dupla +
+  ordenação por prazo). Retomar quando ele liberar, com os prompts como estão. **Atenção:** o ajuste do
+  WJTaskPlan já aparece entregue no `main` (PR #119, mesclado em 10/11; `regras.md` §7) — confirmar com o
+  Johann se falta algo além do #119 antes de gastar a conversa.
 - **Pendências das entregas:** linhas de inferência pontilhadas e Tangente automática em arcos (F3,
   `docs/funcional/sketch.md`).
 - Conversa antiga "Software CAD": mantida só para consulta; não usar para pedidos novos.

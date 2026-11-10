@@ -5,6 +5,21 @@
 
 /** Acima disto o STL entra como corpo de malha (costurar em sólido levaria minutos no tablet). */
 export const LIMITE_TRIANGULOS_SOLIDO = 10000;
+/**
+ * Até quantos triângulos um STL pode virar sólido **sem simplificar** quando o usuário pede (janela
+ * "STL grande", Converter em sólido): forma exata; acima disso abrir/editar fica lento demais no tablet.
+ * Simplificar junta vértices e pode abrir a malha (sólido inválido: os cortes perdem material).
+ */
+export const LIMITE_SOLIDO_EXATO = 50000;
+
+/** Nº de triângulos de um STL binário pelos primeiros bytes em base64 (0 = ASCII ou não sei). */
+export function triangulosDoStlBase64(b64: string): number {
+  if (b64.length < 112) return 0;
+  const s = atob(b64.slice(0, 112));
+  const n = (s.charCodeAt(80) | (s.charCodeAt(81) << 8) | (s.charCodeAt(82) << 16) | (s.charCodeAt(83) << 24)) >>> 0;
+  const bytes = Math.floor((b64.length * 3) / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0);
+  return 84 + 50 * n === bytes ? n : 0;
+}
 
 const ehBinario = (b: Uint8Array) =>
   b.length >= 84 && 84 + new DataView(b.buffer, b.byteOffset, b.byteLength).getUint32(80, true) * 50 === b.length;

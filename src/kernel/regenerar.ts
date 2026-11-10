@@ -29,7 +29,7 @@ import {
   makeCompound,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureImportado, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft, FeaturePontoRef, FeatureMoverCorpo, FeatureCombinar, FeatureDividir, FeatureExcluirCorpo, FeatureRosca, FeatureLinhaParticao, FeatureInserirPeca,
+  Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureImportado, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft, FeaturePontoRef, FeatureMoverCorpo, FeatureCombinar, FeatureDividir, RegiaoDividir, FeatureExcluirCorpo, FeatureRosca, FeatureLinhaParticao, FeatureInserirPeca,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, SuporteEsboco, Vec3,
 } from "../model";
 import { assinaturaDados, deBase64, PREFIXO_ENVIADO } from "../model";
@@ -115,6 +115,13 @@ export interface ResultadoRegeneracao {
   previaRemovido?: MalhaSimples | null;
   /** esboços em face cujo plano mudou porque a face andou (a interface grava no documento) */
   suportes?: Record<string, SuporteEsboco>;
+  /** Dividir em edição (prévia): as regiões resultantes, na ordem da lista do painel */
+  regioes?: RegiaoDividirInfo[];
+}
+
+/** Região do Dividir para o painel: assinatura, se vira corpo separado e a malha para o destaque. */
+export interface RegiaoDividirInfo extends RegiaoDividir {
+  malha: MalhaSimples;
 }
 
 /** Malha só de triângulos (prévia). */
@@ -149,6 +156,12 @@ type MalhaCorpo = MalhaStl & { idCorpo?: string; copia?: number };
 
 interface Ctx {
   peca: Shape3D | null;
+  /** id do recurso em edição (prévia) */
+  previa?: string;
+  /** regiões do Dividir em edição, para a lista do painel */
+  regioes?: RegiaoDividirInfo[];
+  /** avisos dos recursos que não impedem a peça (ex.: sólido de STL inválido) */
+  avisos?: ErroFeature[];
   /** corpos de malha (só exibidos) */
   malhas: MalhaCorpo[];
   esbocos: Map<string, FeatureEsboco>;
@@ -2185,6 +2198,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
   const avisos: ErroFeature[] = [];
   const tempos: { id: string; ms: number }[] = [];
   const ctx = novoCtx();
+  ctx.previa = opcoes.previa;
   const rastreador = new RastreadorFaces();
   let previaRemovido: MalhaSimples | null | undefined;
 
@@ -2211,6 +2225,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     tempos.push({ id: f.id, ms: performance.now() - t0 });
   }
 
+  if (ctx.avisos) avisos.push(...ctx.avisos);
   ultimaChapa = ctx.chapa;
   // chapa desdobrada no fim da árvore: linhas de dobra sobre as dobras planas
   if (!opcoes.planificar && ctx.chapa?.planas.size) ctx.refsSaida.push({ id: "__dobras", tipo: "curva", linhas: ctx.chapa.linhasDasPlanas() });
@@ -2242,7 +2257,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     // só corpos de malha: exibidos sem faces/arestas selecionáveis
     const malha = ctx.malhas.length ? juntarMalhas(null, ctx.malhas) : null;
     const volume = ctx.malhas.length && ctx.malhas.every((m) => m.volume !== null) ? ctx.malhas.reduce((s, m) => s + m.volume!, 0) : null;
-    return { malha, erros, avisos, volume, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes, corpos: corposDaMalha(ctx, 0) };
+    return { malha, erros, avisos, volume, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes, corpos: corposDaMalha(ctx, 0), regioes: ctx.regioes };
   }
 
   const m = peca.mesh({ tolerance: tolerancia, angularTolerance: 15 });
@@ -2275,6 +2290,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     facesPorRecurso,
     previaRemovido: planificada ? null : previaRemovido,
     suportes: ctx.suportes,
+    regioes: ctx.regioes,
   };
 }
 
@@ -2428,6 +2444,9 @@ export function esquecerSolidosImportados() {
   importados.clear();
 }
 
+/** STL cujo sólido saiu inválido (chave de `importados`): aviso no recurso. */
+const importadosInvalidos = new Set<string>();
+
 /** Lê o STEP/STL guardado no recurso (OpenCascade: STEPControl_Reader / StlAPI_Reader). */
 function corpoImportado(f: FeatureImportado): Shape3D {
   const chave = `${f.formato}:${assinaturaDados(f.id, f.dados)}`;
@@ -2474,6 +2493,10 @@ function corpoImportado(f: FeatureImportado): Shape3D {
         for (const x of [exp, fix, costura, tris]) x.delete();
         if (!corpos.length) throw new Error(`O STL "${f.arquivo}" não forma uma superfície fechada (malha aberta).`);
         s = corpos.length === 1 ? corpos[0] : (makeCompound(corpos) as unknown as Shape3D);
+        // sólido inválido (malha com furos/dobras, típico de STL simplificado): as booleanas perdem material sem erro
+        const an = new oc.BRepCheck_Analyzer(s.wrapped, true, false);
+        if (!(an.IsValid_1 ? an.IsValid_1() : an.IsValid())) importadosInvalidos.add(chave);
+        an.delete();
       }
     } finally {
       try { oc.FS.unlink(nome); } catch { /* já apagado */ }
@@ -2621,9 +2644,12 @@ function corposEscolhidos(refs: Referencia[], ctx: Ctx): { solidos: number[]; ma
     if (r.tipo !== "corpo") throw new Error("Escolha corpos (pasta Corpos sólidos da árvore, ou toque na peça).");
     if (r.malha) {
       const i = ctx.malhas.findIndex((m) => m.idCorpo === r.malha && (m.copia ?? 0) === (r.copia ?? 0));
-      if (i < 0) throw new ErroReferencia("Corpo de malha não encontrado.");
-      if (!out.malhas.includes(i)) out.malhas.push(i);
-      continue;
+      // a malha virou sólido (Converter em sólido): segue para o sólido mais parecido
+      if (i < 0 && !solidos.length) throw new ErroReferencia("Corpo de malha não encontrado.");
+      if (i >= 0) {
+        if (!out.malhas.includes(i)) out.malhas.push(i);
+        continue;
+      }
     }
     let melhor = -1, nota = Infinity;
     props.forEach((p, i) => {
@@ -2746,31 +2772,123 @@ function combinar(f: FeatureCombinar, ctx: Ctx) {
   ctx.peca = juntarSolidos([...solidos.filter((_, i) => !usados.includes(i)), ...listarSolidos(res)]);
 }
 
-/** Dividir: cada plano corta os corpos que atravessa; cada lado vira um corpo. */
-function dividir(f: FeatureDividir, ctx: Ctx) {
-  const peca = exigirPeca(ctx, "Dividir");
+/**
+ * Corta um sólido pelas faces dadas (um "Splitter" só, todas as faces de uma vez) e devolve as partes.
+ * Conferido pelo volume: a soma das partes tem de dar o sólido (sólido inválido, como STL simplificado
+ * que abriu a malha, perde material sem erro do kernel) — senão é erro, nunca peça faltando.
+ */
+function cortarPorFaces(s0: Shape3D, faces: { wrapped: unknown }[]): Shape3D[] {
+  const oc = getOC() as never as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const sp = new oc.BRepAlgoAPI_Splitter();
+  const args = new oc.NCollection_List_TopoDS_Shape();
+  const ferr = new oc.NCollection_List_TopoDS_Shape();
+  const prog = new oc.Message_ProgressRange();
+  let partes: Shape3D[];
+  try {
+    args.Append(s0.wrapped);
+    for (const f of faces) ferr.Append(f.wrapped);
+    sp.SetArguments(args);
+    sp.SetTools(ferr);
+    sp.SetRunParallel(false);
+    sp.Build(prog);
+    if (!sp.IsDone() || sp.HasErrors()) throw new Error("Dividir: o kernel não conseguiu cortar este corpo.");
+    partes = listarSolidos(cast(sp.Shape()) as unknown as Shape3D);
+  } finally {
+    for (const x of [sp, args, ferr, prog]) x.delete();
+  }
+  const v0 = measureVolume(s0);
+  const vols = partes.map((p) => measureVolume(p));
+  const soma = vols.reduce((a, b) => a + b, 0);
+  if (Math.abs(soma - v0) > 1e-4 * Math.abs(v0) + 1e-3 || vols.some((v) => !(v > 1e-9))) {
+    throw new Error(`Dividir: o corte perderia material (${soma.toFixed(1)} de ${v0.toFixed(1)} mm³): o sólido é inválido. Se veio de um STL simplificado, converta a malha em sólido sem simplificar.`);
+  }
+  return partes;
+}
+
+/**
+ * Casa as regiões calculadas agora com as guardadas no recurso (assinatura: centro e volume mais
+ * parecidos, um para um, dentro de uma tolerância proporcional ao tamanho). Devolve, para cada região
+ * calculada, se ela vira corpo separado: região sem par (a peça mudou) → separada (o padrão).
+ */
+export function casarRegioes(calc: { centro: Vec3; volume: number }[], salvas: RegiaoDividir[] | undefined): boolean[] {
+  const out = calc.map(() => true);
+  if (!salvas?.length) return out;
+  const pares: { n: number; i: number; k: number }[] = [];
+  calc.forEach((c, i) => salvas.forEach((r, k) => {
+    const lado = Math.cbrt(Math.max(Math.abs(c.volume), 1e-9));
+    const d = Math.hypot(...sub3(c.centro, r.centro));
+    const dv = Math.abs(c.volume - r.volume) / Math.max(Math.abs(c.volume), 1e-9);
+    // fora da tolerância: é outra região (a peça mudou demais para reconhecer)
+    if (d > 0.5 * lado + 0.5 || dv > 0.5) return;
+    pares.push({ n: d / lado + dv, i, k });
+  }));
+  pares.sort((a, b) => a.n - b.n);
+  const usadasC = new Set<number>(), usadasS = new Set<number>();
+  for (const p of pares) {
+    if (usadasC.has(p.i) || usadasS.has(p.k)) continue;
+    usadasC.add(p.i);
+    usadasS.add(p.k);
+    out[p.i] = salvas[p.k].separar !== false;
+  }
+  return out;
+}
+
+/**
+ * Dividir: os planos cortam os corpos que atravessam em regiões (todas as partes, também quando o
+ * plano cruza a peça várias vezes). Região marcada → corpo próprio; as desmarcadas do mesmo corpo
+ * original voltam a se unir. Na prévia (recurso em edição) devolve a lista com a malha de cada região
+ * para a interface destacar.
+ */
+function dividir(f: FeatureDividir, ctx: Ctx, comMalhas: boolean) {
+  if (!ctx.peca) {
+    if (ctx.malhas.length) throw new Error("Dividir: o corpo é de malha (STL), que não se corta. Converta a malha em sólido (botão no painel do Dividir) e divida de novo.");
+    exigirPeca(ctx, "Dividir");
+  }
+  const peca = ctx.peca!;
   if (!f.ferramentas.length) throw new Error("Dividir: escolha planos ou faces planas de corte.");
-  let solidos = listarSolidos(peca);
   const cx = caixa(ctx)!;
   const L = cx.diag * 4 + 10;
-  let cortou = false;
-  for (const r of f.ferramentas) {
+  const meio = cx.min.map((v, i) => (v + cx.max[i]) / 2) as Vec3;
+  // ferramentas: faces planas grandes, centradas na projeção do meio da peça em cada plano
+  const facesCorte = f.ferramentas.map((r) => {
     const p = planoDeRef(r, ctx);
-    // meio-espaço: prisma grande sobre o plano, do lado da normal
-    const meio = drawRectangle(L, L).sketchOnPlane(new Plane(p.origem, p.x, p.normal)).extrude(L) as unknown as Shape3D;
-    const novos: Shape3D[] = [];
-    for (const s of solidos) {
-      const a = s.intersect(meio), b = s.cut(meio);
-      const va = measureVolume(a), vb = measureVolume(b);
-      if (va > 1e-9 && vb > 1e-9) {
-        novos.push(...listarSolidos(a), ...listarSolidos(b));
-        cortou = true;
-      } else novos.push(s);
+    const o = soma3(meio, mul3(p.normal, -esc3(sub3(meio, p.origem), p.normal)));
+    return (drawRectangle(L, L).sketchOnPlane(new Plane(o, p.x, p.normal)) as unknown as { face(): { wrapped: unknown } }).face();
+  });
+  const originais = listarSolidos(peca);
+  const intactos: Shape3D[] = [];
+  const regioes: { origem: number; s: Shape3D; volume: number; centro: Vec3 }[] = [];
+  originais.forEach((s0, k) => {
+    const partes = cortarPorFaces(s0, facesCorte);
+    if (partes.length < 2) return void intactos.push(s0);
+    for (const s of partes) {
+      const p = measureShapeVolumeProperties(s) as unknown as { volume: number; centerOfMass: Vec3 };
+      regioes.push({ origem: k, s, volume: p.volume, centro: p.centerOfMass });
     }
-    solidos = novos;
+  });
+  if (!regioes.length) throw new Error("Dividir: o plano não atravessa nenhum corpo.");
+  const separar = casarRegioes(regioes, f.regioes);
+  // malhas antes de juntar: o composto apaga as formas de entrada
+  if (comMalhas) {
+    ctx.regioes = regioes.map((r, i) => ({ centro: r.centro, volume: r.volume, separar: separar[i], malha: malhaSimples(r.s, 0.1) }));
   }
-  if (!cortou) throw new Error("Dividir: o plano não atravessa nenhum corpo.");
-  ctx.peca = juntarSolidos(solidos);
+  const corpos: Shape3D[] = [...intactos];
+  for (let k = 0; k < originais.length; k++) {
+    const juntas = regioes.filter((r, i) => r.origem === k && !separar[i]).map((r) => r.s);
+    regioes.forEach((r, i) => { if (r.origem === k && separar[i]) corpos.push(r.s); });
+    if (!juntas.length) continue;
+    let u = juntas[0];
+    for (const s of juntas.slice(1)) u = fundir(u, s);
+    corpos.push(...listarSolidos(u));
+  }
+  ctx.peca = juntarSolidos(corpos);
+}
+
+/** Malha leve de um sólido (prévias e destaques). */
+function malhaSimples(s: Shape3D, tolerancia: number): MalhaSimples {
+  const m = s.mesh({ tolerance: tolerancia, angularTolerance: 20 });
+  const a = s.meshEdges({ tolerance: tolerancia, angularTolerance: 20 });
+  return { vertices: Float32Array.from(m.vertices), normais: Float32Array.from(m.normals), triangulos: Uint32Array.from(m.triangles), arestas: Float32Array.from(a.lines) };
 }
 
 function regenerarFeature(f: Feature, ctx: Ctx) {
@@ -3056,6 +3174,9 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
     case "importado":
       if (f.malha) return void ctx.malhas.push({ ...malhaImportada(f), idCorpo: f.id, copia: 0 });
       aplicar(ctx, f.id, [{ tool: corpoImportado(f), op: "adicionar" }]);
+      if (f.formato === "stl" && importadosInvalidos.has(`stl:${assinaturaDados(f.id, f.dados)}`)) {
+        (ctx.avisos ??= []).push({ id: f.id, mensagem: "O sólido deste STL ficou inválido (a simplificação abriu a malha): cortes, Dividir e furos podem falhar. Abra o STL de novo escolhendo \"sem simplificar\"." });
+      }
       ctx.coresArquivo.push(...(coresImportados.get(`${f.formato}:${assinaturaDados(f.id, f.dados)}`) ?? []));
       return;
     case "curva": {
@@ -3130,7 +3251,7 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
     case "combinar":
       return combinar(f, ctx);
     case "dividir":
-      return dividir(f, ctx);
+      return dividir(f, ctx, ctx.previa === f.id);
 
     case "eixoRef": {
       let e: { origem: Vec3; dir: Vec3 };
