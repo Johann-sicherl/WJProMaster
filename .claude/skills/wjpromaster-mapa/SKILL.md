@@ -67,6 +67,7 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | WJSlicer3D (tempo e material de impressão 3D) | `src/slicer/main.ts` (tela), `vista.ts` (mesa 3D), `worker.ts`, `slicer.css` · motor `src/slicer/fatiar.ts` (fatiamento, cascas, suporte, planejador de velocidade) · perfis das impressoras e materiais `src/slicer/perfis.ts` · STL, giro e apoio `src/slicer/malha.ts` | `docs/global/wjslicer3d.md` |
 | WJFlow | `src/flow/main.ts`, `gpu.ts` (WebGPU), `lbm.ts`, `geometria.ts`, `estudo.ts`, `campo.ts`, `vista3d.ts`, `aparelho.ts`, workers `cpu-worker.ts`, `pos-worker.ts`, `preparo-worker.ts` | `docs/global/wjflow.md` |
 | Integrações entre faces | — | `docs/global/integracoes.md` |
+| Central de eficiência (aprimorar pedidos, conferir entregas, registro de custo e acerto) | — | `docs/global/central.md` |
 | Status geral do CAD / lacunas priorizadas | — | `docs/funcional/README.md`, `referencia-introducao.md` |
 
 ## 2. Testes (Node, sem DOM) — `pnpm teste` roda todos
