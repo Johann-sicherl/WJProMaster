@@ -4919,7 +4919,7 @@ let avisouAutosave = false;
 
 // ---------- testes automatizados (só em desenvolvimento) ----------
 if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>).__cad = { viewport, doc: () => doc, abrirExemplo: () => abrirDocumento(documentoExemplo()), abrir: (d: Documento) => abrirDocumento(validarDocumento(d)) };
+  (window as unknown as Record<string, unknown>).__cad = { viewport, doc: () => doc, editor: () => editor, abrirExemplo: () => abrirDocumento(documentoExemplo()), abrir: (d: Documento) => abrirDocumento(validarDocumento(d)) };
 }
 
 // ---------- início ----------

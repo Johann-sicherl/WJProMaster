@@ -8,7 +8,7 @@ import { regenerar } from "../src/kernel/regenerar";
 import { SolverEsboco } from "../src/esboco/solver";
 import * as op from "../src/esboco/operacoes";
 import { aninhamento, areaAssinada, encontrarLacos, idsNaSelecao, ORIGEM, EIXO_H, EIXO_V } from "../src/esboco/geometria";
-import { atualizarExternas, criarExterna, podarExternas, projetar } from "../src/esboco/externas";
+import { atualizarExternas, criarExterna, idsOcultos, ocultarRefsDeCota, podarExternas, projetar } from "../src/esboco/externas";
 import { referencial } from "../src/esboco/referencial";
 import { cortarMalha, entidadesDe, silhuetaMalha } from "../src/esboco/malhaPlano";
 import { ajustarTextoCota, desenharCota, geometriaAngulo, medirCota, PASSO_COTA_PX, textoPadrao } from "../src/esboco/cotas";
@@ -501,6 +501,64 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   verdade("vértice vira ponto", v.tipo === "ponto");
   podarExternas(e, new Set());
   verdade("podar: vértice sem uso removido, aresta usada fica", !e.geos.some((g) => g.id === v.id) && e.geos.some((g) => g.id === ext.id));
+}
+
+// 11b. Cota até a aresta da peça (10/11/2026): a referência fica oculta — não aparece, não se
+// seleciona e nunca entra no perfil; a extrusão (cego e até o próximo) sai sem erro.
+{
+  const base = plano();
+  op.retangulo(base, op.ponto(base, { x: -20, y: -10 }), op.ponto(base, { x: 20, y: 10 }));
+  const bloco = extrusao(base, 10);
+  const topo = regenerar([base, bloco]).topologia!;
+  const arestaTopo = topo.arestas.find((a) => a.geom === "linha" && Math.abs(a.a[1] + 10) < 1e-6 && Math.abs(a.b[1] + 10) < 1e-6
+    && Math.abs(a.a[2] - 10) < 1e-6 && Math.abs(a.b[2] - 10) < 1e-6)!;
+  verdade("aresta de cima (y = −10, z = 10) encontrada", !!arestaTopo);
+  const e = novoEsboco(3, { tipo: "face", origem: [0, 0, 10], normal: [0, 0, 1], eixoX: [1, 0, 0] } as never);
+  const r = referencial(e.suporte);
+  const ls = op.retangulo(e, op.ponto(e, { x: -10, y: -5 }), op.ponto(e, { x: 0, y: 3 }));
+  const ref = { tipo: "aresta" as const, ass: arestaTopo };
+  const ext = criarExterna(e, projetar(ref, r)!, ref, true);
+  verdade("referência da cota é oculta e de construção", !!ext.oculta && !!ext.construcao && !!ext.externa);
+  const canto = (ls[0] as { p1: string }).p1;
+  e.restricoes.push({ id: "cotaPeca", tipo: "distancia", a: canto, b: ext.id, valor: 4 });
+  verdade("cota até a aresta resolve sem conflito", solver.resolver(e).conflitantes.length === 0);
+  confere("canto foi para 4 mm da aresta (y = −6)", e.pontos.find((p) => p.id === canto)!.y, -6);
+  const lacos = encontrarLacos(e);
+  const ocultos = idsOcultos(e);
+  // a referência (y = −10, de x = −20 a 20) não pode aparecer em nenhum trecho do perfil
+  const l0 = lacos[0];
+  verdade("perfil: 1 contorno de 4 linhas, sem a referência", lacos.length === 1 && l0.tipo === "trechos" && l0.trechos.length === 4
+    && l0.trechos.every((t) => t.a.y > -6.01 && t.b.y > -6.01 && Math.abs(t.a.x) <= 10.01 && Math.abs(t.b.x) <= 10.01));
+  const tudo = idsNaSelecao(e, { tipo: "caixa", a: { x: -100, y: -100 }, b: { x: 100, y: 100 }, cruzando: true });
+  verdade("caixa não pega a referência oculta", tudo.length === 4 && tudo.every((id) => !ocultos.has(id)));
+  const area = 10 * 9;
+  const ressalto = { ...extrusao(e, 5), id: "ressalto" };
+  const rr = regenerar([base, bloco, e, ressalto]);
+  verdade("extrusão com cota até a peça: sem erro", rr.erros.length === 0);
+  confere("extrusão com cota até a peça: volume", rr.volume ?? NaN, 8000 + area * 5);
+  const corte = { ...extrusao(e, 1, true), id: "corteProx", inverter: true, condicao: { tipo: "proximo" as const, dist: 0 } };
+  const rc = regenerar([base, bloco, e, corte]);
+  verdade("corte até o próximo com cota até a peça: sem erro", rc.erros.length === 0);
+  confere("corte até o próximo: volume", rc.volume ?? NaN, 8000 - area * 10);
+  // selecionar a mesma aresta (uso visível) cria outra referência: a da cota continua oculta
+  const visivel = criarExterna(e, projetar(ref, r)!, ref);
+  verdade("uso visível da mesma aresta não revela a referência da cota", visivel.id !== ext.id && !visivel.oculta && !!ext.oculta);
+  verdade("cota de novo até a mesma aresta reaproveita a oculta", criarExterna(e, projetar(ref, r)!, ref, true).id === ext.id);
+  // apagar a cota: a referência sem uso sai
+  e.restricoes = e.restricoes.filter((x) => x.id !== "cotaPeca");
+  podarExternas(e, new Set());
+  verdade("sem a cota, a referência oculta é removida", !e.geos.some((g) => g.id === ext.id));
+
+  // esboço antigo: linha visível criada só pela cota vira oculta; a usada por relação fica visível
+  const velho = novoEsboco(4, { tipo: "face", origem: [0, 0, 10], normal: [0, 0, 1], eixoX: [1, 0, 0] } as never);
+  const lv = op.retangulo(velho, op.ponto(velho, { x: -10, y: -5 }), op.ponto(velho, { x: 0, y: 3 }));
+  const soCota = criarExterna(velho, projetar(ref, r)!, ref);
+  velho.restricoes.push({ id: "cv", tipo: "distancia", a: (lv[0] as { p1: string }).p1, b: soCota.id, valor: 5 });
+  const refV = { tipo: "vertice" as const, p: [20, 10, 10] as [number, number, number] };
+  const comRel = criarExterna(velho, projetar(refV, r)!, refV);
+  op.restringir(velho, { tipo: "coincidente", a: (lv[1] as { p2: string }).p2, b: (comRel as { p: string }).p });
+  verdade("esboço antigo: 1 linha só de cota ocultada", ocultarRefsDeCota(velho) === 1 && !!soCota.oculta && !comRel.oculta);
+  verdade("esboço antigo: resolve e o perfil continua sem a referência", solver.resolver(velho).conflitantes.length === 0 && encontrarLacos(velho).length === 1);
 }
 
 // 12. Distanciador automático das cotas (mmPx = 0,1 → passo de 2,6 mm)

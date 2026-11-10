@@ -374,6 +374,7 @@ export function idsNaSelecao(esb: Pick<FeatureEsboco, "pontos" | "geos">, forma:
   const naCaixa = (p: P2) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
   const bordas: [P2, P2][] = [[{ x: x0, y: y0 }, { x: x1, y: y0 }], [{ x: x1, y: y0 }, { x: x1, y: y1 }], [{ x: x1, y: y1 }, { x: x0, y: y1 }], [{ x: x0, y: y1 }, { x: x0, y: y0 }]];
   for (const g of esb.geos) {
+    if (g.oculta) continue; // referência só de cota: não se seleciona
     let am: P2[];
     try {
       am = amostrar(g, pts, Math.PI / 24);
@@ -634,7 +635,7 @@ export function pontoNoPoligono(p: P2, pol: P2[]): boolean {
 export function encontrarLacos(esb: Pick<FeatureEsboco, "pontos" | "geos">): Laco[] {
   const pts = mapaPontos(esb);
   const lacos: Laco[] = [];
-  const geos = esb.geos.filter((g) => !g.construcao && g.tipo !== "ponto");
+  const geos = esb.geos.filter((g) => !g.construcao && !g.oculta && g.tipo !== "ponto");
 
   for (const g of geos) {
     if (g.tipo === "circulo") {
@@ -707,7 +708,7 @@ const fmt = (p: P2) => `${p.x.toFixed(1)}; ${p.y.toFixed(1)}`;
  */
 export function cadeiaAberta(esb: Pick<FeatureEsboco, "pontos" | "geos">): P2[] | null {
   const pts = mapaPontos(esb);
-  const geos = esb.geos.filter((g) => !g.construcao && extremidades(g));
+  const geos = esb.geos.filter((g) => !g.construcao && !g.oculta && extremidades(g));
   if (!geos.length) return null;
   const nos: P2[] = [];
   const noDe = (p: P2) => {

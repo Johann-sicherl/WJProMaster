@@ -3,7 +3,7 @@
 // A referência guarda a assinatura geométrica; ao abrir o esboço a projeção é atualizada
 // com a entidade mais parecida da peça atual. Funções puras (testáveis em Node).
 
-import type { AssinaturaAresta, FeatureEsboco, GeoEsboco, Referencia, Vec3 } from "../model";
+import { ehCota, type AssinaturaAresta, type FeatureEsboco, type GeoEsboco, type Referencia, type Vec3 } from "../model";
 import { angulo, dist, mapaPontos, norm, pontosDaGeo, type P2 } from "./geometria";
 import * as op from "./operacoes";
 import type { Referencial } from "./referencial";
@@ -106,11 +106,14 @@ export function acharNaTopologia(ref: Referencia, topo: TopologiaLeve): Referenc
 
 const iguais = (a: P2, b: P2) => dist(a, b) < 1e-6;
 
-/** A geometria externa do esboço que já corresponde à projeção (para não duplicar). */
-export function externaExistente(esb: FeatureEsboco, proj: ProjecaoExterna): GeoEsboco | null {
+/**
+ * A geometria externa do esboço que já corresponde à projeção (para não duplicar). Referência oculta
+ * (de cota) e visível não se misturam: selecionar a aresta não pode fazer a referência da cota aparecer.
+ */
+export function externaExistente(esb: FeatureEsboco, proj: ProjecaoExterna, oculta = false): GeoEsboco | null {
   const pts = mapaPontos(esb);
   for (const g of esb.geos) {
-    if (!g.externa) continue;
+    if (!g.externa || !!g.oculta !== oculta) continue;
     const P = (id: string) => pts.get(id)!;
     if (proj.tipo === "ponto" && g.tipo === "ponto" && iguais(P(g.p), proj.p)) return g;
     if (proj.tipo === "linha" && g.tipo === "linha") {
@@ -123,9 +126,12 @@ export function externaExistente(esb: FeatureEsboco, proj: ProjecaoExterna): Geo
   return null;
 }
 
-/** Cria a geometria de construção fixa que representa a referência do modelo. */
-export function criarExterna(esb: FeatureEsboco, proj: ProjecaoExterna, ref: Referencia): GeoEsboco {
-  const existente = externaExistente(esb, proj);
+/**
+ * Cria a geometria de construção fixa que representa a referência do modelo. `oculta`: referência só
+ * de cota/eixo (a cota fica presa à aresta da peça sem nenhuma entidade visível no esboço).
+ */
+export function criarExterna(esb: FeatureEsboco, proj: ProjecaoExterna, ref: Referencia, oculta = false): GeoEsboco {
+  const existente = externaExistente(esb, proj, oculta);
   if (existente) return existente;
   let g: GeoEsboco;
   if (proj.tipo === "ponto") g = op.pontoSolto(esb, op.ponto(esb, proj.p), true);
@@ -136,6 +142,7 @@ export function criarExterna(esb: FeatureEsboco, proj: ProjecaoExterna, ref: Ref
     g.r = proj.r;
   }
   g.externa = ref;
+  if (oculta) g.oculta = true;
   fixarExterna(esb, g);
   return g;
 }
@@ -223,4 +230,32 @@ export function podarExternas(esb: FeatureEsboco, manter: Set<string>): boolean 
   }
   if (remover.length) op.excluir(esb, remover);
   return remover.length > 0;
+}
+
+/** Ids (geometria e pontos) das referências ocultas: fora do desenho, da seleção e do encaixe. */
+export function idsOcultos(esb: Pick<FeatureEsboco, "geos">): Set<string> {
+  const out = new Set<string>();
+  for (const g of esb.geos) if (g.oculta) [g.id, ...pontosDaGeo(g)].forEach((id) => out.add(id));
+  return out;
+}
+
+/**
+ * Esboços antigos: a cota até uma aresta/vértice da peça criava uma linha de referência visível.
+ * As referências de construção que só servem a cotas (nenhuma geometria ligada, nenhuma relação além
+ * de "fixo" e de cotas) passam a ser ocultas — a cota continua presa à peça, a linha some do esboço.
+ * Devolve quantas foram ocultadas.
+ */
+export function ocultarRefsDeCota(esb: FeatureEsboco): number {
+  let n = 0;
+  for (const g of esb.geos) {
+    if (!g.externa || !g.construcao || g.oculta) continue;
+    const ids = new Set([g.id, ...pontosDaGeo(g)]);
+    if (esb.geos.some((o) => o.id !== g.id && pontosDaGeo(o).some((p) => ids.has(p)))) continue;
+    const usos = esb.restricoes.filter((r) => r.tipo !== "fixo" && op.referencias(r).some((x) => ids.has(x)));
+    if (usos.length && usos.every(ehCota)) {
+      g.oculta = true;
+      n++;
+    }
+  }
+  return n;
 }
