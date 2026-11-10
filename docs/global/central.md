@@ -2,7 +2,7 @@
 
 > Estado da "central": a conversa em que o Johann aprende a pedir melhor e o Claude aprimora pedidos,
 > confere entregas e acompanha as conversas de código. **A central não altera código do app.**
-> Ao trocar de central (contexto acima de ~350 mil tokens ou aviso de conversa resumida), abrir conversa
+> Ao trocar de central (contexto acima de **~300 mil tokens** ou aviso de conversa resumida), abrir conversa
 > nova e colar:
 >
 > ```
@@ -23,7 +23,9 @@
 3. **Acompanhar conversas** (`list_sessions`, `list_events`, `get_session`): situação, custo, contexto
    usado; dizer quando arquivar ou abrir conversa nova. Não fazer merge por elas.
 4. **Medir** custo por entrega e acerto (tabela da §4).
-5. Avisar quando a própria central passar de ~350 mil tokens.
+5. Avisar quando a própria central passar de **~300 mil tokens** (10/11: a anterior chegou a ~340 mil e
+   ficou cara por mensagem).
+6. **Falar do custo em "% do limite semanal"**, nunca em dólares (§6).
 
 ## 2. Combinados com o Johann (10/11/2026)
 
@@ -57,13 +59,18 @@ Atualizar o status em docs/funcional/<arquivo>.md.
 | 10/11 | Cota reabre para edição com a Cota ativa; ✓/✕ de cada ferramenta lado a lado no painel; sair/descartar lado a lado na vista | Cota reabre para edição e confirmação de ferramentas | #114 | US$ 5,93 | 2/2 | pendente |
 | 10/11 | Mesclar: cola ruído ≤ 0,001 mm, aviso com a folga medida quando o corpo fica separado; planos novos com origem fixa; aviso de entidade < 0,5 mm | Mesclar/unir corpos em contato | #115 | ≈ US$ 3 | 1/1 (causa real ≠ diagnóstico da central) | pendente |
 | 10/11 | Cofre: GO-IN não trava (janela do Google pedida 2×), comentário no GO-IN, GO-OUT/GO-IN/Desfazer por componente na Montagem, perguntar GO-OUT ou consulta ao abrir | Cofre GO-IN/GO-OUT e comentários | #116 | ≈ US$ 2,50 | 4/4 | pendente |
+| 10/11 | WJTaskPlan: prazo da etapa ≤ prazo da tarefa (conferida pela central) | WJTaskPlan prazo da etapa (arquivar) | #118 | — | 1/1 | pendente |
+| 10/11 | WJTaskPlan: alerta de mão dupla + etapas em ordem de prazo (conferida, 0 falhas) | WJTaskPlan alerta e ordem (arquivar) | #119 | ≈ 1,5 % do limite (#119 + #120 = 3 %) | 2/2 | pendente |
+| 10/11 | Dividir: escolha das regiões que viram corpos + STL em sólido na forma exata (conferida: fluxo S → dividir → mover → extrudar → 1 corpo e roteiro no tablet ok; mover e extrusão só em Node) | Dividir com corpos resultantes (arquivar) | #120 | ≈ 1,5 % do limite | 2/2 | pendente (falta o STL real do Johann) |
 
 Referência do método antigo: conversa "Software CAD" (21/10 → 10/11), 68 PRs, ≈ US$ 688 ≈ US$ 10,10 por
 entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11): ≈ US$ 31 ≈ US$ 4,50 por entrega (amostra pequena).
 
 ## 5. Pendências e conversas em andamento
 
-- **Nada em andamento** (10/11, depois do #116). Conversas a arquivar: as do #114, #115 e #116.
+- **Nada em andamento** (10/11, depois do #120). Conversas a arquivar: as do #114, #115, #116, #118, #119 e #120.
+- **#120 falta testar com o STL real do Johann** (dividir → mover → extrudar → 1 corpo foi testado com
+  peça de teste; mover e extrusão só em Node).
 - **TAMPA_JANELA (ação do Johann):** a peça continua com 3 corpos de propósito (folga real de 0,0328 mm
   no gancho da Extrusão2; Extrusão3 apoiada só por aresta) — prender a base do gancho no piso no Esboço2,
   apoiar a nervura numa face, apagar os 2 arcos de 0,27 mm e trocar os "Fixo" por cotas.
@@ -72,12 +79,24 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
   dar a causa como *provável* e pedir para medir/reproduzir antes de corrigir — foi o que salvou.
 - **Ideia em aberto:** jeito rápido de suprimir relações automáticas no tablet (hoje só Ctrl no teclado
   ou a chave em ⚙ Configurações) — o Johann ainda não pediu.
-- **Pendentes por decisão do Johann (limite semanal, 10/11; prompts já prontos):** as 3 conversas da
-  integração CAD/PDM/ERP — (1) grupos e codificação no WJERP; (2) cadastro com código ao salvar;
-  (3) GO-IN sobe a revisão + BOM multinível — e o ajuste de etapas do WJTaskPlan (alerta de mão dupla +
-  ordenação por prazo). Retomar quando ele liberar, com os prompts como estão. **Atenção:** o ajuste do
-  WJTaskPlan já aparece entregue no `main` (PR #119, mesclado em 10/11; `regras.md` §7) — confirmar com o
-  Johann se falta algo além do #119 antes de gastar a conversa.
+- **Pendentes por decisão do Johann (limite semanal, 10/11; prompts prontos na conversa da central
+  anterior — se faltar, pedir que ele reenvie):** as 3 conversas da integração CAD/PDM/ERP, **nesta ordem
+  e uma de cada vez** (mexem nos mesmos arquivos):
+  1. Grupos/subgrupos + codificação **GG.SS.NNNNN.RR** no WJERP (a revisão fica **dentro** do código —
+     decisão do Johann).
+  2. Cadastrar com código ao salvar no WJCAD + propriedades sincronizadas CAD ↔ PDM ↔ ERP.
+  3. GO-IN pergunta se sobe a revisão (**uma revisão só para PDM e ERP; versões = histórico**) + BOM
+     multinível da montagem pai.
+  O ajuste de etapas do WJTaskPlan que estava nesta lista saiu: entregue e conferido (#118, #119).
 - **Pendências das entregas:** linhas de inferência pontilhadas e Tangente automática em arcos (F3,
   `docs/funcional/sketch.md`).
 - Conversa antiga "Software CAD": mantida só para consulta; não usar para pedidos novos.
+
+## 6. Limite de uso (10/11/2026)
+
+- Plano fixo de **US$ 20/mês com limite semanal**; renova **sexta às 23h (horário de Brasília)**.
+- Os "US$" do painel das sessões são **preço de tabela equivalente, não cobrança**. Com o Johann, falar
+  sempre em **"% do limite"**.
+- Calibração: 84 % → 87 % durante #119 + #120 ⇒ **1 % ≈ US$ 3 a 6 "de tabela"**; tarefa média ≈ 1 a 2 %,
+  grande ≈ 2 a 3 %. Refinar medindo o % antes e depois de uma conversa rodando sozinha (sem outra em
+  paralelo) e anotar aqui.
