@@ -90,7 +90,8 @@ Pontos de atenção: **Cônica** geral não existe no solver (PlaneGCS tem elips
 |---|---|---|
 | Esboço | em plano de referência ✅, face plana ✅, plano criado (F3) | 🟡 |
 | Vista normal ao entrar | gira para normal ao plano ✅; ao sair volta à vista anterior | 🟡 |
-| Sair do esboço | botão na aba ✅, canto de confirmação ✓/✕ (✕ = descartar alterações) | 🟡 |
+| Sair do esboço | botão na aba ✅, canto da vista **Sair do esboço / Descartar lado a lado** com ícone e dica próprios (10/11/2026) ✅ | 🟡 |
+| ✓/✕ da ferramenta | **(10/11/2026, pedido do Johann)** toda ferramenta do esboço ativa mostra ✓ e ✕ lado a lado no canto superior direito do painel lateral (≥ 44 px no tablet) ✅. **✓** (Enter) conclui e sai; nos comandos com seleção (Espelhar, Filete, Deslocar, Padrões) aplica. **✕** sai desfazendo o que foi feito na ferramenta desde que abriu (um passo de desfazer: Ctrl+Z traz de volta); nos comandos com seleção, cancela sem aplicar. **Esc seguro** (decisão do Johann): nas ferramentas de desenho o 1º Esc cancela a etapa e o 2º sai mantendo o desenho; nos comandos com seleção Esc = ✕ | ✅ |
 | Editar esboço | painel do esboço ✅, menu de contexto, duplo clique | 🟡 |
 | Editar plano do esboço | trocar plano/face de suporte mantendo a geometria | F3 |
 | Esboço 3D | — | ⏸ |
@@ -331,6 +332,10 @@ Outros tipos — F3/⏸: horizontal/vertical dedicadas, linha de base, cadeia, c
 chanfro.
 
 ### Diálogo "Modificar" (ao criar e ao editar) — 🟡
+- **Reabrir a cota** ✅ (10/11/2026, correção): tocar/clicar (dedo, caneta ou mouse) numa cota existente abre a
+  caixa com o valor atual com a **Cota** ou a **Selecionar** ativa (antes, só com Selecionar: com a Cota o
+  toque não abria). **Duplo clique / duplo toque** abre com qualquer ferramenta. Com a caixa aberta, Enter
+  (mesmo sem foco, teclado do tablet) aplica.
 - **Teclado-calculadora** ✅ (09/11/2026, pedido do Johann; 10/11/2026: **abre pelo botão com símbolo de
   calculadora** na caixa do valor, não sozinho): a caixa da cota (número + 🖩 + ✓) aparece ao criar ou editar
   qualquer cota — no tablet/celular sem foco (o teclado do sistema não sobe sozinho), no computador já

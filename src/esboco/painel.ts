@@ -4,7 +4,7 @@
 import { ehCota, type OpcoesTexto, type RestricaoEsboco } from "../model";
 import { textoCota } from "./cotas";
 import { EIXO_H, EIXO_V, ORIGEM } from "./geometria";
-import { avaliar, ROTULO_FERRAMENTA, type EditorEsboco } from "./editor";
+import { avaliar, COMANDOS_SELECAO, ROTULO_FERRAMENTA, type EditorEsboco } from "./editor";
 
 const NOME_RELACAO: Record<string, string> = {
   coincidente: "Coincidente", horizontal: "Horizontal", vertical: "Vertical", paralelo: "Paralelo",
@@ -78,6 +78,23 @@ export function renderizarPainelEsboco(
   painel.innerHTML = "";
   painel.classList.remove("vazio");
   const esb = ed.esb;
+
+  // ✓/✕ da ferramenta ativa, lado a lado no canto superior direito do painel (o par do canto da vista é
+  // do esboço inteiro: sair / descartar)
+  if (ed.ferramenta !== "selecionar") {
+    const nomeF = ROTULO_FERRAMENTA[ed.ferramenta];
+    const selecao = COMANDOS_SELECAO.includes(ed.ferramenta);
+    const barra = el("div", "esb-ferr-barra");
+    barra.append(el("span", "esb-ferr-nome", nomeF));
+    const ok = botao("✓", () => ed.confirmarFerramenta(), "esb-ferr-btn esb-ferr-ok");
+    ok.title = selecao ? `Aplicar e sair de ${nomeF} (Enter)` : `Concluir e sair de ${nomeF} (Enter)`;
+    ok.setAttribute("aria-label", ok.title);
+    const x = botao("✕", () => ed.cancelarFerramenta(), "esb-ferr-btn esb-ferr-cancelar");
+    x.title = selecao ? `Cancelar ${nomeF} sem aplicar (Esc)` : `Sair de ${nomeF} desfazendo o que foi feito nela`;
+    x.setAttribute("aria-label", x.title);
+    barra.append(ok, x);
+    painel.append(barra);
+  }
 
   const cab = el("div", "prop-cabecalho");
   cab.append(el("span", "prop-tipo", "Editando esboço"));
