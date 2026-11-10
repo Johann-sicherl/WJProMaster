@@ -200,6 +200,14 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
 
 ## Observações técnicas
 
+- **✓/✕ da ferramenta do esboço** (10/11/2026, `editor.ts` `confirmarFerramenta`/`cancelarFerramenta`, barra
+  `.esb-ferr-barra` em `painel.ts`): `definirFerramenta` guarda `JSON.stringify(esb)` ao trocar de ferramenta
+  (mudar só o tipo não reinicia); o ✕ restaura no mesmo objeto (`Object.assign`, o `doc` continua apontando
+  para ele) e grava passo de desfazer. `COMANDOS_SELECAO` decide Esc = ✕. Canto da vista: classe
+  `modo-esboco` em `#canto-confirmacao` (`rotularCantoConfirmacao` em `main.ts`). **Armadilha:** o 1º toque
+  numa cota refaz a etiqueta, então o `dblclick` do navegador nunca chega: o duplo toque é medido por tempo
+  (`ultimoToqueCota`, 450 ms).
+
 - **Referência oculta do esboço** (10/11/2026, `src/esboco/externas.ts`): `GeoEsboco.oculta` marca a geometria
   externa criada para cota, linha de espelho ou direção de padrão (`criarExterna(..., true)`). Fica fora de
   `visual.ts` (traço e pontos), `achar`/`encaixar` do editor, `idsNaSelecao`, relações automáticas, lista de
