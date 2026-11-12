@@ -354,6 +354,49 @@ export function nomeLivre(nome: string, existentes: string[]): string {
   }
 }
 
+/**
+ * Mover vários arquivos para a pasta `destino` de uma vez (seleção múltipla no WJPDM, 12/11/2026):
+ * nome repetido no destino ganha " (2)"; GO-OUT de outra pessoa fica de fora (com o motivo). Devolve
+ * os arquivos já alterados (pasta, nome, histórico); quem chama grava.
+ */
+export function moverArquivos(todos: Arquivo[], ids: string[], destino: string, usuario: string, nomePasta: (id: string) => string, agora: string): { movidos: Arquivo[]; recusados: string[] } {
+  const movidos: Arquivo[] = [], recusados: string[] = [];
+  const nomes = todos.filter((a) => a.pasta === destino && !a.lixeira && !ids.includes(a.id)).map((a) => a.nome);
+  for (const id of ids) {
+    const a = todos.find((x) => x.id === id);
+    if (!a || a.lixeira || a.pasta === destino) continue;
+    if (a.checkout && a.checkout.usuario !== usuario) {
+      recusados.push(`${a.nome} (GO-OUT de ${a.checkout.usuario})`);
+      continue;
+    }
+    const nome = nomeLivre(a.nome, nomes);
+    nomes.push(nome);
+    const texto = `Movido de ${nomePasta(a.pasta)} para ${nomePasta(destino)}${nome !== a.nome ? ` (como ${nome})` : ""}`;
+    movidos.push({ ...a, nome, pasta: destino, mod: agora, historico: [...a.historico, { data: agora, usuario, texto }] });
+  }
+  return { movidos, recusados };
+}
+
+/**
+ * Mover a pasta `id` (com tudo o que tem dentro) para dentro de `destino` (null = raiz do cofre):
+ * não pode ir para dentro dela mesma; nome repetido entre as irmãs ganha " (2)".
+ */
+export function moverPasta(pastas: Pasta[], id: string, destino: string | null): { pasta: Pasta } | { erro: string } {
+  const p = pastas.find((x) => x.id === id);
+  if (!p) return { erro: "Pasta não encontrada." };
+  const dentro = new Set([id]);
+  for (let mudou = true; mudou; ) {
+    mudou = false;
+    for (const x of pastas) if (x.pai && dentro.has(x.pai) && !dentro.has(x.id)) dentro.add(x.id), (mudou = true);
+  }
+  if (destino && dentro.has(destino)) return { erro: `A pasta "${p.nome}" não pode ir para dentro dela mesma.` };
+  if ((p.pai ?? null) === destino) return { pasta: p };
+  const irmas = new Set(pastas.filter((x) => x.id !== id && (x.pai ?? null) === destino).map((x) => x.nome.toLowerCase()));
+  let nome = p.nome;
+  for (let n = 2; irmas.has(nome.toLowerCase()); n++) nome = `${p.nome} (${n})`;
+  return { pasta: { ...p, nome, pai: destino } };
+}
+
 /** Lista de materiais explodida (quantidades acumuladas por nível); detecta ciclos. */
 export function explodirBOM(itens: Item[], raiz: string): { item: Item; nivel: number; qtd: number; total: number }[] | string {
   const porId = new Map(itens.map((i) => [i.id, i]));

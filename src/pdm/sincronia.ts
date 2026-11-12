@@ -8,6 +8,7 @@
 
 import type { Arquivo, Fluxo, Item, Pasta, ReferenciaArquivo } from "./regras";
 import { extensao } from "./regras";
+import { analisarEspelho, decisaoVazia, type DecisaoEspelho, type EspelhoVisto, type MudancaFora, type OpcoesEspelho } from "./espelho";
 
 export interface MetaCofre {
   id: "meta";
@@ -57,8 +58,16 @@ export interface Repositorio {
   lerBlob(id: string): Promise<Blob | undefined>;
   gravarBlob(id: string, b: Blob): Promise<void>;
   apagarBlob?(id: string): Promise<void>;
-  /** Arquivos visíveis (pastas com nomes legíveis), para abrir o cofre em qualquer computador. */
-  gravarVisiveis?(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>): Promise<void>;
+  /**
+   * Onde estão de fato os arquivos e pastas que o app gravou no espelho legível (mudanças feitas
+   * fora do app, src/pdm/espelho.ts). Lido antes de gravar os visíveis.
+   */
+  lerEspelho?(i: Indice): Promise<EspelhoVisto>;
+  /**
+   * Arquivos visíveis (pastas com nomes legíveis), para abrir o cofre em qualquer computador.
+   * `espelho`: o que ficou à espera da escolha do Johann (não mexer) e onde cada item está agora.
+   */
+  gravarVisiveis?(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>, espelho?: DecisaoEspelho): Promise<void>;
 }
 
 const DIA = 86400000;
@@ -238,13 +247,17 @@ export interface ResultadoSincronia {
   faltando: string[];
   /** cópias que falharam (desconectadas no meio) */
   falhas: { repo: string; erro: string }[];
+  /** mudanças feitas fora do app nos espelhos (Drive, pendrive, pasta), à espera da escolha */
+  foraDoApp: MudancaFora[];
+  /** ids de todas as mudanças fora do app vistas (também as já decididas) */
+  vistas: string[];
 }
 
 /**
  * Iguala as cópias: junta os índices, copia os blobs que faltam em cada uma, grava os arquivos
  * visíveis e o índice comum. Uma cópia que falhar (pendrive arrancado) não impede as outras.
  */
-export async function sincronizar(repos: Repositorio[], agora: string): Promise<ResultadoSincronia> {
+export async function sincronizar(repos: Repositorio[], agora: string, opcoes: OpcoesEspelho = {}): Promise<ResultadoSincronia> {
   const falhas: { repo: string; erro: string }[] = [];
   const vivos: Repositorio[] = [], indices: Indice[] = [];
   for (const r of repos) {
@@ -255,7 +268,28 @@ export async function sincronizar(repos: Repositorio[], agora: string): Promise<
       falhas.push({ repo: r.nome, erro: (e as Error).message ?? String(e) });
     }
   }
-  const { indice, conflitos } = mesclar(indices, agora);
+  const mescla = mesclar(indices, agora);
+  let indice = mescla.indice;
+  const conflitos = mescla.conflitos;
+  // mudanças feitas fora do app em cada espelho (antes de gravar nele): as à espera não são
+  // desfeitas; os conflitos com o app entram no índice que todas as cópias recebem
+  const espelhos = new Map<Repositorio, DecisaoEspelho>();
+  const foraDoApp: MudancaFora[] = [], vistas: string[] = [];
+  for (const r of [...vivos]) {
+    if (!r.lerEspelho) continue;
+    try {
+      const a = analisarEspelho(indice, await r.lerEspelho(indice), agora, opcoes);
+      indice = a.indice;
+      conflitos.push(...a.conflitos);
+      foraDoApp.push(...a.pendentes);
+      vistas.push(...a.vistas);
+      espelhos.set(r, a);
+    } catch (e) {
+      // sem saber o que mudou lá, não grava (poderia desfazer o que o Johann fez)
+      falhas.push({ repo: r.nome, erro: (e as Error).message ?? String(e) });
+      vivos.splice(vivos.indexOf(r), 1);
+    }
+  }
   // todas as cópias guardam o índice inteiro (salvar em um aparelho abre no outro); as de
   // publicação só MOSTRAM o publicado nos arquivos visíveis
   const visiveis = (r: Repositorio) => (r.publicado ? vistaPublicada(indice) : indice);
@@ -294,7 +328,7 @@ export async function sincronizar(repos: Repositorio[], agora: string): Promise<
   for (const r of vivos) {
     if (falhas.some((f) => f.repo === r.nome)) continue;
     try {
-      await r.gravarVisiveis?.(visiveis(r), (id) => r.lerBlob(id));
+      await r.gravarVisiveis?.(visiveis(r), (id) => r.lerBlob(id), espelhos.get(r) ?? decisaoVazia());
       await r.gravarIndice(indice);
       // blobs que nenhum arquivo usa mais (destruídos): liberam espaço
       const precisa = precisaDe.get(r)!;
@@ -303,5 +337,5 @@ export async function sincronizar(repos: Repositorio[], agora: string): Promise<
       falhas.push({ repo: r.nome, erro: (e as Error).message ?? String(e) });
     }
   }
-  return { indice, conflitos, copiados, faltando, falhas };
+  return { indice, conflitos, copiados, faltando, falhas, foraDoApp, vistas };
 }

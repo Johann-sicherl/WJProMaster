@@ -24,6 +24,16 @@
 .pd-lista tbody tr:hover td { background: #f6f9fc; }
 .pd-lista tr.sel td { background: #e3effb; }
 .pd-lista td.pd-ic { width: 30px; text-align: center; }
+/* marcar vários arquivos (seleção múltipla): a célula inteira é o alvo do toque */
+.pd-lista td.pd-marca, .pd-lista th:first-child:has(input) { width: 34px; padding: 0 0 0 8px; }
+.pd-lista .pd-marca input, .pd-lista [data-marca-todos] { width: 20px; height: 20px; margin: 0; vertical-align: middle; cursor: pointer; }
+.pd-lista tr.marcado td { background: #eef5fd; }
+body.disp-tablet .pd-lista td.pd-marca, body.disp-celular .pd-lista td.pd-marca { width: 44px; padding: 0 0 0 12px; }
+body.disp-tablet .pd-lista .pd-marca input, body.disp-celular .pd-lista .pd-marca input { width: 24px; height: 24px; }
+.pd-marcados { position: sticky; bottom: 0; left: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #fffbea; border-top: 1px solid #f0e2a8; }
+.pd-marcados span { flex: 1; }
+.pd-marcados button { min-height: 40px; }
+body.disp-tablet .pd-marcados button, body.disp-celular .pd-marcados button { min-height: 44px; }
 .pd-lista td.pd-ic svg { width: 18px; height: 18px; vertical-align: middle; }
 .pd-lista .pd-vazio { text-align: center; color: var(--texto-2); padding: 40px 10px; white-space: normal; height: auto; }
 .pd-estado { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; color: #fff; }

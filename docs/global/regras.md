@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 10/11/2026 (inclui o cofre no WJCAD: GO-IN com comentário, abrir com GO-OUT ou consulta).
+> Última consolidação: 12/11/2026 (mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -166,6 +166,18 @@
 - **Pastas** (também as vazias) vão para todas as cópias. **Criar pasta** no explorador ou no WJPDM
   sincroniza na hora (05/11/2026); se o acesso ao Google tiver vencido, a janela do Google abre no toque
   de "Criar".
+- **Mudanças feitas fora do app** (12/11/2026, pedido do Johann): mover/renomear arquivo e renomear/mover
+  pasta **direto** no Drive, no pendrive ou na pasta do dispositivo é detectado a cada sincronia e aparece na
+  janela **"Mudanças feitas fora do app"** (de → para) com **"Trazer para o cofre"** (vira Mover/Renomear,
+  histórico "Movido no Drive de X para Y") ou **"Desfazer"** (volta ao lugar do cofre), por item ou todas.
+  **Nada muda sozinho sem a escolha dele**; até lá o app não mexe nesses itens. Mudou no app e fora ao mesmo
+  tempo: **a mais recente vence**, a outra vai para a lixeira do cofre. **Pasta nova se cria pelo WJPDM**
+  (com `drive.file` o app não vê pastas criadas à mão no Drive; o seletor do Google exigiria chave de API e
+  configuração no Google Cloud); arquivo posto numa delas: "Levar para esta pasta" do cofre ou Desfazer.
+  Pastas do app no Drive são achadas **pelo id** (não pelo nome). **Nada visível é apagado de vez no Drive**:
+  vai para a lixeira dele. Arquivos novos postos à mão continuam fora (adicionar pelo WJPDM).
+- **Reorganizar no WJPDM** (12/11/2026): Mover pasta inteira (menu da pasta) e mover vários arquivos marcados
+  de uma vez (caixinhas / Ctrl+clique).
 
 ### 5.3 Ao abrir qualquer app (05/11/2026)
 - Cada abertura ou recarregar de qualquer página (apps, página inicial, WJTaskPlan) **sincroniza o cofre**

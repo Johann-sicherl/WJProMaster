@@ -1,5 +1,7 @@
 // Teste das regras do cofre do WJPDM em Node.
 import {
+  moverArquivos,
+  moverPasta,
   acoesDoCofre, aplicarTransicao, bloqueioDaTransicao, modoDeAbrir, textoDaVersao, bloqueioDoCheckout, copiaDoFluxo, estadoDe, explodirBOM, FLUXO_PADRAO, fluxoAtual, nomeLivre, ondeEUsado,
   proximaRevisao, proximaRevisaoNoEsquema, proximoCodigo, transicoesDe, trocarReferencias, bomDasReferencias, usarFluxo, validarFluxo, type Arquivo, type Item,
 } from "../src/pdm/regras";
@@ -144,6 +146,26 @@ igual("ciclo na lista", typeof explodirBOM(itens, "conj"), "string");
   igual("abrir: GO-OUT de outra pessoa = consulta com aviso", [m.modo, /Maria/.test(m.aviso)], ["consulta", true]);
   igual("histórico da versão com comentário", textoDaVersao(3, "  furo M8 "), "Versão 3 — furo M8");
   igual("histórico da versão sem comentário", textoDaVersao(3, " "), "Versão 3");
+}
+
+// mover pasta inteira e vários arquivos marcados de uma vez (12/11/2026)
+{
+  const ps = [
+    { id: "p1", nome: "CAD", pai: null },
+    { id: "p2", nome: "Sub", pai: "p1" },
+    { id: "p3", nome: "Projetos", pai: null },
+    { id: "p4", nome: "Sub", pai: "p3" },
+  ];
+  const m1 = moverPasta(ps, "p2", "p3");
+  igual("mover pasta: nome repetido no destino ganha (2)", "erro" in m1 ? m1.erro : [m1.pasta.pai, m1.pasta.nome], ["p3", "Sub (2)"]);
+  igual("mover pasta para dentro dela mesma: recusado", "erro" in moverPasta(ps, "p1", "p2"), true);
+  const m2 = moverPasta(ps, "p2", null);
+  igual("mover pasta para a raiz", "erro" in m2 ? m2.erro : [m2.pasta.pai, m2.pasta.nome], [null, "Sub"]);
+  const arq = (id: string, nome: string, pasta: string, extra = {}) => ({ id, nome, pasta, versoes: [], revisao: "", estado: "trabalho", cartao: {}, historico: [], ...extra }) as unknown as Parameters<typeof moverArquivos>[0][number];
+  const todos = [arq("a", "Eixo.wjcad", "p1"), arq("b", "Mancal.wjcad", "p1"), arq("c", "Eixo.wjcad", "p3"), arq("d", "Tampa.wjcad", "p1", { checkout: { usuario: "Ana", data: "x" } })];
+  const r = moverArquivos(todos, ["a", "b", "d"], "p3", "Johann", (id) => ({ p1: "CAD", p3: "Projetos" })[id] ?? id, "2026-11-12T10:00:00");
+  igual("mover vários: nomes, pasta e histórico", r.movidos.map((a) => [a.nome, a.pasta, a.historico.at(-1)?.texto]), [["Eixo (2).wjcad", "p3", "Movido de CAD para Projetos (como Eixo (2).wjcad)"], ["Mancal.wjcad", "p3", "Movido de CAD para Projetos"]]);
+  igual("mover vários: GO-OUT de outra pessoa fica de fora", r.recusados, ["Tampa.wjcad (GO-OUT de Ana)"]);
 }
 
 console.log(falhas ? `\npdm: ${falhas} falha(s)` : "\npdm: tudo certo");
