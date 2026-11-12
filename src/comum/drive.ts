@@ -11,7 +11,10 @@
 //
 // Mudanças feitas à mão no Drive (12/11/2026): as pastas e os arquivos que o app criou são achados
 // pelo id (não pelo nome), então pasta renomeada à mão não vira pasta duplicada e arquivo movido à
-// mão é visto onde está. Nada é apagado de vez: o que sai vai para a lixeira do Drive (trashed).
+// mão é visto onde está; o que foi excluído à mão é visto (lixeira do Drive ou 404) com a data, e o
+// conteúdo editado fora do app, pelo md5. O cofre aplica sozinho (src/pdm/espelho.ts). A pasta WJPDM
+// e a .wjpdm renomeadas/movidas à mão são achadas pelo indice.json (só o app o cria). Nada é apagado
+// de vez: o que sai vai para a lixeira do Drive (trashed), nunca DELETE.
 
 import { visiveisDoIndice, type Indice, type Repositorio } from "../pdm/sincronia";
 import { caminhoDaPasta, decisaoVazia, type DecisaoEspelho, type EspelhoVisto, type ItemVisto } from "../pdm/espelho";
@@ -51,12 +54,12 @@ export class ErroDrive extends Error {
 type Buscar = typeof fetch;
 const q = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 /** Metadados de um item do Drive (null = sumiu, na lixeira ou fora do alcance do app). */
-type Meta = { id: string; name: string; parents?: string[]; mimeType?: string; modifiedTime?: string; trashed?: boolean };
-/** Arquivo visível gravado: caminho no cofre, conteúdo, id no Drive, pasta onde foi posto no Drive e pasta do cofre. */
-type RegVis = { caminho: string[]; blob: string; drive: string; pai?: string; pasta?: string };
+type Meta = { id: string; name: string; parents?: string[]; mimeType?: string; modifiedTime?: string; trashed?: boolean; trashedTime?: string; md5Checksum?: string };
+/** Arquivo visível gravado: caminho no cofre, conteúdo, id no Drive, pasta onde foi posto no Drive, pasta do cofre e md5 do que o app gravou. */
+type RegVis = { caminho: string[]; blob: string; drive: string; pai?: string; pasta?: string; md5?: string };
 /** Pasta do cofre → pasta no Drive (e a pasta-mãe no cofre). */
 type RegPastas = Record<string, { caminho: string[]; drive: string; pai?: string | null }>;
-const CAMPOS = "id,name,parents,mimeType,modifiedTime,trashed";
+const CAMPOS = "id,name,parents,mimeType,modifiedTime,trashed,trashedTime,md5Checksum";
 const igual = (a?: string[], b?: string[]) => !!a && !!b && a.length === b.length && a.every((x, k) => x === b[k]);
 
 export class RepositorioDrive implements Repositorio {
@@ -126,10 +129,14 @@ export class RepositorioDrive implements Repositorio {
   private async baixar(id: string): Promise<Blob> {
     return (await this.req(`${API}/${id}?alt=media`)).blob();
   }
+  /** md5 de cada arquivo enviado nesta sincronia (o Drive devolve): conteúdo editado fora do app é visto por ele. */
+  private md5s = new Map<string, string>();
   /** Cria (multipart: dados + nome/pasta) ou atualiza o conteúdo de um arquivo existente. */
   private async enviar(dados: Blob, nome: string, pasta: string, id?: string): Promise<string> {
     if (id) {
-      await this.req(`${UPLOAD}/${id}?uploadType=media`, { method: "PATCH", body: dados });
+      const r = await this.req(`${UPLOAD}/${id}?uploadType=media&fields=id,md5Checksum`, { method: "PATCH", body: dados });
+      const j = (await r.json().catch(() => ({}))) as { md5Checksum?: string };
+      if (j.md5Checksum) this.md5s.set(id, j.md5Checksum);
       return id;
     }
     const fronteira = `wjpdm${Math.random().toString(36).slice(2)}`;
@@ -137,8 +144,10 @@ export class RepositorioDrive implements Repositorio {
       `--${fronteira}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: nome, parents: [pasta] })}\r\n`,
       `--${fronteira}\r\nContent-Type: ${dados.type || "application/octet-stream"}\r\n\r\n`, dados, `\r\n--${fronteira}--`,
     ]);
-    const r = await this.req(`${UPLOAD}?uploadType=multipart&fields=id`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${fronteira}` }, body: corpo });
-    return ((await r.json()) as { id: string }).id;
+    const r = await this.req(`${UPLOAD}?uploadType=multipart&fields=id,md5Checksum`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${fronteira}` }, body: corpo });
+    const j = (await r.json()) as { id: string; md5Checksum?: string };
+    if (j.md5Checksum) this.md5s.set(j.id, j.md5Checksum);
+    return j.id;
   }
 
   /** Texto de um arquivo fora do cofre (ex.: Meu Drive/WJTaskPlan/tarefas.json); null se não existe. */
@@ -153,8 +162,46 @@ export class RepositorioDrive implements Repositorio {
     await this.enviar(dados, nome, p, await this.arquivoNa(p, nome));
   }
 
-  private sis = () => this.pasta(["WJPDM", ".wjpdm"]);
-  private blobsPasta = () => this.pasta(["WJPDM", ".wjpdm", "blobs"]);
+  /** O que o app teve de pôr de volta na estrutura (pasta WJPDM ou .wjpdm renomeada/movida à mão). */
+  avisos: string[] = [];
+  private base?: Promise<{ raiz: string; sis: string }>;
+  /**
+   * Meu Drive/WJPDM e WJPDM/.wjpdm. Pelo nome no lugar de sempre; se foram renomeadas ou movidas à
+   * mão, pelo indice.json (só o app o cria, então só ele aparece com drive.file) — e o nome volta,
+   * para os outros aparelhos acharem. Nunca uma segunda pasta WJPDM enquanto a original existir.
+   */
+  private localizar() {
+    return (this.base ??= (async () => {
+      const porNome = async (nome: string, pai: string) => (await this.listar(`name='${q(nome)}' and '${pai}' in parents and mimeType='${PASTA}' and trashed=false`))[0]?.id;
+      let raiz = await porNome("WJPDM", "root");
+      let sis = raiz ? await porNome(".wjpdm", raiz) : undefined;
+      if (!sis) {
+        const indices = (await this.listar("name='indice.json' and trashed=false", "id,name,parents,modifiedTime")).sort((a, b) => (b.modifiedTime ?? "").localeCompare(a.modifiedTime ?? ""));
+        for (const x of indices) {
+          const s = x.parents?.[0];
+          const ms = s ? await this.meta(s) : null;
+          const r = ms?.parents?.[0];
+          const mr = r ? await this.meta(r) : null;
+          if (!s || !ms || !r || !mr || ms.mimeType !== PASTA || mr.mimeType !== PASTA || (raiz && r !== raiz)) continue;
+          [raiz, sis] = [r, s];
+          for (const [id, nome, m] of [[r, "WJPDM", mr], [s, ".wjpdm", ms]] as const) {
+            if (m.name === nome) continue;
+            await this.req(`${API}/${id}?fields=id`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome }) });
+            this.metas.set(id, { ...m, name: nome });
+            this.avisos.push(`A pasta ${nome} foi renomeada à mão no Drive (para "${m.name}"): o app pôs o nome de volta (ela guarda o cofre).`);
+          }
+          break;
+        }
+      }
+      raiz ??= await this.criarPasta("WJPDM", "root", false);
+      sis ??= await this.criarPasta(".wjpdm", raiz, false);
+      this.ids.set("WJPDM", raiz);
+      this.ids.set("WJPDM/.wjpdm", sis);
+      return { raiz, sis };
+    })());
+  }
+  private sis = () => this.localizar().then((b) => b.sis);
+  private blobsPasta = () => this.localizar().then(() => this.pasta(["WJPDM", ".wjpdm", "blobs"]));
 
   async lerIndice(): Promise<Indice | null> {
     const id = await this.arquivoNa(await this.sis(), "indice.json");
@@ -181,10 +228,11 @@ export class RepositorioDrive implements Repositorio {
     const d = await this.enviar(b, id, await this.blobsPasta());
     this.blobIds?.set(id, d);
   }
+  /** Conteúdo que nenhum arquivo usa mais: para a lixeira do Drive (nunca DELETE). */
   async apagarBlob(id: string) {
     if (!this.blobIds) await this.listarBlobs();
     const d = this.blobIds!.get(id);
-    if (d) await this.req(`${API}/${d}`, { method: "DELETE" });
+    if (d) await this.req(`${API}/${d}?fields=id`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
     this.blobIds!.delete(id);
   }
 
@@ -192,18 +240,20 @@ export class RepositorioDrive implements Repositorio {
 
   /** Metadados lidos nesta sincronia (cada sincronia usa um repositório novo). */
   private metas = new Map<string, Meta | null>();
+  /** itens que sumiram: na lixeira do Drive (com a data) ou apagados de vez ("") */
+  private sumidos = new Map<string, string>();
   private estado?: Promise<{ vis: Record<string, RegVis>; idVis?: string; pastas: RegPastas; idPastas?: string }>;
-  private raizId?: Promise<string>;
-  private raiz = () => (this.raizId ??= this.pasta(["WJPDM"]));
+  private raiz = () => this.localizar().then((b) => b.raiz);
 
   private async meta(id: string): Promise<Meta | null> {
     if (this.metas.has(id)) return this.metas.get(id)!;
     const m = await this.req(`${API}/${id}?fields=${CAMPOS}`)
       .then((r) => r.json() as Promise<Meta>)
       .catch((e) => {
-        if (e instanceof ErroDrive && e.status === 404) return null; // apagado ou fora do alcance (drive.file)
+        if (e instanceof ErroDrive && e.status === 404) return null; // apagado de vez ou fora do alcance (drive.file)
         throw e;
       });
+    if (!m || m.trashed) this.sumidos.set(id, m?.trashedTime ?? "");
     this.metas.set(id, m && !m.trashed ? m : null);
     return this.metas.get(id)!;
   }
@@ -237,8 +287,12 @@ export class RepositorioDrive implements Repositorio {
     this.metas.set(id, null);
     return this.req(`${API}/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).then(() => {}, () => {});
   }
-  private async criarPasta(nome: string, pai: string): Promise<string> {
-    const achada = (await this.listar(`name='${q(nome)}' and '${pai}' in parents and mimeType='${PASTA}' and trashed=false`))[0]?.id;
+  /**
+   * Pasta nova em `pai`. `procurar`: antes, reaproveita a do app com o mesmo nome (só quando não há id
+   * guardado dela, ex.: pastas.json perdido); com id guardado, a pasta é sempre achada pelo id.
+   */
+  private async criarPasta(nome: string, pai: string, procurar = true): Promise<string> {
+    const achada = procurar ? (await this.listar(`name='${q(nome)}' and '${pai}' in parents and mimeType='${PASTA}' and trashed=false`))[0]?.id : undefined;
     if (achada) return achada;
     const r = await this.req(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome, mimeType: PASTA, parents: [pai] }) });
     return ((await r.json()) as { id: string }).id;
@@ -297,24 +351,33 @@ export class RepositorioDrive implements Repositorio {
       const c = caminho(pai, n + 1);
       return c && [...c, m.name];
     };
-    const item = (id: string, gravado: string[], drive: string, noCofre: string | null | undefined): ItemVisto | null => {
+    const item = (id: string, gravado: string[], drive: string, noCofre: string | null | undefined): ItemVisto => {
       const m = this.metas.get(drive);
-      if (!m) return null; // apagado à mão ou na lixeira: fica como está
-      const pai = m.parents?.[0];
-      const d = pai ? caminho(pai) : null;
-      return { id, gravado, visto: d && [...d, m.name], quando: m.modifiedTime, ...(noCofre !== undefined ? { pai: noCofre } : {}) };
+      const pai = noCofre !== undefined ? { pai: noCofre } : {};
+      // excluído à mão (lixeira do Drive ou apagado de vez): o cofre o leva para a lixeira dele
+      if (!m) return { id, gravado, visto: undefined, ...(this.sumidos.get(drive) ? { quando: this.sumidos.get(drive) } : {}), ...pai };
+      const d = m.parents?.[0] ? caminho(m.parents[0]) : null;
+      return { id, gravado, visto: d && [...d, m.name], quando: m.modifiedTime, ...pai };
     };
+    // conteúdo mudado fora do app (o md5 não é o do que o app gravou): vale a cópia do cofre
+    const editados = Object.entries(vis).filter(([, v]) => {
+      const m = this.metas.get(v.drive);
+      return !!m && !!v.md5 && !!m.md5Checksum && m.md5Checksum !== v.md5;
+    }).map(([k]) => k);
     return {
       copia: this.nome,
-      pastas: Object.entries(pastas).map(([id, p]) => item(id, p.caminho, p.drive, p.pai)).filter((x): x is ItemVisto => !!x),
-      arquivos: Object.entries(vis).filter(([k]) => !k.includes("#")).map(([k, v]) => item(k, v.caminho, v.drive, v.pasta)).filter((x): x is ItemVisto => !!x),
+      pastas: Object.entries(pastas).map(([id, p]) => item(id, p.caminho, p.drive, p.pai)),
+      arquivos: Object.entries(vis).filter(([k]) => !k.includes("#")).map(([k, v]) => item(k, v.caminho, v.drive, v.pasta)),
+      editados,
+      estrutura: [...this.avisos],
     };
   }
 
   /**
    * Arquivos legíveis em Meu Drive/WJPDM, iguais ao cofre: conteúdo atualizado no lugar (o Drive
-   * guarda as revisões), mover/renomear pelo id, pastas pelo id. O que está à espera da escolha do
-   * Johann (`espelho.manter`) fica onde ele pôs. O que sai vai para a lixeira do Drive.
+   * guarda as revisões), mover/renomear pelo id, pastas pelo id (também as "(versões)"). O que está
+   * numa pasta criada à mão (`espelho.manter`) fica onde ele pôs; o que foi editado fora do app
+   * (`espelho.regravar`) recebe de novo o conteúdo do cofre. O que sai vai para a lixeira do Drive.
    */
   async gravarVisiveis(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>, espelho: DecisaoEspelho = decisaoVazia()) {
     const sis = await this.sis();
@@ -337,28 +400,42 @@ export class RepositorioDrive implements Repositorio {
         if (r === "preso") presas.add(id);
         if (r !== "ok") id = undefined;
       }
-      id ??= await this.criarPasta(p.nome, pai);
+      // excluída à mão e mantida no cofre (tem arquivos que não saem): recriada, sem procurar pelo nome
+      id ??= await this.criarPasta(p.nome, pai, !rec);
       pastasAgora[p.id] = { caminho: fundura.get(p.id)!, drive: id, pai: p.pai ?? null };
     }
     const pastaDe = new Map(Object.values(pastasAgora).map((x) => [JSON.stringify(x.caminho), x.drive]));
     const versoes = new Map<string, string>(); // "<pasta>/<nome> (versões)" → id
-    const pastaVersoes = async (pai: string, nome: string) => {
+    // pasta "(versões)" de cada arquivo pelo id guardado: acompanha o arquivo movido/renomeado à mão
+    const versoesAntes = new Map<string, string>();
+    for (const [k, v] of Object.entries(antes)) if (k.includes("#") && v.pai) versoesAntes.set(k.split("#")[0], v.pai);
+    const pastaVersoes = async (pai: string, nome: string, arquivo: string) => {
       const k = `${pai}/${nome}`;
-      if (!versoes.has(k)) versoes.set(k, await this.criarPasta(nome, pai));
+      if (!versoes.has(k)) {
+        let id = versoesAntes.get(arquivo);
+        if (id) {
+          const r = await this.colocar(id, nome, pai);
+          if (r === "preso") presas.add(id);
+          if (r !== "ok") id = undefined;
+        }
+        versoes.set(k, id ?? (await this.criarPasta(nome, pai)));
+      }
       return versoes.get(k)!;
     };
     // 2. arquivos (e, ao lado, as pastas de versões)
     const agora: Record<string, RegVis> = {};
     const pastaDoArquivo = new Map(i.arquivos.map((a) => [a.id, a.pasta]));
+    const md5 = (drive: string, v?: RegVis) => this.md5s.get(drive) ?? this.metas.get(drive)?.md5Checksum ?? v?.md5;
     for (const { chave: k, caminho, blob } of visiveisDoIndice(i)) {
       const v = antes[k];
+      const regravar = espelho.regravar.has(k);
       if (espelho.manter.has(k.split("#")[0])) {
-        // à espera da escolha do Johann: fica onde ele pôs; conteúdo novo entra no lugar
+        // numa pasta criada à mão: fica onde ele pôs; conteúdo novo (ou o do cofre, se editado fora) entra no lugar
         if (!v) continue;
         agora[k] = v;
-        if (v.blob !== blob) {
+        if (v.blob !== blob || regravar) {
           const dados = await lerBlob(blob);
-          if (dados && (await this.enviar(dados, "", "", v.drive).then(() => true, () => false))) agora[k] = { ...v, blob };
+          if (dados && (await this.enviar(dados, "", "", v.drive).then(() => true, () => false))) agora[k] = { ...v, blob, md5: this.md5s.get(v.drive) ?? v.md5 };
         }
         continue;
       }
@@ -366,10 +443,10 @@ export class RepositorioDrive implements Repositorio {
       const dirPrincipal = caminho.slice(0, versao ? -2 : -1);
       const principal = dirPrincipal.length ? pastaDe.get(JSON.stringify(dirPrincipal)) : raiz;
       if (!principal) continue;
-      const pasta = versao ? await pastaVersoes(principal, caminho[caminho.length - 2]) : principal;
+      const pasta = versao ? await pastaVersoes(principal, caminho[caminho.length - 2], k.split("#")[0]) : principal;
       const nome = caminho[caminho.length - 1];
       let drive: string | undefined = v?.drive;
-      if (drive && v.blob !== blob) {
+      if (drive && (v.blob !== blob || regravar)) {
         const dados = await lerBlob(blob);
         if (!dados) continue;
         drive = await this.enviar(dados, nome, pasta, drive).catch((e) => {
@@ -390,7 +467,7 @@ export class RepositorioDrive implements Repositorio {
         const ja = !v ? await this.arquivoNa(pasta, nome) : undefined;
         drive = ja && !Object.values(agora).some((x) => x.drive === ja) ? await this.enviar(dados, nome, pasta, ja) : await this.enviar(dados, nome, pasta);
       }
-      agora[k] = { caminho, blob, drive, pai: pasta, pasta: pastaDoArquivo.get(k.split("#")[0]) };
+      agora[k] = { caminho, blob, drive, pai: pasta, pasta: pastaDoArquivo.get(k.split("#")[0]), md5: md5(drive, v?.drive === drive ? v : undefined) };
     }
     // 3. o que saiu do cofre (lixeira, destruído): para a lixeira do Drive, nunca apagado de vez
     const usados = new Set(Object.values(agora).map((x) => x.drive));

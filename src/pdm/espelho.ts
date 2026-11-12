@@ -1,16 +1,24 @@
 // Mudanças feitas FORA do app no espelho legível do cofre (Meu Drive/WJPDM, pendrive, pasta do
-// dispositivo) — pedido do Johann, 12/11/2026: ele reorganizou pastas e arquivos direto no Drive e os
-// apps continuavam mostrando as pastas antigas (o espelho era só de mão única: índice → arquivos).
+// dispositivo).
+//
+// Decisão do Johann (12/11/2026, substitui a janela de escolhas do #122): "o que eu fizer à mão no
+// Drive é o modelo atual do cofre". A cada sincronia, o que ele mudou à mão nos arquivos e pastas que
+// o app criou é APLICADO SOZINHO no índice do cofre, sem perguntar, e a sincronia avisa no fim:
+// - renomear/mover → Renomear/Mover no cofre, com histórico ("Movido no Drive de X para Y");
+// - excluir → lixeira do cofre (30 dias, versões preservadas), nunca destruído;
+// - exceções, desfeitas na cópia com o motivo: arquivo em GO-OUT (com qualquer pessoa), arquivo em
+//   estado protegido ("não excluir") não sai do cofre, renomear arquivo travado;
+// - arquivo/pasta posto numa pasta criada à mão no Drive (o escopo drive.file não mostra o nome dela):
+//   fica onde estava no cofre, com o aviso "crie a pasta pelo WJPDM";
+// - conteúdo editado fora do app: ignorado (a cópia do cofre manda e é regravada), com aviso;
+// - mudou no app e fora ao mesmo tempo: a mais recente vence; a outra vai para a lixeira do cofre;
+// - pasta excluída só sai do cofre vazia (o que ficou nela a mantém): nenhum arquivo fica sem pasta.
 //
 // Cada cópia diz onde está de fato cada arquivo e cada pasta que o app gravou (Drive: pelo id;
-// pendrive e pasta do dispositivo: pelo caminho e, se sumiu, pelo conteúdo). Aqui, comparando três
-// lugares — o GRAVADO (o que o app escreveu da última vez), o VISTO (onde está agora) e o do COFRE —:
-// - visto ≠ gravado e o cofre igual ao gravado → mudança feita fora do app, à espera da escolha do
-//   Johann ("Trazer para o cofre" ou "Desfazer"); até lá a cópia não mexe nela;
-// - o cofre também mudou (no app), para outro lugar → conflito: a mais recente vence e a outra vai
-//   para a lixeira do cofre (regra da sincronia, 28/10/2026);
-// - pasta renomeada/movida leva junto o que está dentro (uma mudança só na lista).
-// Tudo puro e testável em Node (scripts/teste-sincronia.ts, scripts/teste-drive.ts).
+// pendrive e pasta do dispositivo: pelo caminho e, se sumiu, pelo conteúdo). Aqui se compara o
+// GRAVADO (o que o app escreveu da última vez), o VISTO (onde está agora) e o do COFRE. Pasta
+// renomeada/movida leva junto o que está dentro (uma mudança só). Tudo puro e testável em Node
+// (scripts/teste-sincronia.ts, scripts/teste-drive.ts).
 
 import { estadoDe, extensao, nomeLivre, type Arquivo, type Pasta } from "./regras";
 import { caminhoDoArquivo, type Indice } from "./sincronia";
@@ -25,10 +33,10 @@ export interface ItemVisto {
   gravado: string[];
   /**
    * Onde está agora. null = numa pasta que o app não enxerga (Drive com drive.file: pasta criada à
-   * mão); undefined = não achado (apagado à mão, ou pasta a descobrir pelos arquivos de dentro).
+   * mão); undefined = não achado (excluído à mão; no pendrive, pasta a descobrir pelos arquivos de dentro).
    */
   visto: string[] | null | undefined;
-  /** quando a mudança foi feita, se a cópia souber (o Drive informa a data ao renomear) */
+  /** quando a mudança foi feita, se a cópia souber (o Drive informa a data ao renomear e ao excluir) */
   quando?: string;
   /**
    * Pasta do cofre onde o app o pôs da última vez (arquivo: id da pasta ou "raiz"; pasta: id da mãe
@@ -43,9 +51,13 @@ export interface EspelhoVisto {
   copia: string;
   arquivos: ItemVisto[];
   pastas: ItemVisto[];
+  /** arquivos visíveis com o conteúdo mudado fora do app (chave: id, ou `${id}#v${n}` da versão) */
+  editados?: string[];
+  /** o que a cópia pôs de volta na estrutura dela (WJPDM ou .wjpdm renomeada à mão), com o motivo */
+  estrutura?: string[];
 }
 
-/** Uma mudança feita fora do app, à espera da escolha do Johann. */
+/** Uma mudança feita fora do app (de → para). */
 export interface MudancaFora {
   /** estável entre sincronias (cópia, tipo, alvo e para onde foi) */
   id: string;
@@ -57,33 +69,46 @@ export interface MudancaFora {
   nome: string;
   /** caminho no cofre */
   de: string[];
-  /** caminho no espelho; null = pasta criada fora do app (o Google não mostra o nome dela) */
+  /** caminho no espelho; null = pasta criada fora do app (o Google não mostra o nome dela) ou excluído */
   para: string[] | null;
   quando: string;
 }
 
+/**
+ * O que a sincronia fez com uma mudança feita fora do app (lista do "Ver detalhes"):
+ * movido/renomeado/lixeira = aplicado no cofre; desfeito = a cópia volta ao cofre (motivo); fora =
+ * numa pasta criada à mão (fica onde estava no cofre); mantida = pasta excluída que ainda tem
+ * arquivos; editado = conteúdo mudado fora do app (regravado); conflito = mudou no app e fora.
+ */
+export type AcaoFora = "movido" | "renomeado" | "lixeira" | "desfeito" | "fora" | "mantida" | "editado" | "conflito";
+export interface RelatoFora extends MudancaFora {
+  acao: AcaoFora;
+  /** por que foi desfeito, mantido ou o que venceu o conflito */
+  motivo?: string;
+}
+
 /** O que a cópia faz com o espelho nesta sincronia. */
 export interface DecisaoEspelho {
-  /** mudanças à espera: a cópia não mexe nelas (arquivo: id; pasta: "pasta:<id>") */
+  /** fica onde está (numa pasta criada à mão no Drive): a cópia não mexe (arquivo: id; pasta: "pasta:<id>") */
   manter: Set<string>;
-  /** o que só acompanha uma pasta renomeada/movida à espera (a pasta local não tem id) */
+  /** o que só acompanha uma pasta mantida (a pasta local não tem id) */
   presos: Set<string>;
-  /** pastas renomeadas/movidas à espera: caminho no cofre → caminho no espelho (o novo vai para lá) */
+  /** pastas mantidas: caminho no cofre → caminho no espelho (o novo vai para lá) */
   trocas: [string[], string[]][];
   /** onde cada item que saiu do lugar gravado está agora (arquivo: id; pasta: "pasta:<id>") */
   onde: Map<string, string[]>;
+  /** arquivos visíveis editados fora do app: a cópia regrava o conteúdo do cofre (chaves de EspelhoVisto.editados) */
+  regravar: Set<string>;
 }
 
 export interface AnaliseEspelho extends DecisaoEspelho {
-  /** o índice com os conflitos já resolvidos */
+  /** o índice com as mudanças aplicadas */
   indice: Indice;
-  pendentes: MudancaFora[];
-  /** ids de todas as mudanças vistas (também as já decididas), para esquecer decisões cumpridas */
-  vistas: string[];
+  relatos: RelatoFora[];
   conflitos: string[];
 }
 
-export const decisaoVazia = (): DecisaoEspelho => ({ manter: new Set(), presos: new Set(), trocas: [], onde: new Map() });
+export const decisaoVazia = (): DecisaoEspelho => ({ manter: new Set(), presos: new Set(), trocas: [], onde: new Map(), regravar: new Set() });
 
 const igual = (a?: string[] | null, b?: string[] | null) => a === b || (!!a && !!b && a.length === b.length && a.every((x, k) => x === b[k]));
 const comeca = (c: string[], p: string[]) => p.length <= c.length && p.every((x, k) => x === c[k]);
@@ -93,7 +118,7 @@ const tempo = (s?: string) => {
   return Number.isFinite(t) ? t : 0;
 };
 
-/** "no Drive", "no pendrive", "na pasta do dispositivo" (texto do histórico e da janela). */
+/** "no Drive", "no pendrive", "na pasta do dispositivo" (texto do histórico e dos avisos). */
 export const ondeNaCopia = (copia: string) => (copia === "Google Drive" ? "no Drive" : copia === "pendrive" ? "no pendrive" : `na ${copia}`);
 
 /** Caminho legível de uma pasta do cofre (nomes das pastas desde a raiz). */
@@ -109,7 +134,7 @@ export function aplicarTrocas(c: string[], trocas: [string[], string[]][]): stri
 /**
  * Pastas que sumiram do lugar gravado (pendrive e pasta do dispositivo não têm id de pasta):
  * renomeada/movida para a pasta que não é do app onde está a maior parte do que estava dentro
- * (o que foi para outra pasta do app é arquivo movido, não a pasta).
+ * (o que foi para outra pasta do app é arquivo movido, não a pasta). Sem nada achado: excluída.
  */
 function inferirPastas(e: EspelhoVisto): Map<string, string[] | null | undefined> {
   const vistas = new Map(e.pastas.map((p) => [p.id, p.visto]));
@@ -178,17 +203,17 @@ function descendentes(i: Indice, id: string): Set<string> {
 
 export interface Trazido {
   indice: Indice;
-  /** pastas novas ou alteradas (gravar no banco do aparelho) */
+  /** pastas novas ou alteradas */
   pastas: Pasta[];
   /** arquivos alterados */
   arquivos: Arquivo[];
 }
 
 /**
- * "Trazer para o cofre": a mudança feita fora do app vira Mover/Renomear no cofre, com histórico
- * ("Movido no Drive de X para Y"). `destino`: pasta do cofre escolhida pelo Johann quando o arquivo
- * foi para uma pasta que o app não enxerga (criada à mão no Drive). Pastas novas criadas à mão no
- * pendrive ou na pasta do dispositivo (o nome é visível) entram no cofre.
+ * A mudança feita fora do app vira Mover/Renomear no cofre, com histórico ("Movido no Drive de X
+ * para Y"). `destino`: pasta do cofre escolhida quando o arquivo foi para uma pasta que o app não
+ * enxerga. Pastas criadas à mão no pendrive ou na pasta do dispositivo (o nome é visível) entram no
+ * cofre quando um arquivo do cofre é posto nelas.
  */
 export function trazerParaOCofre(i: Indice, m: MudancaFora, pendentes: MudancaFora[], agora: string, usuario: string, novoId: () => string, destino?: string, extra = ""): Trazido | { erro: string } {
   const onde = ondeNaCopia(m.copia);
@@ -199,7 +224,7 @@ export function trazerParaOCofre(i: Indice, m: MudancaFora, pendentes: MudancaFo
   let pai: string | null;
   if (destino !== undefined) pai = destino === RAIZ ? null : destino;
   else {
-    if (!m.para) return { erro: `${m.nome} foi para uma pasta criada fora do app: o Google não mostra o nome dela ao app. Escolha a pasta do cofre (ou crie a pasta pelo WJPDM) ou desfaça ${onde}.` };
+    if (!m.para) return { erro: `${m.nome} foi para uma pasta criada fora do app: o Google não mostra o nome dela ao app. Crie a pasta pelo WJPDM.` };
     // a pasta-mãe no espelho; o que faltar (pasta criada à mão no pendrive) entra no cofre
     const alvo = dir(m.para);
     let k = alvo.length;
@@ -245,28 +270,43 @@ export function trazerParaOCofre(i: Indice, m: MudancaFora, pendentes: MudancaFo
 }
 
 export interface OpcoesEspelho {
-  /** mudanças que o Johann já decidiu (Desfazer, ou levada para outra pasta): o espelho segue o cofre */
-  decididos?: Set<string>;
-  /** quem aparece no histórico dos conflitos resolvidos */
+  /** quem aparece no histórico das mudanças aplicadas */
   usuario?: string;
   novoId?: () => string;
 }
 
+/** Textos curtos do aviso: "2 movidos, 1 renomeado, 3 para a lixeira…". */
+export function resumoFora(relatos: RelatoFora[]): string {
+  const n = (a: AcaoFora) => relatos.filter((r) => r.acao === a).length;
+  const partes = [
+    [n("movido"), "movido", "movidos"],
+    [n("renomeado"), "renomeado", "renomeados"],
+    [n("lixeira"), "para a lixeira", "para a lixeira"],
+    [n("desfeito"), "desfeito (ver motivo)", "desfeitos (ver motivo)"],
+    [n("fora"), "numa pasta criada à mão (crie a pasta pelo WJPDM)", "em pastas criadas à mão (crie a pasta pelo WJPDM)"],
+    [n("mantida"), "pasta mantida (ainda tem arquivos)", "pastas mantidas (ainda têm arquivos)"],
+    [n("editado"), "editado fora do app (vale a cópia do cofre)", "editados fora do app (vale a cópia do cofre)"],
+    [n("conflito"), "conflito (a mais recente venceu)", "conflitos (a mais recente venceu)"],
+  ] as const;
+  return partes.filter(([q]) => q).map(([q, um, varios]) => `${q} ${q === 1 ? um : varios}`).join(", ");
+}
+
 /**
- * Compara o que a cópia viu com o cofre. Devolve as mudanças à espera da escolha, o que a cópia não
- * deve mexer e o índice com os conflitos resolvidos (a mais recente vence; a outra vai para a
- * lixeira do cofre).
+ * Compara o que a cópia viu com o cofre e APLICA no índice o que o Johann mudou à mão (mover,
+ * renomear, excluir), com as exceções desfeitas na cópia. Devolve o índice novo, o relato de cada
+ * mudança e o que a cópia deve fazer com o espelho.
  */
 export function analisarEspelho(i0: Indice, e: EspelhoVisto, agora: string, o: OpcoesEspelho = {}): AnaliseEspelho {
   let i = i0;
-  const decididos = o.decididos ?? new Set<string>();
   const usuario = o.usuario ?? "WJPDM";
   const novoId = o.novoId ?? (() => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4));
+  const onde_ = ondeNaCopia(e.copia);
   const vistasPastas = inferirPastas(e);
   const onde = new Map<string, string[]>();
-  // 1. mudanças próprias e as que só acompanham uma pasta renomeada/movida
+  // 1. mudanças próprias (as que só acompanham uma pasta renomeada/movida não contam) e exclusões
   type Propria = { tipo: "arquivo" | "pasta"; it: ItemVisto; visto: string[] | null };
   const proprias: Propria[] = [];
+  const apagadas: { tipo: "arquivo" | "pasta"; it: ItemVisto }[] = [];
   const mapa: { de: string[]; para: string[] | null; k: number }[] = [];
   const implicitas: { chave: string; k: number }[] = [];
   const aplicar = (c: string[], sem = -1) => {
@@ -276,7 +316,10 @@ export function analisarEspelho(i0: Indice, e: EspelhoVisto, agora: string, o: O
   };
   for (const p of [...e.pastas].sort((a, b) => a.gravado.length - b.gravado.length)) {
     const v = vistasPastas.get(p.id);
-    if (v === undefined) continue;
+    if (v === undefined) {
+      apagadas.push({ tipo: "pasta", it: p });
+      continue;
+    }
     const chave = `pasta:${p.id}`;
     if (v && !igual(v, p.gravado)) onde.set(chave, v);
     const t = aplicar(p.gravado);
@@ -288,7 +331,10 @@ export function analisarEspelho(i0: Indice, e: EspelhoVisto, agora: string, o: O
     mapa.push({ de: p.gravado, para: v, k: proprias.length - 1 });
   }
   for (const a of e.arquivos) {
-    if (a.visto === undefined) continue;
+    if (a.visto === undefined) {
+      apagadas.push({ tipo: "arquivo", it: a });
+      continue;
+    }
     if (a.visto && !igual(a.visto, a.gravado)) onde.set(a.id, a.visto);
     const t = aplicar(a.gravado);
     if (igual(t.novo, a.visto)) {
@@ -297,51 +343,118 @@ export function analisarEspelho(i0: Indice, e: EspelhoVisto, agora: string, o: O
     }
     proprias.push({ tipo: "arquivo", it: a, visto: a.visto });
   }
-  // 2. cada mudança própria: à espera, já igual no cofre, decidida ou em conflito com o app
-  const pendentes: MudancaFora[] = [], vistas: string[] = [], conflitos: string[] = [];
-  const pendente: boolean[] = [];
+  // 2. renomear/mover: aplicado no cofre (pastas primeiro, das mais rasas)
+  const relatos: RelatoFora[] = [], conflitos: string[] = [];
+  const mantida: boolean[] = [];
   const manter = new Set<string>(), presos = new Set<string>();
-  const trocas: [string[], string[]][] = [];
+  const relatar = (m: MudancaFora, acao: AcaoFora, motivo?: string) => relatos.push({ ...m, id: `${m.id}|${acao}`, acao, ...(motivo ? { motivo } : {}) });
+  const dia = (s: string) => s.slice(0, 10) || "sem data";
   for (const [k, { tipo, it, visto }] of proprias.entries()) {
     const reg = tipo === "pasta" ? i.pastas.find((p) => p.id === it.id) : i.arquivos.find((a) => a.id === it.id && !a.lixeira);
     if (!reg) continue;
     const noCofre = tipo === "pasta" ? caminhoDaPasta(i, it.id) : caminhoDoArquivo(i, reg as Arquivo);
     if (igual(noCofre, visto)) continue; // o app fez a mesma mudança
     const m: MudancaFora = { id: `${e.copia}|${tipo}|${it.id}|${visto ? visto.join("/") : "?"}`, copia: e.copia, tipo, alvo: it.id, nome: reg.nome, de: noCofre, para: visto, quando: it.quando ?? agora };
-    vistas.push(m.id);
-    if (decididos.has(m.id)) continue; // o espelho volta ao lugar do cofre
+    if (!visto) {
+      // numa pasta criada à mão no Drive: o app não sabe o nome dela; fica onde estava no cofre e a
+      // cópia não mexe (tirar de lá criaria um arquivo repetido no Drive)
+      mantida[k] = true;
+      manter.add(tipo === "pasta" ? `pasta:${it.id}` : it.id);
+      relatar(m, "fora", `posto numa pasta criada à mão ${onde_}: o app só enxerga as pastas que ele cria. Crie a pasta pelo WJPDM (Nova pasta) e mova para ela; até lá fica em ${noCofre.join("/")} no cofre.`);
+      continue;
+    }
+    const a = tipo === "arquivo" ? (reg as Arquivo) : null;
+    if (a?.checkout) {
+      relatar(m, "desfeito", `em GO-OUT com ${a.checkout.usuario}: o app pôs de volta em ${noCofre.join("/")}. Mova depois do GO-IN.`);
+      continue;
+    }
     const paiNoCofre = tipo === "pasta" ? ((reg as Pasta).pai ?? null) : (reg as Arquivo).pasta;
     const appMudou = it.pai !== undefined ? paiNoCofre !== it.pai || reg.nome !== it.gravado[it.gravado.length - 1] : !igual(noCofre, aplicar(it.gravado, k).novo ?? it.gravado);
+    const acao: AcaoFora = igual(dir(visto), dir(noCofre)) ? "renomeado" : "movido";
     if (!appMudou) {
-      pendentes.push(m);
-      pendente[k] = true;
-      manter.add(tipo === "pasta" ? `pasta:${it.id}` : it.id);
-      if (tipo === "pasta" && visto) trocas.push([noCofre, visto]);
+      const t = trazerParaOCofre(i, m, [], agora, usuario, novoId);
+      if ("erro" in t) relatar(m, "desfeito", `${t.erro} O app pôs de volta.`);
+      else {
+        i = t.indice;
+        relatar(m, acao);
+      }
       continue;
     }
     // conflito: mudou no app e fora dele → a mais recente vence; a outra vai para a lixeira do cofre
     conflitos.push(reg.nome);
-    const dia = (s: string) => s.slice(0, 10) || "sem data";
-    if (visto && tempo(m.quando) > tempo(reg.mod)) {
-      const t = trazerParaOCofre(i, m, pendentes, agora, usuario, novoId, undefined, " (mais recente que a mudança feita no app)");
+    if (tempo(m.quando) > tempo(reg.mod)) {
+      const t = trazerParaOCofre(i, m, [], agora, usuario, novoId, undefined, " (mais recente que a mudança feita no app)");
       if (!("erro" in t)) {
-        if (tipo === "arquivo") {
-          const a = reg as Arquivo;
-          const c = copiaNaLixeira(a, a.nome, a.pasta, dia(a.mod ?? ""), agora, `app${tempo(a.mod)}`, `Mudança feita no app (${noCofre.join("/")}), mais antiga que a feita ${ondeNaCopia(e.copia)} (guardada na lixeira)`);
+        if (a) {
+          const c = copiaNaLixeira(a, a.nome, a.pasta, dia(a.mod ?? ""), agora, `app${tempo(a.mod)}`, `Mudança feita no app (${noCofre.join("/")}), mais antiga que a feita ${onde_} (guardada na lixeira)`);
           if (!t.indice.arquivos.some((x) => x.id === c.id)) t.indice.arquivos.push(c);
         }
         i = t.indice;
+        relatar(m, "conflito", `a mudança feita ${onde_} é a mais recente e ficou${a ? "; a do app foi para a lixeira do cofre" : ""}.`);
         continue;
       }
     }
     // o app vence: o espelho volta ao lugar do cofre; onde o Johann pôs fica registrado na lixeira
-    if (tipo === "arquivo" && visto) {
-      const a = reg as Arquivo;
-      const pasta = pastaEm(i, dir(visto), pendentes);
-      const c = copiaNaLixeira(a, visto[visto.length - 1], pasta === undefined ? a.pasta : (pasta ?? RAIZ), dia(m.quando), agora, `fora${tempo(m.quando)}`, `Mudança feita ${ondeNaCopia(e.copia)} (${visto.join("/")}), mais antiga que a feita no app (guardada na lixeira)`);
+    if (a) {
+      const pasta = pastaEm(i, dir(visto), []);
+      const c = copiaNaLixeira(a, visto[visto.length - 1], pasta === undefined ? a.pasta : (pasta ?? RAIZ), dia(m.quando), agora, `fora${tempo(m.quando)}`, `Mudança feita ${onde_} (${visto.join("/")}), mais antiga que a feita no app (guardada na lixeira)`);
       if (!i.arquivos.some((x) => x.id === c.id)) i = { ...i, arquivos: [...i.arquivos, c] };
     }
+    relatar(m, "conflito", `a mudança feita no app é a mais recente e ficou${a ? `; a feita ${onde_} foi para a lixeira do cofre` : ""}.`);
   }
-  for (const x of implicitas) if (pendente[x.k]) presos.add(x.chave);
-  return { indice: i, pendentes, vistas, conflitos, manter, presos, trocas, onde };
+  for (const x of implicitas) if (mantida[x.k]) presos.add(x.chave);
+  // 3. excluídos à mão: arquivos para a lixeira do cofre (versões preservadas), com as exceções
+  for (const { tipo, it } of apagadas) {
+    if (tipo !== "arquivo") continue;
+    const a = i.arquivos.find((x) => x.id === it.id && !x.lixeira);
+    if (!a) continue;
+    const de = caminhoDoArquivo(i, a);
+    const quando = it.quando ?? agora;
+    const m: MudancaFora = { id: `${e.copia}|arquivo|${a.id}|-`, copia: e.copia, tipo: "arquivo", alvo: a.id, nome: a.nome, de, para: null, quando };
+    const est = estadoDe(a.estado);
+    if (a.checkout) relatar(m, "desfeito", `em GO-OUT com ${a.checkout.usuario}: não sai do cofre; o app o pôs de volta ${onde_}.`);
+    else if (est.naoExcluir) relatar(m, "desfeito", `"${est.nome}" não deixa excluir (torne-o obsoleto antes): o app o pôs de volta ${onde_}.`);
+    else if (tempo(a.mod) > tempo(quando)) {
+      relatar(m, "conflito", `alterado no app depois de excluído ${onde_}: a alteração é a mais recente e ficou; o app o pôs de volta.`);
+    } else {
+      const texto = `Excluído ${onde_}: enviado para a lixeira do cofre (versões preservadas; restaurável por 30 dias)`;
+      const novo: Arquivo = { ...a, checkout: undefined, lixeira: true, lixeiraData: agora, mod: agora, historico: [...a.historico, { data: agora, usuario, texto }] };
+      i = { ...i, arquivos: i.arquivos.map((x) => (x === a ? novo : x)) };
+      relatar(m, "lixeira");
+    }
+  }
+  // pastas excluídas à mão (as mais fundas primeiro): saem do cofre só vazias — o que ficou nelas
+  // (GO-OUT, estado protegido, arquivo ainda não publicado) as mantém, e nenhum arquivo fica sem pasta
+  for (const { it } of apagadas.filter((x) => x.tipo === "pasta").sort((a, b) => b.it.gravado.length - a.it.gravado.length)) {
+    const p = i.pastas.find((x) => x.id === it.id);
+    if (!p) continue;
+    const de = caminhoDaPasta(i, p.id);
+    const m: MudancaFora = { id: `${e.copia}|pasta|${p.id}|-`, copia: e.copia, tipo: "pasta", alvo: p.id, nome: p.nome, de, para: null, quando: it.quando ?? agora };
+    const ds = descendentes(i, p.id);
+    const ficam = i.arquivos.filter((a) => !a.lixeira && ds.has(a.pasta));
+    const subpastas = i.pastas.filter((x) => x.pai === p.id);
+    if (ficam.length || subpastas.length) {
+      const nomes = ficam.slice(0, 5).map((a) => a.nome).join(", ") + (ficam.length > 5 ? "…" : "");
+      relatar(m, "mantida", ficam.length ? `ainda tem ${ficam.length} arquivo(s) que não saem do cofre (${nomes}): o app recriou a pasta ${onde_}.` : `ainda tem subpastas no cofre: o app recriou a pasta ${onde_}.`);
+      continue;
+    }
+    i = { ...i, pastas: i.pastas.filter((x) => x.id !== p.id), exclusoes: [...i.exclusoes.filter((x) => x.id !== p.id), { id: p.id, tipo: "pasta", data: agora }] };
+    relatar(m, "lixeira");
+  }
+  // 4. conteúdo editado fora do app: vale a cópia do cofre (a cópia regrava), com aviso
+  const regravar = new Set(e.editados ?? []);
+  const avisados = new Set<string>();
+  for (const k of regravar) {
+    const id = k.split("#")[0];
+    const a = i.arquivos.find((x) => x.id === id);
+    if (!a || avisados.has(id)) continue;
+    avisados.add(id);
+    const de = caminhoDoArquivo(i, a);
+    relatar({ id: `${e.copia}|arquivo|${id}|editado`, copia: e.copia, tipo: "arquivo", alvo: id, nome: a.nome, de, para: de, quando: agora }, "editado",
+      `conteúdo mudado ${onde_} fora do app: vale a cópia do cofre, que foi gravada de novo. Para mudar o arquivo, abra pelo app (GO-OUT) ou use "Adicionar" no WJPDM.`);
+  }
+  // 5. a estrutura do cofre na cópia (pasta WJPDM, .wjpdm) nunca aceita mudança de fora: o app a refez
+  for (const [k, motivo] of (e.estrutura ?? []).entries())
+    relatar({ id: `${e.copia}|estrutura|${k}`, copia: e.copia, tipo: "pasta", alvo: "", nome: motivo.includes(".wjpdm") ? ".wjpdm" : "WJPDM", de: [], para: null, quando: agora }, "desfeito", motivo);
+  return { indice: i, relatos, conflitos, manter, presos, trocas: [], onde, regravar };
 }

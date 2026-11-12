@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 12/11/2026 (arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
+> Última consolidação: 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -166,16 +166,25 @@
 - **Pastas** (também as vazias) vão para todas as cópias. **Criar pasta** no explorador ou no WJPDM
   sincroniza na hora (05/11/2026); se o acesso ao Google tiver vencido, a janela do Google abre no toque
   de "Criar".
-- **Mudanças feitas fora do app** (12/11/2026, pedido do Johann): mover/renomear arquivo e renomear/mover
-  pasta **direto** no Drive, no pendrive ou na pasta do dispositivo é detectado a cada sincronia e aparece na
-  janela **"Mudanças feitas fora do app"** (de → para) com **"Trazer para o cofre"** (vira Mover/Renomear,
-  histórico "Movido no Drive de X para Y") ou **"Desfazer"** (volta ao lugar do cofre), por item ou todas.
-  **Nada muda sozinho sem a escolha dele**; até lá o app não mexe nesses itens. Mudou no app e fora ao mesmo
-  tempo: **a mais recente vence**, a outra vai para a lixeira do cofre. **Pasta nova se cria pelo WJPDM**
-  (com `drive.file` o app não vê pastas criadas à mão no Drive; o seletor do Google exigiria chave de API e
-  configuração no Google Cloud); arquivo posto numa delas: "Levar para esta pasta" do cofre ou Desfazer.
-  Pastas do app no Drive são achadas **pelo id** (não pelo nome). **Nada visível é apagado de vez no Drive**:
-  vai para a lixeira dele. Arquivos novos postos à mão continuam fora (adicionar pelo WJPDM).
+- **Mudanças feitas fora do app são aplicadas sozinhas** (12/11/2026, decisão do Johann: "o que eu fizer à mão
+  no Drive é o modelo atual do cofre"; substitui a janela "Mudanças feitas fora do app" com Trazer/Desfazer):
+  ao abrir qualquer app e a cada sincronia, renomear/mover/excluir feitos **direto** no Drive, no pendrive ou
+  na pasta do dispositivo, nos arquivos e pastas **que o app criou** (Drive: pela identidade/id; pendrive e
+  pasta: pelo conteúdo), entram **sozinhos** no índice do cofre, **sem janela de perguntas, só com aviso**:
+  renomear/mover → Renomear/Mover com histórico "Renomeado/Movido no Drive"; excluído → **lixeira do cofre**
+  (30 dias, versões preservadas), nunca destruído. Aviso único ao terminar: **"Cofre atualizado pelo Drive: N
+  movidos, N renomeados, N para a lixeira"** com **"Ver detalhes"**.
+  - **Exceções** (o app desfaz na cópia e avisa o motivo): arquivo em **GO-OUT com qualquer pessoa**; arquivo em
+    estado **"não excluir"** (ex.: Série em produção) não é excluído.
+  - **Fora do alcance (`drive.file`)**: pasta criada à mão e arquivo novo posto à mão não são vistos. Arquivo do
+    cofre movido para pasta criada à mão: aviso **"crie a pasta pelo WJPDM"**; o arquivo fica onde estava no
+    índice. Arquivos novos continuam entrando por **"Adicionar"**.
+  - **Nunca aceito de fora**: `WJPDM/.wjpdm` (o app recria o que faltar), pastas "(versões)" (o app regrava) e
+    **conteúdo editado fora do app** (ignorado: a cópia do cofre manda; com aviso).
+  - Pasta excluída à mão só sai do cofre vazia (nenhum órfão novo). Mudou no app e fora ao mesmo tempo: **a mais
+    recente vence**, a outra vai para a lixeira do cofre.
+  - **Sem pastas duplicadas**: pasta procurada **pelo id guardado**, não pelo nome; remoção no Drive **sempre
+    pela lixeira dele (trashed), nunca DELETE**.
 - **Arquivo sem pasta vai para "Recuperados"** (12/11/2026, pedido do Johann): arquivo cuja pasta não existe
   mais no cofre (pasta excluída numa cópia enquanto ele entrava nela em outra) é levado a cada sincronia para a
   pasta **"Recuperados"** (raiz, visível no WJPDM), com histórico "Pasta original não encontrada", e a

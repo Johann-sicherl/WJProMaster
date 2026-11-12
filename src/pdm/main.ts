@@ -4,7 +4,7 @@
 
 import "./pdm.css";
 import { $, baixar, Casca, el, escapar, janela, menu, registrarOffline, salvarArquivo } from "../comum/casca";
-import { abrirArquivoNoApp, abrirCopias, abrirMudancasFora, aoMudarCofre, APPS, EVENTO_FORA, goIn, janelaGoIn, mudancasForaDoApp, sincronizarCofre } from "../comum/cofre";
+import { abrirArquivoNoApp, abrirCopias, abrirMudancasFora, aoMudarCofre, APPS, EVENTO_FORA, goIn, janelaGoIn, sincronizarCofre } from "../comum/cofre";
 import { IC } from "../comum/icones";
 import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
@@ -1226,7 +1226,7 @@ const casca: Casca = new Casca({
         ],
         [
           { id: "copias", rotulo: "Cópias do cofre", icone: "pasta", dica: "Pendrive, Google Drive e pasta do tablet: escolher e sincronizar", acao: () => void abrirCopias(() => void carregar()) },
-          { id: "fora", rotulo: "Mudanças fora do app", icone: "sincronizar", dica: "O que foi movido ou renomeado direto no Google Drive, no pendrive ou na pasta do dispositivo: trazer para o cofre ou desfazer", acao: () => void abrirMudancasFora().then(() => carregar()) },
+          { id: "fora", rotulo: "Mudanças no Drive", icone: "sincronizar", dica: "O que foi movido, renomeado ou excluído direto no Google Drive, no pendrive ou na pasta do dispositivo e o que o cofre fez (aplicado sozinho; exceções com o motivo)", acao: () => void abrirMudancasFora() },
           { id: "exp", rotulo: "Exportar cofre", icone: "exportar", dica: "Cópia de segurança completa (.wjpdm)", acao: () => void exportarCofre() },
           { id: "imp", rotulo: "Restaurar cópia", icone: "importar", acao: () => void importarCofre() },
           { id: "arm", rotulo: "Armazenamento", icone: "pasta", acao: () => void armazenamento() },
@@ -1281,15 +1281,9 @@ void (async () => {
   void navigator.storage?.persist?.();
 })();
 registrarOffline();
-// mudanças feitas fora do app (Drive, pendrive, pasta do dispositivo): a janela abre sozinha no
-// WJPDM, uma vez por conjunto novo; nada muda sem a escolha do Johann
-let foraMostradas = "";
-addEventListener(EVENTO_FORA, () => {
-  const ids = mudancasForaDoApp().map((m) => m.id).sort().join(" ");
-  if (!ids || ids === foraMostradas || document.querySelector(".wjc-fora")) return;
-  foraMostradas = ids;
-  void abrirMudancasFora().then(() => db && carregar());
-});
+// mudanças feitas fora do app (Drive, pendrive, pasta do dispositivo): a sincronia já as aplicou no
+// cofre e mostrou o aviso (decisão do Johann, 12/11/2026); aqui só recarrega a lista
+addEventListener(EVENTO_FORA, () => db && void carregar().catch(() => {}));
 // a sincronia ao abrir trouxe novidades (outro aparelho, pendrive, Drive): recarrega a lista
 aoMudarCofre(() => db && void carregar().catch(() => {}));
 // outro app salvou no cofre (ou a sincronia trouxe novidades): recarrega ao voltar para o WJPDM

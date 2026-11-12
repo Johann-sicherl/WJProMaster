@@ -1,9 +1,11 @@
-// Roteiro de interface: mudanças feitas FORA do app no Google Drive (12/11/2026) e reorganização pelo
-// WJPDM. Drive simulado (API REST v3 com o escopo drive.file: o que o Johann cria à mão no Drive é
-// invisível para o app). O Johann renomeia a pasta CAD à mão, move o Mancal para Projetos e põe a Tampa
-// numa pasta criada à mão; a janela "Mudanças feitas fora do app" abre sozinha no WJPDM; ele escolhe
-// Trazer (pasta), Desfazer (Mancal) e Levar para Projetos (Tampa). Depois: mover pasta inteira e
-// mover vários arquivos marcados. Tablet simulado (toque, 1280×800).
+// Roteiro de interface: mudanças feitas FORA do app no Google Drive, aplicadas SOZINHAS no cofre
+// (decisão do Johann, 12/11/2026: "o que eu fizer à mão no Drive é o modelo atual do cofre"). Drive
+// simulado (API REST v3 com o escopo drive.file: o que o Johann cria à mão no Drive é invisível para o
+// app). Ele renomeia a pasta CAD, move o Mancal, põe a Tampa numa pasta criada à mão, manda o Pino e a
+// Bucha (Série em produção) para a lixeira do Drive, move a Arruela (GO-OUT da Ana) e edita o Eixo. Ao
+// abrir o WJPDM: nada de janela de perguntas, só o aviso "Cofre atualizado pelo Drive: …" com "Ver
+// detalhes"; o cofre e o Drive ficam certos. Depois: o aviso também em outro app (página inicial),
+// mover pasta inteira e vários arquivos marcados. Tablet simulado (toque, 1280×800).
 // Uso: pnpm dev --port 5199 e depois  node scripts/roteiro-mudancas-fora.cjs [pasta-das-capturas]
 const { chromium } = require("playwright");
 const BASE = process.env.URL_BASE ?? "http://localhost:5199/";
@@ -19,7 +21,16 @@ const PASTA = "application/vnd.google-apps.folder";
 const itens = new Map();
 let n = 0;
 const apagados = [];
-const meta = (x) => ({ id: x.id, name: x.name, parents: x.parents, mimeType: x.mimeType, modifiedTime: x.mod, trashed: !!x.lixo });
+const md5 = (d) => require("crypto").createHash("md5").update(d ?? "").digest("hex");
+const lixoDe = (x) => {
+  for (let p = x; p; p = itens.get(p.parents[0])) if (p.lixo) return p;
+  return undefined;
+};
+// como na API: dentro de uma pasta na lixeira também está na lixeira; arquivos têm md5
+const meta = (x) => {
+  const l = lixoDe(x);
+  return { id: x.id, name: x.name, parents: x.parents, mimeType: x.mimeType, modifiedTime: x.mod, trashed: !!l, ...(l ? { trashedTime: l.lixoEm } : {}), ...(x.mimeType !== PASTA ? { md5Checksum: md5(x.dados) } : {}) };
+};
 const visivel = (x) => !!x && !x.mao;
 const naLixeira = (x) => {
   for (let p = x; p; p = itens.get(p.parents[0])) if (p.lixo) return true;
@@ -47,7 +58,7 @@ async function responder(r) {
     const nome = /name='((?:[^'\\]|\\.)*)'/.exec(q)?.[1]?.replace(/\\'/g, "'");
     const pais = [...q.matchAll(/'([^']+)' in parents/g)].map((x) => x[1]).map((p) => (p === "root" ? "root" : p));
     const soPasta = q.includes(`mimeType='${PASTA}'`);
-    const files = [...itens.values()].filter((x) => visivel(x) && !x.lixo && x.parents.some((p) => pais.includes(p)) && (nome === undefined || x.name === nome) && (!soPasta || x.mimeType === PASTA)).map(meta);
+    const files = [...itens.values()].filter((x) => visivel(x) && !lixoDe(x) && (!pais.length || x.parents.some((p) => pais.includes(p))) && (nome === undefined || x.name === nome) && (!soPasta || x.mimeType === PASTA)).map(meta);
     return json(r, { files });
   }
   if (m === "GET" && id) {
@@ -69,7 +80,7 @@ async function responder(r) {
     const b = JSON.parse(Buffer.from(partes[0], "latin1").toString("utf8"));
     const x = { id: `d${++n}`, name: b.name, parents: b.parents, mimeType: "file", dados: Buffer.from(partes[1], "latin1"), mod: agora };
     itens.set(x.id, x);
-    return json(r, { id: x.id });
+    return json(r, { id: x.id, md5Checksum: md5(x.dados) });
   }
   if (m === "PATCH" && id) {
     const x = itens.get(id);
@@ -78,7 +89,7 @@ async function responder(r) {
       const b = JSON.parse(req.postData());
       const add = u.searchParams.get("addParents"), rem = u.searchParams.get("removeParents");
       if (add && itens.get(add)?.mao) return r.fulfill({ status: 404, body: "sem acesso" });
-      if (b.trashed) x.lixo = true;
+      if (b.trashed) (x.lixo = true), (x.lixoEm = agora);
       if (b.name) x.name = b.name;
       if (rem) x.parents = x.parents.filter((p) => !rem.split(",").includes(p));
       if (add) x.parents = [...new Set([...x.parents, add])];
@@ -86,7 +97,7 @@ async function responder(r) {
     }
     x.dados = req.postDataBuffer();
     x.mod = agora;
-    return json(r, { id });
+    return json(r, { id, md5Checksum: md5(x.dados) });
   }
   if (m === "DELETE" && id) {
     apagados.push(itens.get(id)?.name ?? id);
@@ -109,7 +120,8 @@ async function responder(r) {
   p.on("pageerror", (e) => console.log("erro na página:", e.message));
   p.on("dialog", (d) => d.accept());
 
-  // 1) cofre com CAD (Eixo, Mancal, Sub/Tampa) e Projetos; a sincronia ao abrir monta Meu Drive/WJPDM
+  // 1) cofre com CAD (Eixo, Mancal, Bucha protegida, Arruela em GO-OUT da Ana, Sub/Tampa) e Projetos
+  //    (Pino); a sincronia ao abrir monta Meu Drive/WJPDM
   await p.goto(BASE + "pdm/");
   await p.waitForTimeout(800);
   await p.evaluate(async () => {
@@ -118,9 +130,10 @@ async function responder(r) {
     const t = new Date().toISOString();
     await db.por("meta", { id: "meta", nome: "Cofre", usuario: "Johann", mascara: "12-####", mod: t });
     for (const [id, nome, pai] of [["p1", "CAD", null], ["p2", "Projetos", null], ["p3", "Sub", "p1"]]) await db.por("pastas", { id, nome, pai, mod: t });
-    for (const [id, nome, pasta] of [["a1", "Eixo.wjcad", "p1"], ["a2", "Mancal.wjcad", "p1"], ["a3", "Tampa.wjcad", "p3"], ["a4", "Pino.wjcad", "p2"], ["a5", "Bucha.wjcad", "p2"]]) {
+    const arqs = [["a1", "Eixo.wjcad", "p1"], ["a2", "Mancal.wjcad", "p1"], ["a3", "Tampa.wjcad", "p3"], ["a4", "Pino.wjcad", "p2"], ["a5", "Bucha.wjcad", "p1", { estado: "serie-prod" }], ["a6", "Arruela.wjcad", "p1", { checkout: { usuario: "Ana", data: t } }], ["a7", "Porca.wjcad", "p2"]];
+    for (const [id, nome, pasta, extra] of arqs) {
       await db.porBlob(`b-${id}`, new Blob([`conteúdo de ${nome}`]));
-      await db.por("arquivos", { id, nome, pasta, revisao: "", estado: "trabalho", cartao: {}, mod: t, historico: [],
+      await db.por("arquivos", { id, nome, pasta, revisao: "", estado: "trabalho", cartao: {}, mod: t, historico: [], ...(extra ?? {}),
         versoes: [{ n: 1, blob: `b-${id}`, tamanho: 20, autor: "Johann", data: t, comentario: "", revisao: "", estado: "trabalho" }] });
     }
   });
@@ -131,63 +144,78 @@ async function responder(r) {
   conferir(!!arquivoEm("WJPDM/CAD/Mancal.wjcad") && !!arquivoEm("WJPDM/CAD/Sub/Tampa.wjcad"), "a sincronia ao abrir montou Meu Drive/WJPDM");
 
   // 2) o Johann mexe direto no Drive
+  const agoraMao = new Date().toISOString();
   pastaEm("WJPDM/CAD").name = "CAD 2026";
   arquivoEm("WJPDM/CAD 2026/Mancal.wjcad").parents = [pastaEm("WJPDM/Projetos").id];
-  const mao = { id: `m${++n}`, name: "Arquivo morto", parents: [pastaEm("WJPDM").id], mimeType: PASTA, mao: true, mod: new Date().toISOString() };
+  const mao = { id: `m${++n}`, name: "Arquivo morto", parents: [pastaEm("WJPDM").id], mimeType: PASTA, mao: true, mod: agoraMao };
   itens.set(mao.id, mao);
   arquivoEm("WJPDM/CAD 2026/Sub/Tampa.wjcad").parents = [mao.id];
-  const nAntes = n;
+  Object.assign(arquivoEm("WJPDM/Projetos/Pino.wjcad"), { lixo: true, lixoEm: agoraMao });
+  Object.assign(arquivoEm("WJPDM/CAD 2026/Bucha.wjcad"), { lixo: true, lixoEm: agoraMao });
+  arquivoEm("WJPDM/CAD 2026/Arruela.wjcad").parents = [pastaEm("WJPDM/Projetos").id];
+  Object.assign(arquivoEm("WJPDM/CAD 2026/Eixo.wjcad"), { dados: Buffer.from("mexido à mão"), mod: agoraMao });
 
-  // 3) abrir o WJPDM de novo: a janela abre sozinha com as três mudanças, e nada mudou ainda
+  // 3) abrir o WJPDM de novo: sem janela de perguntas; aviso único com "Ver detalhes"
   await p.reload();
-  const abriu = await p.waitForSelector(".wjc-fora li", { timeout: 15000 }).then(() => true, () => false);
-  if (process.env.DEPURAR) {
-    console.log("DRIVE", [...itens.values()].filter((x) => !naLixeira(x)).map((x) => `${x.id}:${caminho(x)}${x.mao ? "(mão)" : ""}`).join(" | "));
-    console.log("FAIXA", await p.locator(".wjc-faixa").innerText().catch(() => "-"));
-    console.log("FORA", JSON.stringify(await p.evaluate(async () => (await import("/src/comum/cofre.ts")).mudancasForaDoApp())));
-  }
-  conferir(abriu, "a janela \"Mudanças feitas fora do app\" abre sozinha no WJPDM");
-  const linhas = await p.$$eval(".wjc-fora li", (ls) => ls.map((l) => l.querySelector(".wjc-fora-txt").innerText.replace(/\s+/g, " ").trim()));
+  const avisou = await p.waitForSelector(".wjc-aviso-fora", { timeout: 20000 }).then(() => true, () => false);
+  const aviso = avisou ? (await p.locator(".wjc-aviso-fora span").innerText()).replace(/\s+/g, " ") : "";
+  console.log("  aviso: " + aviso);
+  if (process.env.DEPURAR) console.log("DRIVE", [...itens.values()].filter((x) => !naLixeira(x)).map((x) => `${x.id}:${caminho(x)}${x.mao ? "(mão)" : ""}`).join(" | "));
+  conferir(avisou, "o aviso aparece sozinho ao abrir");
+  conferir(/^Cofre atualizado pelo Drive: 1 movido, 1 renomeado, 1 para a lixeira/.test(aviso), "aviso: \"Cofre atualizado pelo Drive: 1 movido, 1 renomeado, 1 para a lixeira…\"");
+  conferir(/2 desfeitos/.test(aviso) && /pasta criada à mão/.test(aviso) && /editado fora do app/.test(aviso), "aviso conta os desfeitos, a pasta criada à mão e o editado");
+  conferir(await p.locator(".wjc-fora").count() === 0, "nenhuma janela de perguntas abriu");
+  if (CAPTURAS) await p.screenshot({ path: `${CAPTURAS}/aviso-fora.png` });
+  await p.locator(".wjc-aviso-fora [data-v]").tap();
+  await p.waitForSelector(".wjc-fora li");
+  const linhas = await p.$$eval(".wjc-fora li", (ls) => ls.map((l) => l.innerText.replace(/\s+/g, " ").trim()));
   console.log("  " + linhas.join("\n  "));
-  conferir(linhas.length === 3, "três mudanças: pasta renomeada, arquivo movido, arquivo numa pasta criada à mão");
-  conferir(linhas.some((l) => /Pasta renomeada no Drive.*de CAD para CAD 2026/.test(l)), "pasta renomeada: de CAD para CAD 2026");
-  conferir(linhas.some((l) => /Mancal.*movido no Drive.*de CAD\/Mancal\.wjcad para Projetos\/Mancal\.wjcad/.test(l)), "arquivo movido: de → para");
-  conferir(linhas.some((l) => /Tampa.*pasta criada fora do app/.test(l)), "pasta criada à mão: explica que o Google não mostra o nome");
-  conferir(n === nAntes && !pastaEm("WJPDM/CAD"), "nada muda sozinho no Drive (sem pasta CAD recriada)");
-  if (CAPTURAS) await p.screenshot({ path: `${CAPTURAS}/mudancas-fora.png` });
-
-  // 4) escolhas por item, com toque: Trazer (pasta), Desfazer (Mancal), Levar para Projetos (Tampa)
-  const item = (txt) => p.locator(".wjc-fora li", { hasText: txt });
-  await item("CAD 2026").first().locator('[data-a="trazer"]').tap();
-  await p.waitForFunction(() => !document.querySelector(".wjc-fora button[disabled]"), null, { timeout: 20000 });
-  if (process.env.DEPURAR) console.log("JANELA", (await p.locator(".wjc-fora").innerText()).replace(/\s+/g, " "));
-  await item("Mancal").locator('[data-a="desfazer"]').tap();
-  await p.waitForFunction(() => !document.querySelector(".wjc-fora button[disabled]"), null, { timeout: 20000 });
-  await item("Tampa").locator("[data-destino]").selectOption({ label: /Projetos/ }).catch(async () => {
-    const v = await item("Tampa").locator("[data-destino] option", { hasText: "Projetos" }).getAttribute("value");
-    await item("Tampa").locator("[data-destino]").selectOption(v);
-  });
-  await item("Tampa").locator('[data-a="levar"]').tap();
-  await p.waitForFunction(() => !document.querySelector(".wjc-fora button[disabled]") && !document.querySelector(".wjc-fora li"), null, { timeout: 20000 }).catch(() => {});
-  const restam = await p.locator(".wjc-fora li").count();
-  conferir(restam === 0, "depois das três escolhas a lista fica vazia");
-  const faixa = await p.locator(".wjc-faixa").innerText().catch(() => "");
-  conferir(!/Mudanças fora do app/.test(faixa), "a faixa \"Cofre:\" deixa de mostrar as mudanças resolvidas");
-  await p.locator(".wjc-fora [data-depois]").tap().catch(() => {});
-  await p.waitForTimeout(800);
+  conferir(linhas.length === 7, "Ver detalhes: sete mudanças");
+  conferir(linhas.some((l) => /CAD .*Renomeada no Drive.*de CAD para CAD 2026/.test(l)), "pasta renomeada: de CAD para CAD 2026");
+  conferir(linhas.some((l) => /Mancal.*Movido no Drive.*para Projetos\/Mancal\.wjcad/.test(l)), "arquivo movido: de → para");
+  conferir(linhas.some((l) => /Pino.*lixeira do cofre/.test(l)), "excluído: lixeira do cofre");
+  conferir(linhas.some((l) => /Bucha.*Desfeito.*Série em produção" não deixa excluir/.test(l)), "estado protegido: desfeito, com o motivo");
+  conferir(linhas.some((l) => /Arruela.*Desfeito.*GO-OUT com Ana/.test(l)), "GO-OUT: desfeito, com o motivo");
+  conferir(linhas.some((l) => /Tampa.*pasta criada à mão.*Crie a pasta pelo WJPDM/.test(l)), "pasta criada à mão: aviso \"crie a pasta pelo WJPDM\"");
+  conferir(linhas.some((l) => /Eixo.*Editado fora do app.*vale a cópia do cofre/.test(l)), "editado fora do app: vale a cópia do cofre");
+  if (CAPTURAS) await p.screenshot({ path: `${CAPTURAS}/ver-detalhes.png` });
+  await p.locator(".wjc-fora [data-ok]").tap();
+  await p.waitForTimeout(500);
   const drive = arquivos();
   console.log("  Drive: " + drive.join(", "));
-  conferir(drive.includes("WJPDM/CAD 2026/Mancal.wjcad"), "Desfazer: o Mancal voltou para a pasta do cofre no Drive");
-  conferir(drive.includes("WJPDM/Projetos/Tampa.wjcad"), "Levar para Projetos: a Tampa foi para Projetos no Drive");
-  conferir(!pastaEm("WJPDM/CAD") && drive.includes("WJPDM/CAD 2026/Eixo.wjcad"), "sem pasta CAD duplicada");
-  conferir(!apagados.some((x) => x.endsWith(".wjcad")), "nenhum arquivo visível apagado de vez");
+  conferir(drive.includes("WJPDM/Projetos/Mancal.wjcad") && drive.includes("WJPDM/CAD 2026/Eixo.wjcad"), "Drive como ele deixou (Mancal em Projetos, CAD 2026)");
+  conferir(drive.includes("WJPDM/CAD 2026/Bucha.wjcad") && drive.includes("WJPDM/CAD 2026/Arruela.wjcad"), "exceções de volta no Drive (Bucha recriada, Arruela de volta)");
+  conferir(!drive.includes("WJPDM/Projetos/Pino.wjcad") && drive.filter((x) => x.endsWith("Tampa.wjcad")).length === 1, "Pino fora e Tampa sem cópia repetida");
+  conferir(String(arquivoEm("WJPDM/CAD 2026/Eixo.wjcad")?.dados) === "conteúdo de Eixo.wjcad", "conteúdo editado à mão: vale o do cofre");
+  conferir(!pastaEm("WJPDM/CAD") && [...itens.values()].filter((x) => x.mimeType === PASTA && !naLixeira(x) && x.name === "CAD 2026").length === 1, "sem pasta duplicada");
+  conferir(apagados.length === 0, "nada apagado de vez no Drive (nenhum DELETE)");
   const est = await p.evaluate(() => window.__pdm.estado());
-  const nomeP = (id) => est.pastas.find((x) => x.id === id)?.nome;
-  conferir(nomeP("p1") === "CAD 2026", "a pasta foi renomeada no cofre (Trazer)");
-  const tampa = est.arquivos.find((a) => a.id === "a3");
-  if (process.env.DEPURAR) console.log("TAMPA", tampa.pasta, JSON.stringify(tampa.historico));
-  conferir(tampa.pasta === "p2" && /Movido no Drive de CAD( 2026)?\/Sub\/Tampa\.wjcad para uma pasta criada fora do app; levado para Projetos/.test(tampa.historico.at(-1)?.texto ?? ""), "histórico da Tampa diz o que aconteceu");
+  const a = (id) => est.arquivos.find((x) => x.id === id);
+  conferir(est.pastas.find((x) => x.id === "p1")?.nome === "CAD 2026", "cofre: pasta renomeada");
+  conferir(a("a2").pasta === "p2" && /Movido no Drive de .*Mancal\.wjcad para Projetos\/Mancal\.wjcad/.test(a("a2").historico.at(-1)?.texto ?? ""), "cofre: Mancal movido, com histórico");
+  conferir(a("a4").lixeira === true && a("a4").versoes.length === 1, "cofre: Pino na lixeira, versões preservadas");
+  conferir(!a("a5").lixeira && a("a6").pasta === "p1" && a("a3").pasta === "p3", "cofre: exceções e Tampa no lugar do cofre");
   conferir(await p.locator(".pd-arvore", { hasText: "CAD 2026" }).count() === 1, "a árvore mostra CAD 2026");
+
+  // 4) recarregar: nada novo, o aviso não volta; o botão "Mudanças no Drive" mostra o registro
+  await p.reload();
+  await p.waitForTimeout(6000);
+  conferir(await p.locator(".wjc-aviso-fora").count() === 0, "sincronia seguinte: o aviso não se repete");
+  await p.locator(".wj-aba", { hasText: "Ferramentas" }).tap();
+  await p.locator('.wj-cmd[title^="O que foi movido"]').first().tap();
+  await p.waitForSelector(".wjc-fora li");
+  conferir(await p.locator(".wjc-fora li").count() === 7, "botão Mudanças no Drive: o registro das mudanças");
+  await p.locator(".wjc-fora [data-ok]").tap();
+
+  // 4b) em outro app (página inicial) o aviso também aparece: Porca excluída à mão
+  Object.assign(arquivoEm("WJPDM/Projetos/Porca.wjcad"), { lixo: true, lixoEm: new Date().toISOString() });
+  await p.goto(BASE);
+  const avisoInicio = await p.waitForSelector(".wjc-aviso-fora", { timeout: 20000 }).then(async () => (await p.locator(".wjc-aviso-fora span").innerText()).replace(/\s+/g, " "), () => "");
+  console.log("  início: " + avisoInicio);
+  conferir(/^Cofre atualizado pelo Drive: 1 para a lixeira\.$/.test(avisoInicio), "página inicial: \"Cofre atualizado pelo Drive: 1 para a lixeira\"");
+  await p.goto(BASE + "pdm/");
+  await p.waitForTimeout(1500);
+  await p.locator(".wj-aba", { hasText: "Arquivos" }).tap().catch(() => {});
 
   // 5) mover pasta inteira (pasta selecionada → Mover) — Sub para dentro de Projetos
   await p.locator(`.pd-no[data-pasta="p1"]`).tap();
@@ -202,21 +230,21 @@ async function responder(r) {
   const est2 = await p.evaluate(() => window.__pdm.estado());
   conferir(est2.pastas.find((x) => x.id === "p3")?.pai === "p2", "mover pasta: Sub foi para dentro de Projetos");
 
-  // 6) marcar vários (toque nas caixinhas) e mover de uma vez para CAD 2026
-  await p.locator(`.pd-no[data-pasta="p2"]`).tap();
+  // 6) marcar vários (toque nas caixinhas) e mover de uma vez para Projetos
+  await p.locator(`.pd-no[data-pasta="p1"]`).tap();
   await p.waitForTimeout(300);
-  for (const id of ["a4", "a5"]) await p.locator(`tr[data-arquivo="${id}"] .pd-marca`).tap();
+  for (const id of ["a1", "a5"]) await p.locator(`tr[data-arquivo="${id}"] .pd-marca`).tap();
   const barra = await p.locator("#pd-marcados").innerText().catch(() => "");
   conferir(/2 arquivo\(s\) marcado\(s\)/.test(barra), "barra dos marcados: 2 arquivos");
   if (CAPTURAS) await p.screenshot({ path: `${CAPTURAS}/marcados.png` });
   await p.locator('#pd-marcados [data-m="mover"]').tap();
   await p.waitForSelector("#mv-p");
-  const vCad = await p.locator('#mv-p option', { hasText: "CAD 2026" }).first().getAttribute("value");
-  await p.locator("#mv-p").selectOption(vCad);
+  const vProj = await p.locator('#mv-p option', { hasText: "Projetos" }).first().getAttribute("value");
+  await p.locator("#mv-p").selectOption(vProj);
   await p.locator(".wj-janela footer button", { hasText: "Mover" }).tap();
   await p.waitForTimeout(500);
   const est3 = await p.evaluate(() => window.__pdm.estado());
-  conferir(["a4", "a5"].every((id) => est3.arquivos.find((a) => a.id === id)?.pasta === "p1"), "mover vários: Pino e Bucha foram para CAD 2026");
+  conferir(["a1", "a5"].every((id) => est3.arquivos.find((a) => a.id === id)?.pasta === "p2"), "mover vários: Eixo e Bucha foram para Projetos");
   conferir(await p.locator("#pd-marcados").count() === 0, "a barra some depois de mover");
 
   await b.close();
