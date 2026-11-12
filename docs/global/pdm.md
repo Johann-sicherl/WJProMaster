@@ -94,6 +94,16 @@ de vez no Drive (vai para a lixeira dele). Testes: `teste-sincronia.ts`, `teste-
 leva a pasta com tudo dentro; **marcar vários arquivos** (caixinha à esquerda, "marcar todos" no cabeçalho,
 Ctrl+clique no mouse) e **Mover para…** de uma vez (nome repetido ganha " (2)"; GO-OUT de outra pessoa
 fica de fora, com aviso).
+✅ **Arquivos sem pasta → "Recuperados"** (12/11/2026, pedido do Johann): se uma pasta é excluída numa
+cópia enquanto um arquivo entra nela em outra (caso real: `Screenshot_20261028-011822.png` entrou numa pasta
+excluída 14 s depois, em 28/10, e o arquivo não foi para a lixeira), a exclusão da pasta vencia na mescla e o
+arquivo ficava apontando para uma pasta que não existe: **sumia do WJPDM** (rodapé contava, árvore não) e o
+Drive o publicava solto na raiz de Meu Drive/WJPDM. Agora **toda sincronia** leva esses arquivos para a pasta
+**"Recuperados"** na raiz (a que já existir com esse nome, senão uma nova, id fixo `recuperados` em todas as
+cópias), com nome livre e histórico **"Pasta original não encontrada…"**, e a mensagem da sincronia (faixa
+"Cofre:") diz **quantos e quais**. Arquivos da lixeira ficam como estão (Restaurar já os leva para a raiz).
+Daí em diante é só mover pelo WJPDM. Função pura `recuperarOrfaos` (`src/pdm/sincronia.ts`), teste 16 em
+`teste-sincronia.ts`.
 🟡 Arquivos **novos** colocados à mão no pendrive ou no Drive ainda não entram no cofre (adicionar pelo
 WJPDM). Arquivo apagado à mão no espelho não é tratado (fica como está até mudar no app).
 

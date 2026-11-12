@@ -290,8 +290,10 @@ function faixaConexoes(m: string) {
     const conectar = ROTULO_COPIA.some(([k]) => s[k] === "toque" || s[k] === "desconectado" || s[k] === "offline") || /sem permissão|vencido|desconectado/.test(texto);
     const pendente = conectar || precisaToque(texto) || foraDoApp.length > 0;
     const nenhuma = ROTULO_COPIA.every(([k]) => s[k] === "nao");
+    // arquivos sem pasta levados para "Recuperados" nesta sincronia: quantos e quais
+    const recuperados = texto.replace(/\.$/, "").split(" · ").find((x) => x.includes("pasta Recuperados"));
     f.classList.toggle("ok", !pendente && !nenhuma);
-    f.innerHTML = `<span class="wjc-cops"><b>Cofre:</b> ${ROTULO_COPIA.map(([k, r]) => `<i class="wjc-cop ${s[k]}" title="${r}: ${TEXTO_ESTADO[s[k]][1]}">${TEXTO_ESTADO[s[k]][0]} ${r}</i>`).join("")}${nenhuma ? "<small>Nenhuma cópia: os arquivos ficam só no banco deste navegador.</small>" : ""}</span>
+    f.innerHTML = `<span class="wjc-cops"><b>Cofre:</b> ${ROTULO_COPIA.map(([k, r]) => `<i class="wjc-cop ${s[k]}" title="${r}: ${TEXTO_ESTADO[s[k]][1]}">${TEXTO_ESTADO[s[k]][0]} ${r}</i>`).join("")}${nenhuma ? "<small>Nenhuma cópia: os arquivos ficam só no banco deste navegador.</small>" : ""}${recuperados ? `<small class="wjc-rec">${esc(recuperados.replace(/^\d+/, (n) => `⚠ ${n}`))}.</small>` : ""}</span>
       ${foraDoApp.length ? `<button class="destaque" data-f>Mudanças fora do app (${foraDoApp.length})…</button>` : ""}${conectar ? `<button${foraDoApp.length ? "" : ' class="destaque"'} data-s>Conectar agora</button>` : ""}<button data-c>Cópias…</button><button data-n title="Não mostrar mais este aviso neste aparelho (religa em Cópias do cofre)">Não mostrar de novo</button><button data-x title="Fechar" aria-label="Fechar">✕</button>`;
     f.querySelector<HTMLElement>("[data-x]")!.onclick = () => f.remove();
     f.querySelector<HTMLElement>("[data-n]")!.onclick = () => {
@@ -320,7 +322,7 @@ function faixaConexoes(m: string) {
 /** A sincronia ou outro salvar mudou o cofre (para recarregar listas). */
 export const aoMudarCofre = (f: () => void) => ouvintes.add(f);
 /** Mensagem da sincronia ao abrir que merece aviso: algo pede um toque ou houve conflito. */
-export const precisaToque = (m: string) => /sem permissão|vencido|conflito|desconectado|fora do app/.test(m);
+export const precisaToque = (m: string) => /sem permissão|vencido|conflito|desconectado|fora do app|Recuperados/.test(m);
 
 function resumo(r: ResultadoSincronia, repos: Repositorio[], ausentes: string[]): string {
   const ok = repos.filter((x) => x.nome !== "aparelho" && !r.falhas.some((f) => f.repo === x.nome)).map((x) => x.nome);
@@ -328,6 +330,7 @@ function resumo(r: ResultadoSincronia, repos: Repositorio[], ausentes: string[])
   const fora = [...r.falhas.map((f) => `${f.repo} desconectado`), ...ausentes];
   if (fora.length) partes.push(fora.join(", "));
   if (r.conflitos.length) partes.push(`conflito em ${r.conflitos.join(", ")} (a mais recente ficou; a outra está na lixeira)`);
+  if (r.recuperados.length) partes.push(`${r.recuperados.length} arquivo(s) sem pasta (pasta excluída em outra cópia) levado(s) para a pasta Recuperados: ${r.recuperados.join(", ")}`);
   if (r.faltando.length) partes.push(`${r.faltando.length} conteúdo(s) não encontrado(s) em nenhuma cópia`);
   if (foraDoApp.length) partes.push(`${foraDoApp.length} mudança(s) feita(s) fora do app à espera da sua escolha`);
   return `${partes.join(" · ")}.`;
