@@ -62,6 +62,7 @@ Atualizar o status em docs/funcional/<arquivo>.md.
 | 10/11 | WJTaskPlan: prazo da etapa ≤ prazo da tarefa (conferida pela central) | WJTaskPlan prazo da etapa (arquivar) | #118 | — | 1/1 | pendente |
 | 10/11 | WJTaskPlan: alerta de mão dupla + etapas em ordem de prazo (conferida, 0 falhas) | WJTaskPlan alerta e ordem (arquivar) | #119 | ≈ 1,5 % do limite (#119 + #120 = 3 %) | 2/2 | pendente |
 | 10/11 | Dividir: escolha das regiões que viram corpos + STL em sólido na forma exata (conferida: fluxo S → dividir → mover → extrudar → 1 corpo e roteiro no tablet ok; mover e extrusão só em Node) | Dividir com corpos resultantes (arquivar) | #120 | ≈ 1,5 % do limite | 2/2 | pendente (falta o STL real do Johann) |
+| 12/11 | WJPDM: mudanças feitas fora do app (Drive, pendrive, pasta do dispositivo), a partir do prompt da central | conversa do #122 | #122 (v0.1.124) | 4 % do limite | não conferida pela central | pendente |
 
 Referência do método antigo: conversa "Software CAD" (21/10 → 10/11), 68 PRs, ≈ US$ 688 ≈ US$ 10,10 por
 entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11): ≈ US$ 31 ≈ US$ 4,50 por entrega (amostra pequena).
@@ -100,3 +101,10 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
 - Calibração: 84 % → 87 % durante #119 + #120 ⇒ **1 % ≈ US$ 3 a 6 "de tabela"**; tarefa média ≈ 1 a 2 %,
   grande ≈ 2 a 3 %. Refinar medindo o % antes e depois de uma conversa rodando sozinha (sem outra em
   paralelo) e anotar aqui.
+- **Medições:**
+  | Data | O que rodou | Limite antes → depois | Custo |
+  |---|---|---|---|
+  | 10/11 | conversas do #119 + #120 | 84 % → 87 % | 3 % (≈ 1,5 % cada) |
+  | 12/11 | conversa do **#122** (WJPDM: mudanças feitas fora do app no Drive, pendrive e pasta do dispositivo; versão 0.1.124) | 91 % → 95 % | **4 %** (tarefa grande) |
+- Tarefa grande pode passar de 3 %: o #122 custou 4 %. Com o limite perto do fim (95 % em 12/11), só pedidos
+  pequenos até a renovação de sexta às 23h.
