@@ -164,6 +164,11 @@ impressão 3D manda a malha para o WJSlicer3D. Tudo local no aparelho até o ser
   **Armadilhas:** com `drive.file` pasta criada à mão é invisível (404) — só o id do pai aparece; mover não
   muda `modifiedTime` com certeza, então a hora da mudança à mão é a do Drive ou a da sincronia que a viu.
   Decisões ("Desfazer", "Levar para") ficam em `decididos` (memória da página) até a mudança sumir da cópia.
+- **Arquivo órfão** (12/11/2026): `mesclar` deixa a exclusão de uma pasta vencer sem olhar os arquivos postos
+  nela em outra cópia (corrida entre aparelhos, ou versão antiga do app): o arquivo ficava com `pasta` de id
+  inexistente — `caminhoDoArquivo` cai na raiz (Drive o publicava lá) e o WJPDM, que lista por `a.pasta === id`,
+  não o mostrava. `sincronizar` chama `recuperarOrfaos` depois da mescla e do espelho: leva para "Recuperados"
+  (id fixo `recuperados` ou pasta de raiz com esse nome), histórico, `ResultadoSincronia.recuperados` → `resumo`.
   WJERP não é arquivo: banco local + cópia `ERP/WJERP.wjerp` no cofre; banco de verdade na G5.
 - **WJPDM:** check-out/check-in se chamam **GO-OUT / GO-IN** na interface (código mantém `checkout`).
   **Fluxo de trabalho editável** (um só por cofre, `meta.fluxo`; de fábrica: Protótipo / Pré-série /

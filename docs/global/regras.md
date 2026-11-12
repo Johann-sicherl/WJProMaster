@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 12/11/2026 (mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
+> Última consolidação: 12/11/2026 (arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -176,6 +176,10 @@
   configuração no Google Cloud); arquivo posto numa delas: "Levar para esta pasta" do cofre ou Desfazer.
   Pastas do app no Drive são achadas **pelo id** (não pelo nome). **Nada visível é apagado de vez no Drive**:
   vai para a lixeira dele. Arquivos novos postos à mão continuam fora (adicionar pelo WJPDM).
+- **Arquivo sem pasta vai para "Recuperados"** (12/11/2026, pedido do Johann): arquivo cuja pasta não existe
+  mais no cofre (pasta excluída numa cópia enquanto ele entrava nela em outra) é levado a cada sincronia para a
+  pasta **"Recuperados"** (raiz, visível no WJPDM), com histórico "Pasta original não encontrada", e a
+  mensagem da sincronia avisa quantos. Nenhum arquivo fica invisível no WJPDM nem solto na raiz do Drive.
 - **Reorganizar no WJPDM** (12/11/2026): Mover pasta inteira (menu da pasta) e mover vários arquivos marcados
   de uma vez (caixinhas / Ctrl+clique).
 

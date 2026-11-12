@@ -7,7 +7,7 @@
 // Repositorio.
 
 import type { Arquivo, Fluxo, Item, Pasta, ReferenciaArquivo } from "./regras";
-import { extensao } from "./regras";
+import { extensao, nomeLivre } from "./regras";
 import { analisarEspelho, decisaoVazia, type DecisaoEspelho, type EspelhoVisto, type MudancaFora, type OpcoesEspelho } from "./espelho";
 
 export interface MetaCofre {
@@ -238,9 +238,49 @@ export function caminhosDasPastas(i: Indice): string[][] {
   return i.pastas.map((p) => caminhoDoArquivo(i, { pasta: p.id, nome: "" } as Arquivo).slice(0, -1));
 }
 
+/** Pasta onde a sincronia recolhe os arquivos cuja pasta não existe mais (id fixo: todas as cópias geram a mesma). */
+export const PASTA_RECUPERADOS = { id: "recuperados", nome: "Recuperados" } as const;
+
+/**
+ * Arquivos órfãos (12/11/2026, caso real do cofre do Johann): a pasta foi excluída numa cópia enquanto
+ * o arquivo entrava nela em outra (ou por versão antiga do app), e a exclusão da pasta venceu na mescla
+ * sem levar o arquivo. Ficava com `pasta` apontando para o nada: o WJPDM não o mostrava e o Drive o
+ * publicava solto na raiz. Aqui ele vai para a pasta "Recuperados" (a que já existir na raiz com esse
+ * nome, senão uma nova), com nome livre e histórico. Os da lixeira ficam como estão (restaurar já os
+ * leva para a raiz).
+ */
+export function recuperarOrfaos(i: Indice, agora: string): { indice: Indice; recuperados: string[] } {
+  const existe = new Set(i.pastas.map((p) => p.id));
+  const orfaos = i.arquivos.filter((a) => !a.lixeira && a.pasta !== "raiz" && !existe.has(a.pasta));
+  if (!orfaos.length) return { indice: i, recuperados: [] };
+  const nomeRec = PASTA_RECUPERADOS.nome.toLowerCase();
+  let pasta = i.pastas.find((p) => p.id === PASTA_RECUPERADOS.id) ?? i.pastas.find((p) => !p.pai && p.nome.toLowerCase() === nomeRec);
+  const pastas = [...i.pastas];
+  let exclusoes = i.exclusoes;
+  if (!pasta) {
+    pasta = { id: PASTA_RECUPERADOS.id, nome: PASTA_RECUPERADOS.nome, pai: null, mod: agora };
+    pastas.push(pasta);
+    exclusoes = exclusoes.filter((e) => e.id !== pasta!.id); // recriada depois de excluída
+  }
+  const destino = pasta.id;
+  const nomes = i.arquivos.filter((a) => !a.lixeira && a.pasta === destino).map((a) => a.nome);
+  const recuperados: string[] = [];
+  const porId = new Map<string, Arquivo>();
+  for (const a of orfaos) {
+    const nome = nomeLivre(a.nome, nomes);
+    nomes.push(nome);
+    recuperados.push(nome);
+    const texto = `Pasta original não encontrada (excluída em outra cópia do cofre): levado para "${pasta.nome}"${nome !== a.nome ? ` como ${nome}` : ""}`;
+    porId.set(a.id, { ...a, nome, pasta: destino, mod: agora, historico: [...a.historico, { data: agora, usuario: "WJPDM", texto }] });
+  }
+  return { indice: { ...i, pastas, exclusoes, arquivos: i.arquivos.map((a) => porId.get(a.id) ?? a) }, recuperados };
+}
+
 export interface ResultadoSincronia {
   indice: Indice;
   conflitos: string[];
+  /** arquivos cuja pasta não existia mais, levados para "Recuperados" (nomes) */
+  recuperados: string[];
   /** blobs copiados entre as cópias */
   copiados: number;
   /** blobs que nenhuma cópia tem (arquivo incompleto) */
@@ -290,6 +330,10 @@ export async function sincronizar(repos: Repositorio[], agora: string, opcoes: O
       vivos.splice(vivos.indexOf(r), 1);
     }
   }
+  // nenhum arquivo sai desta sincronia sem pasta (a exclusão de uma pasta pode vencer o arquivo
+  // posto nela em outra cópia): os órfãos vão para "Recuperados" em todas as cópias
+  const rec = recuperarOrfaos(indice, agora);
+  indice = rec.indice;
   // todas as cópias guardam o índice inteiro (salvar em um aparelho abre no outro); as de
   // publicação só MOSTRAM o publicado nos arquivos visíveis
   const visiveis = (r: Repositorio) => (r.publicado ? vistaPublicada(indice) : indice);
@@ -337,5 +381,5 @@ export async function sincronizar(repos: Repositorio[], agora: string, opcoes: O
       falhas.push({ repo: r.nome, erro: (e as Error).message ?? String(e) });
     }
   }
-  return { indice, conflitos, copiados, faltando, falhas, foraDoApp, vistas };
+  return { indice, conflitos, recuperados: rec.recuperados, copiados, faltando, falhas, foraDoApp, vistas };
 }

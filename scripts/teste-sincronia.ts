@@ -400,5 +400,36 @@ const ids = () => {
     [["WJPDM/CAD 2026/Eixo (versões)/Eixo v1.wjcad", "WJPDM/CAD 2026/Eixo (versões)/Eixo v2.wjcad", "WJPDM/CAD 2026/Eixo.wjcad", "WJPDM/CAD 2026/Mancal (versões)/Mancal v1.wjcad", "WJPDM/CAD 2026/Mancal.wjcad"], false, 0]);
 }
 
+// 16. arquivo órfão (12/11/2026, caso real do cofre do Johann): o arquivo entrou na pasta "Prints"
+// numa cópia e, 14 s depois, a pasta foi excluída na outra sem levar o arquivo para a lixeira. A
+// exclusão da pasta vencia na mescla e o arquivo ficava com `pasta` apontando para o nada: o WJPDM não
+// mostrava e o Drive o publicava na raiz. Agora vai para a pasta "Recuperados", com histórico.
+{
+  const tab = new Memoria("tablet"), pen = new Memoria("pendrive");
+  const print = arq("print", ["bp"], "2026-10-28T01:24:14.000Z", { nome: "Screenshot.png", pasta: "p2" });
+  com(tab, [print, arq("lixo", ["bl"], "2026-10-28T01:00:00.000Z", { pasta: "p9", lixeira: true, lixeiraData: "2026-10-28T01:00:00.000Z" })], { bp: "png", bl: "lixo" });
+  tab.indice!.pastas.push({ id: "p2", nome: "Prints", pai: null, mod: "2026-10-28T01:20:00.000Z" });
+  com(pen, [], {});
+  pen.indice!.exclusoes = [{ id: "p2", tipo: "pasta", data: "2026-10-28T01:24:28.000Z" }];
+  const r = await sincronizar([tab, pen], AGORA);
+  const i = tab.indice!;
+  const a = i.arquivos.find((x) => x.id === "print")!;
+  const rec = i.pastas.find((p) => p.id === a.pasta);
+  igual("16.1 a pasta excluída sai do cofre", i.pastas.some((p) => p.id === "p2"), false);
+  igual("16.2 o arquivo vai para a pasta Recuperados (raiz)", [rec?.nome, rec?.pai], ["Recuperados", null]);
+  igual("16.3 histórico: pasta original não encontrada", a.historico[a.historico.length - 1]?.texto.startsWith("Pasta original não encontrada"), true);
+  igual("16.4 a sincronia avisa quantos", r.recuperados, ["Screenshot.png"]);
+  igual("16.5 visível em Recuperados/ (não na raiz) e igual nas duas cópias", [[...pen.visiveis.keys()], pen.indice!.arquivos.find((x) => x.id === "print")?.pasta], [["Recuperados/Screenshot.png"], a.pasta]);
+  igual("16.6 arquivo na lixeira não é mexido (restaurar já leva para a raiz)", i.arquivos.find((x) => x.id === "lixo")?.pasta, "p9");
+  const r2 = await sincronizar([tab, pen], AGORA);
+  igual("16.7 repetir: nada a recuperar, uma pasta Recuperados só", [r2.recuperados.length, tab.indice!.pastas.filter((p) => p.nome === "Recuperados").length], [0, 1]);
+  // órfão antigo num cofre só (como no índice dele) + "Recuperados" já criada à mão com outro id: usa ela, nome livre
+  const so = new Memoria("tablet"), vazio = new Memoria("pendrive");
+  com(so, [arq("x", ["bx"], "2026-10-20T00:00:00.000Z", { nome: "Eixo.wjcad", pasta: "sumiu" }), arq("y", ["by"], "2026-10-20T00:00:00.000Z", { nome: "Eixo.wjcad", pasta: "rm" })], { bx: "1", by: "2" });
+  so.indice!.pastas.push({ id: "rm", nome: "recuperados", pai: null, mod: "2026-10-01T00:00:00.000Z" });
+  const r3 = await sincronizar([so, vazio], AGORA);
+  igual("16.8 usa a Recuperados que já existe, com nome livre", [r3.recuperados, so.indice!.arquivos.map((x) => `${x.pasta}/${x.nome}`).sort()], [["Eixo (2).wjcad"], ["rm/Eixo (2).wjcad", "rm/Eixo.wjcad"]]);
+}
+
 console.log(falhas ? `\nsincronia: ${falhas} falha(s)` : "\nsincronia: tudo certo");
 if (falhas) process.exit(1);
