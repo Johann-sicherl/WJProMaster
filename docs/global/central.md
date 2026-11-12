@@ -2,7 +2,7 @@
 
 > Estado da "central": a conversa em que o Johann aprende a pedir melhor e o Claude aprimora pedidos,
 > confere entregas e acompanha as conversas de código. **A central não altera código do app.**
-> Ao trocar de central (contexto acima de **~300 mil tokens** ou aviso de conversa resumida), abrir conversa
+> Ao trocar de central (contexto acima de **~200 mil tokens** ou aviso de conversa resumida), abrir conversa
 > nova e colar:
 >
 > ```
@@ -23,7 +23,7 @@
 3. **Acompanhar conversas** (`list_sessions`, `list_events`, `get_session`): situação, custo, contexto
    usado; dizer quando arquivar ou abrir conversa nova. Não fazer merge por elas.
 4. **Medir** custo por entrega e acerto (tabela da §4).
-5. Avisar quando a própria central passar de **~300 mil tokens** (10/11: a anterior chegou a ~340 mil e
+5. Avisar quando a própria central passar de **~200 mil tokens** (12/11; antes 300 mil) (10/11: a anterior chegou a ~340 mil e
    ficou cara por mensagem).
 6. **Falar do custo em "% do limite semanal"**, nunca em dólares (§6).
 
@@ -35,6 +35,9 @@
   depois o outro começa.
 - Pedidos não repetem regras (testes, tablet, PR, publicação, português): já estão no `CLAUDE.md`.
 - Resposta das conversas: resumo + link do PR; código só quando ele pedir.
+- **Central econômica** (12/11): respostas ≤ 10 linhas (detalhe só se ele pedir); sem avisos de andamento
+  (esperar CI em silêncio e falar só no fim); prompts continuam completos. Motivo: cada mensagem relê a
+  conversa inteira; texto longo custa ao escrever e em toda mensagem seguinte.
 
 ## 3. Modelo de pedido
 
