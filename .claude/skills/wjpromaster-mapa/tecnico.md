@@ -148,6 +148,22 @@ impressão 3D manda a malha para o WJSlicer3D. Tudo local no aparelho até o ser
   `scripts/teste-drive.ts`): login do Google no navegador (token de 1 h, renovado no toque ao salvar),
   escopo `drive.file`, cliente OAuth `751073631393-8tmbb…` do projeto `wjpromaster`; o cofre fica em
   Meu Drive/WJPDM (arquivos atualizados no lugar: o Drive guarda as revisões). Chave secreta não é usada.
+- **Mudanças feitas fora do app no espelho** (12/11/2026, `src/pdm/espelho.ts`): cada cópia tem `lerEspelho`
+  (antes de `gravarVisiveis`) e diz onde está cada arquivo/pasta que o app gravou — Drive pelo **id** (listagem
+  dos pais conhecidos, 40 por consulta, + GET do que sumiu), pendrive/pasta pelo caminho e, se sumiu, pelo
+  **conteúdo** (mesmo nome e fora de "(versões)" primeiro: a v1 tem o mesmo conteúdo do atual); pasta local sem
+  id é descoberta pelos arquivos de dentro (votação; destino que já é pasta do app não conta). `analisarEspelho`
+  compara gravado × visto × cofre; "o app também mudou" olha **a pasta do cofre e o nome do próprio item**
+  gravados no registro (`pasta`/`pai`), nunca o caminho inteiro (trazer a pasta-mãe mudava o caminho dos filhos
+  e virava falso conflito — achado pelo roteiro). Registros: `visiveis.json` `{caminho, blob, drive, pai, pasta}`,
+  `pastas.json` `{formato: 2, pastas: {id: {caminho, drive, pai}}}`; o formato antigo (só caminhos) é migrado
+  achando a pasta pela pasta-mãe dos arquivos (pega pasta já renomeada à mão). Mover/renomear no Drive = PATCH
+  `addParents/removeParents` + nome (mesmo id); sair = `trashed: true` (blobs internos de `.wjpdm` continuam
+  DELETE). Item que o Google não deixa tirar de pasta feita à mão (`preso`): cópia nova no lugar do cofre, a
+  original fica. Sem registro (sincronia interrompida), reaproveita o arquivo de mesmo nome na pasta.
+  **Armadilhas:** com `drive.file` pasta criada à mão é invisível (404) — só o id do pai aparece; mover não
+  muda `modifiedTime` com certeza, então a hora da mudança à mão é a do Drive ou a da sincronia que a viu.
+  Decisões ("Desfazer", "Levar para") ficam em `decididos` (memória da página) até a mudança sumir da cópia.
   WJERP não é arquivo: banco local + cópia `ERP/WJERP.wjerp` no cofre; banco de verdade na G5.
 - **WJPDM:** check-out/check-in se chamam **GO-OUT / GO-IN** na interface (código mantém `checkout`).
   **Fluxo de trabalho editável** (um só por cofre, `meta.fluxo`; de fábrica: Protótipo / Pré-série /

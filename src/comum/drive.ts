@@ -6,9 +6,15 @@
 //            Meu Drive/WJPDM/<pastas>/<nome> (versões)/<nome> v<n>.<ext>  ← cópia de cada GO-IN
 //            Meu Drive/WJPDM/.wjpdm/indice.json        ← índice do cofre
 //            Meu Drive/WJPDM/.wjpdm/blobs/<id>         ← conteúdo de cada versão
-//            Meu Drive/WJPDM/.wjpdm/visiveis.json      ← o que já foi gravado em <pastas>
+//            Meu Drive/WJPDM/.wjpdm/visiveis.json      ← o que já foi gravado em <pastas> (id no Drive)
+//            Meu Drive/WJPDM/.wjpdm/pastas.json        ← pasta do cofre → id da pasta no Drive
+//
+// Mudanças feitas à mão no Drive (12/11/2026): as pastas e os arquivos que o app criou são achados
+// pelo id (não pelo nome), então pasta renomeada à mão não vira pasta duplicada e arquivo movido à
+// mão é visto onde está. Nada é apagado de vez: o que sai vai para a lixeira do Drive (trashed).
 
-import { caminhosDasPastas, visiveisDoIndice, type Indice, type Repositorio } from "../pdm/sincronia";
+import { visiveisDoIndice, type Indice, type Repositorio } from "../pdm/sincronia";
+import { caminhoDaPasta, decisaoVazia, type DecisaoEspelho, type EspelhoVisto, type ItemVisto } from "../pdm/espelho";
 
 /** Cliente OAuth do projeto WJProMaster no Google Cloud (público; a chave secreta não é usada). */
 export const CLIENTE_GOOGLE = "751073631393-8tmbbv019s57975tbfv4h1g11gsahunb.apps.googleusercontent.com";
@@ -44,6 +50,14 @@ export class ErroDrive extends Error {
 
 type Buscar = typeof fetch;
 const q = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+/** Metadados de um item do Drive (null = sumiu, na lixeira ou fora do alcance do app). */
+type Meta = { id: string; name: string; parents?: string[]; mimeType?: string; modifiedTime?: string; trashed?: boolean };
+/** Arquivo visível gravado: caminho no cofre, conteúdo, id no Drive, pasta onde foi posto no Drive e pasta do cofre. */
+type RegVis = { caminho: string[]; blob: string; drive: string; pai?: string; pasta?: string };
+/** Pasta do cofre → pasta no Drive (e a pasta-mãe no cofre). */
+type RegPastas = Record<string, { caminho: string[]; drive: string; pai?: string | null }>;
+const CAMPOS = "id,name,parents,mimeType,modifiedTime,trashed";
+const igual = (a?: string[], b?: string[]) => !!a && !!b && a.length === b.length && a.every((x, k) => x === b[k]);
 
 export class RepositorioDrive implements Repositorio {
   nome = "Google Drive";
@@ -66,12 +80,12 @@ export class RepositorioDrive implements Repositorio {
     }
     return r;
   }
-  private async listar(consulta: string): Promise<{ id: string; name: string }[]> {
-    const out: { id: string; name: string }[] = [];
+  private async listar(consulta: string, campos = "id,name"): Promise<Meta[]> {
+    const out: Meta[] = [];
     let pagina = "";
     do {
-      const u = `${API}?q=${encodeURIComponent(consulta)}&fields=${encodeURIComponent("nextPageToken,files(id,name)")}&pageSize=1000&spaces=drive${pagina ? `&pageToken=${pagina}` : ""}`;
-      const j = (await (await this.req(u)).json()) as { files: { id: string; name: string }[]; nextPageToken?: string };
+      const u = `${API}?q=${encodeURIComponent(consulta)}&fields=${encodeURIComponent(`nextPageToken,files(${campos})`)}&pageSize=1000&spaces=drive${pagina ? `&pageToken=${pagina}` : ""}`;
+      const j = (await (await this.req(u)).json()) as { files: Meta[]; nextPageToken?: string };
       out.push(...j.files);
       pagina = j.nextPageToken ?? "";
     } while (pagina);
@@ -174,59 +188,234 @@ export class RepositorioDrive implements Repositorio {
     this.blobIds!.delete(id);
   }
 
-  /** Arquivos legíveis em Meu Drive/WJPDM: atualiza no lugar (o Drive guarda as revisões). */
-  async gravarVisiveis(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>) {
-    const sis = await this.sis();
-    const idMapa = await this.arquivoNa(sis, "visiveis.json");
-    type V = Record<string, { caminho: string[]; blob: string; drive: string }>;
-    const antes: V = idMapa ? JSON.parse(await (await this.baixar(idMapa)).text()) : {};
-    const agora: V = {};
-    const igual = (a: string[], b: string[]) => a.length === b.length && a.every((x, k) => x === b[k]);
-    for (const { chave: id, caminho, blob } of visiveisDoIndice(i)) {
-      const v = antes[id];
-      if (v && v.blob === blob && igual(v.caminho, caminho)) {
-        agora[id] = v;
-        continue;
-      }
-      const dados = await lerBlob(blob);
-      if (!dados) continue;
-      const mesmoLugar = v && igual(v.caminho, caminho);
-      const pasta = await this.pasta(["WJPDM", ...caminho.slice(0, -1)]);
-      const drive = await this.enviar(dados, caminho[caminho.length - 1], pasta, mesmoLugar ? v.drive : undefined).catch(async (e) => {
-        if (mesmoLugar && e instanceof ErroDrive && e.status === 404) return this.enviar(dados, caminho[caminho.length - 1], pasta); // apagado à mão no Drive
+  // ---------- espelho legível (Meu Drive/WJPDM/<pastas>) ----------
+
+  /** Metadados lidos nesta sincronia (cada sincronia usa um repositório novo). */
+  private metas = new Map<string, Meta | null>();
+  private estado?: Promise<{ vis: Record<string, RegVis>; idVis?: string; pastas: RegPastas; idPastas?: string }>;
+  private raizId?: Promise<string>;
+  private raiz = () => (this.raizId ??= this.pasta(["WJPDM"]));
+
+  private async meta(id: string): Promise<Meta | null> {
+    if (this.metas.has(id)) return this.metas.get(id)!;
+    const m = await this.req(`${API}/${id}?fields=${CAMPOS}`)
+      .then((r) => r.json() as Promise<Meta>)
+      .catch((e) => {
+        if (e instanceof ErroDrive && e.status === 404) return null; // apagado ou fora do alcance (drive.file)
         throw e;
       });
-      agora[id] = { caminho, blob, drive };
+    this.metas.set(id, m && !m.trashed ? m : null);
+    return this.metas.get(id)!;
+  }
+  /** Tudo o que está nestas pastas (poucas consultas: vários pais por consulta). */
+  private async lerFilhos(pais: string[]) {
+    for (let k = 0; k < pais.length; k += 40) {
+      const grupo = pais.slice(k, k + 40);
+      for (const m of await this.listar(`trashed=false and (${grupo.map((p) => `'${p}' in parents`).join(" or ")})`, CAMPOS)) this.metas.set(m.id, m);
     }
-    for (const [id, v] of Object.entries(antes)) {
-      if (agora[id]?.drive === v.drive) continue;
-      await this.req(`${API}/${v.drive}`, { method: "DELETE" }).catch(() => {});
+  }
+  /** Leva o item para a pasta `pai` com o nome `nome` (PATCH: mesmo id, sem recriar). */
+  private async colocar(id: string, nome: string, pai: string): Promise<"ok" | "sumiu" | "preso"> {
+    const m = await this.meta(id);
+    if (!m) return "sumiu";
+    const pais = m.parents ?? [];
+    if (m.name === nome && pais.length === 1 && pais[0] === pai) return "ok";
+    const tirar = pais.filter((p) => p !== pai);
+    const params = [...(pais.includes(pai) ? [] : [`addParents=${pai}`]), ...(tirar.length ? [`removeParents=${tirar.join(",")}`] : [])];
+    try {
+      await this.req(`${API}/${id}?${[...params, "fields=id"].join("&")}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome }) });
+    } catch (e) {
+      // pasta criada à mão (fora do alcance do drive.file): o app não consegue tirar o item de lá
+      if (e instanceof ErroDrive && (e.status === 403 || e.status === 404)) return "preso";
+      throw e;
     }
+    this.metas.set(id, { ...m, name: nome, parents: [pai] });
+    return "ok";
+  }
+  /** Para a lixeira do Drive (recuperável lá por 30 dias): nunca apagar de vez o que está à vista. */
+  private lixeira(id: string) {
+    this.metas.set(id, null);
+    return this.req(`${API}/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).then(() => {}, () => {});
+  }
+  private async criarPasta(nome: string, pai: string): Promise<string> {
+    const achada = (await this.listar(`name='${q(nome)}' and '${pai}' in parents and mimeType='${PASTA}' and trashed=false`))[0]?.id;
+    if (achada) return achada;
+    const r = await this.req(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome, mimeType: PASTA, parents: [pai] }) });
+    return ((await r.json()) as { id: string }).id;
+  }
+
+  /**
+   * visiveis.json e pastas.json. O pastas.json antigo (só caminhos) passa a ter o id de cada pasta,
+   * achado pela pasta-mãe dos arquivos que estavam dentro dela — assim uma pasta já renomeada à mão
+   * antes desta versão também é reconhecida.
+   */
+  private carregar(i: Indice) {
+    return (this.estado ??= (async () => {
+      const sis = await this.sis();
+      const idVis = await this.arquivoNa(sis, "visiveis.json");
+      const vis: Record<string, RegVis> = idVis ? JSON.parse(await (await this.baixar(idVis)).text()) : {};
+      const idPastas = await this.arquivoNa(sis, "pastas.json");
+      const bruto: unknown = idPastas ? JSON.parse(await (await this.baixar(idPastas)).text()) : { pastas: {} };
+      let pastas: RegPastas;
+      if (Array.isArray(bruto)) {
+        pastas = {};
+        const antigos = bruto as string[][];
+        const raiz = await this.raiz();
+        for (const p of [...i.pastas].sort((a, b) => caminhoDaPasta(i, a.id).length - caminhoDaPasta(i, b.id).length)) {
+          const c = caminhoDaPasta(i, p.id);
+          if (!antigos.some((x) => igual(x, c))) continue;
+          const votos = new Map<string, number>();
+          for (const v of Object.entries(vis).filter(([k, x]) => !k.includes("#") && igual(x.caminho.slice(0, -1), c)).slice(0, 5).map(([, x]) => x)) {
+            const pai = (await this.meta(v.drive))?.parents?.[0];
+            if (pai && pai !== raiz) votos.set(pai, (votos.get(pai) ?? 0) + 1);
+          }
+          let id = [...votos.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+          if (!id) {
+            const pai = p.pai ? pastas[p.pai]?.drive : raiz;
+            id = pai && (await this.listar(`name='${q(p.nome)}' and '${pai}' in parents and mimeType='${PASTA}' and trashed=false`))[0]?.id;
+          }
+          if (id) pastas[p.id] = { caminho: c, drive: id };
+        }
+      } else pastas = (bruto as { pastas: RegPastas }).pastas ?? {};
+      return { vis, idVis, pastas, idPastas };
+    })());
+  }
+
+  /** Onde estão de fato as pastas e os arquivos que o app pôs em Meu Drive/WJPDM. */
+  async lerEspelho(i: Indice): Promise<EspelhoVisto> {
+    const { vis, pastas } = await this.carregar(i);
+    const raiz = await this.raiz();
+    const conhecidas = [raiz, ...Object.values(pastas).map((p) => p.drive), ...Object.values(vis).map((v) => v.pai).filter((x): x is string => !!x)];
+    await this.lerFilhos([...new Set(conhecidas)]);
+    // o que não apareceu nas pastas conhecidas: saiu delas (pasta criada à mão), lixeira ou apagado
+    for (const id of [...Object.values(pastas).map((p) => p.drive), ...Object.entries(vis).filter(([k]) => !k.includes("#")).map(([, v]) => v.drive)]) if (!this.metas.has(id)) await this.meta(id);
+    const caminho = (id: string, n = 0): string[] | null => {
+      if (id === raiz) return [];
+      const m = this.metas.get(id);
+      const pai = m?.parents?.[0];
+      if (!m || !pai || n > 64) return null;
+      const c = caminho(pai, n + 1);
+      return c && [...c, m.name];
+    };
+    const item = (id: string, gravado: string[], drive: string, noCofre: string | null | undefined): ItemVisto | null => {
+      const m = this.metas.get(drive);
+      if (!m) return null; // apagado à mão ou na lixeira: fica como está
+      const pai = m.parents?.[0];
+      const d = pai ? caminho(pai) : null;
+      return { id, gravado, visto: d && [...d, m.name], quando: m.modifiedTime, ...(noCofre !== undefined ? { pai: noCofre } : {}) };
+    };
+    return {
+      copia: this.nome,
+      pastas: Object.entries(pastas).map(([id, p]) => item(id, p.caminho, p.drive, p.pai)).filter((x): x is ItemVisto => !!x),
+      arquivos: Object.entries(vis).filter(([k]) => !k.includes("#")).map(([k, v]) => item(k, v.caminho, v.drive, v.pasta)).filter((x): x is ItemVisto => !!x),
+    };
+  }
+
+  /**
+   * Arquivos legíveis em Meu Drive/WJPDM, iguais ao cofre: conteúdo atualizado no lugar (o Drive
+   * guarda as revisões), mover/renomear pelo id, pastas pelo id. O que está à espera da escolha do
+   * Johann (`espelho.manter`) fica onde ele pôs. O que sai vai para a lixeira do Drive.
+   */
+  async gravarVisiveis(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>, espelho: DecisaoEspelho = decisaoVazia()) {
+    const sis = await this.sis();
+    const raiz = await this.raiz();
+    const { vis: antes, idVis, pastas: pastasAntes, idPastas } = await this.carregar(i);
+    // 1. pastas do cofre (também as vazias), das mais rasas para as mais fundas
+    const pastasAgora: RegPastas = {};
+    const presas = new Set<string>(); // ficaram numa pasta criada à mão: não vão para a lixeira
+    const fundura = new Map(i.pastas.map((p) => [p.id, caminhoDaPasta(i, p.id)]));
+    for (const p of [...i.pastas].sort((a, b) => fundura.get(a.id)!.length - fundura.get(b.id)!.length)) {
+      const rec = pastasAntes[p.id];
+      if (rec && espelho.manter.has(`pasta:${p.id}`)) {
+        pastasAgora[p.id] = rec;
+        continue;
+      }
+      const pai = p.pai && pastasAgora[p.pai] ? pastasAgora[p.pai].drive : raiz;
+      let id: string | undefined = rec?.drive;
+      if (id) {
+        const r = await this.colocar(id, p.nome, pai);
+        if (r === "preso") presas.add(id);
+        if (r !== "ok") id = undefined;
+      }
+      id ??= await this.criarPasta(p.nome, pai);
+      pastasAgora[p.id] = { caminho: fundura.get(p.id)!, drive: id, pai: p.pai ?? null };
+    }
+    const pastaDe = new Map(Object.values(pastasAgora).map((x) => [JSON.stringify(x.caminho), x.drive]));
+    const versoes = new Map<string, string>(); // "<pasta>/<nome> (versões)" → id
+    const pastaVersoes = async (pai: string, nome: string) => {
+      const k = `${pai}/${nome}`;
+      if (!versoes.has(k)) versoes.set(k, await this.criarPasta(nome, pai));
+      return versoes.get(k)!;
+    };
+    // 2. arquivos (e, ao lado, as pastas de versões)
+    const agora: Record<string, RegVis> = {};
+    const pastaDoArquivo = new Map(i.arquivos.map((a) => [a.id, a.pasta]));
+    for (const { chave: k, caminho, blob } of visiveisDoIndice(i)) {
+      const v = antes[k];
+      if (espelho.manter.has(k.split("#")[0])) {
+        // à espera da escolha do Johann: fica onde ele pôs; conteúdo novo entra no lugar
+        if (!v) continue;
+        agora[k] = v;
+        if (v.blob !== blob) {
+          const dados = await lerBlob(blob);
+          if (dados && (await this.enviar(dados, "", "", v.drive).then(() => true, () => false))) agora[k] = { ...v, blob };
+        }
+        continue;
+      }
+      const versao = k.includes("#");
+      const dirPrincipal = caminho.slice(0, versao ? -2 : -1);
+      const principal = dirPrincipal.length ? pastaDe.get(JSON.stringify(dirPrincipal)) : raiz;
+      if (!principal) continue;
+      const pasta = versao ? await pastaVersoes(principal, caminho[caminho.length - 2]) : principal;
+      const nome = caminho[caminho.length - 1];
+      let drive: string | undefined = v?.drive;
+      if (drive && v.blob !== blob) {
+        const dados = await lerBlob(blob);
+        if (!dados) continue;
+        drive = await this.enviar(dados, nome, pasta, drive).catch((e) => {
+          if (e instanceof ErroDrive && e.status === 404) return undefined; // apagado à mão no Drive
+          throw e;
+        });
+      }
+      if (drive) {
+        const r = await this.colocar(drive, nome, pasta);
+        if (r === "preso") presas.add(drive);
+        if (r !== "ok") drive = undefined;
+      }
+      if (!drive) {
+        const dados = await lerBlob(blob);
+        if (!dados) continue;
+        // sem registro (sincronia anterior interrompida antes de gravar visiveis.json): reaproveita o
+        // arquivo com o mesmo nome que já está lá, em vez de criar outro igual
+        const ja = !v ? await this.arquivoNa(pasta, nome) : undefined;
+        drive = ja && !Object.values(agora).some((x) => x.drive === ja) ? await this.enviar(dados, nome, pasta, ja) : await this.enviar(dados, nome, pasta);
+      }
+      agora[k] = { caminho, blob, drive, pai: pasta, pasta: pastaDoArquivo.get(k.split("#")[0]) };
+    }
+    // 3. o que saiu do cofre (lixeira, destruído): para a lixeira do Drive, nunca apagado de vez
+    const usados = new Set(Object.values(agora).map((x) => x.drive));
+    for (const v of Object.values(antes)) if (!usados.has(v.drive) && !presas.has(v.drive)) await this.lixeira(v.drive);
     // pastas de versões que ficaram sem nada (arquivo excluído, renomeado ou movido)
-    const dirsVersoes = (x: V) => new Set(Object.entries(x).filter(([k]) => k.includes("#")).map(([, e]) => JSON.stringify(e.caminho.slice(0, -1))));
-    const versoesAgora = dirsVersoes(agora);
-    for (const k of [...dirsVersoes(antes)].filter((x) => !versoesAgora.has(x))) {
-      const c = ["WJPDM", ...(JSON.parse(k) as string[])];
-      const idp = await this.acharPasta(c);
-      if (idp) await this.req(`${API}/${idp}`, { method: "DELETE" }).catch(() => {});
-      for (const x of [...this.ids.keys()]) if (x === c.join("/") || x.startsWith(`${c.join("/")}/`)) this.ids.delete(x);
+    const pastasDeVersoes = async (x: Record<string, RegVis>) => {
+      const r = new Set<string>();
+      for (const [k, v] of Object.entries(x)) {
+        if (!k.includes("#")) continue;
+        const pai = v.pai ?? this.metas.get(v.drive)?.parents?.[0] ?? (await this.acharPasta(["WJPDM", ...v.caminho.slice(0, -1)]));
+        if (pai) r.add(pai);
+      }
+      return r;
+    };
+    const versoesAgora = await pastasDeVersoes(agora);
+    for (const id of await pastasDeVersoes(antes)) if (!versoesAgora.has(id) && !presas.has(id)) await this.lixeira(id);
+    // pastas excluídas do cofre: lixeira do Drive (as mais fundas primeiro)
+    const vivas = new Set(Object.values(pastasAgora).map((x) => x.drive));
+    for (const [id, rec] of Object.entries(pastasAntes).sort((a, b) => b[1].caminho.length - a[1].caminho.length)) {
+      if (pastasAgora[id] || vivas.has(rec.drive) || presas.has(rec.drive)) continue;
+      await this.lixeira(rec.drive);
     }
-    await this.enviar(new Blob([JSON.stringify(agora)], { type: "application/json" }), "visiveis.json", sis, idMapa);
-    // pastas do cofre (também as vazias): cria as novas; as excluídas/renomeadas vão para a
-    // lixeira do Drive (recuperáveis lá por 30 dias), as mais fundas primeiro
-    const idPastas = await this.arquivoNa(sis, "pastas.json");
-    const pastasAntes: string[][] = idPastas ? JSON.parse(await (await this.baixar(idPastas)).text()) : [];
-    const pastasAgora = caminhosDasPastas(i);
-    const chave = (c: string[]) => JSON.stringify(c);
-    const tinha = new Set(pastasAntes.map(chave)), tem = new Set(pastasAgora.map(chave));
-    for (const c of pastasAgora) if (!tinha.has(chave(c))) await this.pasta(["WJPDM", ...c]);
-    for (const c of pastasAntes.filter((x) => !tem.has(chave(x))).sort((a, b) => b.length - a.length)) {
-      const id = await this.acharPasta(["WJPDM", ...c]);
-      if (id) await this.req(`${API}/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch(() => {});
-      const k = ["WJPDM", ...c].join("/");
-      for (const x of [...this.ids.keys()]) if (x === k || x.startsWith(`${k}/`)) this.ids.delete(x);
-    }
-    await this.enviar(new Blob([JSON.stringify(pastasAgora)], { type: "application/json" }), "pastas.json", sis, idPastas);
+    await this.enviar(new Blob([JSON.stringify(agora)], { type: "application/json" }), "visiveis.json", sis, idVis);
+    await this.enviar(new Blob([JSON.stringify({ formato: 2, pastas: pastasAgora })], { type: "application/json" }), "pastas.json", sis, idPastas);
+    this.estado = undefined;
   }
 }
 

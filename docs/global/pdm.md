@@ -78,8 +78,24 @@ esvazia após 30 dias. Salvar seguido (cópia de trabalho ou rascunho nunca publ
 computador) + `WJPDM/.wjpdm/indice.json` e `.wjpdm/blobs/` (conteúdo de cada versão).
 ✅ Google Drive (`src/comum/drive.ts`): "Conectar ao Google Drive" na tela de cópias; cofre em
 Meu Drive/WJPDM; acesso de 1 hora renovado ao salvar/sincronizar (toque do usuário).
-🟡 Arquivos colocados à mão na pasta do pendrive ainda não
-entram no cofre (adicionar pelo WJPDM).
+✅ **Mudanças feitas fora do app** (12/11/2026): a cada sincronia o app confere o espelho legível do Drive
+(pelos ids das pastas e arquivos que ele criou), do pendrive e da pasta do dispositivo (arquivo achado
+pelo conteúdo; pasta pelos arquivos de dentro). Arquivo movido/renomeado e pasta renomeada/movida à mão
+aparecem na janela **"Mudanças feitas fora do app"** (abre sozinha no WJPDM; botão na faixa "Cofre:" e em
+Ferramentas), com de → para e, por item ou para todas, **"Trazer para o cofre"** (vira Mover/Renomear com
+histórico "Movido no Drive de X para Y") ou **"Desfazer"** (volta ao lugar do cofre). Nada muda sem a
+escolha; até lá o app não mexe no que foi mudado. Arquivo posto numa **pasta criada à mão no Drive**
+(invisível com `drive.file`): "Levar para esta pasta" (pasta do cofre) ou Desfazer — pasta nova se cria
+pelo WJPDM. Mudou no app e fora dele ao mesmo tempo: a mais recente vence, a outra vai para a lixeira do
+cofre. Pastas do Drive guardadas pelo id (renomear à mão não duplica mais a pasta); nada visível é apagado
+de vez no Drive (vai para a lixeira dele). Testes: `teste-sincronia.ts`, `teste-drive.ts`,
+`roteiro-mudancas-fora.cjs`.
+✅ **Reorganizar no WJPDM** (12/11/2026): **Mover pasta para…** (menu da pasta; ou pasta selecionada + Mover)
+leva a pasta com tudo dentro; **marcar vários arquivos** (caixinha à esquerda, "marcar todos" no cabeçalho,
+Ctrl+clique no mouse) e **Mover para…** de uma vez (nome repetido ganha " (2)"; GO-OUT de outra pessoa
+fica de fora, com aviso).
+🟡 Arquivos **novos** colocados à mão no pendrive ou no Drive ainda não entram no cofre (adicionar pelo
+WJPDM). Arquivo apagado à mão no espelho não é tratado (fica como está até mudar no app).
 
 ## Tabelas do cofre (29/10/2026)
 

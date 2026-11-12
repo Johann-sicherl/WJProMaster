@@ -3,6 +3,8 @@
 // lixeira vencida, cópia que falha no meio e repetição sem efeito.
 import { visiveisDoIndice, caminhoDoArquivo, indiceVazio, sincronizar, type Indice, type Repositorio } from "../src/pdm/sincronia";
 import type { Arquivo } from "../src/pdm/regras";
+import { analisarEspelho, trazerParaOCofre, type EspelhoVisto } from "../src/pdm/espelho";
+import { RepositorioPasta, type PastaDisco } from "../src/comum/repositorios";
 
 let falhas = 0;
 function igual(nome: string, obtido: unknown, esperado: unknown) {
@@ -230,6 +232,172 @@ const AGORA = "2026-10-28T12:00:00.000Z";
   i.pastas.push({ id: "p", nome: "CAD", pai: null } as never);
   i.arquivos.push({ id: "a", nome: "Suporte.wjcad", pasta: "p", revisao: "A", estado: "x", cartao: {}, historico: [], versoes: [{ n: 1, blob: "b1", revisao: "" }, { n: 2, blob: "b2", revisao: "A" }], trabalho: { blob: "w", tamanho: 1, data: "", autor: "" } } as never);
   igual("versões: atual = cópia de trabalho; v1 e v2 rev A na pasta (versões)", visiveisDoIndice(i).map((v) => [v.caminho.join("/"), v.blob]), [["CAD/Suporte.wjcad", "w"], ["CAD/Suporte (versões)/Suporte v1.wjcad", "b1"], ["CAD/Suporte (versões)/Suporte v2 rev A.wjcad", "b2"]]);
+}
+
+// ---------- mudanças feitas fora do app no espelho (12/11/2026) ----------
+const T = (h: string) => `2026-11-12T${h}:00.000Z`;
+const base = () => {
+  const i = indiceVazio();
+  i.pastas.push({ id: "p1", nome: "CAD", pai: null, mod: T("08:00") }, { id: "p2", nome: "Projetos", pai: null, mod: T("08:00") });
+  i.arquivos.push(arq("a1", ["b1"], T("08:00"), { nome: "Eixo.wjcad" }), arq("a2", ["b2"], T("08:00"), { nome: "Mancal.wjcad" }));
+  return i;
+};
+const visto = (arquivos: EspelhoVisto["arquivos"], pastas: EspelhoVisto["pastas"] = []): EspelhoVisto => ({ copia: "pendrive", arquivos, pastas });
+const ids = () => {
+  let n = 0;
+  return () => `n${++n}`;
+};
+
+// 12. mover e renomear à mão: à espera da escolha; "Trazer" vira Mover/Renomear com histórico
+{
+  const i = base();
+  const a = analisarEspelho(i, visto([{ id: "a1", gravado: ["CAD", "Eixo.wjcad"], visto: ["Projetos", "Eixo.wjcad"] }, { id: "a2", gravado: ["CAD", "Mancal.wjcad"], visto: ["CAD", "Mancal B.wjcad"] }]), T("10:00"));
+  igual("12.1 duas mudanças à espera, nada mudou no cofre", [a.pendentes.map((m) => `${m.de.join("/")} → ${m.para!.join("/")}`), a.indice === i, [...a.manter]], [["CAD/Eixo.wjcad → Projetos/Eixo.wjcad", "CAD/Mancal.wjcad → CAD/Mancal B.wjcad"], true, ["a1", "a2"]]);
+  let t = trazerParaOCofre(i, a.pendentes[0], a.pendentes, T("10:05"), "Johann", ids());
+  const e = "erro" in t ? undefined : t.indice.arquivos.find((x) => x.id === "a1")!;
+  igual("12.2 trazer o movido: pasta nova e histórico", [e && caminhoDoArquivo((t as { indice: Indice }).indice, e).join("/"), e?.historico.at(-1)?.texto, e?.mod], ["Projetos/Eixo.wjcad", "Movido no pendrive de CAD/Eixo.wjcad para Projetos/Eixo.wjcad", T("10:05")]);
+  t = trazerParaOCofre(i, a.pendentes[1], a.pendentes, T("10:05"), "Johann", ids());
+  const m = "erro" in t ? undefined : t.indice.arquivos.find((x) => x.id === "a2")!;
+  igual("12.3 trazer o renomeado", [m?.nome, m?.historico.at(-1)?.texto], ["Mancal B.wjcad", "Renomeado no pendrive de Mancal.wjcad para Mancal B.wjcad"]);
+  const outro = { ...i, arquivos: i.arquivos.map((x) => (x.id === "a2" ? { ...x, checkout: { usuario: "Ana", data: "x" } } : x)) };
+  igual("12.4 em GO-OUT com outra pessoa: não traz, explica", "erro" in trazerParaOCofre(outro, a.pendentes[1], a.pendentes, T("10:05"), "Johann", ids()), true);
+  const d = analisarEspelho(i, visto([{ id: "a1", gravado: ["CAD", "Eixo.wjcad"], visto: ["Projetos", "Eixo.wjcad"] }]), T("10:10"), { decididos: new Set([a.pendentes[0].id]) });
+  igual("12.5 decidida (Desfazer): sai da lista e o espelho segue o cofre", [d.pendentes.length, d.manter.size, d.vistas], [0, 0, [a.pendentes[0].id]]);
+}
+
+// 13. pasta renomeada à mão no pendrive (sem id): descoberta pelos arquivos de dentro; uma mudança só
+{
+  const i = base();
+  const a = analisarEspelho(i, visto([{ id: "a1", gravado: ["CAD", "Eixo.wjcad"], visto: ["CAD 2026", "Eixo.wjcad"] }, { id: "a2", gravado: ["CAD", "Mancal.wjcad"], visto: ["CAD 2026", "Mancal.wjcad"] }], [{ id: "p1", gravado: ["CAD"], visto: undefined }, { id: "p2", gravado: ["Projetos"], visto: ["Projetos"] }]), T("10:00"));
+  igual("13.1 pasta renomeada: uma mudança; os arquivos de dentro acompanham", [a.pendentes.map((m) => `${m.tipo} ${m.de.join("/")} → ${m.para!.join("/")}`), [...a.presos].sort(), a.trocas], [["pasta CAD → CAD 2026"], ["a1", "a2"], [[["CAD"], ["CAD 2026"]]]]);
+  const t = trazerParaOCofre(i, a.pendentes[0], a.pendentes, T("10:05"), "Johann", ids());
+  igual("13.2 trazer: pasta renomeada no cofre", "erro" in t ? t.erro : t.pastas.map((p) => p.nome), ["CAD 2026"]);
+  // esvaziada para outra pasta do app NÃO é renomeação
+  const b = analisarEspelho(i, visto([{ id: "a1", gravado: ["CAD", "Eixo.wjcad"], visto: ["Projetos", "Eixo.wjcad"] }], [{ id: "p1", gravado: ["CAD"], visto: undefined }, { id: "p2", gravado: ["Projetos"], visto: ["Projetos"] }]), T("10:00"));
+  igual("13.3 pasta esvaziada à mão para outra pasta do app: só o arquivo movido", b.pendentes.map((m) => m.tipo), ["arquivo"]);
+  // pasta nova criada à mão no pendrive (o nome é visível): trazer cria a pasta no cofre
+  const c = analisarEspelho(i, visto([{ id: "a1", gravado: ["CAD", "Eixo.wjcad"], visto: ["CAD", "Usinados", "Eixo.wjcad"] }]), T("10:00"));
+  const tc = trazerParaOCofre(i, c.pendentes[0], c.pendentes, T("10:05"), "Johann", () => "pNova");
+  igual("13.4 pasta criada à mão no pendrive entra no cofre", "erro" in tc ? tc.erro : [tc.pastas.map((p) => [p.id, p.nome, p.pai]), caminhoDoArquivo(tc.indice, tc.indice.arquivos.find((x) => x.id === "a1")!).join("/")], [[["pNova", "Usinados", "p1"]], "CAD/Usinados/Eixo.wjcad"]);
+}
+
+// 14. conflito com mudança feita no app ao mesmo tempo: a mais recente vence, a outra vai para a lixeira do cofre
+{
+  const comApp = (mod: string) => {
+    const i = base();
+    const a1 = i.arquivos.find((x) => x.id === "a1")!;
+    a1.nome = "Eixo motor.wjcad";
+    a1.mod = mod;
+    return i;
+  };
+  // fora do app mais recente (10:30 > 10:00): vence o Drive/pendrive
+  let i = comApp(T("10:00"));
+  let a = analisarEspelho(i, visto([{ id: "a1", gravado: ["CAD", "Eixo.wjcad"], visto: ["Projetos", "Eixo.wjcad"], quando: T("10:30") }]), T("11:00"), { usuario: "Johann" });
+  let a1 = a.indice.arquivos.find((x) => x.id === "a1")!;
+  let lix = a.indice.arquivos.find((x) => x.lixeira)!;
+  igual("14.1 fora do app mais recente: vence, sem perguntar", [caminhoDoArquivo(a.indice, a1).join("/"), a.pendentes.length, a.conflitos], ["Projetos/Eixo.wjcad", 0, ["Eixo motor.wjcad"]]);
+  igual("14.2 a mudança do app vai para a lixeira do cofre", [lix?.nome, caminhoDoArquivo(a.indice, lix).join("/")], ["Eixo motor (conflito 2026-11-12).wjcad", "CAD/Eixo motor (conflito 2026-11-12).wjcad"]);
+  // app mais recente (10:30 > 10:00): o cofre fica; o espelho volta (não está em "manter")
+  i = comApp(T("10:30"));
+  a = analisarEspelho(i, visto([{ id: "a1", gravado: ["CAD", "Eixo.wjcad"], visto: ["Projetos", "Eixo.wjcad"], quando: T("10:00") }]), T("11:00"));
+  a1 = a.indice.arquivos.find((x) => x.id === "a1")!;
+  lix = a.indice.arquivos.find((x) => x.lixeira)!;
+  igual("14.3 app mais recente: vence; o espelho segue o cofre", [caminhoDoArquivo(a.indice, a1).join("/"), a.manter.size], ["CAD/Eixo motor.wjcad", 0]);
+  igual("14.4 onde o Johann pôs vai para a lixeira do cofre", [lix?.nome, caminhoDoArquivo(a.indice, lix).slice(0, -1).join("/")], ["Eixo (conflito 2026-11-12).wjcad", "Projetos"]);
+  const b = analisarEspelho(a.indice, visto([{ id: "a1", gravado: ["CAD", "Eixo.wjcad"], visto: ["Projetos", "Eixo.wjcad"], quando: T("10:00") }]), T("11:05"));
+  igual("14.5 repetir não duplica a cópia da lixeira", b.indice.arquivos.filter((x) => x.lixeira).length, 1);
+  // os dois fizeram a mesma mudança: nada a decidir
+  const c = analisarEspelho(comApp(T("10:30")), visto([{ id: "a1", gravado: ["CAD", "Eixo.wjcad"], visto: ["CAD", "Eixo motor.wjcad"] }]), T("11:00"));
+  igual("14.6 mesma mudança nos dois lados: nada pendente nem conflito", [c.pendentes.length, c.conflitos.length], [0, 0]);
+}
+
+// 15. pendrive de verdade (RepositorioPasta) sobre um disco simulado
+{
+  class Arq {
+    kind = "file" as const;
+    dados = "";
+    constructor(public name: string) {}
+    async getFile() {
+      return new File([this.dados], this.name);
+    }
+    async createWritable() {
+      const partes: BlobPart[] = [];
+      return { write: async (d: BlobPart) => void partes.push(d), close: async () => void (this.dados = await new Blob(partes).text()) };
+    }
+  }
+  const nf = () => Object.assign(new Error("não existe"), { name: "NotFoundError" });
+  class Dir {
+    kind = "directory" as const;
+    filhos = new Map<string, Dir | Arq>();
+    constructor(public name: string) {}
+    async getDirectoryHandle(n: string, o?: { create?: boolean }) {
+      let x = this.filhos.get(n);
+      if (!x && o?.create) this.filhos.set(n, (x = new Dir(n)));
+      if (!x || x.kind !== "directory") throw nf();
+      return x;
+    }
+    async getFileHandle(n: string, o?: { create?: boolean }) {
+      let x = this.filhos.get(n);
+      if (!x && o?.create) this.filhos.set(n, (x = new Arq(n)));
+      if (!x || x.kind !== "file") throw nf();
+      return x;
+    }
+    async removeEntry(n: string) {
+      const x = this.filhos.get(n);
+      if (!x) throw nf();
+      if (x.kind === "directory" && x.filhos.size) throw Object.assign(new Error("não vazia"), { name: "InvalidModificationError" });
+      this.filhos.delete(n);
+    }
+    async *values() {
+      yield* this.filhos.values();
+    }
+    async *keys() {
+      yield* this.filhos.keys();
+    }
+  }
+  const disco = new Dir("pendrive");
+  const no = (c: string): Dir | Arq | undefined => c.split("/").reduce<Dir | Arq | undefined>((d, n) => (d?.kind === "directory" ? d.filhos.get(n) : undefined), disco);
+  const mover = (de: string, para: string) => {
+    const x = no(de)!, pd = no(de.split("/").slice(0, -1).join("/")) as Dir, pp = no(para.split("/").slice(0, -1).join("/")) as Dir;
+    pd.filhos.delete(x.name);
+    x.name = para.split("/").at(-1)!;
+    pp.filhos.set(x.name, x);
+  };
+  const arquivos = (d: Dir = disco, c = ""): string[] => [...d.filhos.values()].flatMap((x) => (x.kind === "file" ? [`${c}${x.name}`] : x.name === ".wjpdm" ? [] : arquivos(x, `${c}${x.name}/`))).sort();
+  const pastas = (d: Dir = disco, c = ""): string[] => [...d.filhos.values()].flatMap((x) => (x.kind === "file" || x.name === ".wjpdm" ? [] : [`${c}${x.name}`, ...pastas(x, `${c}${x.name}/`)])).sort();
+  const ap = new Memoria("aparelho");
+  com(ap, [arq("a1", ["b1"], T("08:00"), { nome: "Eixo.wjcad" }), arq("a2", ["b2"], T("08:00"), { nome: "Mancal.wjcad" })], { b1: "eixo", b2: "mancal" });
+  ap.indice!.pastas.push({ id: "p2", nome: "Projetos", pai: null, mod: T("08:00") });
+  const pen = () => new RepositorioPasta("pendrive", disco as unknown as PastaDisco, true);
+  const sinc = (h: string, decididos = new Set<string>()) => sincronizar([ap, pen()], T(h), { decididos, usuario: "Johann", novoId: ids() });
+  await sinc("09:00");
+  igual("15.0 pendrive inicial", arquivos().filter((x) => !x.includes("versões")), ["WJPDM/CAD/Eixo.wjcad", "WJPDM/CAD/Mancal.wjcad"]);
+  // à mão: CAD → "CAD 2026"; Mancal → Projetos com outro nome
+  mover("WJPDM/CAD", "WJPDM/CAD 2026");
+  mover("WJPDM/CAD 2026/Mancal.wjcad", "WJPDM/Projetos/Mancal B.wjcad");
+  let r = await sinc("10:00");
+  igual("15.1 detecta pela pasta e pelo conteúdo", r.foraDoApp.map((m) => `${m.tipo} ${m.de.join("/")} → ${m.para?.join("/")}`).sort(), ["arquivo CAD/Mancal.wjcad → Projetos/Mancal B.wjcad", "pasta CAD → CAD 2026"]);
+  igual("15.2 nada muda sozinho no pendrive (sem CAD de volta)", [arquivos().filter((x) => !x.includes("versões")), pastas().includes("WJPDM/CAD")], [["WJPDM/CAD 2026/Eixo.wjcad", "WJPDM/Projetos/Mancal B.wjcad"], false]);
+  // GO-IN do Eixo com a pasta à espera: conteúdo novo no lugar, sem recriar CAD
+  ap.indice!.arquivos[0] = arq("a1", ["b1", "b1b"], T("10:30"), { nome: "Eixo.wjcad" });
+  ap.blobs.set("b1b", "eixo v2");
+  r = await sinc("10:31");
+  igual("15.3 GO-IN com a pasta renomeada à mão: atualizado no lugar", [(no("WJPDM/CAD 2026/Eixo.wjcad") as Arq)?.dados, pastas().includes("WJPDM/CAD"), r.foraDoApp.length], ["eixo v2", false, 2]);
+  // escolhas: pasta → Trazer; Mancal → Desfazer
+  const pasta = r.foraDoApp.find((m) => m.tipo === "pasta")!, mancal = r.foraDoApp.find((m) => m.tipo === "arquivo")!;
+  const t = trazerParaOCofre(ap.indice!, pasta, r.foraDoApp, T("10:40"), "Johann", ids());
+  if (!("erro" in t)) ap.indice = t.indice;
+  r = await sinc("10:41", new Set([mancal.id]));
+  igual("15.4 depois das escolhas", [arquivos().filter((x) => !x.includes("versões")), r.foraDoApp.length, caminhoDoArquivo(ap.indice!, ap.indice!.arquivos[0]).join("/")], [["WJPDM/CAD 2026/Eixo.wjcad", "WJPDM/CAD 2026/Mancal.wjcad"], 0, "CAD 2026/Eixo.wjcad"]);
+  igual("15.5 versões ficam ao lado do arquivo", arquivos().filter((x) => x.includes("versões")), ["WJPDM/CAD 2026/Eixo (versões)/Eixo v1.wjcad", "WJPDM/CAD 2026/Eixo (versões)/Eixo v2.wjcad", "WJPDM/CAD 2026/Mancal (versões)/Mancal v1.wjcad"]);
+  // Desfazer de uma pasta renomeada à mão: tudo volta, a pasta vazia sai
+  mover("WJPDM/CAD 2026", "WJPDM/Velha");
+  r = await sinc("11:00");
+  const p2 = r.foraDoApp[0];
+  igual("15.6 pasta renomeada de novo", r.foraDoApp.map((m) => `${m.de.join("/")} → ${m.para?.join("/")}`), ["CAD 2026 → Velha"]);
+  r = await sinc("11:01", new Set([p2.id]));
+  igual("15.7 desfeita: arquivos e versões de volta, a pasta Velha sai (vazia)", [arquivos(), pastas().includes("WJPDM/Velha"), r.foraDoApp.length],
+    [["WJPDM/CAD 2026/Eixo (versões)/Eixo v1.wjcad", "WJPDM/CAD 2026/Eixo (versões)/Eixo v2.wjcad", "WJPDM/CAD 2026/Eixo.wjcad", "WJPDM/CAD 2026/Mancal (versões)/Mancal v1.wjcad", "WJPDM/CAD 2026/Mancal.wjcad"], false, 0]);
 }
 
 console.log(falhas ? `\nsincronia: ${falhas} falha(s)` : "\nsincronia: tudo certo");

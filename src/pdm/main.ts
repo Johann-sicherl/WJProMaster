@@ -4,11 +4,11 @@
 
 import "./pdm.css";
 import { $, baixar, Casca, el, escapar, janela, menu, registrarOffline, salvarArquivo } from "../comum/casca";
-import { abrirArquivoNoApp, abrirCopias, aoMudarCofre, APPS, goIn, janelaGoIn, sincronizarCofre } from "../comum/cofre";
+import { abrirArquivoNoApp, abrirCopias, abrirMudancasFora, aoMudarCofre, APPS, EVENTO_FORA, goIn, janelaGoIn, mudancasForaDoApp, sincronizarCofre } from "../comum/cofre";
 import { IC } from "../comum/icones";
 import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
-  aplicarTransicao, bloqueioDoCheckout, CAMPOS_CARTAO, copiaDoFluxo, estadoDe, explodirBOM, FLUXO_PADRAO, fluxoAtual, extensao, nomeLivre, ondeEUsado, proximoCodigo, TIPOS_ITEM,
+  aplicarTransicao, bloqueioDoCheckout, CAMPOS_CARTAO, copiaDoFluxo, estadoDe, explodirBOM, FLUXO_PADRAO, fluxoAtual, extensao, moverArquivos, moverPasta, nomeLivre, ondeEUsado, proximoCodigo, TIPOS_ITEM,
   transicoesDe, usarFluxo, validarFluxo, type Arquivo, type Fluxo, type Item, type Pasta, type ReferenciaArquivo, type TipoItem, type Versao,
 } from "./regras";
 
@@ -47,6 +47,8 @@ let referencias: ReferenciaArquivo[] = [];
 type Local = { tipo: "pasta"; id: string } | { tipo: "itens" } | { tipo: "lixeira" } | { tipo: "busca"; q: string };
 let local: Local = { tipo: "pasta", id: RAIZ };
 let sel: { tipo: "arquivo" | "pasta" | "item"; id: string } | null = null;
+/** Arquivos marcados na lista (seleção múltipla: caixinha, ou Ctrl+clique) para mover de uma vez. */
+const marcados = new Set<string>();
 let aba = "cartao";
 let urlPrevia = "";
 
@@ -117,7 +119,7 @@ arvore.addEventListener("contextmenu", (e) => {
   menu(e.clientX, e.clientY, [
     { rotulo: "Nova pasta aqui", icone: "novaPasta", acao: () => novaPasta(id) },
     { rotulo: id === RAIZ ? "GO-IN de tudo (meus GO-OUT)" : "GO-IN da pasta (todos os arquivos)", icone: "checkin", acao: () => goInPasta(id) },
-    ...(id !== RAIZ ? [{ rotulo: "Renomear pasta", icone: "editar" as const, acao: () => renomearPasta(id) }, { rotulo: "Excluir pasta", icone: "apagar" as const, acao: () => void excluirPasta(id) }] : []),
+    ...(id !== RAIZ ? [{ rotulo: "Renomear pasta", icone: "editar" as const, acao: () => renomearPasta(id) }, { rotulo: "Mover pasta para…", icone: "pasta" as const, acao: () => moverPastaPara(id) }, { rotulo: "Excluir pasta", icone: "apagar" as const, acao: () => void excluirPasta(id) }] : []),
   ]);
 });
 $("#pd-pastas").onclick = () => document.body.classList.toggle("pd-arvore-aberta");
@@ -158,11 +160,15 @@ function renderizarLista() {
   }
   fs.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   const colPasta = local.tipo !== "pasta";
-  let corpo = ps.map((p) => `<tr data-pasta="${p.id}" class="${sel?.id === p.id ? "sel" : ""}"><td class="pd-ic">${IC.pasta}</td><td>${escapar(p.nome)}</td><td colspan="9" class="pd-opc"></td></tr>`).join("");
+  // marcar vários (não na lixeira): só os que estão à vista ficam marcados
+  const marca = local.tipo !== "lixeira";
+  for (const id of [...marcados]) if (!marca || !fs.some((a) => a.id === id)) marcados.delete(id);
+  const tdMarca = (a?: Arquivo) => (!marca ? "" : a ? `<td class="pd-marca"><input type="checkbox" data-marca aria-label="Marcar ${escapar(a.nome)}"${marcados.has(a.id) ? " checked" : ""} /></td>` : `<td class="pd-marca"></td>`);
+  let corpo = ps.map((p) => `<tr data-pasta="${p.id}" class="${sel?.id === p.id ? "sel" : ""}">${tdMarca()}<td class="pd-ic">${IC.pasta}</td><td>${escapar(p.nome)}</td><td colspan="9" class="pd-opc"></td></tr>`).join("");
   corpo += fs.map((a) => {
     const v = versaoAtual(a);
-    return `<tr data-arquivo="${a.id}" class="${sel?.id === a.id ? "sel" : ""}">
-      <td class="pd-ic">${travaHtml(a) || IC.arquivo}</td><td title="${escapar(a.nome)}">${escapar(a.nome)}</td>
+    return `<tr data-arquivo="${a.id}" class="${sel?.id === a.id ? "sel" : ""}${marcados.has(a.id) ? " marcado" : ""}">
+      ${tdMarca(a)}<td class="pd-ic">${travaHtml(a) || IC.arquivo}</td><td title="${escapar(a.nome)}">${escapar(a.nome)}</td>
       <td>${v.n}</td><td>${a.revisao || "—"}</td><td>${estadoHtml(a)}</td>
       <td class="pd-opc">${escapar(a.checkout?.usuario ?? "")}</td><td class="pd-opc">${escapar(a.cartao.codigo ?? "")}</td>
       <td class="pd-opc">${escapar(a.cartao.descricao ?? "")}</td>${colPasta ? `<td class="pd-opc">${escapar(nomePasta(a.pasta))}</td>` : ""}
@@ -170,15 +176,32 @@ function renderizarLista() {
   }).join("");
   if (!corpo) {
     const msg = local.tipo === "lixeira" ? "A lixeira está vazia." : local.tipo === "busca" ? "Nada encontrado." : "Pasta vazia. Arraste arquivos para cá ou use <b>Adicionar</b>.";
-    corpo = `<tr><td class="pd-vazio" colspan="11">${msg}</td></tr>`;
+    corpo = `<tr><td class="pd-vazio" colspan="12">${msg}</td></tr>`;
   }
-  lista.innerHTML = cab(["", "Nome", "Versão", "Rev.", "Estado", "·GO-OUT", "·Código", "·Descrição", ...(colPasta ? ["·Pasta"] : []), "·Tamanho", "·Modificado"]) + `<tbody>${corpo}</tbody>`;
+  const todos = fs.length > 0 && fs.every((a) => marcados.has(a.id));
+  renderizarMarcados();
+  lista.innerHTML = cab([...(marca ? [`<input type="checkbox" data-marca-todos aria-label="Marcar todos"${todos ? " checked" : ""}${fs.length ? "" : " disabled"} />`] : []), "", "Nome", "Versão", "Rev.", "Estado", "·GO-OUT", "·Código", "·Descrição", ...(colPasta ? ["·Pasta"] : []), "·Tamanho", "·Modificado"]) + `<tbody>${corpo}</tbody>`;
 }
 
 let ultimoClique = { t: 0, id: "" };
 lista.addEventListener("click", (e) => {
-  const tr = (e.target as HTMLElement).closest<HTMLTableRowElement>("tr");
+  const alvo = e.target as HTMLElement;
+  if (alvo.closest("[data-marca-todos]")) {
+    const ids = [...lista.querySelectorAll<HTMLElement>("tr[data-arquivo]")].map((t) => t.dataset.arquivo!);
+    const todos = ids.every((id) => marcados.has(id));
+    for (const id of ids) todos ? marcados.delete(id) : marcados.add(id);
+    return renderizarLista();
+  }
+  const tr = alvo.closest<HTMLTableRowElement>("tr");
   if (!tr) return;
+  // caixinha (dedo/caneta) ou Ctrl+clique (mouse): marca/desmarca sem abrir nem selecionar
+  if (tr.dataset.arquivo && (alvo.closest(".pd-marca") || e.ctrlKey || e.metaKey)) {
+    const id = tr.dataset.arquivo;
+    marcados.has(id) ? marcados.delete(id) : marcados.add(id);
+    ultimoClique = { t: 0, id: "" };
+    return renderizarLista();
+  }
+  if (alvo.closest(".pd-marca")) return;
   // duplo clique/toque detectado aqui: a lista é redesenhada a cada clique e o "dblclick" se perde
   const id = tr.dataset.arquivo ?? tr.dataset.pasta ?? tr.dataset.item ?? "";
   const duplo = Date.now() - ultimoClique.t < 450 && ultimoClique.id === id;
@@ -220,6 +243,7 @@ lista.addEventListener("contextmenu", (e) => {
       { rotulo: "Abrir pasta", icone: "pasta", acao: () => ((local = { tipo: "pasta", id }), (sel = null), renderizar()) },
       { rotulo: "GO-IN da pasta (todos os arquivos)", icone: "checkin", acao: () => goInPasta(id) },
       { rotulo: "Renomear pasta", icone: "editar", acao: () => renomearPasta(id) },
+      { rotulo: "Mover pasta para…", icone: "pasta", acao: () => moverPastaPara(id) },
       { rotulo: "Excluir pasta", icone: "apagar", acao: () => void excluirPasta(id) },
     ]);
   } else if (local.tipo === "pasta") {
@@ -249,7 +273,9 @@ function menuArquivo(x: number, y: number) {
     { rotulo: "Alterar estado…", icone: "estado", acao: () => alterarEstado(a) },
     "-",
     { rotulo: "Renomear", icone: "editar", acao: () => renomearArquivo(a) },
-    { rotulo: "Mover para…", icone: "pasta", acao: () => moverArquivo(a) },
+    marcados.size > 1 && marcados.has(a.id)
+      ? { rotulo: `Mover os ${marcados.size} marcados para…`, icone: "pasta" as const, acao: () => moverMarcados() }
+      : { rotulo: "Mover para…", icone: "pasta" as const, acao: () => moverArquivo(a) },
     { rotulo: "Excluir (lixeira)", icone: "apagar", acao: () => void excluirArquivo(a) },
   ]);
 }
@@ -855,22 +881,72 @@ function renomearArquivo(a: Arquivo) {
   });
 }
 
+/** Janela com a pasta de destino (árvore em lista); `fora`: pastas que não podem ser destino. */
+function escolherPasta(titulo: string, atual: string, ok: (destino: string) => void, fora = new Set<string>()) {
+  const opc = (id: string, nivel: number): string =>
+    (fora.has(id) ? "" : `<option value="${id}"${id === atual ? " selected" : ""}>${"\u00a0\u00a0".repeat(nivel)}${escapar(nomePasta(id))}</option>`) + subpastas(id).map((p) => opc(p.id, nivel + 1)).join("");
+  janela(titulo, `<div class="wj-campo"><label>Pasta de destino</label><select id="mv-p">${opc(RAIZ, 0)}</select></div>`, [
+    { rotulo: "Cancelar" },
+    { rotulo: "Mover", destaque: true, acao: (b) => ok((b.querySelector("#mv-p") as HTMLSelectElement).value) },
+  ]);
+}
+
+/** Move os arquivos para `destino` (nomes repetidos ganham " (2)"; GO-OUT de outra pessoa fica). */
+async function moverParaPasta(ids: string[], destino: string) {
+  const { movidos, recusados } = moverArquivos(arquivos, ids, destino, usuario(), nomePasta, agora());
+  for (const m of movidos) {
+    const a = arquivos.find((x) => x.id === m.id)!;
+    Object.assign(a, m);
+    await gravarArquivo(a);
+  }
+  for (const m of movidos) marcados.delete(m.id);
+  renderizar();
+  if (movidos.length || recusados.length)
+    casca.avisar(`${movidos.length} arquivo(s) movido(s) para ${nomePasta(destino)}${recusados.length ? `. Ficaram de fora: ${recusados.join(", ")}` : ""}.`, 7000);
+}
+
 function moverArquivo(a: Arquivo) {
   if (a.checkout && a.checkout.usuario !== usuario()) return casca.avisar(`Check-out de ${a.checkout.usuario}.`);
-  const opc = (id: string, nivel: number): string => `<option value="${id}"${id === a.pasta ? " selected" : ""}>${"  ".repeat(nivel)}${escapar(nomePasta(id))}</option>` + subpastas(id).map((p) => opc(p.id, nivel + 1)).join("");
-  janela(`Mover ${a.nome}`, `<div class="wj-campo"><label>Pasta de destino</label><select id="mv-p">${opc(RAIZ, 0)}</select></div>`, [
-    { rotulo: "Cancelar" },
-    {
-      rotulo: "Mover", destaque: true, acao: (b) => {
-        const p = (b.querySelector("#mv-p") as HTMLSelectElement).value;
-        if (p === a.pasta) return;
-        a.nome = nomeLivre(a.nome, arquivos.filter((x) => x.pasta === p && !x.lixeira).map((x) => x.nome));
-        historico(a, `Movido de ${nomePasta(a.pasta)} para ${nomePasta(p)}`);
-        a.pasta = p;
-        void gravarArquivo(a).then(renderizar);
-      },
-    },
-  ]);
+  escolherPasta(`Mover ${a.nome}`, a.pasta, (p) => void moverParaPasta([a.id], p));
+}
+
+/** Mover os arquivos marcados (seleção múltipla) de uma vez. */
+function moverMarcados() {
+  const ids = [...marcados];
+  if (!ids.length) return casca.avisar("Marque os arquivos na lista (caixinha à esquerda ou Ctrl+clique).");
+  escolherPasta(`Mover ${ids.length} arquivo(s)`, pastaAtual(), (p) => void moverParaPasta(ids, p));
+}
+
+/** Barra dos marcados acima da lista: quantos, Mover para…, Desmarcar. */
+function renderizarMarcados() {
+  let barra = document.getElementById("pd-marcados");
+  if (!marcados.size) return barra?.remove();
+  if (!barra) {
+    barra = el("div", { id: "pd-marcados", class: "pd-marcados", role: "toolbar", "aria-label": "Arquivos marcados" });
+    barra.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-m]");
+      if (b?.dataset.m === "mover") moverMarcados();
+      else if (b?.dataset.m === "limpar") marcados.clear(), renderizarLista();
+    });
+    listaArea.append(barra);
+  }
+  barra.innerHTML = `<span><b>${marcados.size}</b> arquivo(s) marcado(s)</span><button data-m="mover" class="destaque">Mover para…</button><button data-m="limpar">Desmarcar</button>`;
+}
+
+/** Mover a pasta inteira (com subpastas e arquivos) para dentro de outra. */
+function moverPastaPara(id: string) {
+  const p = pastas.find((x) => x.id === id);
+  if (!p) return;
+  escolherPasta(`Mover a pasta ${p.nome}`, p.pai ?? RAIZ, (destino) => {
+    const r = moverPasta(pastas, id, destino === RAIZ ? null : destino);
+    if ("erro" in r) return void casca.avisar(r.erro);
+    if (r.pasta === p) return;
+    Object.assign(p, r.pasta);
+    void gravar("pastas", p).then(() => {
+      renderizar();
+      levarPastasParaAsCopias(`Pasta "${p.nome}" movida para ${nomePasta(destino)}`);
+    });
+  }, new Set(descendentes(id)));
 }
 
 async function excluirArquivo(a: Arquivo) {
@@ -1125,7 +1201,7 @@ const casca: Casca = new Casca({
         [{ id: "estado", rotulo: "Alterar estado", icone: "estado", dica: "Mudar o estado no ciclo de vida (Fluxo de trabalho em Ferramentas)", acao: exigeArquivo(alterarEstado) }],
         [
           { id: "ren", rotulo: "Renomear", icone: "editar", peq: true, acao: exigeArquivo(renomearArquivo) },
-          { id: "mov", rotulo: "Mover", icone: "pasta", peq: true, acao: exigeArquivo(moverArquivo) },
+          { id: "mov", rotulo: "Mover", icone: "pasta", peq: true, dica: "Mover o arquivo (ou os marcados) para outra pasta; com uma pasta selecionada, move a pasta inteira", acao: () => (marcados.size ? moverMarcados() : sel?.tipo === "pasta" ? moverPastaPara(sel.id) : exigeArquivo(moverArquivo)()) },
           { id: "exc", rotulo: "Excluir", icone: "apagar", peq: true, dica: "Enviar para a lixeira (arquivo ou pasta inteira)", acao: () => (sel?.tipo === "pasta" ? void excluirPasta(sel.id) : exigeArquivo((a) => void excluirArquivo(a))()) },
         ],
       ],
@@ -1150,6 +1226,7 @@ const casca: Casca = new Casca({
         ],
         [
           { id: "copias", rotulo: "Cópias do cofre", icone: "pasta", dica: "Pendrive, Google Drive e pasta do tablet: escolher e sincronizar", acao: () => void abrirCopias(() => void carregar()) },
+          { id: "fora", rotulo: "Mudanças fora do app", icone: "sincronizar", dica: "O que foi movido ou renomeado direto no Google Drive, no pendrive ou na pasta do dispositivo: trazer para o cofre ou desfazer", acao: () => void abrirMudancasFora().then(() => carregar()) },
           { id: "exp", rotulo: "Exportar cofre", icone: "exportar", dica: "Cópia de segurança completa (.wjpdm)", acao: () => void exportarCofre() },
           { id: "imp", rotulo: "Restaurar cópia", icone: "importar", acao: () => void importarCofre() },
           { id: "arm", rotulo: "Armazenamento", icone: "pasta", acao: () => void armazenamento() },
@@ -1204,6 +1281,15 @@ void (async () => {
   void navigator.storage?.persist?.();
 })();
 registrarOffline();
+// mudanças feitas fora do app (Drive, pendrive, pasta do dispositivo): a janela abre sozinha no
+// WJPDM, uma vez por conjunto novo; nada muda sem a escolha do Johann
+let foraMostradas = "";
+addEventListener(EVENTO_FORA, () => {
+  const ids = mudancasForaDoApp().map((m) => m.id).sort().join(" ");
+  if (!ids || ids === foraMostradas || document.querySelector(".wjc-fora")) return;
+  foraMostradas = ids;
+  void abrirMudancasFora().then(() => db && carregar());
+});
 // a sincronia ao abrir trouxe novidades (outro aparelho, pendrive, Drive): recarrega a lista
 aoMudarCofre(() => db && void carregar().catch(() => {}));
 // outro app salvou no cofre (ou a sincronia trouxe novidades): recarrega ao voltar para o WJPDM
