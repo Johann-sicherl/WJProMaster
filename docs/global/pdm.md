@@ -78,18 +78,27 @@ esvazia após 30 dias. Salvar seguido (cópia de trabalho ou rascunho nunca publ
 computador) + `WJPDM/.wjpdm/indice.json` e `.wjpdm/blobs/` (conteúdo de cada versão).
 ✅ Google Drive (`src/comum/drive.ts`): "Conectar ao Google Drive" na tela de cópias; cofre em
 Meu Drive/WJPDM; acesso de 1 hora renovado ao salvar/sincronizar (toque do usuário).
-✅ **Mudanças feitas fora do app** (12/11/2026): a cada sincronia o app confere o espelho legível do Drive
-(pelos ids das pastas e arquivos que ele criou), do pendrive e da pasta do dispositivo (arquivo achado
-pelo conteúdo; pasta pelos arquivos de dentro). Arquivo movido/renomeado e pasta renomeada/movida à mão
-aparecem na janela **"Mudanças feitas fora do app"** (abre sozinha no WJPDM; botão na faixa "Cofre:" e em
-Ferramentas), com de → para e, por item ou para todas, **"Trazer para o cofre"** (vira Mover/Renomear com
-histórico "Movido no Drive de X para Y") ou **"Desfazer"** (volta ao lugar do cofre). Nada muda sem a
-escolha; até lá o app não mexe no que foi mudado. Arquivo posto numa **pasta criada à mão no Drive**
-(invisível com `drive.file`): "Levar para esta pasta" (pasta do cofre) ou Desfazer — pasta nova se cria
-pelo WJPDM. Mudou no app e fora dele ao mesmo tempo: a mais recente vence, a outra vai para a lixeira do
-cofre. Pastas do Drive guardadas pelo id (renomear à mão não duplica mais a pasta); nada visível é apagado
-de vez no Drive (vai para a lixeira dele). Testes: `teste-sincronia.ts`, `teste-drive.ts`,
-`roteiro-mudancas-fora.cjs`.
+✅ **Mudanças feitas fora do app — aplicadas sozinhas** (12/11/2026, decisão do Johann: "o que eu fizer à mão
+no Drive é o modelo atual do cofre"; substitui a janela de escolhas do #122). Ao abrir qualquer app e a cada
+sincronia, o app confere o espelho legível do Drive (pelos ids do que ele criou), do pendrive e da pasta do
+dispositivo (arquivo achado pelo conteúdo; pasta pelos arquivos de dentro) e **aplica no índice do cofre, sem
+perguntar**: renomear/mover → Renomear/Mover (histórico "Renomeado/Movido no Drive de X para Y"); excluído →
+**lixeira do cofre** (30 dias, versões preservadas, nunca destruído); pasta excluída sai do cofre só vazia (o
+que ficou nela a mantém e ela é recriada) — **nenhum órfão novo** (o #124 continua levando órfãos antigos para
+"Recuperados"). **Exceções, desfeitas na cópia com o motivo**: arquivo em GO-OUT (com qualquer pessoa);
+arquivo em estado protegido ("não excluir", ex.: Série em produção) não é excluído; renomear arquivo travado.
+**Fora do alcance (`drive.file`)**: pasta criada à mão e arquivo novo posto à mão não são vistos; arquivo do
+cofre movido para uma pasta criada à mão fica onde estava no índice (no Drive fica onde ele pôs, sem cópia
+repetida) com o aviso "crie a pasta pelo WJPDM"; arquivos novos entram por "Adicionar". **Nunca aceito de
+fora**: `WJPDM/.wjpdm` (o app recria o que faltar; WJPDM ou .wjpdm renomeada à mão é achada pelo indice.json
+e o nome volta), pastas "(versões)" (regravadas) e conteúdo editado fora do app (Drive pelo md5; pendrive pelo
+tamanho/data + conteúdo): vale a cópia do cofre, regravada, com aviso. Mudou no app e fora ao mesmo tempo: **a
+mais recente vence** (data do Drive; no pendrive, a da sincronia), a outra vai para a lixeira do cofre. Aviso
+único ao terminar, em qualquer app: **"Cofre atualizado pelo Drive: N movidos, N renomeados, N para a
+lixeira"** (+ desfeitos/avisos) com **"Ver detalhes"** (de → para e motivo); registro também em Ferramentas →
+"Mudanças no Drive". Pastas do Drive (também as "(versões)") achadas **pelo id guardado**, nunca pelo nome;
+remoção sempre pela lixeira do Drive (`trashed`), **nunca DELETE** (nem dos conteúdos internos). Testes:
+`teste-sincronia.ts` (§12–15c), `teste-drive.ts` (§11–13), `roteiro-mudancas-fora.cjs` (tablet).
 ✅ **Reorganizar no WJPDM** (12/11/2026): **Mover pasta para…** (menu da pasta; ou pasta selecionada + Mover)
 leva a pasta com tudo dentro; **marcar vários arquivos** (caixinha à esquerda, "marcar todos" no cabeçalho,
 Ctrl+clique no mouse) e **Mover para…** de uma vez (nome repetido ganha " (2)"; GO-OUT de outra pessoa

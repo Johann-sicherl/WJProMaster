@@ -8,7 +8,7 @@
 
 import type { Arquivo, Fluxo, Item, Pasta, ReferenciaArquivo } from "./regras";
 import { extensao, nomeLivre } from "./regras";
-import { analisarEspelho, decisaoVazia, type DecisaoEspelho, type EspelhoVisto, type MudancaFora, type OpcoesEspelho } from "./espelho";
+import { analisarEspelho, decisaoVazia, type DecisaoEspelho, type EspelhoVisto, type OpcoesEspelho, type RelatoFora } from "./espelho";
 
 export interface MetaCofre {
   id: "meta";
@@ -65,7 +65,8 @@ export interface Repositorio {
   lerEspelho?(i: Indice): Promise<EspelhoVisto>;
   /**
    * Arquivos visíveis (pastas com nomes legíveis), para abrir o cofre em qualquer computador.
-   * `espelho`: o que ficou à espera da escolha do Johann (não mexer) e onde cada item está agora.
+   * `espelho`: o que fica onde está (pasta criada à mão no Drive), onde cada item está agora e o que
+   * foi editado fora do app (regravar com o conteúdo do cofre).
    */
   gravarVisiveis?(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>, espelho?: DecisaoEspelho): Promise<void>;
 }
@@ -287,10 +288,8 @@ export interface ResultadoSincronia {
   faltando: string[];
   /** cópias que falharam (desconectadas no meio) */
   falhas: { repo: string; erro: string }[];
-  /** mudanças feitas fora do app nos espelhos (Drive, pendrive, pasta), à espera da escolha */
-  foraDoApp: MudancaFora[];
-  /** ids de todas as mudanças fora do app vistas (também as já decididas) */
-  vistas: string[];
+  /** mudanças feitas fora do app nos espelhos (Drive, pendrive, pasta), já aplicadas no cofre ou desfeitas */
+  foraDoApp: RelatoFora[];
 }
 
 /**
@@ -311,18 +310,17 @@ export async function sincronizar(repos: Repositorio[], agora: string, opcoes: O
   const mescla = mesclar(indices, agora);
   let indice = mescla.indice;
   const conflitos = mescla.conflitos;
-  // mudanças feitas fora do app em cada espelho (antes de gravar nele): as à espera não são
-  // desfeitas; os conflitos com o app entram no índice que todas as cópias recebem
+  // mudanças feitas fora do app em cada espelho (antes de gravar nele): aplicadas no índice que
+  // todas as cópias recebem (decisão do Johann, 12/11/2026); as exceções são desfeitas na cópia
   const espelhos = new Map<Repositorio, DecisaoEspelho>();
-  const foraDoApp: MudancaFora[] = [], vistas: string[] = [];
+  const foraDoApp: RelatoFora[] = [];
   for (const r of [...vivos]) {
     if (!r.lerEspelho) continue;
     try {
       const a = analisarEspelho(indice, await r.lerEspelho(indice), agora, opcoes);
       indice = a.indice;
       conflitos.push(...a.conflitos);
-      foraDoApp.push(...a.pendentes);
-      vistas.push(...a.vistas);
+      foraDoApp.push(...a.relatos);
       espelhos.set(r, a);
     } catch (e) {
       // sem saber o que mudou lá, não grava (poderia desfazer o que o Johann fez)
@@ -381,5 +379,5 @@ export async function sincronizar(repos: Repositorio[], agora: string, opcoes: O
       falhas.push({ repo: r.nome, erro: (e as Error).message ?? String(e) });
     }
   }
-  return { indice, conflitos, recuperados: rec.recuperados, copiados, faltando, falhas, foraDoApp, vistas };
+  return { indice, conflitos, recuperados: rec.recuperados, copiados, faltando, falhas, foraDoApp };
 }

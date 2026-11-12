@@ -148,22 +148,29 @@ impressão 3D manda a malha para o WJSlicer3D. Tudo local no aparelho até o ser
   `scripts/teste-drive.ts`): login do Google no navegador (token de 1 h, renovado no toque ao salvar),
   escopo `drive.file`, cliente OAuth `751073631393-8tmbb…` do projeto `wjpromaster`; o cofre fica em
   Meu Drive/WJPDM (arquivos atualizados no lugar: o Drive guarda as revisões). Chave secreta não é usada.
-- **Mudanças feitas fora do app no espelho** (12/11/2026, `src/pdm/espelho.ts`): cada cópia tem `lerEspelho`
-  (antes de `gravarVisiveis`) e diz onde está cada arquivo/pasta que o app gravou — Drive pelo **id** (listagem
-  dos pais conhecidos, 40 por consulta, + GET do que sumiu), pendrive/pasta pelo caminho e, se sumiu, pelo
-  **conteúdo** (mesmo nome e fora de "(versões)" primeiro: a v1 tem o mesmo conteúdo do atual); pasta local sem
-  id é descoberta pelos arquivos de dentro (votação; destino que já é pasta do app não conta). `analisarEspelho`
-  compara gravado × visto × cofre; "o app também mudou" olha **a pasta do cofre e o nome do próprio item**
-  gravados no registro (`pasta`/`pai`), nunca o caminho inteiro (trazer a pasta-mãe mudava o caminho dos filhos
-  e virava falso conflito — achado pelo roteiro). Registros: `visiveis.json` `{caminho, blob, drive, pai, pasta}`,
-  `pastas.json` `{formato: 2, pastas: {id: {caminho, drive, pai}}}`; o formato antigo (só caminhos) é migrado
-  achando a pasta pela pasta-mãe dos arquivos (pega pasta já renomeada à mão). Mover/renomear no Drive = PATCH
-  `addParents/removeParents` + nome (mesmo id); sair = `trashed: true` (blobs internos de `.wjpdm` continuam
-  DELETE). Item que o Google não deixa tirar de pasta feita à mão (`preso`): cópia nova no lugar do cofre, a
-  original fica. Sem registro (sincronia interrompida), reaproveita o arquivo de mesmo nome na pasta.
-  **Armadilhas:** com `drive.file` pasta criada à mão é invisível (404) — só o id do pai aparece; mover não
-  muda `modifiedTime` com certeza, então a hora da mudança à mão é a do Drive ou a da sincronia que a viu.
-  Decisões ("Desfazer", "Levar para") ficam em `decididos` (memória da página) até a mudança sumir da cópia.
+- **Mudanças feitas fora do app no espelho** (12/11/2026, `src/pdm/espelho.ts`; **aplicadas sozinhas** desde a
+  decisão do Johann do mesmo dia — não há mais pendências, `decididos` nem janela de escolha): cada cópia tem
+  `lerEspelho` (antes de `gravarVisiveis`) e diz onde está cada arquivo/pasta que o app gravou — Drive pelo **id**
+  (listagem dos pais conhecidos, 40 por consulta, + GET do que sumiu: lixeira com `trashedTime` ou 404 =
+  **excluído**, `visto: undefined`), pendrive/pasta pelo caminho e, se sumiu, pelo **conteúdo** (nunca entre os
+  arquivos das pastas "(versões)": a v1 tem o mesmo conteúdo do atual e o empate na votação fazia a pasta
+  renomeada parecer excluída — achado pelo teste 15c); pasta local sem id é descoberta pelos arquivos de dentro
+  (votação; sem voto = excluída). `analisarEspelho` compara gravado × visto × cofre e **aplica** (via
+  `trazerParaOCofre`): pastas (rasas primeiro), arquivos, depois exclusões (arquivos → lixeira do cofre; pastas,
+  as mais fundas primeiro, só se ficarem vazias). Exceções viram relato `desfeito` (a cópia não está em `manter`,
+  então volta ao cofre: PATCH de volta no Drive, recria o excluído). `visto: null` (pasta criada à mão no Drive)
+  → `manter` + relato `fora` (sem cópia repetida). "O app também mudou" olha a pasta do cofre e o nome gravados
+  no registro (`pasta`/`pai`); exclusão × alteração no app: vence a data maior (`trashedTime` × `mod`).
+  Conteúdo editado: Drive pelo `md5Checksum` (guardado em `visiveis.json` ao enviar; registro antigo adota o atual),
+  pendrive pela marca `{tam, data}` + comparação byte a byte → `regravar`. Relatos (`RelatoFora`) → `resumoFora`
+  → aviso `.wjc-aviso-fora` (uma vez por id, registro em `localStorage["wjpdm:foraRegistro"]`, 60 últimos) e
+  "Ver detalhes" (`abrirMudancasFora`). Raiz `WJPDM` e `.wjpdm`: pelo nome; sumiu → pelo `indice.json` (só o app o
+  cria) e o nome volta (`localizar`). Pastas "(versões)" pelo id do registro (acompanham o arquivo movido).
+  Registros: `visiveis.json` `{caminho, blob, drive, pai, pasta, md5}`, `pastas.json` `{formato: 2, pastas: {id:
+  {caminho, drive, pai}}}` (o formato antigo é migrado achando a pasta pela pasta-mãe dos arquivos). **Nada de
+  DELETE no Drive** (blobs também vão para a lixeira). **Armadilhas:** com `drive.file` pasta criada à mão é
+  invisível (404); mover não muda `modifiedTime` com certeza, então a hora da mudança à mão é a do Drive ou a da
+  sincronia que a viu; no pendrive não há data da exclusão (vale a da sincronia).
 - **Arquivo órfão** (12/11/2026): `mesclar` deixa a exclusão de uma pasta vencer sem olhar os arquivos postos
   nela em outra cópia (corrida entre aparelhos, ou versão antiga do app): o arquivo ficava com `pasta` de id
   inexistente — `caminhoDoArquivo` cai na raiz (Drive o publicava lá) e o WJPDM, que lista por `a.pasta === id`,

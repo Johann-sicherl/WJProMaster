@@ -9,7 +9,9 @@
 //                  <raiz>/WJPDM/.wjpdm/visiveis.json e pastas.json ← o que o app pôs em <pastas>
 //
 // Mudanças feitas à mão no pendrive ou na pasta do dispositivo (12/11/2026): arquivo que saiu do
-// lugar é achado pelo conteúdo (blob); pasta renomeada/movida, pelos arquivos de dentro.
+// lugar é achado pelo conteúdo (blob); pasta renomeada/movida, pelos arquivos de dentro; o que não é
+// achado foi excluído; conteúdo editado fora do app, pelo tamanho/data (conferido byte a byte). O
+// cofre aplica sozinho (src/pdm/espelho.ts); arquivo de versão ou visível que sumiu é regravado.
 
 import { Armazem } from "./armazem";
 import { indiceVazio, visiveisDoIndice, type Indice, type MetaCofre, type Repositorio } from "../pdm/sincronia";
@@ -95,9 +97,11 @@ async function arquivoEm(d: FileSystemDirectoryHandle, nome: string, criar = tru
   }
 }
 async function escrever(d: FileSystemDirectoryHandle, nome: string, dados: Blob | string) {
-  const s = await (await arquivoEm(d, nome)).createWritable();
+  const h = await arquivoEm(d, nome);
+  const s = await h.createWritable();
   await s.write(dados);
   await s.close();
+  return h;
 }
 async function lerTexto(d: FileSystemDirectoryHandle, nome: string): Promise<string | null> {
   try {
@@ -108,8 +112,11 @@ async function lerTexto(d: FileSystemDirectoryHandle, nome: string): Promise<str
   }
 }
 
-/** Arquivo visível gravado: caminho no disco, conteúdo e a pasta do cofre onde estava. */
-type Visiveis = Record<string, { caminho: string[]; blob: string; pasta?: string }>;
+/** Marca do arquivo como o app o gravou (tamanho e data): outra marca = mexido fora do app. */
+type Marca = { tam?: number; data?: number };
+/** Arquivo visível gravado: caminho no disco, conteúdo, a pasta do cofre onde estava e a marca. */
+type Visiveis = Record<string, { caminho: string[]; blob: string; pasta?: string } & Marca>;
+const marcaDe = (f: File): Marca => ({ tam: f.size, data: f.lastModified });
 /** Pasta do cofre → caminho dela no disco (e a pasta-mãe no cofre). */
 type PastasGravadas = Record<string, { caminho: string[]; pai?: string | null }>;
 
@@ -169,6 +176,8 @@ export class RepositorioPasta implements Repositorio {
   private estado?: Promise<{ vis: Visiveis; pastas: PastasGravadas }>;
   /** pastas que existem no disco (lidas em lerEspelho) */
   private dirsNoDisco?: Set<string>;
+  /** arquivos que existem no disco (lidos em lerEspelho), com a marca de agora */
+  private arqsNoDisco?: Map<string, Marca>;
 
   /** visiveis.json e pastas.json (o antigo, só com caminhos, ganha o id de cada pasta do cofre). */
   private carregar(i: Indice) {
@@ -206,8 +215,24 @@ export class RepositorioPasta implements Repositorio {
     };
     await andar(cofre, []);
     this.dirsNoDisco = dirs;
+    // conteúdo editado fora do app: a marca (tamanho/data) mudou e o conteúdo não é o do cofre
+    const marcas = new Map<string, Marca>();
+    const editados: string[] = [];
+    for (const [k, v] of Object.entries(vis)) {
+      const x = arqs.get(chaveDisco(v.caminho));
+      const f = x && (await x.h.getFile().catch(() => null));
+      if (!f) continue;
+      marcas.set(chaveDisco(v.caminho), marcaDe(f));
+      if (v.tam === undefined || (f.size === v.tam && f.lastModified === v.data)) continue;
+      const b = await this.lerBlob(v.blob);
+      if (b && !(await mesmoConteudo(f, b))) editados.push(k);
+    }
+    for (const [k] of arqs) if (!marcas.has(k)) marcas.set(k, {});
+    this.arqsNoDisco = marcas;
     const doApp = new Set(Object.values(vis).map((v) => chaveDisco(v.caminho)));
-    const soltos = [...arqs.entries()].filter(([k]) => !doApp.has(k)).map(([, x]) => x);
+    // arquivos que o app não pôs ali; os das pastas "(versões)" são do app (cópias das versões) e
+    // nunca são "o arquivo movido": a v1 tem o mesmo conteúdo do atual e enganaria a busca
+    const soltos = [...arqs.entries()].filter(([k, x]) => !doApp.has(k) && !x.caminho.some((n) => n.endsWith(" (versões)"))).map(([, x]) => x);
     const achados = new Set<string>();
     const arquivos: ItemVisto[] = [];
     for (const [k, v] of Object.entries(vis)) {
@@ -220,9 +245,9 @@ export class RepositorioPasta implements Repositorio {
       // saiu do lugar: o mesmo conteúdo entre os arquivos que o app não pôs lá
       const b = await this.lerBlob(v.blob);
       let visto: string[] | undefined;
-      // prefere o mesmo nome e fora das pastas "(versões)" (a v1 tem o mesmo conteúdo do atual)
+      // prefere o mesmo nome
       const nome = v.caminho[v.caminho.length - 1];
-      const ordem = (x: { caminho: string[] }) => (x.caminho[x.caminho.length - 1] === nome ? 0 : 2) + (x.caminho.some((n) => n.endsWith(" (versões)")) ? 1 : 0);
+      const ordem = (x: { caminho: string[] }) => (x.caminho[x.caminho.length - 1] === nome ? 0 : 1);
       if (b)
         for (const s of [...soltos].sort((x, y) => ordem(x) - ordem(y))) {
           const k2 = chaveDisco(s.caminho);
@@ -236,13 +261,14 @@ export class RepositorioPasta implements Repositorio {
       arquivos.push({ id: k, gravado: v.caminho, visto, ...pai });
     }
     const pastasVistas = Object.entries(pastas).map(([id, { caminho: c, pai }]) => ({ id, gravado: c, visto: dirs.has(chaveDisco(c)) ? c : undefined, ...(pai !== undefined ? { pai } : {}) }));
-    return { copia: this.nome, arquivos, pastas: pastasVistas };
+    return { copia: this.nome, arquivos, pastas: pastasVistas, editados };
   }
 
   /**
-   * Arquivos legíveis iguais ao cofre: grava o que mudou e tira do lugar antigo o que mudou de lugar;
-   * pastas iguais às do cofre. O que está à espera da escolha do Johann (`espelho`) fica onde ele pôs
-   * (o conteúdo novo entra no lugar). Pastas só saem do disco vazias (o que alguém pôs lá fica).
+   * Arquivos legíveis iguais ao cofre: grava o que mudou, o que sumiu (também as versões) e o que foi
+   * editado fora do app (`espelho.regravar`), e tira do lugar antigo o que mudou de lugar; pastas iguais
+   * às do cofre. O que fica onde está (`espelho.manter`) não sai do lugar (o conteúdo novo entra lá).
+   * Pastas só saem do disco vazias (o que alguém pôs lá fica).
    */
   async gravarVisiveis(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>, espelho: DecisaoEspelho = decisaoVazia()) {
     const { cofre, sis } = await this.pastas();
@@ -295,17 +321,21 @@ export class RepositorioPasta implements Repositorio {
         const onde = espelho.onde.get(k);
         if (!k.includes("#") && onde && v.blob !== blob) {
           const dados = await lerBlob(blob);
-          if (dados && (await naPasta(onde.slice(0, -1), false).then((d) => escrever(d, onde[onde.length - 1], dados)).then(() => true, () => false))) agora[k] = { ...v, blob };
+          const h = dados && (await naPasta(onde.slice(0, -1), false).then((d) => escrever(d, onde[onde.length - 1], dados)).catch(() => null));
+          if (h) agora[k] = { ...v, blob, ...marcaDe(await h.getFile()) };
         }
         continue;
       }
       const c = alvo(caminho);
       const atual = v ? ondeAgora(k, v.caminho) : undefined;
-      agora[k] = { caminho: c, blob, pasta: pastaDoArquivo.get(base) };
-      if (v && v.blob === blob && atual && igualDisco(atual, c)) continue;
+      const noDisco = atual && this.arqsNoDisco ? this.arqsNoDisco.get(chaveDisco(atual)) : atual ? { tam: v!.tam, data: v!.data } : undefined;
+      agora[k] = { caminho: c, blob, pasta: pastaDoArquivo.get(base), ...(noDisco ?? {}) };
+      // igual e no lugar: nada a gravar (sumido do disco ou editado fora do app: grava de novo)
+      if (v && v.blob === blob && atual && igualDisco(atual, c) && noDisco && !espelho.regravar.has(k)) continue;
       const dados = await lerBlob(blob);
       if (!dados) continue;
-      await escrever(await naPasta(c.slice(0, -1)), c[c.length - 1], dados);
+      const h = await escrever(await naPasta(c.slice(0, -1)), c[c.length - 1], dados);
+      agora[k] = { ...agora[k], ...marcaDe(await h.getFile()) };
       if (atual && !igualDisco(atual, c)) await remover(atual);
     }
     // 3. o que saiu do cofre (lixeira, destruído)
