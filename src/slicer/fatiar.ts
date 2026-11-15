@@ -9,7 +9,8 @@ import {
   type Ajustes, type Contexto, type MalhaImpressao, type Trecho,
 } from "./caminhos";
 import { PARTES, Planejador, tempoTrapezio, type Parte } from "./planejador";
-import type { Maquina, Material } from "./perfis";
+import { materialDa, type ConfigTroca, type Maquina, type Material } from "./perfis";
+import { corDasCelulas, coresDosPlanos, cortarPorCor, MAX_CORES, type Filamento } from "./cores";
 
 export { ajustesPadrao, espacamento, volumeMalha, caixa, type Ajustes, type MalhaImpressao } from "./caminhos";
 export { formatarTempo, NOMES_PARTES, PARTES, tempoTrapezio, velJuncao, type Parte } from "./planejador";
@@ -19,6 +20,37 @@ export interface PecaPlaca {
   nome: string;
   malha: MalhaImpressao;
   posicoes: [number, number][];
+  /** cor (0–3) de cada triângulo da malha; sem pintura = tudo na cor 1 */
+  cores?: Uint8Array;
+}
+
+/** Cores do projeto: os filamentos (cor, material, R$/kg) e o que cada troca custa. */
+export interface OpcoesCor {
+  filamentos: Filamento[];
+  troca: ConfigTroca;
+}
+
+/** Material, massa e custo de cada filamento (índice = cor pintada). */
+export interface ResultadoCor {
+  usada: boolean;
+  volumeMm3: number;
+  massaG: number;
+  comprimentoM: number;
+  custo: number;
+}
+
+export interface ResultadoTrocas {
+  /** trocas de filamento na impressão (a primeira cor não conta) */
+  total: number;
+  /** camadas com troca e o maior número de trocas numa camada */
+  camadas: number;
+  maximoPorCamada: number;
+  purgaMm3: number;
+  /** tempo das trocas (troca do filamento + purga), s */
+  tempoS: number;
+  torreCamadas: number;
+  torreMm3: number;
+  torreTempoS: number;
 }
 
 export interface Resultado {
@@ -39,6 +71,9 @@ export interface Resultado {
   /** preparo típico da máquina (aquecer, nivelar, purgar) */
   preparoS: number;
   partes: Record<Parte, { tempo: number; volume: number }>;
+  /** material por cor (sempre 4 entradas); sem pintura, tudo na primeira */
+  cores: ResultadoCor[];
+  trocas: ResultadoTrocas;
   /** cópias na mesa */
   copias: number;
   avisos: string[];
@@ -115,7 +150,7 @@ function afastar(h: number[], d: number): Float64Array {
 /**
  * Fatia a mesa inteira e devolve o orçamento e a prévia. `progresso` recebe de 0 a 1.
  */
-export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj: Ajustes, progresso?: (f: number) => void): { r: Resultado; previa: Previa } {
+export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj: Ajustes, progresso?: (f: number) => void, opc?: OpcoesCor): { r: Resultado; previa: Previa } {
   const pr = maq.processo;
   const avisos: string[] = [];
   const ativas = pecas.filter((p) => p.posicoes.length && p.malha.tri.length);
@@ -159,7 +194,8 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
   const fracFatia = 0.3 / ativas.length;
   const ctxs: Contexto[] = ativas.map((p, k) => {
     const margem = 1 + (aj.borda ? pr.bordaFolga + pr.bordaLargura + 1 : 0);
-    const f = fatiarMalha(p.malha, zs, margem, (x) => progresso?.(k * fracFatia + x * fracFatia * 0.7));
+    const pintada = !!p.cores && p.cores.length === p.malha.tri.length / 3 && p.cores.some((c) => c > 0);
+    const f = fatiarMalha(p.malha, zs, margem, (x) => progresso?.(k * fracFatia + x * fracFatia * 0.7), pintada ? p.cores : undefined, [Math.max(aj.topo * aj.altura, pr.topoMm), Math.max(aj.fundo * aj.altura, pr.fundoMm)]);
     const sup = aj.suporte !== "nenhum" ? calcularSuportes(f, pr, aj.suporte, aj.altura, (x) => progresso?.(k * fracFatia + fracFatia * (0.7 + 0.3 * x))) : null;
     return { f, maq, aj, zs, vazaoMax: mat.vazaoMax, sup, campoAbaixo: null };
   });
@@ -172,6 +208,46 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
   const previa: Previa = { seg: [], parte: [] };
   let retraido = false;
   let ultimoPreench = false;
+
+  // ---- cores: filamentos, trocas (uma por mudança de cor na camada, como o sistema de 4 filamentos) ----
+  const troca = opc?.troca ?? maq.troca;
+  const filamentos: Filamento[] = opc?.filamentos?.length ? opc.filamentos : [{ id: "f1", nome: "", cor: "#ffffff", material: mat.id, precoKg: mat.precoKg }];
+  const densidade = (c: number) => (c === 0 ? mat.densidade : materialDa(maq, filamentos[c]?.material ?? mat.id).densidade);
+  const preco = (c: number) => (c === 0 ? mat.precoKg : filamentos[c]?.precoKg ?? mat.precoKg);
+  const volCor = new Float64Array(MAX_CORES);
+  const usadaCor = new Uint8Array(MAX_CORES);
+  const painel = { total: 0, camadas: 0, maximo: 0, ultima: -1 };
+  let ferramenta = -1;
+  const tPurga = troca.purgaMm3 / Math.max(0.1, troca.vazaoPurga);
+  /** peças pintadas: cores das sementes de cada camada */
+  const coresDaCamada = (j: number): Set<number> => {
+    const r = new Set<number>();
+    for (const c of ctxs) {
+      if (!c.f.corSeg) r.add(0);
+      else if (j < c.f.n) {
+        for (const v of c.f.corSeg[j]) r.add(v);
+        for (const v of coresDosPlanos(c.f.corPlano?.[j])) r.add(v);
+      }
+    }
+    return r;
+  };
+  const livre = (parte: Parte) => parte === "suporte" || parte === "interface" || parte === "borda";
+  const passoCor = (c: Contexto) => Math.max(c.f.g.c, 0.4);
+  /** trechos da camada com a cor de cada um (-1 = livre: usa a ferramenta que estiver no bico) */
+  const colorir = (c: Contexto, i: number, trechos: Trecho[]): { t: Trecho; cor: number }[] => {
+    const seg = c.f.corSeg?.[i];
+    const sementes = new Set<number>(seg ?? []);
+    for (const v of coresDosPlanos(c.f.corPlano?.[i])) sementes.add(v);
+    const unica = sementes.size <= 1 ? (sementes.size ? [...sementes][0] : 0) : -2;
+    if (unica !== -2) return trechos.map((t) => ({ t, cor: livre(t.parte) ? -1 : unica }));
+    const mapa = corDasCelulas(c.f.g, c.f.segs[i], seg!, c.f.corPlano?.[i], aj.paredes * pr.lParedeInt + 0.3);
+    const saida: { t: Trecho; cor: number }[] = [];
+    for (const t of trechos) {
+      if (livre(t.parte)) saida.push({ t, cor: -1 });
+      else for (const x of cortarPorCor(t, c.f.g, mapa, 0, passoCor(c))) saida.push(x);
+    }
+    return saida;
+  };
 
   for (let i = 0; i < n; i++) {
     const h = i === 0 ? zs[0] : zs[i] - zs[i - 1];
@@ -202,7 +278,7 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
       if (retrai || retraido) plan.parar(tVolta);
       retraido = false;
     };
-    const emitir = (t: Trecho, ox: number, oy: number) => {
+    const emitir = (t: Trecho, ox: number, oy: number, gc: number) => {
       const p = t.pts, np = p.length / 2;
       let ini = 0;
       if (t.fechado) {
@@ -227,43 +303,89 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
         const L = Math.hypot(x - x0, y - y0);
         const v = t.vSeg ? Math.min(t.v, t.vSeg[(ini + s) % np]) : t.v;
         plan.mover(x, y, v, t.a, t.j, t.parte, L * sec);
+        volCor[gc] += L * sec;
         buf.add(x0, y0, x, y, pi);
       }
     };
 
     // camadas de cada peça (uma vez) e as cópias em ordem de proximidade
     const camadas = ctxs.map((c) => (i < c.f.n ? gerarCamada(c, i) : null));
-    const fila: [number, number, number][] = [];
+    const todas: [number, number, number][] = [];
     ativas.forEach((p, k) => {
-      if (camadas[k]?.trechos.length) for (const [x, y] of p.posicoes) fila.push([k, x, y]);
+      if (camadas[k]?.trechos.length) for (const [x, y] of p.posicoes) todas.push([k, x, y]);
     });
+    // cor de cada trecho (peça pintada: o caminho é cortado onde a cor muda)
+    const itens = camadas.map((cam, k) => (cam ? colorir(ctxs[k], i, cam.trechos) : []));
 
-    // saia: uma volta em volta de tudo na primeira camada
-    if (prim && aj.saia && fila.length) {
-      const pts: number[] = [];
-      for (const [k, x, y] of fila)
-        for (const t of camadas[k]!.trechos)
-          if (t.parte === "paredeExt" || t.parte === "borda") for (let a = 0; a < t.pts.length; a += 2) pts.push(t.pts[a] + x, t.pts[a + 1] + y);
-      const hh = fecho(pts);
-      if (hh.length >= 6) {
-        const sE = espacamento(pr.lPrimeira, h);
-        emitir({ pts: afastar(hh, pr.saiaDistancia + sE / 2), fechado: true, parte: "borda", w: pr.lPrimeira, fluxo: 1, v: pr.vSaia, a: pr.aPrimeira, j: pr.jPrimeira > 0 ? pr.jPrimeira : pr.jPadrao }, 0, 0);
-      }
+    // ordem das cores da camada: começa pela ferramenta que já está no bico e termina numa cor da
+    // camada de cima (o mínimo de trocas: uma por cor além da primeira)
+    const usadas = new Set<number>();
+    for (const l of itens) for (const x of l) if (x.cor >= 0) usadas.add(x.cor);
+    if (!usadas.size) usadas.add(ferramenta >= 0 ? ferramenta : 0);
+    const proximas = i + 1 < n ? coresDaCamada(i + 1) : new Set<number>();
+    const grupos = [...usadas].sort((a, b) => a - b);
+    if (grupos.length > 1) {
+      const comeco = usadas.has(ferramenta) ? ferramenta : (grupos.find((c) => !proximas.has(c)) ?? grupos[0]);
+      const resto = grupos.filter((c) => c !== comeco);
+      resto.sort((a, b) => Number(proximas.has(a)) - Number(proximas.has(b)) || a - b);
+      grupos.length = 0;
+      grupos.push(comeco, ...resto);
     }
-    while (fila.length) {
-      let melhor = 0, dmin = Infinity;
-      for (let a = 0; a < fila.length; a++) {
-        const [k, x, y] = fila[a];
-        const [sx, sy] = camadas[k]!.inicio;
-        const d = (sx + x - plan.x) ** 2 + (sy + y - plan.y) ** 2;
-        if (d < dmin) {
-          dmin = d;
-          melhor = a;
+    let trocasDaCamada = 0;
+
+    for (let gi = 0; gi < grupos.length; gi++) {
+      const cor = grupos[gi];
+      if (ferramenta < 0) ferramenta = cor;
+      else if (ferramenta !== cor) {
+        // troca de filamento: recolhe, carrega o novo e purga (a purga é do filamento que entra)
+        plan.parar(troca.tempoS + tPurga, "troca");
+        plan.volume[IDX.troca] += troca.purgaMm3;
+        volCor[cor] += troca.purgaMm3;
+        retraido = true;
+        ferramenta = cor;
+        trocasDaCamada++;
+      }
+      usadaCor[cor] = 1;
+      const deste = (x: { cor: number }) => x.cor === cor || (gi === 0 && x.cor < 0);
+      const fila: [number, number, number][] = todas.filter(([k]) => itens[k].some(deste));
+
+      // saia: uma volta em volta de tudo na primeira camada (com a primeira cor)
+      if (prim && gi === 0 && aj.saia && todas.length) {
+        const pts: number[] = [];
+        for (const [k, x, y] of todas)
+          for (const t of camadas[k]!.trechos)
+            if (t.parte === "paredeExt" || t.parte === "borda") for (let a = 0; a < t.pts.length; a += 2) pts.push(t.pts[a] + x, t.pts[a + 1] + y);
+        const hh = fecho(pts);
+        if (hh.length >= 6) {
+          const sE = espacamento(pr.lPrimeira, h);
+          emitir({ pts: afastar(hh, pr.saiaDistancia + sE / 2), fechado: true, parte: "borda", w: pr.lPrimeira, fluxo: 1, v: pr.vSaia, a: pr.aPrimeira, j: pr.jPrimeira > 0 ? pr.jPrimeira : pr.jPadrao }, 0, 0, cor);
         }
       }
-      const [k, x, y] = fila.splice(melhor, 1)[0];
-      ultimoPreench = false;
-      for (const t of camadas[k]!.trechos) emitir(t, x, y);
+      while (fila.length) {
+        let melhor = 0, dmin = Infinity;
+        for (let a = 0; a < fila.length; a++) {
+          const [k, x, y] = fila[a];
+          // sem pintura (um grupo só): o ponto de partida da peça; com cores, o do primeiro trecho da cor
+          const [sx, sy] = grupos.length === 1 && itens[k].length === camadas[k]!.trechos.length ? camadas[k]!.inicio : (() => {
+            const t = itens[k].find(deste)!.t;
+            return [t.pts[0], t.pts[1]] as [number, number];
+          })();
+          const d = (sx + x - plan.x) ** 2 + (sy + y - plan.y) ** 2;
+          if (d < dmin) {
+            dmin = d;
+            melhor = a;
+          }
+        }
+        const [k, x, y] = fila.splice(melhor, 1)[0];
+        ultimoPreench = false;
+        for (const it of itens[k]) if (deste(it)) emitir(it.t, x, y, cor);
+      }
+    }
+    if (trocasDaCamada) {
+      painel.total += trocasDaCamada;
+      painel.camadas++;
+      painel.maximo = Math.max(painel.maximo, trocasDaCamada);
+      painel.ultima = i;
     }
     plan.fecharCamada(mat.tempoCamada, mat.vMinResfriar);
     previa.seg.push(buf.f.slice(0, buf.n * 4));
@@ -271,16 +393,45 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
     if (progresso && (i % 4 === 0 || i === n - 1)) progresso(0.3 + (0.7 * (i + 1)) / n);
   }
 
+  // ---- torre de purga: anel de estabilização em todas as camadas até a última troca (a purga cai dentro dela) ----
+  let torreMm3 = 0, torreTempoS = 0, torreCamadas = 0;
+  if (troca.torre && painel.total > 0) {
+    torreCamadas = painel.ultima + 1;
+    const L = troca.larguraTorre;
+    for (let i = 0; i < torreCamadas; i++) {
+      const h = i === 0 ? zs[0] : zs[i] - zs[i - 1];
+      const w = i === 0 ? pr.lPrimeira : pr.lParedeExt, s = espacamento(w, h);
+      const comprimento = 4 * Math.max(0, L - s) * (i === 0 ? 2 : 1);
+      torreMm3 += comprimento * s * h * mat.fluxo;
+      torreTempoS += comprimento / (0.7 * (i === 0 ? pr.vPrimeira : pr.vParedeExt)) + 1;
+    }
+    plan.volume[PARTES.indexOf("torre")] += torreMm3;
+    plan.tempo[PARTES.indexOf("torre")] += torreTempoS;
+    const quais = [...usadaCor.keys()].filter((c) => usadaCor[c]);
+    for (const c of quais) volCor[c] += torreMm3 / quais.length;
+    const margemTorre = 6;
+    if ((mx1 - mx0) + L + margemTorre > maq.mesa[0] && (my1 - my0) + L + margemTorre > maq.mesa[1]) avisos.push(`A torre de purga (${L} × ${L} mm) não cabe ao lado das peças na mesa: reduza a torre ou tire uma peça.`);
+  }
+
   const partes = Object.fromEntries(PARTES.map((p, k) => [p, { tempo: plan.tempo[k], volume: plan.volume[k] }])) as Resultado["partes"];
   const volumeMm3 = PARTES.reduce((s, p) => s + partes[p].volume, 0);
   const tempoS = PARTES.reduce((s, p) => s + partes[p].tempo, 0);
-  const massaG = (volumeMm3 / 1000) * mat.densidade;
   const secao = Math.PI * (DIAMETRO_FILAMENTO / 2) ** 2;
+  const porCor: ResultadoCor[] = Array.from({ length: MAX_CORES }, (_, c) => {
+    const massa = (volCor[c] / 1000) * densidade(c);
+    return { usada: !!usadaCor[c], volumeMm3: volCor[c], massaG: massa, comprimentoM: volCor[c] / secao / 1000, custo: (massa / 1000) * preco(c) };
+  });
+  const massaG = porCor.reduce((s, x) => s + x.massaG, 0);
+  const custo = porCor.reduce((s, x) => s + x.custo, 0);
   progresso?.(1);
   return {
     r: {
       camadas: n, alturas: zs, dimensoes: [mx1 - mx0, my1 - my0, H], volumePeca, volumeMm3, comprimentoM: volumeMm3 / secao / 1000, massaG,
-      custo: (massaG / 1000) * mat.precoKg, tempoS, preparoS: maq.preparoMin * 60, partes, copias, avisos,
+      custo, tempoS, preparoS: maq.preparoMin * 60, partes, copias, avisos, cores: porCor,
+      trocas: {
+        total: painel.total, camadas: painel.camadas, maximoPorCamada: painel.maximo, purgaMm3: painel.total * troca.purgaMm3,
+        tempoS: partes.troca.tempo, torreCamadas, torreMm3, torreTempoS,
+      },
     },
     previa,
   };

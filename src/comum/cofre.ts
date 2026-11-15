@@ -12,13 +12,13 @@ import { nuvemGoogle, type DestinoNuvem } from "./drive";
 import { acoesDoCofre, bloqueioDoCheckout, estadoDe, extensao, fluxoAtual, modoDeAbrir, nomeLivre, textoDaVersao, trocarReferencias, usarFluxo, type Arquivo, type DadosModelo, type Pasta, type ReferenciaArquivo } from "../pdm/regras";
 import { abrirEmNovaJanela, fixarNaJanela, gravarNaJanela, lerDaJanela, removerDaJanela } from "./janelas";
 
-export type ChaveApp = "cad" | "asm" | "drw" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp" | "flow" | "calc" | "joia" | "video";
+export type ChaveApp = "cad" | "asm" | "drw" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp" | "flow" | "calc" | "joia" | "video" | "slicer";
 export const NOME_APP: Record<ChaveApp, string> = {
-  cad: "WJCAD", asm: "WJCAD (montagem)", drw: "WJCAD (desenho)", plan: "WJPlan", word: "WJWrite", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP", flow: "WJFlow", calc: "WJCalcEng", joia: "WJGoldDiamond", video: "WJVideoMaker",
+  cad: "WJCAD", asm: "WJCAD (montagem)", drw: "WJCAD (desenho)", plan: "WJPlan", word: "WJWrite", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP", flow: "WJFlow", calc: "WJCalcEng", joia: "WJGoldDiamond", video: "WJVideoMaker", slicer: "WJSlicer3D",
 };
 /** Pasta padrão de cada face na raiz do cofre. */
 export const PASTA_DA_FACE: Record<ChaveApp, string> = {
-  cad: "CAD", asm: "CAD", drw: "CAD", plan: "Planilhas", word: "Documentos", cron: "Cronogramas", apn: "Apresentações", pdm: "PDM", erp: "ERP", flow: "Escoamento", calc: "Cálculos", joia: "Joias", video: "Vídeos",
+  cad: "CAD", asm: "CAD", drw: "CAD", plan: "Planilhas", word: "Documentos", cron: "Cronogramas", apn: "Apresentações", pdm: "PDM", erp: "ERP", flow: "Escoamento", calc: "Cálculos", joia: "Joias", video: "Vídeos", slicer: "Impressão 3D",
 };
 /** Apps por extensão: chave do salvamento automático e endereço (abrir arquivo do cofre no app). */
 export const APPS: Record<string, { app: string; chave: string; url: string; face: ChaveApp }> = {
@@ -34,8 +34,9 @@ export const APPS: Record<string, { app: string; chave: string; url: string; fac
   wjcalc: { app: "WJCalcEng", chave: "wjcalc:documento", url: "calceng/", face: "calc" },
   wjvid: { app: "WJVideoMaker", chave: "wjvid:documento", url: "video/", face: "video" },
   wjgd: { app: "WJGoldDiamond", chave: "wjgd:documento", url: "joia/", face: "joia" },
+  wjslc: { app: "WJSlicer3D", chave: "wjslc:documento", url: "slicer/#abrir-autosave", face: "slicer" },
 };
-const EXT_DA_FACE: Record<ChaveApp, string[]> = { cad: ["wjcad", "jlscad"], asm: ["wjasm"], drw: ["wjdrw"], plan: ["wjpl"], word: ["wjdoc"], cron: ["wjcron"], apn: ["wjapn"], pdm: ["wjpdm"], erp: ["wjerp"], flow: ["wjflow"], calc: ["wjcalc"], joia: ["wjgd"], video: ["wjvid"] };
+const EXT_DA_FACE: Record<ChaveApp, string[]> = { cad: ["wjcad", "jlscad"], asm: ["wjasm"], drw: ["wjdrw"], plan: ["wjpl"], word: ["wjdoc"], cron: ["wjcron"], apn: ["wjapn"], pdm: ["wjpdm"], erp: ["wjerp"], flow: ["wjflow"], calc: ["wjcalc"], joia: ["wjgd"], video: ["wjvid"], slicer: ["wjslc"] };
 
 const agora = () => new Date().toISOString();
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -398,7 +399,7 @@ async function pastaDaFace(db: Armazem, app: ChaveApp): Promise<string> {
 /** Rótulo do tipo de arquivo pela extensão (coluna "Tipo" e filtro). */
 const TIPO_EXT: Record<string, string> = {
   wjcad: "Peça (WJCAD)", jlscad: "Peça (WJCAD)", wjasm: "Montagem (WJCAD)", wjdrw: "Desenho (WJCAD)", wjpl: "Planilha (WJPlan)", wjdoc: "Documento (WJWrite)",
-  wjapn: "Apresentação (WJApresentation)", wjcron: "Cronograma (WJCronProject)", wjflow: "Estudo (WJFlow)", wjcalc: "Cálculo (WJCalcEng)", wjgd: "Joia (WJGoldDiamond)", wjvid: "Projeto de vídeo (WJVideoMaker)", wjpdm: "Cópia do cofre (WJPDM)", wjerp: "Dados (WJERP)",
+  wjapn: "Apresentação (WJApresentation)", wjcron: "Cronograma (WJCronProject)", wjflow: "Estudo (WJFlow)", wjcalc: "Cálculo (WJCalcEng)", wjgd: "Joia (WJGoldDiamond)", wjslc: "Projeto de impressão (WJSlicer3D)", wjvid: "Projeto de vídeo (WJVideoMaker)", wjpdm: "Cópia do cofre (WJPDM)", wjerp: "Dados (WJERP)",
 };
 const tipoDe = (nome: string) => TIPO_EXT[extensao(nome)] ?? (extensao(nome) ? `Arquivo ${extensao(nome).toUpperCase()}` : "Arquivo");
 const IC_PASTA = `<svg viewBox="0 0 24 24" width="22" height="22"><path d="M2.5 6.5a1.5 1.5 0 0 1 1.5-1.5h5l2 2.2h9a1.5 1.5 0 0 1 1.5 1.5V18a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 18z" fill="#f2c14e" stroke="#c99a1e"/></svg>`;

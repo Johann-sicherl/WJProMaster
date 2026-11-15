@@ -138,7 +138,53 @@ ordem exata dos caminhos, preenchimento de vãos estreitos, "uma parede só no t
 (algoritmo próprio, mais simples) e a borda automática (aqui é liga/desliga). A **calibração** com uma
 impressão real deixa o tempo fiel para a impressora do dia a dia.
 
-## 5. Decisões
+## 5. Cores: pintura, trocas e projeto (16/11/2026)
+
+Pedido do Johann: pintar a peça com **até 4 cores** (P1S e Kobra 3, um sistema de 4 filamentos cada) e
+somar o custo das trocas ao material e ao tempo.
+
+**Pintar** (cartão "Cores e pintura" → **Pintar**; peça escolhida, ou a tocada): **Pincel** (tamanho em mm),
+**Balde (face)** (a face plana tocada), **Balde (região)** (tudo o que está ligado e tem a mesma cor),
+**Por ângulo** (espalha até uma aresta mais viva que o ângulo escolhido, 2–90°), **Corpo inteiro** (um corpo
+de uma peça multicorpo: o do WJCAD ou um STL com vários corpos) e **Borracha** (volta à cor 1). **Caneta
+(ou botão esquerdo do mouse) pinta; o dedo gira e aproxima a vista.** **Desfazer** (até 40 passos) e
+**Limpar pintura**. Esfera sob a caneta mostra o tamanho do pincel. Peça sem pintura = tudo na cor 1.
+
+**Como a pintura vira camadas** (`cores.ts`): cada célula da seção fica com a cor do trecho pintado mais
+perto (paredes cortadas pela camada); faces horizontais pintadas (topo e fundo) valem para as camadas de
+topo/fundo no miolo, e as paredes seguem as laterais. Cada caminho é cortado onde a cor muda e a camada é
+impressa **cor por cor**: começa pela cor que já está no bico e termina numa cor presente na camada de
+cima (o mínimo de trocas: uma por cor além da primeira). Suporte, interface, borda e saia usam a cor que
+estiver no bico.
+
+**Custo da troca** (cartão "Custo das trocas de cor", por impressora, editável; "Padrão de fábrica" volta):
+- **trocas**: número total, camadas com troca e o máximo por camada;
+- **purga** por troca (mm³; de fábrica P1S 280, Kobra 3 250; é do filamento que entra) — **valores típicos
+  do sistema de 4 filamentos, a confirmar com uma impressão medida**;
+- **tempo da troca** (s; P1S 35, Kobra 3 50) + purga ÷ vazão de purga (9 e 8 mm³/s);
+- **torre de purga** (liga/desliga; lado de 35 mm): anel de estabilização em todas as camadas até a última
+  com troca (a purga cai dentro dela); aviso se não couber ao lado das peças. Sem torre, a purga continua
+  (cai fora da peça).
+Tudo entra no tempo (partes "Trocas de cor" e "Torre de purga") e no material de cada cor (g, m e R$).
+
+**Cores e filamentos** (cartão, no projeto): 4 filamentos com **cor, nome, material e R$/kg** (o 1º usa o
+material e o preço de "Impressora e material"); a densidade e o preço de cada cor entram no orçamento.
+Estrutura pronta para a **biblioteca de custos (S3)**. Fluxo e vazão do bico seguem o material da cor 1.
+
+**Projeto** (`.wjslc`, face `slicer` do cofre, pasta "Impressão 3D"): **Salvar projeto** / **Abrir projeto**
+(no topo, e a aba **Cofre** com GO-OUT/GO-IN) guardam as peças (malha na posição de impressão, cópias e a cor de
+cada triângulo), filamentos, trocas editadas, impressora, material e ajustes (`projeto.ts`; malha em binário
+gzip dentro do JSON). Abrir do WJPDM leva ao WJSlicer3D com o projeto.
+
+**Testes**: `scripts/teste-slicer.ts` (Node): topologia, balde por face/região/ângulo, pincel, borracha, corpo
+inteiro; cubo de 20 mm com **2 cores (1 troca)**, **4 cores em faixas (3 trocas)**, **4 cores nas laterais (300
+trocas = 3 por camada)**, só o topo e só o fundo, purga/tempo/torre editáveis, Kobra 3, material por cor, duas
+peças, projeto salvo e lido. `scripts/roteiro-slicer-cores.cjs` (tablet, caneta simulada pelo CDP): caneta
+pinta e dedo não, ferramentas, desfazer, filamentos e trocas editáveis, alvos ≥ 44 px, salvar no cofre e
+reabrir. **Pendente**: medir uma impressão multicolorida para ajustar purga/tempo de fábrica; roteiro com a
+caneta física do TCL.
+
+## 6. Decisões
 
 - Nome da face: **WJSlicer3D** (pedido do Johann: "WJ Slicer 3D").
 - **Só P1S e Kobra 3** (15/11/2026). Nomes das impressoras só na lista de máquinas, como dado técnico; o
@@ -147,11 +193,12 @@ impressão real deixa o tempo fiel para a impressora do dia a dia.
 - Sem G-code e sem envio para a impressora (decisão do Johann, 08/11/2026; reafirmada em 15/11/2026).
 - Sem documento próprio: o STL vem do cofre (pasta CAD), do aparelho ou do WJCAD.
 
-## 6. Estado e próximos passos
+## 7. Estado e próximos passos
 
 - S1 (08/11/2026): estimativa por camadas, perfis Bambu Lab e Anycubic. **Substituída** pela S2.
 - **S2 (15/11/2026, entregue)**: fatiamento real, P1S e Kobra 3, padrões, suporte normal e árvore, saia,
   várias peças, prévia das camadas, tempo por tipo de caminho.
-- Pendente do Johann: valores de referência medidos (tabela do teste).
+- **S2.1 (16/11/2026, entregue)**: pintura de até 4 cores, trocas/purga/torre no orçamento, filamentos editáveis e projeto `.wjslc` no cofre.
+- Pendente do Johann: valores de referência medidos (tabela do teste) e uma impressão multicolorida medida (purga e tempo da troca).
 - Possíveis (só se ele pedir): outros bicos (0,2/0,6/0,8), "uma parede só no topo", preenchimento de vãos,
   borda automática, arrastar a peça na mesa à mão.
