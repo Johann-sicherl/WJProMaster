@@ -8,24 +8,26 @@
 //                  <raiz>/WJPDM/.wjpdm/blobs/<id>    ← conteúdo de cada versão (nunca muda)
 //                  <raiz>/WJPDM/.wjpdm/visiveis.json e pastas.json ← o que o app pôs em <pastas>
 //
-// Mudanças feitas à mão no pendrive ou na pasta do dispositivo (12/11/2026): arquivo que saiu do
-// lugar é achado pelo conteúdo (blob); pasta renomeada/movida, pelos arquivos de dentro; o que não é
-// achado foi excluído; conteúdo editado fora do app, pelo tamanho/data (conferido byte a byte). O
-// cofre aplica sozinho (src/pdm/espelho.ts); arquivo de versão ou visível que sumiu é regravado.
+// O cofre manda (15/11/2026): mudanças feitas à mão no pendrive ou na pasta não entram no cofre; a
+// sincronia regrava os visíveis como o cofre está.
 
 import { Armazem } from "./armazem";
-import { indiceVazio, visiveisDoIndice, type Indice, type MetaCofre, type Repositorio } from "../pdm/sincronia";
-import { aplicarTrocas, caminhoDaPasta, decisaoVazia, type DecisaoEspelho, type EspelhoVisto, type ItemVisto } from "../pdm/espelho";
+import { caminhoDaPasta, indiceVazio, visiveisDoIndice, type IdentidadeCofre, type Indice, type MetaCofre, type Repositorio } from "../pdm/sincronia";
 import type { Arquivo, Item, Pasta, ReferenciaArquivo } from "../pdm/regras";
 
 // ---------- banco do aparelho ----------
+
+/** Nome do erro do banco do aparelho ao receber o índice de um cofre já zerado (a sincronia para). */
+export const ERRO_COFRE_ZERADO = "CofreZerado";
 
 export class RepositorioAparelho implements Repositorio {
   nome = "aparelho";
   constructor(private db: Armazem) {}
   async lerIndice(): Promise<Indice> {
+    const cofre = (await this.db.ler<IdentidadeCofre & { id: "identidade"; cofre: string }>("meta", "identidade")) ?? null;
     return {
       ...indiceVazio(),
+      ...(cofre ? { cofre: { id: cofre.cofre, zeradoEm: cofre.zeradoEm } } : {}),
       meta: (await this.db.ler<MetaCofre>("meta", "meta")) ?? null,
       pastas: await this.db.todos<Pasta>("pastas"),
       arquivos: await this.db.todos<Arquivo>("arquivos"),
@@ -40,7 +42,12 @@ export class RepositorioAparelho implements Repositorio {
       for (const id of await this.db.chaves(loja)) if (!novos.has(id)) await this.db.apagar(loja, id);
       for (const x of lista) await this.db.por(loja, x);
     };
+    // sincronia que começou antes de um "Zerar cofre" (outra janela): não traz o cofre antigo de volta
+    const guardada = await this.db.ler<{ id: string; zeradoEm: string }>("meta", "identidade");
+    if (guardada && (i.cofre?.zeradoEm ?? "") < guardada.zeradoEm) throw Object.assign(new Error("o cofre foi zerado durante a sincronia"), { name: ERRO_COFRE_ZERADO });
     if (i.meta) await this.db.por("meta", i.meta);
+    // identidade do cofre (zerar): guardada ao lado da meta
+    if (i.cofre) await this.db.por("meta", { id: "identidade", cofre: i.cofre.id, zeradoEm: i.cofre.zeradoEm } as unknown as MetaCofre);
     await iguala("pastas", i.pastas);
     await iguala("arquivos", i.arquivos);
     await iguala("itens", i.itens);
@@ -112,24 +119,14 @@ async function lerTexto(d: FileSystemDirectoryHandle, nome: string): Promise<str
   }
 }
 
-/** Marca do arquivo como o app o gravou (tamanho e data): outra marca = mexido fora do app. */
-type Marca = { tam?: number; data?: number };
-/** Arquivo visível gravado: caminho no disco, conteúdo, a pasta do cofre onde estava e a marca. */
-type Visiveis = Record<string, { caminho: string[]; blob: string; pasta?: string } & Marca>;
-const marcaDe = (f: File): Marca => ({ tam: f.size, data: f.lastModified });
+/** Arquivo visível gravado: caminho no disco, conteúdo e a pasta do cofre onde estava. */
+type Visiveis = Record<string, { caminho: string[]; blob: string; pasta?: string }>;
 /** Pasta do cofre → caminho dela no disco (e a pasta-mãe no cofre). */
 type PastasGravadas = Record<string, { caminho: string[]; pai?: string | null }>;
 
 /** Chave de comparação de um caminho no disco (o sistema pode ter trocado acentos e caracteres). */
 const chaveDisco = (c: string[]) => c.map((n) => semAcentos(nomeSeguro(n))).join("/");
 const igualDisco = (a: string[], b: string[]) => a.length === b.length && chaveDisco(a) === chaveDisco(b);
-
-async function mesmoConteudo(a: Blob, b: Blob): Promise<boolean> {
-  if (a.size !== b.size) return false;
-  const [x, y] = await Promise.all([a.arrayBuffer(), b.arrayBuffer()]).then(([p, q]) => [new Uint8Array(p), new Uint8Array(q)]);
-  for (let k = 0; k < x.length; k++) if (x[k] !== y[k]) return false;
-  return true;
-}
 
 export class RepositorioPasta implements Repositorio {
   private dirs?: Promise<{ cofre: FileSystemDirectoryHandle; sis: FileSystemDirectoryHandle; blobs: FileSystemDirectoryHandle }>;
@@ -174,10 +171,6 @@ export class RepositorioPasta implements Repositorio {
   }
 
   private estado?: Promise<{ vis: Visiveis; pastas: PastasGravadas }>;
-  /** pastas que existem no disco (lidas em lerEspelho) */
-  private dirsNoDisco?: Set<string>;
-  /** arquivos que existem no disco (lidos em lerEspelho), com a marca de agora */
-  private arqsNoDisco?: Map<string, Marca>;
 
   /** visiveis.json e pastas.json (o antigo, só com caminhos, ganha o id de cada pasta do cofre). */
   private carregar(i: Indice) {
@@ -197,84 +190,13 @@ export class RepositorioPasta implements Repositorio {
     })());
   }
 
-  /** Onde estão de fato os arquivos e pastas que o app pôs no disco (arquivo que saiu do lugar: pelo conteúdo). */
-  async lerEspelho(i: Indice): Promise<EspelhoVisto> {
-    const { vis, pastas } = await this.carregar(i);
-    const { cofre } = await this.pastas();
-    const dirs = new Set<string>();
-    const arqs = new Map<string, { caminho: string[]; h: FileSystemFileHandle }>();
-    const andar = async (d: FileSystemDirectoryHandle, c: string[]) => {
-      for await (const h of (d as unknown as { values(): AsyncIterable<FileSystemHandle> }).values()) {
-        if (!c.length && h.name === ".wjpdm") continue;
-        const k = [...c, h.name];
-        if (h.kind === "directory") {
-          dirs.add(chaveDisco(k));
-          await andar(h as FileSystemDirectoryHandle, k);
-        } else arqs.set(chaveDisco(k), { caminho: k, h: h as FileSystemFileHandle });
-      }
-    };
-    await andar(cofre, []);
-    this.dirsNoDisco = dirs;
-    // conteúdo editado fora do app: a marca (tamanho/data) mudou e o conteúdo não é o do cofre
-    const marcas = new Map<string, Marca>();
-    const editados: string[] = [];
-    for (const [k, v] of Object.entries(vis)) {
-      const x = arqs.get(chaveDisco(v.caminho));
-      const f = x && (await x.h.getFile().catch(() => null));
-      if (!f) continue;
-      marcas.set(chaveDisco(v.caminho), marcaDe(f));
-      if (v.tam === undefined || (f.size === v.tam && f.lastModified === v.data)) continue;
-      const b = await this.lerBlob(v.blob);
-      if (b && !(await mesmoConteudo(f, b))) editados.push(k);
-    }
-    for (const [k] of arqs) if (!marcas.has(k)) marcas.set(k, {});
-    this.arqsNoDisco = marcas;
-    const doApp = new Set(Object.values(vis).map((v) => chaveDisco(v.caminho)));
-    // arquivos que o app não pôs ali; os das pastas "(versões)" são do app (cópias das versões) e
-    // nunca são "o arquivo movido": a v1 tem o mesmo conteúdo do atual e enganaria a busca
-    const soltos = [...arqs.entries()].filter(([k, x]) => !doApp.has(k) && !x.caminho.some((n) => n.endsWith(" (versões)"))).map(([, x]) => x);
-    const achados = new Set<string>();
-    const arquivos: ItemVisto[] = [];
-    for (const [k, v] of Object.entries(vis)) {
-      if (k.includes("#")) continue;
-      const pai = v.pasta !== undefined ? { pai: v.pasta } : {};
-      if (arqs.has(chaveDisco(v.caminho))) {
-        arquivos.push({ id: k, gravado: v.caminho, visto: v.caminho, ...pai });
-        continue;
-      }
-      // saiu do lugar: o mesmo conteúdo entre os arquivos que o app não pôs lá
-      const b = await this.lerBlob(v.blob);
-      let visto: string[] | undefined;
-      // prefere o mesmo nome
-      const nome = v.caminho[v.caminho.length - 1];
-      const ordem = (x: { caminho: string[] }) => (x.caminho[x.caminho.length - 1] === nome ? 0 : 1);
-      if (b)
-        for (const s of [...soltos].sort((x, y) => ordem(x) - ordem(y))) {
-          const k2 = chaveDisco(s.caminho);
-          if (achados.has(k2)) continue;
-          const f = await s.h.getFile().catch(() => null);
-          if (!f || !(await mesmoConteudo(f, b))) continue;
-          achados.add(k2);
-          visto = s.caminho;
-          break;
-        }
-      arquivos.push({ id: k, gravado: v.caminho, visto, ...pai });
-    }
-    const pastasVistas = Object.entries(pastas).map(([id, { caminho: c, pai }]) => ({ id, gravado: c, visto: dirs.has(chaveDisco(c)) ? c : undefined, ...(pai !== undefined ? { pai } : {}) }));
-    return { copia: this.nome, arquivos, pastas: pastasVistas, editados };
-  }
-
   /**
-   * Arquivos legíveis iguais ao cofre: grava o que mudou, o que sumiu (também as versões) e o que foi
-   * editado fora do app (`espelho.regravar`), e tira do lugar antigo o que mudou de lugar; pastas iguais
-   * às do cofre. O que fica onde está (`espelho.manter`) não sai do lugar (o conteúdo novo entra lá).
-   * Pastas só saem do disco vazias (o que alguém pôs lá fica).
+   * Arquivos legíveis iguais ao cofre: grava o que mudou e tira do lugar antigo o que mudou de lugar;
+   * pastas iguais às do cofre. Pastas só saem do disco vazias (o que alguém pôs lá fica).
    */
-  async gravarVisiveis(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>, espelho: DecisaoEspelho = decisaoVazia()) {
+  async gravarVisiveis(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>) {
     const { cofre, sis } = await this.pastas();
     const { vis: antes, pastas: pastasAntes } = await this.carregar(i);
-    const dirs = this.dirsNoDisco;
-    const alvo = (c: string[]) => aplicarTrocas(c, espelho.trocas);
     const naPasta = async (c: string[], criar = true) => {
       let d: FileSystemDirectoryHandle = cofre;
       for (const n of c) d = await subpasta(d, n, criar);
@@ -289,57 +211,27 @@ export class RepositorioPasta implements Repositorio {
         /* já não existia, ou pasta com arquivos (o que alguém pôs lá à mão fica) */
       }
     };
-    // onde está agora o que estava num caminho gravado (pastas do app renomeadas/movidas)
-    const trocasVistas: [string[], string[]][] = Object.entries(pastasAntes).flatMap(([id, { caminho: c }]) => {
-      const o = espelho.onde.get(`pasta:${id}`);
-      return o ? [[c, o] as [string[], string[]]] : [];
-    });
-    const ondeAgora = (k: string, c: string[]) => espelho.onde.get(k) ?? aplicarTrocas(c, trocasVistas);
     // 1. pastas do cofre (também as vazias): cria as que faltam
     const pastasAgora: PastasGravadas = {};
     for (const p of i.pastas) {
-      const k = `pasta:${p.id}`;
-      if (pastasAntes[p.id] && (espelho.manter.has(k) || espelho.presos.has(k))) {
-        pastasAgora[p.id] = pastasAntes[p.id];
-        continue;
-      }
-      const c = alvo(caminhoDaPasta(i, p.id));
+      const c = caminhoDaPasta(i, p.id);
       pastasAgora[p.id] = { caminho: c, pai: p.pai ?? null };
-      const existe = dirs ? dirs.has(chaveDisco(c)) : !!pastasAntes[p.id] && igualDisco(pastasAntes[p.id].caminho, c);
-      if (!existe) await naPasta(c);
+      if (!pastasAntes[p.id] || !igualDisco(pastasAntes[p.id].caminho, c)) await naPasta(c);
     }
     // 2. arquivos
     const agora: Visiveis = {};
     const pastaDoArquivo = new Map(i.arquivos.map((a) => [a.id, a.pasta]));
-    for (const { chave: k, caminho, blob } of visiveisDoIndice(i)) {
+    for (const { chave: k, caminho: c, blob } of visiveisDoIndice(i)) {
       const v = antes[k];
-      const base = k.split("#")[0];
-      if (espelho.manter.has(base) || espelho.presos.has(base)) {
-        // à espera da escolha: fica onde está; o conteúdo novo do arquivo atual entra no lugar
-        if (!v) continue;
-        agora[k] = v;
-        const onde = espelho.onde.get(k);
-        if (!k.includes("#") && onde && v.blob !== blob) {
-          const dados = await lerBlob(blob);
-          const h = dados && (await naPasta(onde.slice(0, -1), false).then((d) => escrever(d, onde[onde.length - 1], dados)).catch(() => null));
-          if (h) agora[k] = { ...v, blob, ...marcaDe(await h.getFile()) };
-        }
-        continue;
-      }
-      const c = alvo(caminho);
-      const atual = v ? ondeAgora(k, v.caminho) : undefined;
-      const noDisco = atual && this.arqsNoDisco ? this.arqsNoDisco.get(chaveDisco(atual)) : atual ? { tam: v!.tam, data: v!.data } : undefined;
-      agora[k] = { caminho: c, blob, pasta: pastaDoArquivo.get(base), ...(noDisco ?? {}) };
-      // igual e no lugar: nada a gravar (sumido do disco ou editado fora do app: grava de novo)
-      if (v && v.blob === blob && atual && igualDisco(atual, c) && noDisco && !espelho.regravar.has(k)) continue;
+      agora[k] = { caminho: c, blob, pasta: pastaDoArquivo.get(k.split("#")[0]) };
+      if (v && v.blob === blob && igualDisco(v.caminho, c)) continue; // igual e no lugar
       const dados = await lerBlob(blob);
       if (!dados) continue;
-      const h = await escrever(await naPasta(c.slice(0, -1)), c[c.length - 1], dados);
-      agora[k] = { ...agora[k], ...marcaDe(await h.getFile()) };
-      if (atual && !igualDisco(atual, c)) await remover(atual);
+      await escrever(await naPasta(c.slice(0, -1)), c[c.length - 1], dados);
+      if (v && !igualDisco(v.caminho, c)) await remover(v.caminho);
     }
-    // 3. o que saiu do cofre (lixeira, destruído)
-    for (const [k, v] of Object.entries(antes)) if (!agora[k]) await remover(ondeAgora(k, v.caminho));
+    // 3. o que saiu do cofre (lixeira, destruído, cofre zerado)
+    for (const [k, v] of Object.entries(antes)) if (!agora[k]) await remover(v.caminho);
     // 4. pastas que ficaram vazias: as do app que saíram do cofre ou mudaram de lugar e as de versões.
     //    Sem "recursive": pasta com arquivos (de fora do cofre) não é apagada.
     const emUso = new Set<string>();
@@ -352,8 +244,8 @@ export class RepositorioPasta implements Repositorio {
     const candidata = (c: string[]) => {
       for (let n = 1; n <= c.length; n++) candidatas.set(chaveDisco(c.slice(0, n)), c.slice(0, n));
     };
-    for (const [k, v] of Object.entries(antes)) if (k.includes("#")) candidata(aplicarTrocas(v.caminho.slice(0, -1), trocasVistas));
-    for (const { caminho: c } of Object.values(pastasAntes)) candidata(aplicarTrocas(c, trocasVistas)), candidata(c);
+    for (const [k, v] of Object.entries(antes)) if (k.includes("#")) candidata(v.caminho.slice(0, -1));
+    for (const { caminho: c } of Object.values(pastasAntes)) candidata(c);
     for (const c of [...candidatas.entries()].filter(([k]) => !emUso.has(k)).map(([, c]) => c).sort((a, b) => b.length - a.length)) await remover(c);
     await escrever(sis, "visiveis.json", JSON.stringify(agora));
     await escrever(sis, "pastas.json", JSON.stringify({ formato: 2, pastas: pastasAgora }));

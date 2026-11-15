@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
+> Última consolidação: 15/11/2026 (Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -166,25 +166,20 @@
 - **Pastas** (também as vazias) vão para todas as cópias. **Criar pasta** no explorador ou no WJPDM
   sincroniza na hora (05/11/2026); se o acesso ao Google tiver vencido, a janela do Google abre no toque
   de "Criar".
-- **Mudanças feitas fora do app são aplicadas sozinhas** (12/11/2026, decisão do Johann: "o que eu fizer à mão
-  no Drive é o modelo atual do cofre"; substitui a janela "Mudanças feitas fora do app" com Trazer/Desfazer):
-  ao abrir qualquer app e a cada sincronia, renomear/mover/excluir feitos **direto** no Drive, no pendrive ou
-  na pasta do dispositivo, nos arquivos e pastas **que o app criou** (Drive: pela identidade/id; pendrive e
-  pasta: pelo conteúdo), entram **sozinhos** no índice do cofre, **sem janela de perguntas, só com aviso**:
-  renomear/mover → Renomear/Mover com histórico "Renomeado/Movido no Drive"; excluído → **lixeira do cofre**
-  (30 dias, versões preservadas), nunca destruído. Aviso único ao terminar: **"Cofre atualizado pelo Drive: N
-  movidos, N renomeados, N para a lixeira"** com **"Ver detalhes"**.
-  - **Exceções** (o app desfaz na cópia e avisa o motivo): arquivo em **GO-OUT com qualquer pessoa**; arquivo em
-    estado **"não excluir"** (ex.: Série em produção) não é excluído.
-  - **Fora do alcance (`drive.file`)**: pasta criada à mão e arquivo novo posto à mão não são vistos. Arquivo do
-    cofre movido para pasta criada à mão: aviso **"crie a pasta pelo WJPDM"**; o arquivo fica onde estava no
-    índice. Arquivos novos continuam entrando por **"Adicionar"**.
-  - **Nunca aceito de fora**: `WJPDM/.wjpdm` (o app recria o que faltar), pastas "(versões)" (o app regrava) e
-    **conteúdo editado fora do app** (ignorado: a cópia do cofre manda; com aviso).
-  - Pasta excluída à mão só sai do cofre vazia (nenhum órfão novo). Mudou no app e fora ao mesmo tempo: **a mais
-    recente vence**, a outra vai para a lixeira do cofre.
-  - **Sem pastas duplicadas**: pasta procurada **pelo id guardado**, não pelo nome; remoção no Drive **sempre
-    pela lixeira dele (trashed), nunca DELETE**.
+- **O cofre manda nas cópias** (15/11/2026, decisão do Johann: "não vou mais mexer no Drive à mão"; substitui a
+  aplicação automática das mudanças feitas fora do app de 12/11): renomear/mover/excluir/editar feito direto no
+  Drive, no pendrive ou na pasta do dispositivo **não entra no cofre**; a sincronia regrava as cópias como o cofre
+  está. Arquivos de fora entram por **Importar pasta…/Importar arquivos…**. **Sem pastas duplicadas**: pasta do
+  Drive procurada **pelo id guardado**; remoção no Drive **sempre pela lixeira dele (trashed), nunca DELETE**.
+- **Zerar cofre** (15/11/2026, WJPDM → Ferramentas, confirmar digitando **ZERAR**): apaga índice, versões e
+  arquivos visíveis em todas as cópias (Drive pela lixeira do Drive) e dá ao cofre uma **identidade nova**; os
+  outros aparelhos, ao sincronizar, veem que o cofre foi zerado e **limpam o banco local sem reenviar o antigo**.
+  Mantém usuário, máscara e fluxo de trabalho.
+- **Importar pasta… / Importar arquivos…** (15/11/2026): pasta do computador ou do tablet com todas as subpastas,
+  mantendo a estrutura; cada arquivo entra **publicado (versão 1, GO-IN)**; vídeo/foto/áudio como **arquivo de
+  mídia**; ignora `.wjpdm`, pastas "(versões)" e arquivos de sistema (desktop.ini, .DS_Store, `~$*`); nome
+  repetido: **uma pergunta** (substituir / pular / manter os dois); barra de progresso com cancelar e resumo
+  (N arquivos, N pastas, N ignorados).
 - **Arquivo sem pasta vai para "Recuperados"** (12/11/2026, pedido do Johann): arquivo cuja pasta não existe
   mais no cofre (pasta excluída numa cópia enquanto ele entrava nela em outra) é levado a cada sincronia para a
   pasta **"Recuperados"** (raiz, visível no WJPDM), com histórico "Pasta original não encontrada", e a
@@ -211,8 +206,13 @@
   (botão do cofre em cada app ou ⚙ Configurações do início): "Mostrar o aviso de conexões".
 - O acesso do Google vale 1 h e o navegador só deixa abrir a janela do Google durante um gesto do usuário:
   ele é **renovado sozinho no primeiro toque/tecla** no app quando falta menos de 10 min (ou já venceu) —
-  a janela do Google pisca e fecha, sem botão. Sem nenhum toque (app parado/fechado) só com servidor
-  próprio guardando o token de renovação (G5); a chave secreta nunca vai no app.
+  a janela do Google pisca e fecha, sem botão. **Uma renovação só para todas as páginas e janelas**
+  (15/11/2026): trava comum no aparelho, nunca duas janelas do Google ao mesmo tempo, token renovado por uma
+  janela vale para as outras; abre **sem seletor de conta** (`login_hint` com a conta já autorizada e
+  `prompt: none`; se o Google pedir interação, a próxima abre normal). Cada abertura fica registrada (página,
+  janela, hora, motivo): WJPDM → Ferramentas → **Login do Google**. O que sobra até a G5: a janela ainda pisca
+  uma vez por hora de uso; sem nenhum toque (app parado/fechado) só com servidor próprio guardando o token de
+  renovação (G5); a chave secreta nunca vai no app.
 
 ### 5.4 Explorador do cofre — salvar, abrir e escolher (05/11/2026)
 - **Uma tela no estilo do explorador de arquivos do sistema** (não uma árvore em cascata), em todos os

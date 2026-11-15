@@ -3,12 +3,13 @@
 // - o que falta numa cópia é copiado; registro alterado nas duas: a alteração MAIS RECENTE vence;
 // - a versão que perdeu um conflito não some: vai para a lixeira do cofre (30 dias);
 // - exclusões se propagam pela lixeira; a lixeira se esvazia sozinha após 30 dias.
+// - "Zerar cofre" (15/11/2026): o cofre ganha uma identidade nova; a cópia com identidade mais antiga
+//   é limpa (índice, conteúdos e arquivos visíveis) e nunca reenvia o que tinha.
 // Tudo puro e testável em Node (scripts/teste-sincronia.ts); quem lê e grava cada cópia é um
 // Repositorio.
 
 import type { Arquivo, Fluxo, Item, Pasta, ReferenciaArquivo } from "./regras";
 import { extensao, nomeLivre } from "./regras";
-import { analisarEspelho, decisaoVazia, type DecisaoEspelho, type EspelhoVisto, type OpcoesEspelho, type RelatoFora } from "./espelho";
 
 export interface MetaCofre {
   id: "meta";
@@ -27,10 +28,21 @@ export interface Exclusao {
   data: string;
 }
 
+/**
+ * Identidade do cofre (15/11/2026): criada ao zerar. Cópia com outra identidade, mais antiga (ou sem
+ * nenhuma, de antes do primeiro "Zerar cofre"), guarda um cofre que já foi zerado: é limpa.
+ */
+export interface IdentidadeCofre {
+  id: string;
+  zeradoEm: string;
+}
+
 /** Índice do cofre: tudo menos o conteúdo dos arquivos (blobs). */
 export interface Indice {
   formato: "wjpdm-indice";
   versao: 1;
+  /** identidade do cofre (ausente: cofre nunca zerado) */
+  cofre?: IdentidadeCofre;
   meta: MetaCofre | null;
   pastas: Pasta[];
   arquivos: Arquivo[];
@@ -59,16 +71,11 @@ export interface Repositorio {
   gravarBlob(id: string, b: Blob): Promise<void>;
   apagarBlob?(id: string): Promise<void>;
   /**
-   * Onde estão de fato os arquivos e pastas que o app gravou no espelho legível (mudanças feitas
-   * fora do app, src/pdm/espelho.ts). Lido antes de gravar os visíveis.
+   * Arquivos visíveis (pastas com nomes legíveis), para abrir o cofre em qualquer computador. O cofre
+   * manda: o que foi mexido à mão na cópia volta a ficar igual ao cofre (15/11/2026: mudanças feitas
+   * à mão no Drive não são mais aplicadas no cofre).
    */
-  lerEspelho?(i: Indice): Promise<EspelhoVisto>;
-  /**
-   * Arquivos visíveis (pastas com nomes legíveis), para abrir o cofre em qualquer computador.
-   * `espelho`: o que fica onde está (pasta criada à mão no Drive), onde cada item está agora e o que
-   * foi editado fora do app (regravar com o conteúdo do cofre).
-   */
-  gravarVisiveis?(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>, espelho?: DecisaoEspelho): Promise<void>;
+  gravarVisiveis?(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>): Promise<void>;
 }
 
 const DIA = 86400000;
@@ -226,6 +233,7 @@ export function visiveisDoIndice(i: Indice): Visivel[] {
     const nome = caminho[caminho.length - 1];
     const ponto = nome.lastIndexOf(".");
     const base = ponto > 0 ? nome.slice(0, ponto) : nome, ext = ponto > 0 ? nome.slice(ponto) : "";
+    if (a.midia) continue; // vídeo, foto, áudio: uma cópia só, sem a pasta "(versões)"
     for (const v of a.versoes) {
       if (!v.blob) continue;
       out.push({ chave: `${a.id}#v${v.n}`, caminho: [...caminho.slice(0, -1), `${base} (versões)`, `${base} v${v.n}${v.revisao ? ` rev ${v.revisao}` : ""}${ext}`], blob: v.blob, versao: true });
@@ -234,10 +242,11 @@ export function visiveisDoIndice(i: Indice): Visivel[] {
   return out;
 }
 
+/** Caminho legível de uma pasta do cofre (nomes desde a raiz). */
+export const caminhoDaPasta = (i: Indice, id: string): string[] => caminhoDoArquivo(i, { pasta: id, nome: "" } as Arquivo).slice(0, -1);
+
 /** Caminho legível de cada pasta do cofre (inclusive as vazias), para criar/apagar no disco. */
-export function caminhosDasPastas(i: Indice): string[][] {
-  return i.pastas.map((p) => caminhoDoArquivo(i, { pasta: p.id, nome: "" } as Arquivo).slice(0, -1));
-}
+export const caminhosDasPastas = (i: Indice): string[][] => i.pastas.map((p) => caminhoDaPasta(i, p.id));
 
 /** Pasta onde a sincronia recolhe os arquivos cuja pasta não existe mais (id fixo: todas as cópias geram a mesma). */
 export const PASTA_RECUPERADOS = { id: "recuperados", nome: "Recuperados" } as const;
@@ -288,46 +297,50 @@ export interface ResultadoSincronia {
   faltando: string[];
   /** cópias que falharam (desconectadas no meio) */
   falhas: { repo: string; erro: string }[];
-  /** mudanças feitas fora do app nos espelhos (Drive, pendrive, pasta), já aplicadas no cofre ou desfeitas */
-  foraDoApp: RelatoFora[];
+  /** cópias que guardavam um cofre já zerado e foram limpas (sem reenviar nada) */
+  zeradas: string[];
+}
+
+/** Índice de um cofre zerado: só a identidade nova e os dados do cofre (usuário, máscara, fluxo). */
+export function indiceZerado(i: Pick<Indice, "meta">, id: string, agora: string): Indice {
+  return { ...indiceVazio(), cofre: { id, zeradoEm: agora }, meta: i.meta ? { ...i.meta, mod: agora } : null };
+}
+
+const temConteudo = (i: Indice) => i.arquivos.length + i.pastas.length + i.itens.length > 0;
+
+/**
+ * Qual identidade vale (a do zerar mais recente) e quais índices são de um cofre já zerado. Cópia
+ * vazia (índice nulo) nunca conta como zerada.
+ */
+export function escolherIdentidade(indices: (Indice | null)[]): { cofre?: IdentidadeCofre; antigos: boolean[] } {
+  let cofre: IdentidadeCofre | undefined;
+  for (const i of indices) if (i?.cofre && (!cofre || i.cofre.zeradoEm > cofre.zeradoEm)) cofre = i.cofre;
+  return { cofre, antigos: indices.map((i) => !!i && (i.cofre?.id ?? "") !== (cofre?.id ?? "")) };
 }
 
 /**
  * Iguala as cópias: junta os índices, copia os blobs que faltam em cada uma, grava os arquivos
  * visíveis e o índice comum. Uma cópia que falhar (pendrive arrancado) não impede as outras.
+ * Cópia de um cofre já zerado (outra identidade, mais antiga) não entra na mescla: recebe o índice
+ * novo, perde os conteúdos e os arquivos visíveis antigos.
  */
-export async function sincronizar(repos: Repositorio[], agora: string, opcoes: OpcoesEspelho = {}): Promise<ResultadoSincronia> {
+export async function sincronizar(repos: Repositorio[], agora: string): Promise<ResultadoSincronia> {
   const falhas: { repo: string; erro: string }[] = [];
-  const vivos: Repositorio[] = [], indices: Indice[] = [];
+  const vivos: Repositorio[] = [], lidos: (Indice | null)[] = [];
   for (const r of repos) {
     try {
-      indices.push((await r.lerIndice()) ?? indiceVazio());
+      lidos.push(await r.lerIndice());
       vivos.push(r);
     } catch (e) {
       falhas.push({ repo: r.nome, erro: (e as Error).message ?? String(e) });
     }
   }
-  const mescla = mesclar(indices, agora);
-  let indice = mescla.indice;
+  // cofre zerado em outro aparelho: as cópias com a identidade antiga ficam fora da mescla
+  const { cofre, antigos } = escolherIdentidade(lidos);
+  const zeradas = vivos.filter((_, k) => antigos[k] && temConteudo(lidos[k]!)).map((r) => r.nome);
+  const mescla = mesclar(lidos.filter((_, k) => !antigos[k]).map((i) => i ?? indiceVazio()), agora);
+  let indice: Indice = cofre ? { ...mescla.indice, cofre } : mescla.indice;
   const conflitos = mescla.conflitos;
-  // mudanças feitas fora do app em cada espelho (antes de gravar nele): aplicadas no índice que
-  // todas as cópias recebem (decisão do Johann, 12/11/2026); as exceções são desfeitas na cópia
-  const espelhos = new Map<Repositorio, DecisaoEspelho>();
-  const foraDoApp: RelatoFora[] = [];
-  for (const r of [...vivos]) {
-    if (!r.lerEspelho) continue;
-    try {
-      const a = analisarEspelho(indice, await r.lerEspelho(indice), agora, opcoes);
-      indice = a.indice;
-      conflitos.push(...a.conflitos);
-      foraDoApp.push(...a.relatos);
-      espelhos.set(r, a);
-    } catch (e) {
-      // sem saber o que mudou lá, não grava (poderia desfazer o que o Johann fez)
-      falhas.push({ repo: r.nome, erro: (e as Error).message ?? String(e) });
-      vivos.splice(vivos.indexOf(r), 1);
-    }
-  }
   // nenhum arquivo sai desta sincronia sem pasta (a exclusão de uma pasta pode vencer o arquivo
   // posto nela em outra cópia): os órfãos vão para "Recuperados" em todas as cópias
   const rec = recuperarOrfaos(indice, agora);
@@ -370,14 +383,16 @@ export async function sincronizar(repos: Repositorio[], agora: string, opcoes: O
   for (const r of vivos) {
     if (falhas.some((f) => f.repo === r.nome)) continue;
     try {
-      await r.gravarVisiveis?.(visiveis(r), (id) => r.lerBlob(id), espelhos.get(r) ?? decisaoVazia());
+      await r.gravarVisiveis?.(visiveis(r), (id) => r.lerBlob(id));
       await r.gravarIndice(indice);
       // blobs que nenhum arquivo usa mais (destruídos): liberam espaço
       const precisa = precisaDe.get(r)!;
       if (r.apagarBlob) for (const id of tem.get(r)!) if (!precisa.has(id)) await r.apagarBlob(id).catch(() => {});
     } catch (e) {
       falhas.push({ repo: r.nome, erro: (e as Error).message ?? String(e) });
+      // o cofre foi zerado enquanto esta sincronia rodava (outra janela): não grava o antigo em mais nada
+      if ((e as Error).name === "CofreZerado") break;
     }
   }
-  return { indice, conflitos, recuperados: rec.recuperados, copiados, faltando, falhas, foraDoApp };
+  return { indice, conflitos, recuperados: rec.recuperados, copiados, faltando, falhas, zeradas };
 }

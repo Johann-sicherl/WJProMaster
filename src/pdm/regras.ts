@@ -148,6 +148,8 @@ export interface Arquivo {
   trabalho?: { blob: string; tamanho: number; data: string; autor: string };
   /** última alteração do registro (sincronia entre cópias: a mais recente vence) */
   mod?: string;
+  /** arquivo de mídia (vídeo, foto, áudio): uma cópia só em cada lugar, sem a pasta "(versões)"; repetido substitui */
+  midia?: boolean;
   /** dados do modelo gravados pelo WJCAD ao salvar (lista de materiais, legenda do desenho) */
   modelo?: DadosModelo;
 }
