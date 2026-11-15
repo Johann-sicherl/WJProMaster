@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 15/11/2026 (caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
+> Última consolidação: 15/11/2026 (WJSlicer3D: só P1S e Kobra 3, fatiamento real próprio; caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -357,14 +357,17 @@
   simetria, pontos = bolinha ou pedrinha em inglesa), ponta da garra (bolinha/alongada/dupla) e aro dividido.
   08/11/2026 (J8, pedido do Johann): **escultura livre em malha** unida à joia (pincéis com a caneta, dedo
   navega; peso e STL pela união de malhas `manifold-3d`).
-- **WJSlicer3D** (08/11/2026): face para **fatiar STL para impressão 3D**, por enquanto **só a estimativa
-  de tempo de impressão e de material** (g, m, custo): **sem G-code e sem envio para a impressora**, sem
-  configurações avançadas. Base funcional: um fatiador de código aberto e os perfis de fábrica das
-  impressoras **Bambu Lab e Anycubic** (bico 0,4 mm, 0,20 mm padrão). Os nomes das impressoras aparecem
-  só na lista de máquinas, como dado técnico de compatibilidade; o nome do fatiador de referência nunca
-  aparece. STL do cofre, do aparelho ou do WJCAD (menu → Estimar impressão 3D). Ajustes básicos:
-  camada, paredes, topo/fundo, preenchimento, suporte, borda; calibração do tempo por impressora.
-  Detalhes em `docs/global/wjslicer3d.md`.
+- **WJSlicer3D** (08/11/2026): face para **orçar impressão 3D de STL**: tempo de impressão e material
+  (g, m, custo), **sem G-code e sem envio para a impressora**. **15/11/2026 (Johann): só duas impressoras,
+  Bambu Lab P1S e Anycubic Kobra 3** (bico 0,4, perfis de fábrica de camada, velocidades, acelerações e fluxo
+  máximo), e o tempo vem de **fatiamento real com código nosso** (perímetros, preenchimento nos padrões
+  principais, topo/fundo, suporte normal e em árvore, borda/saia, acelerações, vazão, deslocamentos, trocas de
+  camada), meta de **±5 % do fatiador de referência** nas mesmas configurações. O fatiador de referência é de
+  código aberto AGPL: **proibido copiar código; o nome dele nunca aparece**. Prévia das camadas com deslizante,
+  tempo por tipo de caminho, várias peças (cópias) na mesa; fatiamento no worker (o tablet não trava);
+  calibração do tempo por impressora continua. Os nomes das impressoras aparecem só na lista de máquinas,
+  como dado técnico. STL do cofre, do aparelho ou do WJCAD (menu → Estimar impressão 3D). Detalhes em
+  `docs/global/wjslicer3d.md`.
 - **WJTaskPlan — prazo da etapa ≤ prazo da tarefa** (10/11/2026; tarefa sem prazo = etapas sem limite):
   calendário da etapa limitado ao prazo da tarefa; data depois dele ou antecipar o prazo da tarefa avisa as etapas que passariam
   (com os nomes); dado já errado (antigo ou da sincronia) **não é alterado sozinho**: fica marcado e se corrige

@@ -72,11 +72,35 @@ body.sl-app {
 .sl-cal label { display: grid; gap: 4px; font-size: 13px; color: var(--texto-2); }
 .sl-cal input { width: 110px; }
 
+/* peças na mesa */
+.sl-lista { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.sl-lista li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px; border: 1px solid var(--linha); border-radius: 10px; padding: 4px 6px; }
+.sl-lista li.sel { border-color: var(--acento); background: var(--acento-suave); }
+.sl-lista .sl-nome { display: grid; text-align: left; background: none; border: 0; padding: 4px; min-height: 36px; font-weight: 600; overflow: hidden; }
+.sl-lista .sl-nome small { font-weight: 400; color: var(--texto-2); font-size: 12px; }
+.sl-copias { display: inline-flex; align-items: center; gap: 4px; }
+.sl-copias button, .sl-remover { min-width: 36px; min-height: 36px; padding: 0; }
+.sl-copias b { min-width: 28px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* prévia das camadas (sobre a vista) */
+.sl-previa { position: absolute; left: 10px; right: 10px; top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; pointer-events: none; }
+.sl-previa > * { pointer-events: auto; }
+.sl-previa [aria-pressed="true"] { background: var(--acento); color: #fff; border-color: var(--acento); }
+.sl-deslizante { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 240px; max-width: 640px; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--linha); border-radius: 10px; padding: 4px 8px; box-shadow: var(--sombra); }
+.sl-deslizante[hidden] { display: none; }
+.sl-deslizante input { flex: 1; accent-color: var(--acento); min-width: 0; }
+.sl-deslizante button { min-width: 36px; min-height: 32px; padding: 0; }
+.sl-deslizante span { font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 120px; }
+.sl-legenda { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--linha); border-radius: 10px; padding: 4px 8px; }
+.sl-legenda[hidden] { display: none; }
+.sl-legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
 /* tablet: alvos de 44 px */
 body.disp-tablet .sl-passo { grid-template-columns: 44px minmax(0, 1fr) 44px; }
 body.disp-tablet .sl-passo button, body.disp-tablet .sl-orientar button, body.disp-tablet .sl-abrir, body.disp-tablet .sl-mini,
 body.disp-tablet .sl-campo select, body.disp-tablet .sl-campo input:not([type="range"]), body.disp-tablet #sl-calibrar, body.disp-tablet #sl-vazio-abrir { min-height: 44px; }
 body.disp-tablet .sl-chave { min-height: 44px; }
+body.disp-tablet .sl-copias button, body.disp-tablet .sl-remover, body.disp-tablet .sl-lista .sl-nome, body.disp-tablet .sl-deslizante button, body.disp-tablet #sl-camadas { min-width: 44px; min-height: 44px; }
 
 /* celular (ou tela estreita): vista em cima, painel embaixo */
 @media (max-width: 760px) {

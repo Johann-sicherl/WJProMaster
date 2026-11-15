@@ -3,7 +3,7 @@
 // apoio (a face plana maior virada para baixo). Puro: testado em scripts/teste-slicer.ts.
 
 import { malhaDoStl } from "../kernel/stl";
-import type { MalhaImpressao } from "./fatiar";
+import type { MalhaImpressao } from "./caminhos";
 
 export function malhaDeStl(bytes: Uint8Array): MalhaImpressao {
   const m = malhaDoStl(bytes);
@@ -103,4 +103,40 @@ function areaNaMesa(m: MalhaImpressao): number {
     if (nz < 0) area += -nz / 2;
   }
   return area;
+}
+
+/**
+ * Organiza as cópias de todas as peças na mesa (prateleiras: da maior para a menor, em fileiras),
+ * com `folga` mm entre as caixas, e centra o conjunto. Devolve as posições (centro da caixa) de cada peça.
+ */
+export function organizar(pecas: { malha: MalhaImpressao; copias: number }[], mesa: [number, number], folga: number): [number, number][][] {
+  const itens: { k: number; w: number; d: number }[] = [];
+  pecas.forEach((p, k) => {
+    const min = [Infinity, Infinity], max = [-Infinity, -Infinity];
+    for (let i = 0; i < p.malha.pos.length; i += 3)
+      for (let e = 0; e < 2; e++) {
+        min[e] = Math.min(min[e], p.malha.pos[i + e]);
+        max[e] = Math.max(max[e], p.malha.pos[i + e]);
+      }
+    for (let c = 0; c < p.copias; c++) itens.push({ k, w: max[0] - min[0], d: max[1] - min[1] });
+  });
+  const ordem = itens.map((_, i) => i).sort((a, b) => itens[b].d - itens[a].d || itens[b].w - itens[a].w);
+  const pos: [number, number][] = new Array(itens.length);
+  let x = 0, y = 0, alturaFila = 0, largura = 0;
+  for (const i of ordem) {
+    const it = itens[i];
+    if (x > 0 && x + it.w > mesa[0]) {
+      y += alturaFila + folga;
+      x = 0;
+      alturaFila = 0;
+    }
+    pos[i] = [x + it.w / 2, y + it.d / 2];
+    x += it.w + folga;
+    largura = Math.max(largura, x - folga);
+    alturaFila = Math.max(alturaFila, it.d);
+  }
+  const total = y + alturaFila;
+  const saida: [number, number][][] = pecas.map(() => []);
+  itens.forEach((it, i) => saida[it.k].push([pos[i][0] - largura / 2, pos[i][1] - total / 2]));
+  return saida;
 }
