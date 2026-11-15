@@ -94,6 +94,15 @@ export function acharNaTopologia(ref: Referencia, topo: TopologiaLeve): Referenc
   };
   const ds = s.geom === "linha" ? dirDe(s) : null;
   let melhor: AssinaturaAresta | null = null, nota = Infinity;
+  // nome persistente: a aresta entre as mesmas duas faces da história, por mais que tenha andado
+  if (s.nome) {
+    for (const a of topo.arestas) {
+      if (!a.nome || a.nome[0] !== s.nome[0] || a.nome[1] !== s.nome[1] || a.geom !== s.geom) continue;
+      const n = dist3(a.meio, s.meio) + Math.abs(a.comprimento - s.comprimento) * 0.5;
+      if (n < nota) { nota = n; melhor = a; }
+    }
+    if (melhor) return { tipo: "aresta", ass: melhor };
+  }
   for (const a of topo.arestas) {
     if (a.geom !== s.geom) continue;
     if (ds && Math.abs(esc3(dirDe(a), ds)) < 0.999) continue;
@@ -169,13 +178,17 @@ function fixarExterna(esb: FeatureEsboco, g: GeoEsboco) {
  * `comp`: a topologia é de outro componente (edição em contexto): só as referências dele. Sem
  * `comp` (a própria peça), as referências a outros componentes ficam como estão.
  */
-export function atualizarExternas(esb: FeatureEsboco, topo: TopologiaLeve, r: Referencial, comp?: string): { mudaram: number; perdidas: number } {
+export function atualizarExternas(
+  esb: FeatureEsboco, topo: TopologiaLeve, r: Referencial, comp?: string,
+  /** como achar a entidade na peça (o kernel usa o nome persistente); padrão: pela assinatura */
+  achar: (ref: Referencia) => Referencia | null = (ref) => acharNaTopologia(ref, topo),
+): { mudaram: number; perdidas: number } {
   let mudaram = 0, perdidas = 0;
   for (const g of esb.geos) {
     if (!g.externa) continue;
     const ctx = "ctx" in g.externa ? g.externa.ctx : undefined;
     if (ctx !== comp) continue;
-    const achada = acharNaTopologia(g.externa, topo);
+    const achada = achar(g.externa);
     const nova = achada && ctx ? ({ ...achada, ctx } as Referencia) : achada;
     const proj = nova && projetar(nova, r);
     if (!nova || !proj || (proj.tipo !== g.tipo && !(proj.tipo === "ponto" && g.tipo === "ponto"))) {

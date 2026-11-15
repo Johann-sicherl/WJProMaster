@@ -237,8 +237,19 @@ com o núcleo entregue (flange base, aba, flange de aresta, bainha, corte, plani
 próprio em `src/kernel/chapa.ts`). Canto automático entre abas vizinhas ✅. Árvore com "Chapa metálica" e "Padrão planificado" ✅, dobra esboçada, junta e flange de meia-esquadria ✅,
 cantos (fechar canto, alívio de canto, quebrar canto) ✅. Desdobrar/dobrar (cortes atravessando dobras) e converter em chapa (com rasgos) ✅. Pendentes da Fase 4: inserir dobras (sólido com casca), margem/dedução de dobra por tabela. Pendentes da Fase 3: filete variável/de face, furo avançado.
 Pendente da Fase 5: propriedades de seção. Estado detalhado em `docs/funcional/README.md`.
-Referências a faces/arestas são por assinatura geométrica (`src/kernel/topologia.ts`): reencontra
-a entidade mais parecida após regenerar; mudanças grandes na peça podem trocar a referência.
+Referências a faces/arestas: **nome persistente** pela história (15/11/2026, `src/kernel/nomes.ts`): a extrusão
+registra, a cada reconstrução, a superfície de cada face da ferramenta com o nome `<recurso>:<entidade|inicio|fim|fim2>`
+(laterais casadas com as linhas/arcos do esboço pela geometria; tampas pela posição na normal); a face da peça
+que está sobre essa superfície (mesmo plano/cilindro, centro dentro da caixa da face gerada) é a do nome — vale
+depois de booleanas sem precisar do histórico do OpenCascade. Aresta = par ordenado de nomes das faces vizinhas
+(`arestasDaFace`). `acharFace`/`acharAresta` (`topologia.ts`) usam o nome só se a peça foi feita NESTA
+reconstrução (`RegistroNomes.conhece`: o registro é global e outra peça teria ids iguais); senão a assinatura.
+Achada a referência, a assinatura guardada é atualizada no lugar (nome novo + geometria) e anotada
+(`alteradas`, com o JSON de antes); `atualizacoesDoDocumento` devolve os caminhos e a interface grava só se o
+documento ainda tiver o valor de antes (`aplicarAtualizacoes` em `main.ts`). Esboço com referências do modelo:
+`acompanharExternas` resolve no kernel (solver PlaneGCS carregado no worker; `definirSolverEsboco` nos testes),
+movendo a referência em passos de ~2 mm a partir da posição ANTIGA (partir da nova espelha a cota sem sinal);
+com isso a interface não refaz as externas pela topologia final (`externasNoKernel`).
 
 ## Observações técnicas
 

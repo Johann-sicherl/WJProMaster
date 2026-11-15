@@ -5,6 +5,29 @@ Status: ✅ existe · 🟡 parcial · F3/F4/F5 fase · ⏸ fora do escopo.
 
 ---
 
+## 0. Referências a faces e arestas — nome persistente ✅ (15/11/2026)
+
+Como nos CADs profissionais, cada face da peça tem um **nome pela história** (`src/kernel/nomes.ts`):
+- **Face lateral** de extrusão/corte extrudado = recurso + **entidade do esboço** que a varreu (linha → plano,
+  arco/círculo → cilindro); **tampas** = recurso + **início** (no plano de partida), **fim** (fim da direção 1) ou
+  **fim 2** (direção 2, outro lado do plano médio, passante nos dois sentidos).
+- **Aresta** = o par de faces que se encontram nela.
+- Na reconstrução a referência é achada **pelo nome** (a superfície que o nome gerou com as cotas novas); a
+  **assinatura geométrica** (centro, área, comprimento) fica **de reserva** (faces sem história — STEP/STL
+  importado, faces de filete, padrões — e para desempatar entre pedaços da mesma face).
+- **Arquivo antigo migra sozinho**: a referência que só tinha assinatura ganha o nome na primeira reconstrução
+  (gravado no documento, sem passo de desfazer).
+- **Referência perdida** (nem nome nem assinatura): o recurso diz **qual** ("item 5 de 5: a aresta entre a face
+  final da Extrusão1 e uma face lateral da Extrusão1 não existe mais"). Filete e chanfro **são feitos nos itens
+  achados**, com aviso; sem nenhum, erro. Os recursos seguintes continuam.
+- **Esboço sobre a peça**: a face de apoio também vai pelo nome; as **referências do modelo** do esboço (arestas e
+  vértices usados em relações e cotas) passam para a peça **daquele ponto da árvore** e o esboço é **resolvido na
+  própria reconstrução**, antes dos recursos que o usam (a referência anda em passos de ~2 mm para a cota sem sinal
+  não "espelhar" o perfil). Um rasgo cotado (ou Colinear) a partir da borda continua rasgo ao mudar a altura.
+- Sem nome ainda: revolução, varredura, loft, filete, padrões e espelho (usam a assinatura).
+- Teste: `scripts/teste-nomes.ts` (filete 80 → 120 e 100 → 60, rasgo subindo e descendo a altura, migração,
+  aviso, STEP pela assinatura).
+
 ## 1. Extrusão (Boss-Extrude / Ressalto-Base extrudado) — 🟡
 
 ✅ De, Direção 1/2, todas as condições finais (exceto as marcadas ⏸), inclinação, recurso fino e contornos selecionados.

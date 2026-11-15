@@ -50,8 +50,30 @@ import { cruzarEsbocos, curvaPorPontos, lerPontosXYZ, pontosHelice, polilinhasDe
 import { lofting } from "./loft";
 import {
   acharAresta, acharFace, arestasDosItens, assinaturaAresta, assinaturaFace, ErroReferencia,
-  indicesDasFaces, listarSolidos, listarTopo, propagarTangente, topologia, type Topologia,
+  indiceDaAresta, indiceDaFace, indicesDasFaces, listarSolidos, listarTopo, propagarTangente, topologia, type Topologia,
 } from "./topologia";
+import { nomearExtrusao, novoRegistro, registroAtual, type RegistroNomes } from "./nomes";
+import { acharNaTopologia, atualizarExternas } from "../esboco/externas";
+import type { SolverEsboco } from "../esboco/solver";
+
+/**
+ * Atualização de uma referência guardada no documento, feita pela reconstrução (nome persistente
+ * novo, geometria de reserva nova, esboço resolvido de novo porque a peça andou). A interface grava
+ * `valor` em `caminho` do recurso `id` só se lá ainda estiver `antes` (JSON): edição feita enquanto a
+ * reconstrução rodava não é desfeita. Caminho vazio = esboço (pontos, geometrias e relações).
+ */
+export interface AtualizacaoRef {
+  id: string;
+  caminho: string[];
+  valor: unknown;
+  antes: string;
+}
+
+/** Solver do esboço no kernel: as referências do modelo andam com a peça e o esboço se resolve na hora. */
+let solverKernel: Pick<SolverEsboco, "resolver"> | null = null;
+export function definirSolverEsboco(s: Pick<SolverEsboco, "resolver"> | null) {
+  solverKernel = s;
+}
 
 export interface ErroFeature {
   id: string;
@@ -117,6 +139,10 @@ export interface ResultadoRegeneracao {
   suportes?: Record<string, SuporteEsboco>;
   /** Dividir em edição (prévia): as regiões resultantes, na ordem da lista do painel */
   regioes?: RegiaoDividirInfo[];
+  /** referências do documento que a reconstrução atualizou (a interface grava no documento) */
+  atualizacoes?: AtualizacaoRef[];
+  /** as referências do modelo dos esboços já foram atualizadas e resolvidas no kernel */
+  externasNoKernel?: boolean;
 }
 
 /** Região do Dividir para o painel: assinatura, se vira corpo separado e a malha para o destaque. */
@@ -787,6 +813,18 @@ function extrusao(f: FeatureExtrusao, ctx: Ctx): Ferramenta[] {
   if (f.profundidade < 0) throw new Error("Use \"Inverter direção\" em vez de profundidade negativa.");
   const centro2 = centroDoDesenho(D);
   let tool: Shape3D;
+  const nomear = (t: Shape3D) => {
+    const reg = registroAtual();
+    // inclinação, recurso fino e corte invertido mudam as faces: ficam pela assinatura
+    if (!reg || f.inclinacao?.ativa || f.fino?.ativo || (f.operacao === "cortar" && f.inverterLadoCorte)) return;
+    const inicio = soma3(r.origem, mul3(r.normal, s0));
+    const sent = sentidoDaReferencia(cond, r, inicio, paraMundo({ ...r, origem: inicio }, centro2.x, centro2.y), ctx) ?? sentido;
+    try {
+      nomearExtrusao(reg, f.id, t, esb, r, s0, sent);
+    } catch {
+      /* sem nomes: as referências usam a assinatura */
+    }
+  };
   if (cond.tipo === "passanteAmbos") {
     // um dos lados pode não ter material (perfil numa face da peça): usa só o que existir
     const lados = ([1, -1] as const).flatMap((sg) => {
@@ -805,6 +843,7 @@ function extrusao(f: FeatureExtrusao, ctx: Ctx): Ferramenta[] {
       tool = tool.fuse(t2);
     }
   }
+  nomear(tool);
   return [{ tool, op: f.operacao }];
 }
 
@@ -2199,6 +2238,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
   const tempos: { id: string; ms: number }[] = [];
   const ctx = novoCtx();
   ctx.previa = opcoes.previa;
+  const reg = novoRegistro(features);
   const rastreador = new RastreadorFaces();
   let previaRemovido: MalhaSimples | null | undefined;
 
@@ -2208,6 +2248,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     try {
       const antes = ctx.peca;
       const nAntes = antes && mesclaNaPeca(f) ? listarSolidos(antes).length : 0;
+      reg.marcar(antes);
       regenerarFeature(f, ctx);
       rastreador.registrar(f.id, antes, ctx.peca);
       // "mesclar" que deixou corpo novo separado: avisa com a folga medida (não é erro)
@@ -2226,6 +2267,9 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
   }
 
   if (ctx.avisos) avisos.push(...ctx.avisos);
+  reg.marcar(ctx.peca);
+  const atualizacoes = atualizacoesDoDocumento(features, reg);
+  const externasNoKernel = !!solverKernel;
   ultimaChapa = ctx.chapa;
   // chapa desdobrada no fim da árvore: linhas de dobra sobre as dobras planas
   if (!opcoes.planificar && ctx.chapa?.planas.size) ctx.refsSaida.push({ id: "__dobras", tipo: "curva", linhas: ctx.chapa.linhasDasPlanas() });
@@ -2257,7 +2301,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     // só corpos de malha: exibidos sem faces/arestas selecionáveis
     const malha = ctx.malhas.length ? juntarMalhas(null, ctx.malhas) : null;
     const volume = ctx.malhas.length && ctx.malhas.every((m) => m.volume !== null) ? ctx.malhas.reduce((s, m) => s + m.volume!, 0) : null;
-    return { malha, erros, avisos, volume, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes, corpos: corposDaMalha(ctx, 0), regioes: ctx.regioes };
+    return { malha, erros, avisos, volume, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes, corpos: corposDaMalha(ctx, 0), regioes: ctx.regioes, atualizacoes, externasNoKernel };
   }
 
   const m = peca.mesh({ tolerance: tolerancia, angularTolerance: 15 });
@@ -2277,13 +2321,15 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     gruposArestas: Uint32Array.from(a.edgeGroups.flatMap((g) => [g.start, g.count])),
   };
   const facesPorRecurso = planificada ? {} : rastreador.atribuir(peca);
+  const topo = topologia(peca).topo;
+  if (!planificada) reg.nomearTopologia(topo);
   return {
     malha: ctx.malhas.length ? juntarMalhas(malhaSolido, ctx.malhas) : malhaSolido,
     erros,
     avisos,
     volume,
-    topologia: topologia(peca).topo,
-    coresFaces: ctx.coresArquivo.length ? Array.from(casarFaces(topologia(peca).topo.faces, ctx.coresArquivo)) : undefined,
+    topologia: topo,
+    coresFaces: ctx.coresArquivo.length ? Array.from(casarFaces(topo.faces, ctx.coresArquivo)) : undefined,
     referencias: ctx.refsSaida,
     tempos,
     corpos: [...corposSolidos(peca, facesPorRecurso, features), ...corposDaMalha(ctx, malhaSolido.triangulos.length)],
@@ -2291,7 +2337,32 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     previaRemovido: planificada ? null : previaRemovido,
     suportes: ctx.suportes,
     regioes: ctx.regioes,
+    atualizacoes,
+    externasNoKernel,
   };
+}
+
+/**
+ * O que a reconstrução mudou nas referências guardadas: esboços resolvidos de novo (inteiros) e cada
+ * assinatura que ganhou nome ou geometria nova (pelo caminho dentro do recurso).
+ */
+function atualizacoesDoDocumento(features: Feature[], reg: RegistroNomes): AtualizacaoRef[] {
+  const out: AtualizacaoRef[] = [];
+  for (const [id, { esb, antes }] of reg.esbocos) {
+    out.push({ id, caminho: [], valor: { pontos: esb.pontos, geos: esb.geos, restricoes: esb.restricoes }, antes });
+  }
+  if (!reg.alteradas.size) return out;
+  const andar = (id: string, o: unknown, caminho: string[]) => {
+    if (!o || typeof o !== "object" || ArrayBuffer.isView(o) || o instanceof ArrayBuffer) return;
+    const antes = reg.alteradas.get(o);
+    if (antes !== undefined) {
+      out.push({ id, caminho, valor: o, antes });
+      return;
+    }
+    for (const k of Object.keys(o)) andar(id, (o as Record<string, unknown>)[k], [...caminho, k]);
+  };
+  for (const f of features) if (!reg.esbocos.has(f.id)) andar(f.id, f, []);
+  return out;
 }
 
 /** Corpos sólidos da peça final, com as faces e o recurso mais recente que mexeu em cada um. */
@@ -2376,7 +2447,13 @@ function acompanharFace(f: FeatureEsboco, ctx: Ctx) {
   const ass = s.face;
   let melhor: (typeof faces)[number] | null = null, nota = Infinity;
   const faces = topologia(ctx.peca).topo.faces;
-  for (const fc of faces) {
+  const reg = registroAtual();
+  // nome persistente: a face gerada pela mesma entidade da história, mesmo que tenha andado muito
+  if (ass.nome && reg?.conhece(ctx.peca) && reg.temNome(ass.nome)) {
+    const i = indiceDaFace(ctx.peca, { ...ass });
+    if (i >= 0 && faces[i].geom === "plano" && faces[i].normal) melhor = faces[i];
+  }
+  if (!melhor) for (const fc of faces) {
     if (fc.geom !== "plano" || !fc.normal) continue;
     if (fc.normal[0] * ass.normal![0] + fc.normal[1] * ass.normal![1] + fc.normal[2] * ass.normal![2] < 0.9999) continue;
     const d = Math.hypot(fc.centro[0] - ass.centro[0], fc.centro[1] - ass.centro[1], fc.centro[2] - ass.centro[2]);
@@ -2388,8 +2465,90 @@ function acompanharFace(f: FeatureEsboco, ctx: Ctx) {
   const dist = melhor.centro[0] * nrm[0] + melhor.centro[1] * nrm[1] + melhor.centro[2] * nrm[2];
   const origem: Vec3 = [nrm[0] * dist, nrm[1] * dist, nrm[2] * dist];
   const mudou = Math.hypot(origem[0] - s.origem[0], origem[1] - s.origem[1], origem[2] - s.origem[2]) > 1e-7;
-  f.suporte = { ...s, origem, face: melhor };
-  if (mudou) ctx.suportes[f.id] = f.suporte;
+  // a face do suporte guarda o nome persistente (o esboço antigo ganha o nome na 1ª reconstrução)
+  const nome = ass.nome ?? (reg?.conhece(ctx.peca) ? reg.nomeDaFace(melhor) : undefined);
+  f.suporte = { ...s, origem, face: nome ? { ...melhor, nome } : { ...melhor } };
+  if (mudou || nome !== ass.nome) ctx.suportes[f.id] = f.suporte;
+}
+
+/**
+ * Resolve o esboço levando as referências do modelo (presas por "fixo") da posição antiga até a nova
+ * em passos de ~2 mm: cota de distância não tem sinal e um salto grande "espelharia" o perfil para o
+ * outro lado da aresta (mesma armadilha do `aplicarValorGradual` das cotas).
+ */
+function resolverAosPoucos(
+  f: FeatureEsboco, solver: Pick<SolverEsboco, "resolver">, velhos: Map<string, { x: number; y: number }>, raiosVelhos: Map<string, number>,
+) {
+  const externas = f.geos.filter((g) => g.externa);
+  const ids = new Set(externas.flatMap((g) => [g.id, ...("c" in g ? [g.c] : []), ...("p1" in g ? [g.p1, g.p2] : []), ...("p" in g ? [g.p] : []), ...("ini" in g ? [g.ini, g.fim] : [])]));
+  type Fixo = Extract<FeatureEsboco["restricoes"][number], { tipo: "fixo" }>;
+  const passos = f.restricoes.filter((x): x is Fixo => x.tipo === "fixo" && ids.has(x.a)).map((x) => {
+    const g = externas.find((e) => e.id === x.a);
+    const de = velhos.get(g && "c" in g ? g.c : x.a);
+    return { x, alvo: { x: x.x, y: x.y, r: x.r }, de: de ?? { x: x.x, y: x.y }, r0: g ? raiosVelhos.get(g.id) ?? x.r : x.r };
+  });
+  let maior = 0;
+  for (const p of passos) maior = Math.max(maior, Math.hypot(p.alvo.x - p.de.x, p.alvo.y - p.de.y), Math.abs((p.alvo.r ?? 0) - (p.r0 ?? 0)));
+  // esboço grande (silhueta, texto convertido): menos passos, cada um custa mais
+  const n = Math.min(f.pontos.length > 500 ? 5 : 40, Math.max(1, Math.ceil(maior / 2)));
+  if (n === 1) return solver.resolver(f);
+  // o solver parte do esboço como estava (referência na posição antiga): saindo da posição nova,
+  // ele acharia a solução "espelhada"
+  for (const p of f.pontos) {
+    const v = ids.has(p.id) ? velhos.get(p.id) : undefined;
+    if (v) { p.x = v.x; p.y = v.y; }
+  }
+  for (const g of externas) if ("r" in g && raiosVelhos.has(g.id)) (g as { r: number }).r = raiosVelhos.get(g.id)!;
+  let res = { ok: true } as ReturnType<typeof solver.resolver>;
+  for (let k = 1; k <= n; k++) {
+    const t = k / n;
+    for (const p of passos) {
+      p.x.x = p.de.x + (p.alvo.x - p.de.x) * t;
+      p.x.y = p.de.y + (p.alvo.y - p.de.y) * t;
+      if (p.alvo.r !== undefined && p.r0 !== undefined) p.x.r = p.r0 + (p.alvo.r - p.r0) * t;
+    }
+    res = solver.resolver(f);
+  }
+  return res;
+}
+
+/**
+ * Referências do modelo do esboço (arestas/vértices da peça usados em relações e cotas): passam para
+ * a peça como ela está NESTE ponto da árvore (pelo nome persistente) e o esboço é resolvido de novo,
+ * antes dos recursos que o usam — o rasgo cotado a partir da borda acompanha a borda.
+ */
+function acompanharExternas(f: FeatureEsboco, ctx: Ctx) {
+  const peca = ctx.peca;
+  const reg = registroAtual();
+  if (!solverKernel || !peca || !reg) return;
+  if (!f.geos.some((g) => g.externa && !("ctx" in g.externa && g.externa.ctx))) return;
+  const r = referencial(f.suporte, ctx.planos);
+  const antes = JSON.stringify({ pontos: f.pontos, geos: f.geos, restricoes: f.restricoes });
+  const topo = topologia(peca).topo;
+  const perdidas: string[] = [];
+  const achar = (ref: Referencia): Referencia | null => {
+    if (ref.tipo === "aresta") {
+      const i = indiceDaAresta(peca, ref.ass);
+      if (i < 0) perdidas.push(reg.descrever(ref.ass, "aresta"));
+      return i < 0 ? null : ref; // a assinatura guardada já foi atualizada (nome e geometria)
+    }
+    const v = acharNaTopologia(ref, topo);
+    if (!v) perdidas.push("um vértice da peça");
+    return v;
+  };
+  const velhos = new Map(f.pontos.map((p) => [p.id, { x: p.x, y: p.y }]));
+  const raiosVelhos = new Map(f.geos.map((g) => [g.id, "r" in g ? g.r : 0]));
+  const { mudaram } = atualizarExternas(f, topo, r, undefined, achar);
+  if (mudaram) {
+    const res = resolverAosPoucos(f, solverKernel, velhos, raiosVelhos);
+    reg.esbocos.set(f.id, { esb: f, antes });
+    if (!res.ok) (ctx.avisos ??= []).push({ id: f.id, mensagem: "A peça mudou e o esboço não fecha mais com as referências do modelo: abra o esboço e confira as relações." });
+  } else if (JSON.stringify({ pontos: f.pontos, geos: f.geos, restricoes: f.restricoes }) !== antes) {
+    reg.esbocos.set(f.id, { esb: f, antes });
+  }
+  if (perdidas.length) {
+    (ctx.avisos ??= []).push({ id: f.id, mensagem: `Referência do modelo não encontrada (${[...new Set(perdidas)].join("; ")}): ficou onde estava. Abra o esboço e refaça a relação.` });
+  }
 }
 
 /** Malhas (STL grande) já lidas: a leitura é só uma vez por arquivo. */
@@ -2891,12 +3050,27 @@ function malhaSimples(s: Shape3D, tolerancia: number): MalhaSimples {
   return { vertices: Float32Array.from(m.vertices), normais: Float32Array.from(m.normals), triangulos: Uint32Array.from(m.triangles), arestas: Float32Array.from(a.lines) };
 }
 
+/**
+ * Arestas do filete/chanfro. Item não achado (nem pelo nome nem pela assinatura) não derruba o recurso:
+ * os outros são feitos e o recurso ganha um aviso dizendo qual item se perdeu. Nenhum achado = erro.
+ */
+function itensAchados(peca: Shape3D, itens: Referencia[], id: string, ctx: Ctx, oque: string): Edge[] {
+  const perdidos: { i: number; mensagem: string }[] = [];
+  const arestas = arestasDosItens(peca, itens, perdidos);
+  if (!perdidos.length) return arestas;
+  const lista = perdidos.map((p) => `item ${p.i + 1} de ${itens.length}: ${p.mensagem.replace(/: reselecione\.$/, "")}`).join("; ");
+  if (!arestas.length) throw new ErroReferencia(`Nenhuma aresta do ${oque} foi encontrada (${lista}). Reselecione.`);
+  (ctx.avisos ??= []).push({ id, mensagem: `O ${oque} foi feito sem ${perdidos.length === 1 ? "um item" : `${perdidos.length} itens`} (${lista}). Reselecione no recurso.` });
+  return arestas;
+}
+
 function regenerarFeature(f: Feature, ctx: Ctx) {
   switch (f.tipo) {
     case "esboco":
       // não gera sólido; fica disponível para as features seguintes
       acompanharFace(f, ctx);
       referencial(f.suporte, ctx.planos);
+      acompanharExternas(f, ctx);
       ctx.esbocos.set(f.id, f);
       return;
     case "extrusao":
@@ -2916,12 +3090,12 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       const peca = exigirPeca(ctx, "O filete");
       if (!(f.raio > 0)) throw new Error("Raio deve ser positivo.");
       if (!f.itens?.length) throw new Error("Selecione as arestas (ou faces) a filetar.");
-      let arestas = arestasDosItens(peca, f.itens);
+      let arestas = itensAchados(peca, f.itens, f.id, ctx, "filete");
       // raio por item (múltiplos raios): arestas vindas de cada item
       const raioDe = new Map<Edge, number>();
       f.itens.forEach((it, i) => {
         const r = f.multiplosRaios ? f.raios?.[i] ?? f.raio : f.raio;
-        for (const e of arestasDosItens(peca, [it])) raioDe.set(e, r);
+        for (const e of arestasDosItens(peca, [it], [])) raioDe.set(e, r);
       });
       if (f.propagarTangente) arestas = propagarTangente(peca, arestas);
       const raio = (e: Edge) => {
@@ -2946,7 +3120,7 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
         return;
       }
       if (!f.itens?.length) throw new Error("Selecione as arestas (ou faces) a chanfrar.");
-      let arestas = arestasDosItens(peca, f.itens);
+      let arestas = itensAchados(peca, f.itens, f.id, ctx, "chanfro");
       if (f.propagarTangente) arestas = propagarTangente(peca, arestas);
       const faceDe = (e: Edge): Face => {
         const adj = peca.faces.filter((fc) => fc.edges.some((x) => x.isSame(e)));

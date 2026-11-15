@@ -25,8 +25,9 @@ interface FeatureBase {
 }
 
 // ---------- referências a geometria ----------
-// Faces/arestas/vértices da peça são guardados por "assinatura" geométrica e reencontrados
-// a cada regeneração pela entidade mais parecida (o kernel não tem nomes persistentes).
+// Faces/arestas da peça têm NOME PERSISTENTE pela história (src/kernel/nomes.ts): face = recurso +
+// entidade do esboço que a gerou (ou início/fim da extrusão); aresta = par de faces. A "assinatura"
+// geométrica fica de reserva (faces sem nome, como as de STEP importado) e para desempatar.
 
 export interface AssinaturaFace {
   geom: "plano" | "cilindro" | "cone" | "esfera" | "outra";
@@ -36,6 +37,8 @@ export interface AssinaturaFace {
   eixo?: Vec3; // cilindro/cone: direção do eixo
   pontoEixo?: Vec3;
   raio?: number;
+  /** nome persistente: `<id do recurso>:<id da entidade do esboço | inicio | fim | fim2>` */
+  nome?: string;
 }
 
 export interface AssinaturaAresta {
@@ -47,6 +50,8 @@ export interface AssinaturaAresta {
   centro?: Vec3; // círculo
   eixo?: Vec3;
   raio?: number;
+  /** nome persistente: os nomes (ordenados) das duas faces que se encontram na aresta */
+  nome?: [string, string];
 }
 
 /**

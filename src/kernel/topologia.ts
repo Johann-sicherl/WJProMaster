@@ -1,9 +1,11 @@
 // Topologia da peça para seleção e referências persistentes.
-// Cada face/aresta ganha uma "assinatura" geométrica (tipo, centro, normal/eixo, área/comprimento).
-// O recurso guarda a assinatura; na regeneração, a entidade mais parecida da peça nova é usada.
+// Cada face/aresta ganha uma "assinatura" geométrica (tipo, centro, normal/eixo, área/comprimento) e,
+// quando a história permite, um NOME PERSISTENTE (src/kernel/nomes.ts). Na reconstrução a referência é
+// achada pelo nome; a assinatura fica de reserva (STEP importado, faces de filete…) e para desempatar.
 
 import { cast, downcast, getOC, HASH_CODE_MAX, measureArea, type Edge, type Face, type Shape3D } from "replicad";
 import type { AssinaturaAresta, AssinaturaFace, Referencia, Vec3 } from "../model";
+import { registroAtual, type RegistroNomes } from "./nomes";
 
 const tupla = (v: { x: number; y: number; z: number }): Vec3 => [v.x, v.y, v.z];
 const dist3 = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -180,49 +182,158 @@ export function topologia(peca: Shape3D) {
 
 export class ErroReferencia extends Error {}
 
-/** Face da peça atual que melhor corresponde à assinatura guardada. */
-export function acharFace(peca: Shape3D, ass: AssinaturaFace): Face {
-  const { faces, topo } = topologia(peca);
+/** Diferença relevante entre duas assinaturas (só a geometria; o nome é tratado à parte). */
+function mudou(a: object, b: object): boolean {
+  const A = a as Record<string, unknown>, B = b as Record<string, unknown>;
+  for (const k of Object.keys(B)) {
+    if (k === "nome") continue;
+    const x = A[k], y = B[k];
+    if (typeof y === "number") {
+      if (typeof x !== "number" || Math.abs(x - y) > 1e-7) return true;
+    } else if (Array.isArray(y)) {
+      if (!Array.isArray(x) || y.some((v, i) => Math.abs((x[i] as number) - (v as number)) > 1e-7)) return true;
+    } else if (x !== y) return true;
+  }
+  return false;
+}
+
+/**
+ * Atualiza a referência guardada com a entidade achada nesta reconstrução: nome persistente (a
+ * referência antiga, só com assinatura, ganha o nome na primeira reconstrução) e a geometria nova (a
+ * reserva acompanha a peça). Anota o valor de antes para a interface gravar no documento.
+ */
+function atualizarRef<T extends object>(reg: RegistroNomes, guardada: T, achada: T, nome: unknown) {
+  const temNome = (guardada as { nome?: unknown }).nome !== undefined;
+  const novoNome = !temNome && nome !== undefined;
+  if (!novoNome && !mudou(guardada, achada)) return;
+  reg.anotar(guardada);
+  const { nome: _n, ...geo } = achada as { nome?: unknown };
+  Object.assign(guardada, geo);
+  if (novoNome) (guardada as { nome?: unknown }).nome = nome;
+}
+
+/** Registro de nomes que vale para esta peça (feita na reconstrução em andamento). */
+function registroDa(peca: Shape3D): RegistroNomes | null {
+  const reg = registroAtual();
+  return reg?.conhece(peca) ? reg : null;
+}
+
+const notaFace = (f: AssinaturaFace, ass: AssinaturaFace) =>
+  dist3(f.centro, ass.centro) + Math.abs(f.area - ass.area) / Math.max(1, Math.sqrt(ass.area)) +
+  (ass.raio !== undefined && f.raio !== undefined ? Math.abs(ass.raio - f.raio) * 2 : 0);
+
+/** Índice da face pela assinatura (reserva), ou -1. */
+function faceDaAssinatura(faces: AssinaturaFace[], ass: AssinaturaFace): number {
   let melhor = -1, nota = Infinity;
-  topo.faces.forEach((f, i) => {
+  faces.forEach((f, i) => {
     if (f.geom !== ass.geom) return;
     if (ass.normal && f.normal && esc3(ass.normal, f.normal) < 0.995) return;
     if (ass.eixo && f.eixo && Math.abs(esc3(ass.eixo, f.eixo)) < 0.995) return;
-    const n = dist3(f.centro, ass.centro) + Math.abs(f.area - ass.area) / Math.max(1, Math.sqrt(ass.area)) +
-      (ass.raio !== undefined && f.raio !== undefined ? Math.abs(ass.raio - f.raio) * 2 : 0);
+    const n = notaFace(f, ass);
     if (n < nota) { nota = n; melhor = i; }
   });
-  const tol = Math.max(2, 0.25 * Math.sqrt(ass.area));
-  if (melhor < 0 || nota > tol) throw new ErroReferencia("Uma face selecionada não existe mais: reselecione.");
-  return faces[melhor];
+  return melhor >= 0 && nota <= Math.max(2, 0.25 * Math.sqrt(ass.area)) ? melhor : -1;
+}
+
+/** Índice (em `topologia(peca).faces`) da face guardada: pelo nome; sem nome (ou nome perdido), pela assinatura. */
+export function indiceDaFace(peca: Shape3D, ass: AssinaturaFace): number {
+  const { topo } = topologia(peca);
+  const reg = registroDa(peca);
+  let i = -1;
+  if (reg && ass.nome && reg.temNome(ass.nome)) {
+    let nota = Infinity;
+    for (const k of reg.facesDoNome(ass.nome, topo.faces)) {
+      const n = notaFace(topo.faces[k], ass);
+      if (n < nota) { nota = n; i = k; }
+    }
+  }
+  if (i < 0) i = faceDaAssinatura(topo.faces, ass);
+  if (i >= 0 && reg) atualizarRef(reg, ass, topo.faces[i], reg.nomeDaFace(topo.faces[i]));
+  return i;
+}
+
+/** Face da peça atual que corresponde à referência guardada (nome persistente; reserva: assinatura). */
+export function acharFace(peca: Shape3D, ass: AssinaturaFace): Face {
+  const i = indiceDaFace(peca, ass);
+  if (i < 0) {
+    const reg = registroAtual();
+    throw new ErroReferencia(`${maiuscula(reg ? reg.descrever(ass, "face") : "uma face selecionada")} não existe mais: reselecione.`);
+  }
+  return topologia(peca).faces[i];
+}
+
+const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const notaAresta = (a: AssinaturaAresta, ass: AssinaturaAresta) => dist3(a.meio, ass.meio) + Math.abs(a.comprimento - ass.comprimento) * 0.5;
+
+/** Arestas que ficam entre as faces de `n1` e as de `n2`. */
+function arestasEntre(reg: RegistroNomes, topo: Topologia, n1: string, n2: string): number[] {
+  if (!topo.arestasDaFace) return [];
+  const de = (n: string) => {
+    const s = new Set<number>();
+    for (const f of reg.facesDoNome(n, topo.faces)) for (const a of topo.arestasDaFace![f]) s.add(a);
+    return s;
+  };
+  const a = de(n1), b = de(n2);
+  return [...a].filter((x) => b.has(x));
+}
+
+export function indiceDaAresta(peca: Shape3D, ass: AssinaturaAresta): number {
+  const { topo } = topologia(peca);
+  const reg = registroDa(peca);
+  let i = -1;
+  if (reg && ass.nome && reg.temNome(ass.nome[0]) && reg.temNome(ass.nome[1])) {
+    let nota = Infinity;
+    for (const k of arestasEntre(reg, topo, ass.nome[0], ass.nome[1])) {
+      const a = topo.arestas[k];
+      if (a.geom !== ass.geom) continue;
+      const n = notaAresta(a, ass);
+      if (n < nota) { nota = n; i = k; }
+    }
+  }
+  if (i < 0) {
+    let nota = Infinity;
+    topo.arestas.forEach((a, k) => {
+      if (a.geom !== ass.geom) return;
+      const n = notaAresta(a, ass);
+      if (n < nota) { nota = n; i = k; }
+    });
+    if (i >= 0 && nota > Math.max(1, 0.3 * ass.comprimento)) i = -1;
+  }
+  if (i >= 0 && reg) atualizarRef(reg, ass, topo.arestas[i], reg.nomeDasArestas(topo)[i]);
+  return i;
 }
 
 export function acharAresta(peca: Shape3D, ass: AssinaturaAresta): Edge {
-  const { arestas, topo } = topologia(peca);
-  let melhor = -1, nota = Infinity;
-  topo.arestas.forEach((a, i) => {
-    if (a.geom !== ass.geom) return;
-    const n = dist3(a.meio, ass.meio) + Math.abs(a.comprimento - ass.comprimento) * 0.5;
-    if (n < nota) { nota = n; melhor = i; }
-  });
-  const tol = Math.max(1, 0.3 * ass.comprimento);
-  if (melhor < 0 || nota > tol) throw new ErroReferencia("Uma aresta selecionada não existe mais: reselecione.");
-  return arestas[melhor];
+  const i = indiceDaAresta(peca, ass);
+  if (i < 0) {
+    const reg = registroAtual();
+    throw new ErroReferencia(`${maiuscula(reg ? reg.descrever(ass, "aresta") : "uma aresta selecionada")} não existe mais: reselecione.`);
+  }
+  return topologia(peca).arestas[i];
 }
 
-/** Arestas pedidas por uma lista de itens (arestas e todas as arestas das faces). */
-export function arestasDosItens(peca: Shape3D, itens: Referencia[]): Edge[] {
+/**
+ * Arestas pedidas por uma lista de itens (arestas e todas as arestas das faces). Com `perdidos`, item
+ * que não foi achado não derruba o recurso: vai para a lista (índice e mensagem) e os outros seguem.
+ */
+export function arestasDosItens(peca: Shape3D, itens: Referencia[], perdidos?: { i: number; mensagem: string }[]): Edge[] {
   const out: Edge[] = [];
   const add = (e: Edge) => {
     if (!out.some((x) => x.isSame(e))) out.push(e);
   };
-  for (const it of itens) {
-    if (it.tipo === "aresta") add(acharAresta(peca, it.ass));
-    else if (it.tipo === "face") {
-      const f = acharFace(peca, it.ass);
-      for (const e of peca.edges) if (f.edges.some((x) => x.isSame(e))) add(e);
+  itens.forEach((it, i) => {
+    try {
+      if (it.tipo === "aresta") add(acharAresta(peca, it.ass));
+      else if (it.tipo === "face") {
+        const f = acharFace(peca, it.ass);
+        for (const e of peca.edges) if (f.edges.some((x) => x.isSame(e))) add(e);
+      }
+    } catch (e) {
+      if (!perdidos || !(e instanceof ErroReferencia)) throw e;
+      perdidos.push({ i, mensagem: e.message });
     }
-  }
+  });
   return out;
 }
 

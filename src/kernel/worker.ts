@@ -7,7 +7,9 @@ import { makeCompound, measureArea, measureShapeVolumeProperties, setOC, type Sh
 import type { Feature, Referencia, Vec3 } from "../model";
 import { posicionar, projetar, type Corte } from "./projecao";
 import type { Camera, Orientacao } from "../desenho/modelo";
-import { ehFatal, esquecerSolidosImportados, exportar, exportarDxf, malhasAtuais, pecaAtual, regenerar, regenerarComRecuperacao, temDadosDe } from "./regenerar";
+import { definirSolverEsboco, ehFatal, esquecerSolidosImportados, exportar, exportarDxf, malhasAtuais, pecaAtual, regenerar, regenerarComRecuperacao, temDadosDe } from "./regenerar";
+import wasmPlaneGcs from "@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url";
+import { SolverEsboco } from "../esboco/solver";
 
 /** Resposta do kernel: "mande o conteúdo importado de novo" (a interface reenvia sozinha). */
 export const REENVIAR = "__REENVIAR_DADOS__";
@@ -59,7 +61,12 @@ async function carregarKernel() {
   esquecerSolidosImportados();
 }
 
-const inicializado = carregarKernel();
+// solver do esboço no kernel: as referências do modelo andam com a peça já na reconstrução (sem ele, a
+// interface ainda acompanha depois, como antes)
+const inicializado = Promise.all([
+  carregarKernel(),
+  SolverEsboco.criar(() => wasmPlaneGcs).then(definirSolverEsboco, () => definirSolverEsboco(null)),
+]);
 
 // Depois de um reinício (pane do OpenCascade), o coletor de lixo do módulo antigo ainda libera
 // objetos dele e o módulo quebrado reclama ("table index is out of bounds"): é lixo do kernel

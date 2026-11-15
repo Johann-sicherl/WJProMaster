@@ -163,3 +163,26 @@ export function alvoDoArraste(esb: FeatureEsboco, arrastado: string, p: P2, tol:
   }
   return melhor;
 }
+
+/** Marca, na relação candidata do arraste, a aresta/vértice da peça que ainda vai virar referência. */
+export const ALVO_MODELO = "__modelo__";
+
+/**
+ * Linha do esboço desenhada sobre uma aresta reta da peça (projetada no plano): índice da aresta em
+ * `arestas` cuja reta passa a até `tol` das duas pontas da linha, com a mesma direção (±`tolAng`°);
+ * a mais próxima. -1 se nenhuma. O editor cria a referência e a relação Colinear com ela.
+ */
+export function linhaSobreModelo(esb: FeatureEsboco, linhaId: string, arestas: { a: P2; b: P2 }[], tol: number, tolAng = TOL_ANGULO_AUTO): number {
+  const l = esb.geos.find((g): g is Linha => g.id === linhaId && g.tipo === "linha");
+  if (!l) return -1;
+  const pts = mapaPontos(esb);
+  const a = pts.get(l.p1), b = pts.get(l.p2);
+  if (!a || !b || dist(a, b) < 1e-9) return -1;
+  let melhor = -1, dm = Infinity;
+  arestas.forEach((m, i) => {
+    if (dist(m.a, m.b) < 1e-9 || anguloEntre(sub(b, a), sub(m.b, m.a)) > tolAng) return;
+    const d = Math.max(distReta(a, m.a, m.b), distReta(b, m.a, m.b));
+    if (d <= tol && d < dm) { dm = d; melhor = i; }
+  });
+  return melhor;
+}
