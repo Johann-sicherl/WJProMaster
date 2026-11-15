@@ -4,6 +4,7 @@
 // a Peça grava no objeto de preferências dela; a Montagem e o Desenho, direto no armazenamento.
 // Opção nova de uma seção = um item a mais em `itensDaSecao`.
 
+import { ligarCalculadora } from "../comum/calculadora";
 import { ICONES, type NomeIcone } from "../icones";
 import {
   PASSO_ZOOM_MAX, PASSO_ZOOM_MIN, PASSO_ZOOM_PADRAO, passoZoom, relacoesAutoLigadas, type Dispositivo, type PrefsCad,
@@ -261,6 +262,8 @@ function criarItem(it: Item, redesenhar: () => void): HTMLElement {
       bloco.querySelector<HTMLButtonElement>(".cfg-menos")!.onclick = () => definir(Number(r.value) - 1);
       bloco.querySelector<HTMLButtonElement>(".cfg-mais")!.onclick = () => definir(Number(r.value) + 1);
       bloco.querySelector<HTMLButtonElement>(".cfg-padrao")!.onclick = () => definir(PASSO_ZOOM_PADRAO);
+      // calculadora (a mesma das cotas): o valor fica entre o mínimo e o máximo do passo
+      ligarCalculadora(r, { titulo: it.rotulo, unidade: "%", depoisDe: saida, valor: () => Number(r.value), aoAplicar: definir });
       return bloco;
     }
   }

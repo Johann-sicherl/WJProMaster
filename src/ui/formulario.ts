@@ -4,6 +4,7 @@
 // Convenção: docs/funcional/README.md.
 
 import type { Referencia } from "../model";
+import { ligarCalculadora } from "../comum/calculadora";
 
 export type TipoSel = "face" | "aresta" | "vertice" | "plano" | "eixo" | "esboco" | "recurso" | "curva" | "corpo";
 
@@ -332,6 +333,17 @@ function campo<F>(f: F, c: Campo<F>, ctx: ContextoFormulario): HTMLElement {
         aplicar(Number(ler(f, c.cam) ?? 0) + passo, true);
       };
       g.append(menos, inp, mais, el("span", "unidade", c.un ?? ""));
+      // calculadora (a mesma das cotas): o resultado entra como valor e desfaz a equação do campo
+      ligarCalculadora(inp, {
+        titulo: c.rot,
+        unidade: c.un ?? "",
+        depoisDe: mais,
+        valor: () => Number(ler(f, c.cam) ?? 0),
+        aoAplicar: (v) => {
+          ctx.definirEquacao(c.cam, null);
+          aplicar(v, true);
+        },
+      });
       l.append(g);
       return l;
     }

@@ -186,3 +186,61 @@ export function linhaSobreModelo(esb: FeatureEsboco, linhaId: string, arestas: {
   });
   return melhor;
 }
+
+/** Aresta reta da peça já projetada no plano do esboço (com a referência para criar a entidade externa). */
+export interface ArestaProjetada<R = unknown, P extends { a: P2; b: P2 } = { a: P2; b: P2 }> {
+  ref: R;
+  proj: P;
+}
+
+/**
+ * Linhas recém-criadas (`ids`) que caem sobre uma aresta reta da peça (`arestas`, projetadas no plano):
+ * a aresta entra no esboço como referência e a linha fica Colinear com ela; se a direção já estiver presa,
+ * uma ponta fica Coincidente com a aresta. Só grava o que o solver aceitar sem redundância nem conflito
+ * (nunca superdefine); a referência criada à toa sai de novo. Devolve quantas linhas ganharam relação.
+ */
+export function aplicarAutoModelo<R, P extends { a: P2; b: P2 }>(
+  esb: FeatureEsboco,
+  solver: Pick<SolverEsboco, "resolver">,
+  ids: string[],
+  arestas: ArestaProjetada<R, P>[],
+  tol: number,
+  criar: (esb: FeatureEsboco, proj: P, ref: R) => GeoEsboco,
+  tolAng = TOL_ANGULO_AUTO,
+): number {
+  if (!arestas.length) return 0;
+  let n = 0;
+  for (const id of ids) {
+    const k = linhaSobreModelo(esb, id, arestas.map((c) => c.proj), tol, tolAng);
+    const l = esb.geos.find((g): g is Linha => g.id === id && g.tipo === "linha");
+    if (k < 0 || !l) continue;
+    const antes = { geos: esb.geos.length, pontos: esb.pontos.length, restricoes: esb.restricoes.length };
+    const g = criar(esb, arestas[k].proj, arestas[k].ref);
+    const ok = tentarRelacao(esb, solver, { tipo: "colinear", a: id, b: g.id }) ||
+      tentarRelacao(esb, solver, { tipo: "coincidente", a: l.p1, b: g.id }) ||
+      tentarRelacao(esb, solver, { tipo: "coincidente", a: l.p2, b: g.id });
+    if (ok) n++;
+    else if (esb.geos.length > antes.geos) {
+      // referência nova que não serviu: sai, com os pontos e as relações dela
+      esb.geos.length = antes.geos;
+      esb.pontos.length = antes.pontos;
+      esb.restricoes.length = antes.restricoes;
+    }
+  }
+  return n;
+}
+
+/**
+ * Prévia (antes de soltar) da linha a→b sobre uma aresta reta da peça: o índice da aresta ou -1. Mesma
+ * regra de `linhaSobreModelo`, sem precisar da linha criada.
+ */
+export function previaLinhaSobreModelo(a: P2, b: P2, arestas: { a: P2; b: P2 }[], tol: number, tolAng = TOL_ANGULO_AUTO): number {
+  if (dist(a, b) < 1e-9) return -1;
+  let melhor = -1, dm = Infinity;
+  arestas.forEach((m, i) => {
+    if (dist(m.a, m.b) < 1e-9 || anguloEntre(sub(b, a), sub(m.b, m.a)) > tolAng) return;
+    const d = Math.max(distReta(a, m.a, m.b), distReta(b, m.a, m.b));
+    if (d <= tol && d < dm) { dm = d; melhor = i; }
+  });
+  return melhor;
+}

@@ -182,6 +182,11 @@ type MalhaCorpo = MalhaStl & { idCorpo?: string; copia?: number };
 
 interface Ctx {
   peca: Shape3D | null;
+  /**
+   * Mover corpo / Escala: o movimento aplicado à peça (uma função por cópia). As faces dos recursos
+   * anteriores vão junto no rastreador, para a face movida continuar do recurso que a criou.
+   */
+  transporte?: ((s: Shape3D) => Shape3D)[];
   /** id do recurso em edição (prévia) */
   previa?: string;
   /** regiões do Dividir em edição, para a lista do painel */
@@ -2249,7 +2254,10 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
       const antes = ctx.peca;
       const nAntes = antes && mesclaNaPeca(f) ? listarSolidos(antes).length : 0;
       reg.marcar(antes);
+      ctx.transporte = undefined;
       regenerarFeature(f, ctx);
+      if (ctx.transporte) rastreador.transportar(ctx.transporte);
+      ctx.transporte = undefined;
       rastreador.registrar(f.id, antes, ctx.peca);
       // "mesclar" que deixou corpo novo separado: avisa com a folga medida (não é erro)
       if (nAntes && ctx.peca && ctx.peca !== antes && listarSolidos(ctx.peca).length > nAntes) {
@@ -2774,6 +2782,7 @@ function moverCorpo(f: FeatureMoverCorpo, ctx: Ctx) {
   const fixosM = sel ? ctx.malhas.filter((_, i) => !sel.malhas.includes(i)) : [];
   const corpo = (k: number) => (movS.length ? (movS.length === 1 ? solido(movS[0], k) : solido(makeCompound(movS as never) as unknown as Shape3D, k)) : null);
   const malhaK = (k: number) => movM.map((m) => ({ ...transformarMalha(m, ponto(k), direcao(k)), idCorpo: m.idCorpo, copia: f.copiar ? (m.copia ?? 0) * 100 + k : m.copia }));
+  ctx.transporte = Array.from({ length: f.copiar ? n : 1 }, (_, i) => (s: Shape3D) => solido(s, i + 1));
   if (!f.copiar) {
     const movido = corpo(1);
     const todos = [...fixosS, ...(movido ? listarSolidos(movido) : [])];
@@ -3390,7 +3399,10 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
         if (!s) throw new ErroReferencia("Escolha um sistema de coordenadas criado antes da escala.");
         c = s.origem;
       }
-      if (peca) ctx.peca = escalar(peca, f.fator, c);
+      if (peca) {
+        ctx.peca = escalar(peca, f.fator, c);
+        if (ctx.peca !== peca) ctx.transporte = [(s) => escalar(s.clone() as Shape3D, f.fator, c)];
+      }
       ctx.malhas = ctx.malhas.map((m) => ({ ...transformarMalha(m, (p) => soma3(c, mul3(sub3(p, c), f.fator)), (n) => n), idCorpo: m.idCorpo, copia: m.copia }));
       return;
     }

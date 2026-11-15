@@ -70,7 +70,8 @@ import { construirCamada, descartarCamada } from "./esboco/visual";
 import { aninhamento, encontrarLacos } from "./esboco/geometria";
 import * as op from "./esboco/operacoes";
 import wasmPlaneGcs from "@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url";
-import { esquemaDe, esquemaParametrosChapa, type DadosEsquema } from "./ui/esquemas";
+import { esquemaDe, esquemaParametrosChapa, valorAceito, type DadosEsquema } from "./ui/esquemas";
+import { lugarDasCotas } from "./cotasRecurso";
 import { ler, renderizarFormulario, type ContextoFormulario, type Esquema, type TipoSel } from "./ui/formulario";
 import { ajustarCampo, campoInicial, camposDeSelecao, proximoCampo } from "./ui/caixasSelecao";
 import { opcoesSelecaoRapida } from "./selecaoArestas";
@@ -78,6 +79,7 @@ import { aplicarEquacoes, avaliarExpressao, resolverVariaveis } from "./equacoes
 import type { Analise } from "./analises";
 import { absorvidosDe, excluirRecursos, filhosDe } from "./dependencias";
 import { registrarComAtualizacao } from "./comum/atualizacao";
+import { instalarCalculadoras } from "./comum/calculadora";
 import { instalarLateralAjustavel } from "./ui/lateral";
 import { abrirConfiguracoesCad, type IdSecao } from "./ui/configuracoesCad";
 import { aoMudarPrefsCad, relacoesAutoLigadas, type PrefsCad } from "./ui/preferenciasCad";
@@ -429,9 +431,12 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   if (avaliacao?.tipo === "analise") mostrarLegendaAnalise();
   // cotas abertas sobre o modelo: refeitas na peça nova (posições mudam com os valores)
   if (recursoComCotas === TODAS_AS_COTAS) mostrarTodasAsCotas();
-  else if (recursoComCotas) {
+  else if (recursoComCotas === COTAS_DO_CORPO && cotasDoCorpo) {
+    const ids = new Set(cotasDoCorpo.ids);
+    mostrarCotasDosRecursos(ativas().filter((x) => ids.has(x.id)), cotasDoCorpo.titulo, true);
+  } else if (recursoComCotas) {
     const f = doc.features.find((x) => x.id === recursoComCotas);
-    if (f) mostrarCotasNoModelo(f);
+    if (f) mostrarCotasNoModelo(f, true);
     else fecharCotasNoModelo();
   }
   atualizarAlcas();
@@ -1851,6 +1856,15 @@ function pastaCorpos(lista: HTMLElement) {
       viewport.destacarEntidades(corpoSel === null ? [] : c.faces.map((indice) => ({ tipo: "face" as const, indice })), null, [], []);
       renderizarArvore();
     };
+    it.ondblclick = (ev) => {
+      ev.stopPropagation();
+      if (editor || comando) return;
+      // cotas de todos os recursos que fizeram o corpo (os que têm faces nele)
+      const fs = new Set(c.faces);
+      const recursos = ativas().filter((x) => facesPorRecurso[x.id]?.some((k) => fs.has(k)));
+      if (!recursos.length) return avisar(`${nomeCorpo(i)}: sem cotas para mostrar.`);
+      mostrarCotasDosRecursos(recursos, nomeCorpo(i));
+    };
     it.oncontextmenu = (ev) => {
       ev.preventDefault();
       if (!editor && !comando) menuDoCorpo(i, ev.clientX, ev.clientY);
@@ -2623,17 +2637,45 @@ function fecharCotasNoModelo() {
 /** "Exibir todas as cotas": em vez de um recurso, todos os ativos (esboços e valores dos recursos). */
 const TODAS_AS_COTAS = "*todas*";
 
-function mostrarCotasNoModelo(f: Feature) {
+/** Recursos com valores que não tinham onde aparecer no modelo (preenchido por `rotulosDoRecurso`). */
+let semLugarParaCotas: string[] = [];
+const avisoSemLugar = () => (semLugarParaCotas.length ? ` Sem lugar no modelo para os valores de: ${semLugarParaCotas.join(", ")} (edite pelo painel do recurso).` : "");
+
+/** Mostra as cotas do recurso no modelo; false se ele não tem nenhuma (`semAviso`: quem chamou decide). */
+function mostrarCotasNoModelo(f: Feature, silencioso = false, semAviso = false): boolean {
   fecharCotasNoModelo();
-  if (editor) return; // editando um esboço, as cotas aparecem no próprio editor
+  if (editor) return false; // editando um esboço, as cotas aparecem no próprio editor
   recursoComCotas = f.id;
+  semLugarParaCotas = [];
   const rotulos = rotulosDoRecurso(f, new Set());
   if (!rotulos.length) {
     recursoComCotas = null;
-    return avisar(`${f.nome}: sem cotas para mostrar.`);
+    if (!semAviso) avisar(`${f.nome}: sem cotas para mostrar.${avisoSemLugar()}`);
+    return false;
   }
   cotasNoModelo.mostrar(rotulos);
   viewport.pedirRender();
+  if (!silencioso) avisar(`${f.nome}: ${rotulos.length} cota(s) no modelo; toque numa para editar (o recurso inteiro: Editar na barra).${avisoSemLugar()}`);
+  return true;
+}
+
+/** Cotas de um corpo (os recursos que o fizeram), refeitas a cada reconstrução. */
+const COTAS_DO_CORPO = "*corpo*";
+let cotasDoCorpo: { ids: string[]; titulo: string } | null = null;
+
+/** Cotas de vários recursos juntos (duplo toque num corpo da pasta Corpos sólidos). */
+function mostrarCotasDosRecursos(fs: Feature[], titulo: string, silencioso = false) {
+  fecharCotasNoModelo();
+  if (editor || !fs.length) return;
+  const vistos = new Set<string>();
+  semLugarParaCotas = [];
+  const rotulos = fs.flatMap((f) => rotulosDoRecurso(f, vistos));
+  if (!rotulos.length) return avisar(`${titulo}: sem cotas para mostrar.${avisoSemLugar()}`);
+  recursoComCotas = COTAS_DO_CORPO;
+  cotasDoCorpo = { ids: fs.map((f) => f.id), titulo };
+  cotasNoModelo.mostrar(rotulos);
+  viewport.pedirRender();
+  if (!silencioso) avisar(`${titulo}: ${rotulos.length} cota(s) no modelo; toque numa para editar.${avisoSemLugar()}`);
 }
 
 /** Cotas de todos os esboços e recursos ativos, editáveis no lugar (sem caçar recurso por recurso). */
@@ -2642,14 +2684,15 @@ function mostrarTodasAsCotas() {
   if (editor) return;
   recursoComCotas = TODAS_AS_COTAS;
   const vistos = new Set<string>();
+  semLugarParaCotas = [];
   const rotulos = ativas().flatMap((f) => rotulosDoRecurso(f, vistos));
   if (!rotulos.length) {
     recursoComCotas = null;
-    return avisar("O modelo não tem cotas para mostrar.");
+    return avisar(`O modelo não tem cotas para mostrar.${avisoSemLugar()}`);
   }
   cotasNoModelo.mostrar(rotulos);
   viewport.pedirRender();
-  avisar(`${rotulos.length} cota(s) no modelo: toque numa para editar. Toque no vazio para esconder.`);
+  avisar(`${rotulos.length} cota(s) no modelo: toque numa para editar. Toque no vazio para esconder.${avisoSemLugar()}`);
 }
 
 /** Rótulos de um recurso: cotas dos esboços que ele usa (os de `vistos` são pulados) e os próprios valores. */
@@ -2700,22 +2743,25 @@ function rotulosDoRecurso(f: Feature, vistos: Set<string>): RotuloModelo[] {
       });
     }
   }
-  // valores do recurso, no centro das faces dele
-  const centro = viewport.centroFaces(facesPorRecurso[f.id] ?? []);
-  const params = (PARAMETROS_NO_MODELO[f.tipo] ?? []).filter(([, , , vis]) => !vis || vis(f as never));
+  // valores do recurso: no centro das faces dele ou, se ele não tiver faces próprias (Mover corpo,
+  // Escala, plano…), no lugar de reserva (esboço, referência, itens usados, meio da peça)
+  const params = (PARAMETROS_NO_MODELO[f.tipo] ?? []).filter(([cam, , , vis]) => (!vis || vis(f as never)) && typeof ler(f as unknown as Record<string, unknown>, cam) === "number");
+  const lugar = params.length ? lugarDasCotas(f, doc.features, facesPorRecurso, referenciasKernel, (fs) => viewport.centroFaces(fs)) : null;
+  if (params.length && !lugar) semLugarParaCotas.push(f.nome);
   params.forEach(([cam, rot, un], i) => {
-    const v = ler(f as unknown as Record<string, unknown>, cam) as number | undefined;
-    if (typeof v !== "number" || !centro) return;
+    const v = ler(f as unknown as Record<string, unknown>, cam) as number;
+    if (!lugar) return;
     const chave = `${f.id}.${cam}`;
     rotulos.push({
       texto: `${rot} ${fmt(v)}${un ? (un === "°" ? "°" : ` ${un}`) : ""}`,
       edicao: doc.equacoes?.[chave] ?? String(v),
-      pos: centro,
+      pos: lugar.pos,
       desloc: (i - (params.length - 1) / 2) * 30,
       aplicar: (t) => {
         const n = avaliarExpressao(t, valores());
-        if (!Number.isFinite(n) || n <= 0) return false;
-        gravarCaminho(f as unknown as Record<string, unknown>, cam, cam.endsWith("instancias") ? Math.max(1, Math.round(n)) : n);
+        // conforme o campo do painel: ΔX = −20 vale no Mover corpo; profundidade zero, não
+        if (!valorAceito(f, cam, n)) return false;
+        gravarCaminho(f as unknown as Record<string, unknown>, cam, n);
         doc.equacoes ??= {};
         if (t.trim().startsWith("=")) doc.equacoes[chave] = t.trim();
         else delete doc.equacoes[chave];
@@ -2960,8 +3006,13 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     li.ondblclick = () => {
       esconderBarraContexto();
       if (editor || comando) return;
-      if (f.tipo === "esboco") void editarEsboco(f);
-      else abrirComando(f, false);
+      if (f.tipo === "esboco") return void editarEsboco(f);
+      // como no CAD de referência: duplo clique no recurso mostra as cotas dele no modelo (esboços e
+      // D1/D2, ângulos…); recurso sem cotas abre o painel
+      limparSelPeca();
+      definirSel({ tipo: "feature", id: f.id });
+      renderizarTudo();
+      if (!mostrarCotasNoModelo(f, false, true)) abrirComando(f, false);
     };
     li.oncontextmenu = (ev) => {
       ev.preventDefault();
@@ -5235,6 +5286,7 @@ if (import.meta.env.DEV) {
 
 // ---------- início ----------
 instalarLateralAjustavel("peca");
+instalarCalculadoras();
 podarJanelas();
 $("btn-lateral").innerHTML = ICONES.arvore;
 $("btn-lateral").onclick = () => abrirGaveta(!document.body.classList.contains("lateral-aberta"));

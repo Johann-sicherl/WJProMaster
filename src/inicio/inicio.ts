@@ -5,6 +5,7 @@
 import "./inicio.css";
 import { botaoDiagnostico } from "../comum/diagnostico";
 import { registrarComAtualizacao } from "../comum/atualizacao";
+import { instalarCalculadoras } from "../comum/calculadora";
 
 interface Face {
   id: string;
@@ -180,6 +181,7 @@ async function sincronizarTudo(cofre: typeof import("../comum/cofre"), tarefas: 
   await tarefas.sincronizarTarefas(false).catch(() => {});
 }
 
+instalarCalculadoras();
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   registrarComAtualizacao();
 }

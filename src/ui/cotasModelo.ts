@@ -4,6 +4,7 @@
 
 import type { Vec3 } from "../model";
 import type { Viewport } from "../viewport";
+import { ligarCalculadora } from "../comum/calculadora";
 
 export interface RotuloModelo {
   /** Texto mostrado (ex.: "Ø20", "D1 10 mm"). */
@@ -61,12 +62,35 @@ export class CotasNoModelo {
     inp.inputMode = "decimal";
     inp.value = r.edicao;
     el.replaceWith(inp);
+    // calculadora (a mesma das cotas do esboço) ao lado da caixa; aberta, a caixa não fecha ao perder o foco
+    let calcAberta = false;
+    const botao = ligarCalculadora(inp, {
+      depoisDe: inp, // botão solto ao lado (a caixa é posicionada sozinha sobre a vista)
+      titulo: r.texto.replace(/\s[-−\d.,]+.*$/, "") || "Valor",
+      unidade: /°$/.test(r.texto) ? "°" : / mm$/.test(r.texto) ? "mm" : "",
+      aoAbrir: () => (calcAberta = true),
+      aoFechar: () => {
+        calcAberta = false;
+        if (!feito && document.activeElement !== inp) voltar();
+      },
+      aoAplicar: (v) => {
+        calcAberta = false;
+        inp.value = String(Math.round(v * 1e6) / 1e6);
+        if (r.aplicar(inp.value)) voltar();
+        else {
+          inp.classList.add("invalido");
+          inp.focus();
+        }
+      },
+    });
+    botao?.classList.add("cota-modelo-calc");
     inp.focus();
     inp.select();
     let feito = false; // replaceWith dispara blur: sem isso voltaria duas vezes
     const voltar = () => {
       if (feito || !inp.isConnected) return;
       feito = true;
+      botao?.remove();
       inp.replaceWith(el);
     };
     inp.onkeydown = (e) => {
@@ -75,10 +99,13 @@ export class CotasNoModelo {
       else if (e.key === "Enter") inp.classList.add("invalido");
       else if (e.key === "Escape") voltar();
     };
-    inp.onblur = () => voltar();
+    inp.onblur = () => {
+      if (!calcAberta) voltar();
+    };
     const i = this.itens.findIndex((x) => x.el === el);
     if (i >= 0) this.itens[i].el = el; // o rótulo volta no lugar da caixa
     Object.assign(inp.style, { left: el.style.left, top: el.style.top });
+    if (botao) Object.assign(botao.style, { left: el.style.left, top: el.style.top });
   }
 
   posicionar() {
@@ -87,12 +114,12 @@ export class CotasNoModelo {
       el.style.left = `${t.x}px`;
       el.style.top = `${t.y + (r.desloc ?? 0)}px`;
     }
-    for (const inp of this.camada.querySelectorAll<HTMLElement>(".cota-modelo-edicao")) inp.style.zIndex = "2";
+    for (const inp of this.camada.querySelectorAll<HTMLElement>(".cota-modelo-edicao, .cota-modelo-calc")) inp.style.zIndex = "2";
   }
 
   limpar() {
     for (const { el } of this.itens) el.remove();
-    this.camada.querySelectorAll(".cota-modelo-edicao").forEach((x) => x.remove());
+    this.camada.querySelectorAll(".cota-modelo-edicao, .cota-modelo-calc").forEach((x) => x.remove());
     this.itens = [];
     this.vp.ouvintesCamera.delete(this.ouvinte);
   }

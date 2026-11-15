@@ -976,6 +976,7 @@ textarea.texto-esboco { width: 100%; box-sizing: border-box; font: inherit; font
   min-height: 34px; padding: 2px 8px; border: 2px solid var(--acento); border-radius: 6px; font: inherit; font-size: 15px;
 }
 .cota-modelo-edicao.invalido { border-color: var(--erro); }
+.calc-campo.cota-modelo-calc { position: absolute; margin: 0; transform: translate(62px, -50%); pointer-events: auto; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
 body.disp-tablet .cota-modelo, body.disp-celular .cota-modelo { min-height: 40px; font-size: 16px; }
 .aviso-minusculas, .aviso-dinamico { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 8px 0; padding: 6px 8px 6px 10px; border-radius: 8px; background: #fff4e0; border: 1px solid #f0c27a; font-size: 13px; }
 .aviso-minusculas { flex-wrap: wrap; }

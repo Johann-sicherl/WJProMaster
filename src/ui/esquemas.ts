@@ -1140,3 +1140,32 @@ function eixoRef(): Esquema<FeatureEixoRef> {
     }],
   };
 }
+
+/** Dados vazios: só para ler os campos do esquema (limites), sem a peça aberta. */
+const DADOS_VAZIOS: DadosEsquema = {
+  esbocosAntes: [], recursosAntes: [], sistemasAntes: [], linhasEsboco: () => [], contornos: () => [], editarPosicoesFuro: () => {},
+};
+
+/**
+ * Limites do campo numérico `cam` no painel do recurso (o mesmo `min`/`max` que o painel usa): o campo
+ * visível agora, senão o primeiro com esse caminho. null se o painel não tem esse campo.
+ */
+export function limitesDoCampo(f: Feature, cam: string): { min?: number; max?: number } | null {
+  const nums = esquemaDe(f, DADOS_VAZIOS).caixas.flatMap((c) => c.campos)
+    .filter((c): c is Extract<Campo<Feature>, { t: "num" }> => c.t === "num" && c.cam === cam);
+  const c = nums.find((x) => !x.vis || x.vis(f)) ?? nums[0];
+  return c ? { min: c.min, max: c.max } : null;
+}
+
+/**
+ * Valor digitado nas cotas sobre o modelo vale para o campo? Conforme o painel do recurso (pedido do
+ * Johann, 15/11/2026: ΔX = −20 no Mover corpo é aceito; profundidade zero ou negativa, não). Instâncias
+ * são contagens: inteiras e ≥ 1.
+ */
+export function valorAceito(f: Feature, cam: string, v: number): boolean {
+  if (!Number.isFinite(v)) return false;
+  if (cam.endsWith("instancias") && (v < 1 || Math.round(v) !== v)) return false;
+  const l = limitesDoCampo(f, cam);
+  if (!l) return v > 0; // campo sem painel conhecido: o mais seguro
+  return (l.min === undefined || v >= l.min) && (l.max === undefined || v <= l.max);
+}

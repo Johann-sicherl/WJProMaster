@@ -111,6 +111,14 @@ Pontos de atenção: **Cônica** geral não existe no solver (PlaneGCS tem elips
 - **Linha sobre a aresta da peça** (15/11/2026): linha (ou lado de retângulo) desenhada sobre uma aresta reta da
   peça, dentro do raio de encaixe e ±1°, ganha a referência do modelo + **Colinear** com ela (se a direção já
   estiver presa, a ponta fica Coincidente com a aresta) — o perfil acompanha a borda quando a peça muda.
+  **Também no 2º esboço sobre a face da peça** (pedido C4, 15/11/2026), com caneta, dedo, arrastando ou com dois
+  toques; linha **na reta** da aresta mas fora dela (pontas sem encaixe) também ganha Colinear, e o símbolo
+  **"⫽ Colinear com a aresta do modelo"** aparece antes de soltar. Ctrl suprime; só entra o que o solver aceitar
+  (nunca superdefine; a referência criada à toa sai de novo). Função pura `aplicarAutoModelo` (teste em
+  `scripts/teste-cotas-recurso.ts`), roteiro de tablet `scripts/roteiro-c4.cjs`.
+- **Calculadora** (15/11/2026): além da caixa de cota, o mesmo teclado-calculadora está em **todo campo numérico**
+  (painéis de comando, painel do esboço, ⚙ Configurações, caixas de valor e as outras faces), pelo botão com o
+  símbolo de calculadora ao lado do campo (`src/comum/calculadora.ts`).
 - **Arrastar um ponto e soltar sobre aresta/vértice da peça** (15/11/2026) → referência do modelo + **Coincidente**.
 - **Linha nova** ganha **uma** relação de direção, na ordem **Colinear** (mesma reta de outra linha solta, dentro
   do raio de encaixe) › **Horizontal/Vertical** › **Paralela** (a mais alinhada; empate: a mais perto) ›

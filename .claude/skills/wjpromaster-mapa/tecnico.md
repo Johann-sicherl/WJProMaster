@@ -253,6 +253,20 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
 
 ## Observações técnicas
 
+- **Pedido C4 (15/11/2026): cotas do recurso, calculadora em todo campo e linha sobre a aresta da peça.**
+  **Armadilha corrigida**: Mover corpo e Escala refazem todas as faces; o `RastreadorFaces` as dava ao recurso
+  que move (ou a ninguém, na Escala) e o duplo toque no corpo mostrava só ΔX, nunca o D1 da extrusão. Agora o
+  recurso põe o movimento em `ctx.transporte` e `rastreador.transportar` acrescenta a cada recurso anterior as
+  cópias movidas das faces dele (as originais ficam: corpos que não se moveram; limite de 20 000 faces × cópias).
+  Rótulos sem faces próprias não somem mais em silêncio: `lugarDasCotas` (`src/cotasRecurso.ts`) tem reservas
+  (esboço — a extrusão vai na ponta —, referência, itens usados, meio da peça) e o aviso diz quem ficou sem lugar.
+  Valor digitado no modelo segue o **campo do painel** (`limitesDoCampo` lê `min`/`max` de `esquemaDe`; instâncias
+  inteiras ≥ 1). Calculadora: `src/comum/calculadora.ts`; em modo automático o campo é **envolvido** com o botão
+  (`.calc-envolve`, ocupa a célula da grade; botão solto quebrava grades) e o passo "− campo +" fica de fora (não
+  cabe); o botão abre no **pointerup** (sobre a vista 3D o toque não vira `click`); a calculadora fica em
+  `z-index: 10000` (abria atrás das janelas). Linha sobre a aresta: `aplicarAutoModelo`/`previaLinhaSobreModelo`
+  em `relacoesAuto.ts` (puros), arestas projetadas em cache no editor (`arestasDoModelo`).
+
 - **Caixa de seleção ativa e seleção rápida de arestas** (15/11/2026): `campoInicial` (primeira caixa vazia; sem
   vazia, a 1ª de um item só listada em `comPadrao` — o valor de fábrica posto por `criarRecurso`, ex.: Superior do
   Plano, Direito do Espelhar) e `proximoCampo` (próxima vazia depois da cheia, depois volta ao começo) em

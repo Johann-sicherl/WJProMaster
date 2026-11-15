@@ -7,6 +7,7 @@ import { abrirCopias, abrirDoCofre, APPS, desligar, instalarPainelCofre, salvarN
 import "./comum.css";
 import { IC, type NomeIc } from "./icones";
 import { registrarComAtualizacao } from "./atualizacao";
+import { instalarCalculadoras } from "./calculadora";
 
 export interface Comando {
   id: string;
@@ -392,3 +393,6 @@ export const autosave = {
 export function registrarOffline() {
   registrarComAtualizacao();
 }
+
+// botão calculadora em todo campo numérico dos apps (pedido do Johann, 15/11/2026)
+if (typeof document !== "undefined" && document.body) instalarCalculadoras();
