@@ -95,6 +95,23 @@ export interface Processo {
   saiaDistancia: number;
 }
 
+/**
+ * Troca de cor (sistema de 4 filamentos de cada impressora). Valores de fábrica = típicos do sistema de
+ * cada máquina (estimativa, a confirmar com uma impressão medida); o usuário edita no projeto.
+ */
+export interface ConfigTroca {
+  /** purga por troca (mm³ de filamento novo empurrado para limpar o bico) */
+  purgaMm3: number;
+  /** tempo de cada troca (s): recolher, trocar e carregar o filamento, sem a purga */
+  tempoS: number;
+  /** vazão da purga (mm³/s) */
+  vazaoPurga: number;
+  /** torre de purga: onde a purga é depositada (desligada: a purga cai fora da peça) */
+  torre: boolean;
+  /** lado da torre (mm) */
+  larguraTorre: number;
+}
+
 export interface Maquina {
   id: string;
   marca: "Bambu Lab" | "Anycubic";
@@ -125,6 +142,8 @@ export interface Maquina {
   vLimpeza: number;
   /** preparo típico (aquecer mesa e bico, nivelar, linha de purga), minutos */
   preparoMin: number;
+  /** troca de cor de fábrica (sistema de 4 filamentos) */
+  troca: ConfigTroca;
   processo: Processo;
   /** materiais que a máquina oferece, com os valores do perfil desta máquina */
   materiais: Partial<Record<IdMaterial, Omit<Material, "id" | "nome" | "precoKg">>>;
@@ -157,6 +176,7 @@ export const MAQUINAS: Maquina[] = [
     id: "bbl-p1s", marca: "Bambu Lab", modelo: "P1S", mesa: [256, 256], alturaMax: 250,
     aMax: 20000, vMax: 500, jerk: 9, aceleraDesacelera: 0, vZ: 20, aZ: 500,
     retracao: 0.8, vRetracao: 30, vRecuperacao: 30, retracaoMin: 1, zHop: 0.4, zHopAcima: 0, limpeza: 2, vLimpeza: 0.8, preparoMin: 5,
+    troca: { purgaMm3: 280, tempoS: 35, vazaoPurga: 9, torre: true, larguraTorre: 35 },
     processo: {
       altura: 0.2, alturaPrimeira: 0.2, paredes: 2, topo: 5, fundo: 3, topoMm: 1, fundoMm: 0, preenchimento: 0.15, padrao: "grade",
       lParedeExt: 0.42, lParedeInt: 0.45, lEsparso: 0.45, lSolido: 0.42, lTopo: 0.42, lPrimeira: 0.5, lSuporte: 0.42,
@@ -184,6 +204,7 @@ export const MAQUINAS: Maquina[] = [
     id: "acu-k3", marca: "Anycubic", modelo: "Kobra 3", mesa: [255, 255], alturaMax: 260,
     aMax: 15000, vMax: 600, jerk: 20, aceleraDesacelera: 0.5, vZ: 10, aZ: 5000,
     retracao: 1, vRetracao: 60, vRecuperacao: 60, retracaoMin: 1, zHop: 0.4, zHopAcima: 0.3, limpeza: 2, vLimpeza: 0.8, preparoMin: 4,
+    troca: { purgaMm3: 250, tempoS: 50, vazaoPurga: 8, torre: true, larguraTorre: 35 },
     processo: {
       altura: 0.2, alturaPrimeira: 0.2, paredes: 2, topo: 5, fundo: 3, topoMm: 1, fundoMm: 0.6, preenchimento: 0.15, padrao: "cruzado",
       lParedeExt: 0.42, lParedeInt: 0.45, lEsparso: 0.45, lSolido: 0.42, lTopo: 0.42, lPrimeira: 0.5, lSuporte: 0.4,

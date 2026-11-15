@@ -12,6 +12,8 @@
     <header class="wj-topo">
       <a class="wj-marca" href="../" title="Voltar ao WJProMaster"><img src="/wjpromaster.svg" alt="" /><span>WJSlicer3D <small id="sl-versao" class="versao-app"></small></span></a>
       <button id="sl-abrir" class="sl-abrir" title="Pôr na mesa um STL do cofre ou do aparelho"><span>Adicionar STL</span></button>
+      <button id="sl-salvar" class="sl-abrir" title="Salvar o projeto (peças, pintura, filamentos e ajustes) no cofre do WJPDM"><span>Salvar projeto</span></button>
+      <button id="sl-abrir-projeto" class="sl-abrir" title="Abrir um projeto do WJSlicer3D do cofre"><span>Abrir projeto</span></button>
       <span class="sl-sub">Tempo e material por fatiamento real · sem G-code</span>
       <div id="sl-direita" class="wj-direita"></div>
     </header>
@@ -50,6 +52,7 @@
             </div>
             <div id="sl-faixa" class="sl-faixa" aria-hidden="true"></div>
             <dl id="sl-dados" class="sl-dados"></dl>
+            <div id="sl-por-cor" class="sl-por-cor" hidden></div>
             <div id="sl-avisos" class="sl-avisos" hidden></div>
             <details class="sl-detalhe">
               <summary>Tempo por tipo de caminho</summary>
@@ -66,6 +69,45 @@
           <h2>Peças na mesa <button id="sl-adicionar" class="sl-mini" title="Pôr outro STL na mesa">+ Peça</button></h2>
           <ul id="sl-lista" class="sl-lista"></ul>
           <p class="sl-nota">Toque numa peça (na lista ou na mesa) para girar, apoiar ou mudar as cópias. A mesa se organiza sozinha.</p>
+        </section>
+        <section class="sl-cartao" id="sl-cartao-cores">
+          <h2>Cores e pintura <button id="sl-pintar" class="sl-mini" aria-pressed="false" title="Pintar a peça escolhida: caneta ou mouse pintam, o dedo gira a vista">Pintar</button></h2>
+          <div id="sl-pintura" hidden>
+            <div id="sl-ferramentas" class="sl-ferramentas" role="toolbar" aria-label="Ferramentas de pintura">
+              <button data-ferr="pincel" aria-pressed="true" title="Pincel: pinta onde a caneta passa">Pincel</button>
+              <button data-ferr="face" aria-pressed="false" title="Balde por face: pinta a face plana tocada">Balde (face)</button>
+              <button data-ferr="regiao" aria-pressed="false" title="Balde por região: pinta tudo o que está ligado e tem a mesma cor">Balde (região)</button>
+              <button data-ferr="angulo" aria-pressed="false" title="Preencher por ângulo: espalha até uma aresta mais viva que o ângulo">Por ângulo</button>
+              <button data-ferr="corpo" aria-pressed="false" title="Corpo inteiro: pinta o corpo tocado (peça com vários corpos)">Corpo inteiro</button>
+              <button data-ferr="borracha" aria-pressed="false" title="Borracha: volta à cor 1">Borracha</button>
+            </div>
+            <div id="sl-paleta" class="sl-paleta" role="radiogroup" aria-label="Cor para pintar"></div>
+            <label class="sl-campo" id="sl-campo-pincel">Tamanho do pincel <span class="sl-faixa-valor"><input id="sl-pincel" type="range" min="1" max="30" step="0.5" value="4" /><b id="sl-pincel-v"></b></span></label>
+            <label class="sl-campo" id="sl-campo-angulo" hidden>Ângulo máximo entre triângulos <span class="sl-faixa-valor"><input id="sl-angulo" type="range" min="2" max="90" step="1" value="30" /><b id="sl-angulo-v"></b></span></label>
+            <div class="sl-linha">
+              <button id="sl-desfazer-cor" disabled>↶ Desfazer</button>
+              <button id="sl-limpar-cor" title="Volta a peça escolhida para a cor 1">Limpar pintura</button>
+            </div>
+            <p class="sl-nota">Caneta ou mouse pintam; o dedo gira e aproxima a vista. Até 4 cores por peça.</p>
+          </div>
+          <details class="sl-detalhe" id="sl-det-fil">
+            <summary>Cores e filamentos do projeto</summary>
+            <div id="sl-filamentos" class="sl-filamentos"></div>
+            <p class="sl-nota">A cor 1 usa o material e o preço de “Impressora e material”. Os filamentos ficam no projeto e seguem para a biblioteca de custos.</p>
+          </details>
+          <details class="sl-detalhe" id="sl-det-troca">
+            <summary>Custo das trocas de cor</summary>
+            <div class="sl-par">
+              <label class="sl-campo">Purga por troca (mm³) <input id="sl-purga" type="number" min="0" step="10" inputmode="decimal" /></label>
+              <label class="sl-campo">Tempo da troca (s) <input id="sl-tempo-troca" type="number" min="0" step="5" inputmode="decimal" /></label>
+            </div>
+            <div class="sl-par">
+              <label class="sl-chave"><input id="sl-torre" type="checkbox" /> Torre de purga</label>
+              <label class="sl-campo">Lado da torre (mm) <input id="sl-torre-l" type="number" min="10" max="80" step="1" inputmode="decimal" /></label>
+            </div>
+            <button id="sl-troca-padrao" class="sl-mini" title="Volta aos valores de fábrica desta impressora">Padrão de fábrica</button>
+            <p id="sl-troca-info" class="sl-nota"></p>
+          </details>
         </section>
         <section class="sl-cartao">
           <h2>Impressora e material</h2>

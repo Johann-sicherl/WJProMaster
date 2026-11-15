@@ -7,13 +7,15 @@
 import "../comum/comum.css";
 import "./slicer.css";
 import { aplicarDispositivo, escapar, escolherArquivo, janela, menu } from "../comum/casca";
-import { escolherDoCofre, lerBytesDoCofre, sincronizarAoAbrir } from "../comum/cofre";
+import { abrirDoCofre, escolherDoCofre, instalarPainelCofre, lerBytesDoCofre, salvarNoCofre, sincronizarAoAbrir } from "../comum/cofre";
 import { botaoDiagnostico } from "../comum/diagnostico";
 import { registrarComAtualizacao } from "../comum/atualizacao";
 import { IC } from "../comum/icones";
 import { pegar } from "../comum/transferir";
 import { ajustesPadrao, formatarTempo, NOMES_PARTES, PARTES, type Ajustes, type Parte, type Resultado } from "./fatiar";
-import { MAQUINAS, maquinaPorId, materiaisDa, materialDa, NOMES_PADROES, type IdMaterial, type Padrao, type TipoSuporte } from "./perfis";
+import { MAQUINAS, maquinaPorId, materiaisDa, materialDa, NOMES_PADROES, type ConfigTroca, type IdMaterial, type Padrao, type TipoSuporte } from "./perfis";
+import { balde, filamentosPadrao, MAX_CORES, pincel, pintarCorpo, topologia, type Filamento, type Topologia } from "./cores";
+import { desempacotar, empacotar, EXTENSAO_PROJETO, type ProjetoSlicer } from "./projeto";
 import { VistaMesa } from "./vista";
 import type { PecaInfo, PedidoSlicer, RespostaSlicer } from "./worker";
 
@@ -30,11 +32,15 @@ interface Preferencias {
   ajustes: Ajustes;
   /** fator de calibração do tempo por impressora (tempo real ÷ estimado) */
   calibracao: Record<string, number>;
+  /** cores e filamentos (o material e o preço do primeiro vêm de "Impressora e material") */
+  filamentos: Filamento[];
+  /** troca de cor editada por impressora (o que falta usa o de fábrica) */
+  trocas: Record<string, Partial<ConfigTroca>>;
 }
 const CHAVE = "wjslicer:preferencias";
 
 function lerPreferencias(): Preferencias {
-  const padrao: Preferencias = { maquina: MAQUINAS[0].id, material: "pla", precos: {}, ajustes: ajustesPadrao(MAQUINAS[0].processo), calibracao: {} };
+  const padrao: Preferencias = { maquina: MAQUINAS[0].id, material: "pla", precos: {}, ajustes: ajustesPadrao(MAQUINAS[0].processo), calibracao: {}, filamentos: filamentosPadrao(), trocas: {} };
   try {
     const p = JSON.parse(localStorage.getItem(CHAVE) ?? "null") as (Partial<Preferencias> & { ajustes?: Partial<Ajustes> & { suporte?: unknown } }) | null;
     if (!p) return padrao;
@@ -45,7 +51,8 @@ function lerPreferencias(): Preferencias {
     // versões antigas guardavam o suporte como sim/não
     if (typeof (p.ajustes?.suporte as unknown) === "boolean") aj.suporte = p.ajustes!.suporte ? maquinaPorId(maquina).processo.suporteTipo : "nenhum";
     if (!(aj.padrao in NOMES_PADROES)) aj.padrao = base.padrao;
-    return { ...padrao, ...p, maquina, ajustes: aj, precos: p.precos ?? {}, calibracao: p.calibracao ?? {} };
+    const fil = Array.from({ length: MAX_CORES }, (_, k) => ({ ...padrao.filamentos[k], ...(p.filamentos?.[k] ?? {}) }));
+    return { ...padrao, ...p, maquina, ajustes: aj, precos: p.precos ?? {}, calibracao: p.calibracao ?? {}, filamentos: fil, trocas: p.trocas ?? {} };
   } catch {
     return padrao;
   }
@@ -64,6 +71,17 @@ let escolhida: number | null = null;
 let ultimo: Resultado | null = null;
 let seq = 0;
 let previaLigada = false;
+let pintando = false;
+interface DadosPeca {
+  pos: Float32Array;
+  tri: Uint32Array;
+  cores: Uint8Array;
+  top?: Topologia;
+}
+const malhas = new Map<number, DadosPeca>();
+let desfazerPilha: { id: number; cores: Uint8Array }[] = [];
+let resolverExportar: ((p: { nome: string; copias: number; pos: Float32Array; tri: Uint32Array; cores: Uint8Array }[]) => void) | null = null;
+let nomeProjeto = "";
 
 // ---------- worker e vista ----------
 
@@ -77,14 +95,20 @@ vista.aoEscolher = (id) => {
 
 const CORES: Record<Parte, string> = {
   paredeExt: "#2f7fd0", paredeInt: "#6aa7e3", solido: "#e08a2e", topo: "#d0582f", ponte: "#a35d9e",
-  esparso: "#e2b13c", suporte: "#8a96a3", interface: "#5e6b78", borda: "#4bb39b", deslocamento: "#b9c2cc", resfriamento: "#38424d",
+  esparso: "#e2b13c", suporte: "#8a96a3", interface: "#5e6b78", borda: "#4bb39b", troca: "#c0507a", torre: "#8f6fd0", deslocamento: "#b9c2cc", resfriamento: "#38424d",
 };
 const CORES_HEX = PARTES.map((p) => parseInt(CORES[p].slice(1), 16));
 
 worker.onmessage = (e: MessageEvent<RespostaSlicer>) => {
   const r = e.data;
   if (r.tipo === "pecas") {
-    for (const m of r.malhas) vista.definirMalha(m.id, m.pos, m.tri);
+    for (const m of r.malhas) {
+      vista.definirMalha(m.id, m.pos, m.tri, m.cores);
+      malhas.set(m.id, { pos: m.pos, tri: m.tri, cores: m.cores });
+      desfazerPilha = desfazerPilha.filter((x) => x.id !== m.id);
+    }
+    for (const id of [...malhas.keys()]) if (!r.lista.some((p) => p.id === id)) malhas.delete(id);
+    atualizarDesfazer();
     pecas = r.lista;
     if (r.malhas.length) escolhida = r.malhas[r.malhas.length - 1].id;
     if (!pecas.some((p) => p.id === escolhida)) escolhida = pecas[0]?.id ?? null;
@@ -98,6 +122,9 @@ worker.onmessage = (e: MessageEvent<RespostaSlicer>) => {
       $("sl-previa").hidden = true;
       ligarPrevia(false);
     }
+  } else if (r.tipo === "projetoPecas") {
+    resolverExportar?.(r.pecas);
+    resolverExportar = null;
   } else if (r.tipo === "progresso" && r.seq === seq) {
     $("sl-barra").style.width = `${Math.round(r.f * 100)}%`;
   } else if (r.tipo === "resultado" && r.seq === seq) {
@@ -122,7 +149,10 @@ function foraDaMesa(): Set<number> {
       if (Math.abs(x) + p.dims[0] / 2 > m.mesa[0] / 2 + 1e-6 || Math.abs(y) + p.dims[1] / 2 > m.mesa[1] / 2 + 1e-6 || p.dims[2] > m.alturaMax) fora.add(p.id);
   return fora;
 }
-const desenharPecas = () => vista.definirPecas(pecas, escolhida, foraDaMesa());
+const temPintura = (id: number) => !!malhas.get(id)?.cores.some((c) => c > 0);
+/** peças mostradas com as cores dos filamentos: as pintadas (todas, enquanto se pinta) */
+const coloridas = () => new Set(pecas.filter((p) => pintando || temPintura(p.id)).map((p) => p.id));
+const desenharPecas = () => vista.definirPecas(pecas, escolhida, foraDaMesa(), coloridas());
 
 let avisoT = 0;
 function avisar(msg: string, ms = 5000) {
@@ -269,6 +299,8 @@ function preencherPainel() {
   $("sl-maq-info").textContent = `Mesa ${m.mesa[0]} × ${m.mesa[1]} × ${m.alturaMax} mm · bico 0,4 mm · paredes ${pr.vParedeExt}/${pr.vParedeInt} mm/s, até ${num(m.aMax)} mm/s² · ${mat.nome}: ${num(mat.densidade, 2)} g/cm³, até ${num(mat.vazaoMax, 1)} mm³/s, camada mínima ${mat.tempoCamada} s`;
   const f = pref.calibracao[m.id];
   $("sl-calibrado").textContent = f ? `Tempo calibrado para esta impressora: × ${num(f, 2)}` : "";
+  desenharFilamentos();
+  preencherTroca();
 }
 
 const inteiro = (inp: HTMLInputElement, min: number, max: number) => Math.max(min, Math.min(max, Math.round(Number(inp.value) || 0)));
@@ -312,6 +344,7 @@ for (const inp of [preco, selAltura, ...Object.values(campos)])
     $("sl-preench-v").textContent = `${campos.preenchimento.value}%`;
     const borda = pref.ajustes.borda;
     lerPainel();
+    desenharFilamentos();
     if (pref.ajustes.borda !== borda) avisarMesa(); // a borda precisa de mais folga entre as peças
     else recalcular();
   });
@@ -340,7 +373,7 @@ function recalcular(atraso = 250) {
     $("sl-ocupado").hidden = false;
     $("sl-barra").style.width = "0%";
     const mat = materialDa(maquina(), pref.material);
-    pedir({ tipo: "estimar", seq, maquina: pref.maquina, material: pref.material, precoKg: pref.precos[pref.material] ?? mat.precoKg, ajustes: pref.ajustes });
+    pedir({ tipo: "estimar", seq, maquina: pref.maquina, material: pref.material, precoKg: pref.precos[pref.material] ?? mat.precoKg, ajustes: pref.ajustes, filamentos: filamentosEfetivos(), troca: trocaAtual() });
   }, atraso);
 }
 
@@ -359,6 +392,7 @@ function mostrarResultado() {
     <div><dt>Total com preparo</dt><dd>${formatarTempo(tempo + r.preparoS)}</dd></div>
     <div><dt>Camadas</dt><dd>${num(r.camadas)}</dd></div>
     <div><dt>${r.copias > 1 ? `Volume das ${r.copias} peças` : "Volume da peça"}</dt><dd>${r.volumePeca === null ? "—" : `${num(r.volumePeca / 1000, 2)} cm³`}</dd></div>`;
+  mostrarCores(r, fator);
   const total = r.tempoS || 1;
   const dens = materialDa(maquina(), pref.material).densidade;
   const linhas = PARTES.filter((k) => r.partes[k].tempo > 0.5 || r.partes[k].volume > 0.5).map((k) => {
@@ -374,6 +408,312 @@ function mostrarResultado() {
   desenharPecas();
 }
 
+// ---------- cores: filamentos, trocas, pintura ----------
+
+const selFil = (i: number) => pref.filamentos[i] ?? filamentosPadrao()[i];
+/** filamentos do orçamento: o primeiro usa o material e o preço de "Impressora e material" */
+function filamentosEfetivos(): Filamento[] {
+  const mat = materialDa(maquina(), pref.material);
+  return pref.filamentos.map((f, i) => (i === 0 ? { ...f, material: pref.material, precoKg: pref.precos[pref.material] ?? mat.precoKg } : f));
+}
+const trocaAtual = (): ConfigTroca => ({ ...maquina().troca, ...pref.trocas[pref.maquina] });
+const hexCores = () => pref.filamentos.map((f) => f.cor);
+
+function desenharFilamentos() {
+  const mats = materiaisDa(maquina());
+  const fil = filamentosEfetivos();
+  $("sl-filamentos").innerHTML = fil
+    .map((f, i) => {
+      const opcoes = mats.map((m) => `<option value="${m.id}"${m.id === f.material ? " selected" : ""}>${escapar(m.nome)}</option>`).join("");
+      return `<div class="sl-filamento" data-i="${i}">
+        <input type="color" data-c="cor" value="${f.cor}" aria-label="Cor do filamento ${i + 1}" />
+        <input type="text" data-c="nome" value="${escapar(f.nome)}" maxlength="24" aria-label="Nome do filamento ${i + 1}" />
+        <select data-c="material" aria-label="Material do filamento ${i + 1}">${opcoes}</select>
+        <input type="number" data-c="preco" min="0" step="1" inputmode="decimal" value="${f.precoKg}" aria-label="Preço por kg do filamento ${i + 1}" />
+      </div>`;
+    })
+    .join("");
+  desenharPaleta();
+  vista.definirFilamentos(hexCores());
+}
+
+$("sl-filamentos").addEventListener("change", (e) => {
+  const campo = e.target as HTMLInputElement | HTMLSelectElement;
+  const linha = campo.closest<HTMLElement>(".sl-filamento");
+  if (!linha) return;
+  const i = Number(linha.dataset.i), f = selFil(i);
+  const c = campo.dataset.c;
+  if (c === "cor") f.cor = campo.value;
+  else if (c === "nome") f.nome = campo.value.trim() || `Filamento ${i + 1}`;
+  else if (c === "material") {
+    f.material = campo.value as IdMaterial;
+    if (i === 0) {
+      selMat.value = campo.value;
+      selMat.dispatchEvent(new Event("change"));
+      return;
+    }
+  } else if (c === "preco") {
+    const v = Number(campo.value.replace(",", "."));
+    if (!(v >= 0)) return;
+    f.precoKg = v;
+    if (i === 0) {
+      preco.value = String(v);
+      preco.dispatchEvent(new Event("change"));
+      return;
+    }
+  }
+  guardar();
+  vista.definirFilamentos(hexCores());
+  desenharPaleta();
+  if (c === "cor" || c === "nome") {
+    if (ultimo) mostrarCores(ultimo, pref.calibracao[pref.maquina] ?? 1);
+  } else recalcular();
+});
+
+let corAtual = 0;
+function desenharPaleta() {
+  $("sl-paleta").innerHTML = pref.filamentos
+    .map((f, i) => `<button data-cor="${i}" role="radio" aria-checked="${i === corAtual}" style="background:${f.cor};color:${luminosa(f.cor) ? "#1d2733" : "#fff"}" title="${escapar(f.nome)}" aria-label="Cor ${i + 1}: ${escapar(f.nome)}">${i + 1}</button>`)
+    .join("");
+}
+function luminosa(hex: string) {
+  const n = parseInt(hex.slice(1), 16);
+  return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) > 150;
+}
+$("sl-paleta").onclick = (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-cor]");
+  if (!b) return;
+  corAtual = Number(b.dataset.cor);
+  desenharPaleta();
+  if (ferramenta === "borracha") escolherFerramenta("pincel");
+};
+
+const trocaCampos = {
+  purga: $<HTMLInputElement>("sl-purga"),
+  tempo: $<HTMLInputElement>("sl-tempo-troca"),
+  torre: $<HTMLInputElement>("sl-torre"),
+  largura: $<HTMLInputElement>("sl-torre-l"),
+};
+function preencherTroca() {
+  const t = trocaAtual(), m = maquina();
+  trocaCampos.purga.value = String(t.purgaMm3);
+  trocaCampos.tempo.value = String(t.tempoS);
+  trocaCampos.torre.checked = t.torre;
+  trocaCampos.largura.value = String(t.larguraTorre);
+  trocaCampos.largura.disabled = !t.torre;
+  $("sl-troca-info").textContent = `De fábrica (${m.modelo}): purga ${m.troca.purgaMm3} mm³, troca ${m.troca.tempoS} s, torre ${m.troca.larguraTorre} mm. São valores típicos do sistema de 4 filamentos: ajuste com a sua medida.`;
+}
+for (const inp of Object.values(trocaCampos))
+  inp.addEventListener("change", () => {
+    const n = (x: HTMLInputElement, min: number, max: number, d: number) => Math.min(max, Math.max(min, Number(x.value.replace(",", ".")) || d));
+    const base = maquina().troca;
+    pref.trocas[pref.maquina] = {
+      purgaMm3: n(trocaCampos.purga, 0, 5000, base.purgaMm3), tempoS: n(trocaCampos.tempo, 0, 600, base.tempoS),
+      torre: trocaCampos.torre.checked, larguraTorre: n(trocaCampos.largura, 10, 80, base.larguraTorre),
+    };
+    guardar();
+    preencherTroca();
+    recalcular();
+  });
+$("sl-troca-padrao").onclick = () => {
+  delete pref.trocas[pref.maquina];
+  guardar();
+  preencherTroca();
+  recalcular();
+};
+
+/** material por cor e o custo das trocas no resultado */
+function mostrarCores(r: Resultado, fator: number) {
+  const usadas = r.cores.map((c, i) => ({ c, i })).filter((x) => x.c.usada);
+  const caixa = $("sl-por-cor");
+  caixa.hidden = usadas.length < 2 && r.trocas.total === 0;
+  if (caixa.hidden) return;
+  const fil = filamentosEfetivos();
+  const dens = materialDa(maquina(), pref.material).densidade;
+  caixa.innerHTML = `<table class="wj-tabela"><thead><tr><th>Cor</th><th>Material</th><th>Filamento</th><th>Custo</th></tr></thead><tbody>${usadas
+    .map(({ c, i }) => `<tr><td><i style="background:${fil[i].cor}"></i>${escapar(fil[i].nome)}</td><td>${num(c.massaG, 1)} g</td><td>${num(c.comprimentoM, 2)} m</td><td>R$ ${num(c.custo, 2)}</td></tr>`)
+    .join("")}</tbody></table>`;
+  if (r.trocas.total > 0) {
+    const t = r.trocas;
+    caixa.innerHTML += `<dl class="sl-dados">
+      <div><dt>Trocas de cor</dt><dd>${num(t.total)} em ${num(t.camadas)} camada${t.camadas > 1 ? "s" : ""} (até ${t.maximoPorCamada} por camada)</dd></div>
+      <div><dt>Tempo das trocas (troca + purga)</dt><dd>${formatarTempo(t.tempoS * fator)}</dd></div>
+      <div><dt>Purga</dt><dd>${num(t.purgaMm3, 0)} mm³ · ${num((t.purgaMm3 / 1000) * dens, 1)} g</dd></div>
+      <div><dt>Torre de purga</dt><dd>${t.torreCamadas ? `${num(t.torreCamadas)} camadas · ${num((t.torreMm3 / 1000) * dens, 1)} g · ${formatarTempo(t.torreTempoS * fator)}` : "desligada"}</dd></div>
+    </dl><p class="sl-nota">O material e o tempo acima já incluem a purga e a torre.</p>`;
+  }
+}
+
+// ---- pintura ----
+type Ferramenta = "pincel" | "face" | "regiao" | "angulo" | "corpo" | "borracha";
+let ferramenta: Ferramenta = "pincel";
+let traco: { id: number; antes: Uint8Array; mudou: boolean; aplicado: boolean } | null = null;
+const campoPincel = $("sl-campo-pincel"), campoAngulo = $("sl-campo-angulo");
+const rPincel = $<HTMLInputElement>("sl-pincel"), rAngulo = $<HTMLInputElement>("sl-angulo");
+
+function escolherFerramenta(f: Ferramenta) {
+  ferramenta = f;
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-ferr]")) b.setAttribute("aria-pressed", String(b.dataset.ferr === f));
+  const ponta = f === "pincel" || f === "borracha";
+  campoPincel.hidden = !ponta;
+  campoAngulo.hidden = f !== "angulo";
+  vista.mostrarPincel = ponta;
+}
+$("sl-ferramentas").onclick = (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-ferr]");
+  if (b) escolherFerramenta(b.dataset.ferr as Ferramenta);
+};
+function lerPincel() {
+  vista.raioPincel = Number(rPincel.value);
+  $("sl-pincel-v").textContent = `${num(Number(rPincel.value), 1)} mm`;
+  $("sl-angulo-v").textContent = `${rAngulo.value}°`;
+}
+rPincel.addEventListener("input", lerPincel);
+rAngulo.addEventListener("input", lerPincel);
+
+function ligarPintura(on: boolean) {
+  if (on && !pecas.length) return avisar("Ponha uma peça na mesa para pintar.");
+  pintando = on;
+  vista.pintando = on;
+  $("sl-pintar").setAttribute("aria-pressed", String(on));
+  $("sl-pintura").hidden = !on;
+  if (on && escolhida === null) escolhida = pecas[0]?.id ?? null;
+  if (!on) {
+    vista.mostrarPincel = false;
+    vista.moverCursor(null);
+  }
+  else escolherFerramenta(ferramenta);
+  desenharPecas();
+  mostrarLista();
+}
+$("sl-pintar").onclick = () => ligarPintura(!pintando);
+
+function atualizarDesfazer() {
+  $<HTMLButtonElement>("sl-desfazer-cor").disabled = !desfazerPilha.length;
+}
+function empilhar(id: number, antes: Uint8Array) {
+  desfazerPilha.push({ id, cores: antes });
+  if (desfazerPilha.length > 40) desfazerPilha.shift();
+  atualizarDesfazer();
+}
+/** manda a pintura da peça ao worker e recalcula o orçamento */
+function pintouPeca(id: number) {
+  const d = malhas.get(id);
+  if (!d) return;
+  vista.definirCores(id, d.cores);
+  pedir({ tipo: "cores", id, cores: d.cores.slice() });
+  desenharPecas();
+  recalcular(700);
+}
+
+vista.aoPintar = (a) => {
+  if (a.fase === "fim") {
+    const t = traco;
+    traco = null;
+    if (t?.mudou) {
+      empilhar(t.id, t.antes);
+      pintouPeca(t.id);
+    }
+    return;
+  }
+  const d = malhas.get(a.id);
+  if (!d) return;
+  if (a.fase === "inicio") {
+    if (a.id !== escolhida) escolher(a.id);
+    traco = { id: a.id, antes: d.cores.slice(), mudou: false, aplicado: false };
+  }
+  if (!traco || traco.id !== a.id) return;
+  d.top ??= topologia({ pos: d.pos, tri: d.tri });
+  const cor = ferramenta === "borracha" ? 0 : corAtual;
+  let n = 0;
+  if (ferramenta === "pincel" || ferramenta === "borracha") n = pincel(d.top, d.cores, a.ponto, a.normal, vista.raioPincel, cor);
+  else if (!traco.aplicado) {
+    traco.aplicado = true;
+    if (ferramenta === "corpo") n = pintarCorpo(d.top, d.cores, a.tri, cor);
+    else n = balde(d.top, d.cores, a.tri, cor, ferramenta === "face" ? { tipo: "face" } : ferramenta === "regiao" ? { tipo: "regiao" } : { tipo: "angulo", graus: Number(rAngulo.value) });
+  }
+  if (n) {
+    traco.mudou = true;
+    vista.definirCores(a.id, d.cores);
+  }
+};
+$("sl-desfazer-cor").onclick = () => {
+  const u = desfazerPilha.pop();
+  atualizarDesfazer();
+  const d = u && malhas.get(u.id);
+  if (!u || !d) return;
+  d.cores.set(u.cores);
+  pintouPeca(u.id);
+};
+$("sl-limpar-cor").onclick = () => {
+  const d = escolhida !== null ? malhas.get(escolhida) : null;
+  if (!d || !d.cores.some((c) => c > 0)) return avisar("A peça escolhida não tem pintura.");
+  empilhar(escolhida!, d.cores.slice());
+  d.cores.fill(0);
+  pintouPeca(escolhida!);
+};
+lerPincel();
+
+// ---------- projeto no cofre (.wjslc) ----------
+
+function pecasDoWorker() {
+  return new Promise<{ nome: string; copias: number; pos: Float32Array; tri: Uint32Array; cores: Uint8Array }[]>((ok) => {
+    resolverExportar = ok;
+    pedir({ tipo: "exportar" });
+  });
+}
+
+/** Salva o projeto (peças, pintura, filamentos, trocas e ajustes) no cofre do WJPDM. */
+async function salvarProjeto(): Promise<string> {
+  const lista = await pecasDoWorker();
+  if (!lista.length) {
+    const m = "Ponha uma peça na mesa antes de salvar o projeto.";
+    avisar(m);
+    return m;
+  }
+  const trocas: Record<string, ConfigTroca> = {};
+  for (const m of MAQUINAS) if (pref.trocas[m.id]) trocas[m.id] = { ...m.troca, ...pref.trocas[m.id] };
+  const nome = nomeProjeto || lista[0].nome || "Projeto de impressão";
+  const texto = await empacotar({ nome, maquina: pref.maquina, material: pref.material, ajustes: pref.ajustes, precos: pref.precos, filamentos: filamentosEfetivos(), trocas, pecas: lista });
+  avisar("Salvando no cofre…");
+  const msg = await salvarNoCofre("slicer", `${nome}.${EXTENSAO_PROJETO}`, new Blob([texto], { type: "application/json" }), (n) => (nomeProjeto = n));
+  avisar(msg, 7000);
+  return msg;
+}
+
+/** Põe um projeto aberto na tela: impressora, filamentos, trocas, ajustes e as peças pintadas. */
+function aplicarProjeto(p: ProjetoSlicer) {
+  nomeProjeto = p.nome;
+  pref.maquina = p.maquina;
+  pref.material = p.material;
+  pref.precos = { ...pref.precos, ...p.precos };
+  pref.ajustes = { ...ajustesPadrao(maquina().processo), ...p.ajustes };
+  pref.filamentos = p.filamentos;
+  pref.trocas = { ...pref.trocas, ...p.trocas };
+  guardar();
+  vista.definirMesa(...maquina().mesa);
+  vista.enquadrar();
+  preencherPainel();
+  desfazerPilha = [];
+  pedir({ tipo: "mesa", mesa: maquina().mesa, folga: folgaMesa() });
+  const pecasP = p.pecas.map((x) => ({ ...x }));
+  pedir({ tipo: "projeto", pecas: pecasP }, pecasP.flatMap((x) => [x.pos.buffer, x.tri.buffer, x.cores.buffer]));
+  avisar(`Projeto “${p.nome}” aberto (${p.pecas.length} peça${p.pecas.length > 1 ? "s" : ""}).`);
+}
+
+async function abrirDoAutosave() {
+  history.replaceState(null, "", location.pathname);
+  try {
+    const texto = localStorage.getItem("wjslc:documento");
+    if (!texto) return avisar("Nenhum projeto para abrir.");
+    aplicarProjeto(await desempacotar(texto));
+  } catch (e) {
+    avisar((e as Error).message || "Não foi possível abrir o projeto.", 7000);
+  }
+}
+$("sl-salvar").onclick = () => void salvarProjeto();
+$("sl-abrir-projeto").onclick = () => void abrirDoCofre("slicer", pecas.length > 0);
+
 // ---------- prévia das camadas ----------
 
 const deslizante = $<HTMLInputElement>("sl-camada");
@@ -385,7 +725,7 @@ function prepararPrevia() {
   deslizante.max = String(max);
   if (!previaLigada || ia > max) deslizante.value = String(max);
   if (previaLigada) pedirCamada();
-  $("sl-legenda").innerHTML = PARTES.filter((k) => k !== "deslocamento" && k !== "resfriamento" && r.partes[k].volume > 0.5)
+  $("sl-legenda").innerHTML = PARTES.filter((k) => k !== "deslocamento" && k !== "resfriamento" && k !== "troca" && k !== "torre" && r.partes[k].volume > 0.5)
     .map((k) => `<span><i style="background:${CORES[k]}"></i>${NOMES_PARTES[k]}</span>`)
     .join("");
 }
@@ -464,6 +804,7 @@ $("sl-versao").textContent = `v${__VERSAO__}`;
 const diag = botaoDiagnostico("wj-ic");
 if (diag) $("sl-direita").append(diag);
 $("sl-abrir").insertAdjacentHTML("afterbegin", IC.abrir);
+escolherFerramenta("pincel");
 vista.definirMesa(...maquina().mesa);
 vista.enquadrar();
 preencherPainel();
@@ -471,4 +812,6 @@ mostrarLista();
 avisarMesa();
 registrarComAtualizacao();
 void sincronizarAoAbrir()?.catch(() => {});
+instalarPainelCofre("slicer", salvarProjeto);
 if (location.hash === "#peca-do-cad") void pecaDoCad();
+else if (location.hash === "#abrir-autosave") void abrirDoAutosave();

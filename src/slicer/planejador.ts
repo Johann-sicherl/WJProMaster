@@ -7,11 +7,11 @@
 // Puro: testado em scripts/teste-slicer.ts.
 
 export type Parte =
-  | "paredeExt" | "paredeInt" | "solido" | "topo" | "ponte" | "esparso" | "suporte" | "interface" | "borda" | "deslocamento" | "resfriamento";
-export const PARTES: Parte[] = ["paredeExt", "paredeInt", "solido", "topo", "ponte", "esparso", "suporte", "interface", "borda", "deslocamento", "resfriamento"];
+  | "paredeExt" | "paredeInt" | "solido" | "topo" | "ponte" | "esparso" | "suporte" | "interface" | "borda" | "troca" | "torre" | "deslocamento" | "resfriamento";
+export const PARTES: Parte[] = ["paredeExt", "paredeInt", "solido", "topo", "ponte", "esparso", "suporte", "interface", "borda", "troca", "torre", "deslocamento", "resfriamento"];
 export const NOMES_PARTES: Record<Parte, string> = {
   paredeExt: "Parede externa", paredeInt: "Paredes internas", solido: "Preenchimento sólido", topo: "Superfície de topo", ponte: "Pontes (sobre o vazio)",
-  esparso: "Preenchimento esparso", suporte: "Suporte", interface: "Interface do suporte", borda: "Borda e saia",
+  esparso: "Preenchimento esparso", suporte: "Suporte", interface: "Interface do suporte", borda: "Borda e saia", troca: "Trocas de cor (tempo e purga)", torre: "Torre de purga",
   deslocamento: "Deslocamentos, retrações e trocas de camada", resfriamento: "Desaceleração para resfriar",
 };
 const IDX = Object.fromEntries(PARTES.map((p, i) => [p, i])) as Record<Parte, number>;

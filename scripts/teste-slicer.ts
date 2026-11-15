@@ -7,6 +7,8 @@ import { estimar, fatiarPlaca, ajustesPadrao, espacamento, volumeMalha, tempoTra
 import { Planejador } from "../src/slicer/planejador";
 import { MAQUINAS, maquinaPorId, materialDa, materiaisDa, type Padrao } from "../src/slicer/perfis";
 import { orientarMalha, malhaDeStl, centralizar, organizar } from "../src/slicer/malha";
+import { balde, contarCores, corDasCelulas, cortarPorCor, filamentosPadrao, pincel, pintarCorpo, topologia } from "../src/slicer/cores";
+import { desempacotar, empacotar } from "../src/slicer/projeto";
 
 let falhas = 0;
 const ok = (cond: boolean, msg: string) => {
@@ -285,7 +287,7 @@ if (faltam.length) console.log(`  (pendente: valores de referência medidos pelo
 ok(MAQUINAS.length === 2 && MAQUINAS.map((m) => m.modelo).join() === "P1S,Kobra 3", "perfis: só P1S e Kobra 3");
 ok(MAQUINAS.every((m) => m.processo.altura === 0.2 && m.processo.alturaPrimeira === 0.2 && m.jerk > 0 && m.aMax > 0), "processos de 0,20 mm (bico 0,4) com limites da máquina");
 ok(MAQUINAS.every((m) => materiaisDa(m).length === 6 && materiaisDa(m).every((x) => x.vazaoMax > 0 && x.densidade > 1 && x.fluxo > 0.9)), "seis materiais por máquina com densidade, fluxo e vazão");
-ok(PARTES.length === 11, "tempo por tipo de caminho: 11 partes");
+ok(PARTES.length === 13, "tempo por tipo de caminho: 13 partes (com trocas de cor e torre de purga)");
 
 {
   // desempenho: esfera facetada de 40 mm (≈ 20 mil triângulos)
@@ -306,6 +308,184 @@ ok(PARTES.length === 11, "tempo por tipo de caminho: 11 partes");
   const ms = performance.now() - t0;
   console.log(`  esfera Ø40 com árvore: ${min(r.tempoS)} min, ${r.massaG.toFixed(1)} g, fatiada em ${(ms / 1000).toFixed(1)} s`);
   ok(ms < 30000, "esfera de 40 mm fatiada em menos de 30 s no Node");
+}
+
+// ---------- pintura de cores: ferramentas, trocas, purga e torre ----------
+{
+  /** Cubo de lado L com `d` × `d` quadrados por face (malha soldada: vértices compartilhados). */
+  const cuboDiv = (L: number, d: number, x0 = 0): MalhaImpressao => {
+    const pos: number[] = [], tri: number[] = [], idx = new Map<string, number>();
+    const v = (x: number, y: number, z: number) => {
+      const k = `${x},${y},${z}`;
+      let i = idx.get(k);
+      if (i === undefined) {
+        i = pos.length / 3;
+        idx.set(k, i);
+        pos.push(x0 + (x * L) / d, (y * L) / d, (z * L) / d);
+      }
+      return i;
+    };
+    const face = (f: (a: number, b: number) => [number, number, number], inverte: boolean) => {
+      for (let a = 0; a < d; a++)
+        for (let b = 0; b < d; b++) {
+          const p0 = v(...f(a, b)), p1 = v(...f(a + 1, b)), p2 = v(...f(a + 1, b + 1)), p3 = v(...f(a, b + 1));
+          if (inverte) tri.push(p0, p2, p1, p0, p3, p2);
+          else tri.push(p0, p1, p2, p0, p2, p3);
+        }
+    };
+    face((a, b) => [a, b, 0], true); // fundo (normal -z)
+    face((a, b) => [a, b, d], false); // topo
+    face((a, b) => [a, 0, b], false); // frente (-y)
+    face((a, b) => [a, d, b], true); // fundo (+y)
+    face((a, b) => [0, a, b], true); // -x
+    face((a, b) => [d, a, b], false); // +x
+    return { pos: Float32Array.from(pos), tri: Uint32Array.from(tri) };
+  };
+  const D = 20;
+  const m = cuboDiv(20, D);
+  const top = topologia(m);
+  const nTri = m.tri.length / 3;
+  ok(nTri === 6 * 2 * D * D && top.corpos === 1, `cubo dividido: ${nTri} triângulos, 1 corpo`);
+  // orientação das normais: tem de apontar para fora (volume positivo)
+  ok(volumeMalha(m)! > 7999 && volumeMalha(m)! < 8001, "cubo dividido: volume 8000 mm³ (normais para fora)");
+
+  // ferramentas
+  let cores = new Uint8Array(nTri);
+  const tFace = (() => {
+    for (let t = 0; t < nTri; t++) if (top.normal[t * 3 + 2] > 0.99) return t; // uma face do topo
+    return 0;
+  })();
+  ok(balde(top, cores, tFace, 1, { tipo: "face" }) === 2 * D * D, "balde por face: só a face plana tocada (800 triângulos)");
+  ok(contarCores(cores)[1] === 2 * D * D, "balde por face: contagem por cor");
+  cores = new Uint8Array(nTri);
+  ok(balde(top, cores, tFace, 1, { tipo: "angulo", graus: 30 }) === 2 * D * D, "preencher por ângulo de 30°: para nas arestas vivas do cubo (90°)");
+  cores = new Uint8Array(nTri);
+  ok(balde(top, cores, tFace, 1, { tipo: "angulo", graus: 100 }) === nTri, "preencher por ângulo de 100°: passa pelas arestas e pinta tudo");
+  cores = new Uint8Array(nTri);
+  ok(balde(top, cores, tFace, 2, { tipo: "regiao" }) === nTri, "balde por região contínua: pinta tudo o que está ligado");
+  cores[tFace] = 3;
+  ok(balde(top, cores, (tFace + 5) % nTri, 1, { tipo: "regiao" }) === nTri - 1, "balde por região: pára na cor diferente e só troca a mesma cor");
+  ok(balde(top, cores, tFace, 3, { tipo: "regiao" }) === 0, "balde com a cor que já está: nada muda");
+  cores = new Uint8Array(nTri);
+  const nPinc = pincel(top, cores, [10, 10, 20], [0, 0, 1], 3, 1);
+  ok(nPinc > 20 && nPinc < 2 * D * D, `pincel de 3 mm no topo: ${nPinc} triângulos, só da face tocada (a de baixo não pinta)`);
+  const nBorr = pincel(top, cores, [10, 10, 20], [0, 0, 1], 3, 0);
+  ok(nBorr === nPinc && contarCores(cores)[1] === 0, "borracha (cor 1 de fábrica): apaga o que o pincel pintou");
+  // vários corpos: dois cubos separados
+  const dois = cuboDiv(10, 2), outro = cuboDiv(10, 2, 30);
+  const duplo: MalhaImpressao = { pos: Float32Array.from([...dois.pos, ...outro.pos]), tri: Uint32Array.from([...dois.tri, ...Array.from(outro.tri, (x) => x + dois.pos.length / 3)]) };
+  const topD = topologia(duplo);
+  ok(topD.corpos === 2, "dois cubos separados na mesma malha: 2 corpos");
+  const cD = new Uint8Array(duplo.tri.length / 3);
+  const n1 = pintarCorpo(topD, cD, duplo.tri.length / 3 - 1, 2);
+  ok(n1 === 48 && cD[0] === 0 && cD[cD.length - 1] === 2, "pintar corpo inteiro: só o corpo tocado (48 triângulos)");
+
+  // ---- trocas, purga e torre num cubo de 20 mm ----
+  const aj = ajustesPadrao(p1s.processo);
+  const fils = filamentosPadrao("pla", 120);
+  const opc = { filamentos: fils, troca: p1s.troca };
+  const porFaixa = (cortes: number[]) => {
+    const c = new Uint8Array(nTri);
+    for (let t = 0; t < nTri; t++) {
+      const z = top.centro[t * 3 + 2];
+      c[t] = cortes.filter((x) => z > x).length;
+    }
+    return c;
+  };
+  const sem = fatiarPlaca([{ nome: "cubo", malha: m, posicoes: [[0, 0]] }], p1s, plaP, aj, undefined, opc).r;
+  ok(sem.trocas.total === 0 && sem.trocas.torreCamadas === 0 && sem.cores[0].usada && !sem.cores[1].usada, "sem pintura: nenhuma troca, sem torre, tudo na cor 1");
+  const base = estimar(cubo, p1s, plaP, aj);
+  ok(perto(sem.tempoS, base.tempoS, 0.001) && perto(sem.massaG, base.massaG, 0.001), `sem pintura o orçamento é o mesmo de antes (${min(sem.tempoS)} min, ${sem.massaG.toFixed(2)} g)`);
+
+  // 2 cores: metade de baixo na cor 1, metade de cima na cor 2 → 1 troca
+  const r2 = fatiarPlaca([{ nome: "cubo", malha: m, posicoes: [[0, 0]], cores: porFaixa([10]) }], p1s, plaP, aj, undefined, opc).r;
+  ok(r2.trocas.total === 1 && r2.trocas.camadas === 1 && r2.trocas.maximoPorCamada === 1, `cubo com 2 cores (metade em cima): ${r2.trocas.total} troca`);
+  ok(perto(r2.trocas.purgaMm3, p1s.troca.purgaMm3, 1e-9), `purga de 1 troca = ${p1s.troca.purgaMm3} mm³ (${r2.trocas.purgaMm3})`);
+  const tTroca = p1s.troca.tempoS + p1s.troca.purgaMm3 / p1s.troca.vazaoPurga;
+  ok(perto(r2.trocas.tempoS, tTroca, 1e-6), `tempo da troca = ${p1s.troca.tempoS} s + purga ${(p1s.troca.purgaMm3 / p1s.troca.vazaoPurga).toFixed(1)} s = ${r2.trocas.tempoS.toFixed(1)} s`);
+  ok(r2.trocas.torreCamadas === 51 && r2.trocas.torreMm3 > 0 && r2.trocas.torreTempoS > 10, `torre de purga: ${r2.trocas.torreCamadas} camadas (0 até a troca), ${r2.trocas.torreMm3.toFixed(0)} mm³, ${r2.trocas.torreTempoS.toFixed(0)} s`);
+  ok(r2.tempoS > base.tempoS + tTroca + r2.trocas.torreTempoS - 5, `tempo total soma a troca e a torre ao fatiamento (${min(base.tempoS)} → ${min(r2.tempoS)} min)`);
+  const somaVol = r2.cores.reduce((s, x) => s + x.volumeMm3, 0);
+  ok(perto(somaVol, r2.volumeMm3, 1e-6), "o material de cada cor (com purga e torre) soma o total");
+  ok(r2.cores[0].usada && r2.cores[1].usada && !r2.cores[2].usada && r2.cores[1].volumeMm3 > r2.trocas.purgaMm3, `material por cor: ${r2.cores[0].massaG.toFixed(2)} g + ${r2.cores[1].massaG.toFixed(2)} g (a purga é da cor que entra)`);
+  ok(r2.massaG > base.massaG + 0.3 && r2.partes.troca.volume === p1s.troca.purgaMm3 && r2.partes.torre.volume === r2.trocas.torreMm3, "massa soma purga e torre");
+  const rSemTorre = fatiarPlaca([{ nome: "cubo", malha: m, posicoes: [[0, 0]], cores: porFaixa([10]) }], p1s, plaP, aj, undefined, { filamentos: fils, troca: { ...p1s.troca, torre: false } }).r;
+  ok(rSemTorre.trocas.total === 1 && rSemTorre.trocas.torreMm3 === 0 && rSemTorre.tempoS < r2.tempoS, "sem torre: a troca e a purga continuam; sem o anel da torre");
+  const rPurga = fatiarPlaca([{ nome: "cubo", malha: m, posicoes: [[0, 0]], cores: porFaixa([10]) }], p1s, plaP, aj, undefined, { filamentos: fils, troca: { ...p1s.troca, purgaMm3: 2 * p1s.troca.purgaMm3, tempoS: 90 } }).r;
+  ok(perto(rPurga.trocas.purgaMm3, 2 * p1s.troca.purgaMm3, 1e-9) && rPurga.trocas.tempoS > r2.trocas.tempoS * 1.5, "purga e tempo da troca editáveis: valem no orçamento");
+
+  // 4 cores em faixas de 5 mm → 3 trocas
+  const r4 = fatiarPlaca([{ nome: "cubo", malha: m, posicoes: [[0, 0]], cores: porFaixa([5, 10, 15]) }], p1s, plaP, aj, undefined, opc).r;
+  ok(r4.trocas.total === 3 && r4.trocas.camadas === 3 && r4.cores.every((c) => c.usada), `cubo com 4 cores em faixas: ${r4.trocas.total} trocas, purga ${r4.trocas.purgaMm3} mm³`);
+  ok(perto(r4.trocas.purgaMm3, 3 * p1s.troca.purgaMm3, 1e-9) && r4.trocas.torreCamadas === 76, "4 cores: 3 purgas e torre até a última troca (76 camadas)");
+
+  // 4 cores nas 4 faces laterais → todas as camadas misturam as 4 cores: 3 trocas por camada
+  const lados = new Uint8Array(nTri);
+  for (let t = 0; t < nTri; t++) {
+    const nx = top.normal[t * 3], ny = top.normal[t * 3 + 1];
+    lados[t] = nx > 0.9 ? 0 : ny > 0.9 ? 1 : nx < -0.9 ? 2 : ny < -0.9 ? 3 : 0;
+  }
+  const rL = fatiarPlaca([{ nome: "cubo", malha: m, posicoes: [[0, 0]], cores: lados }], p1s, plaP, aj, undefined, opc).r;
+  ok(rL.trocas.total === 300 && rL.trocas.camadas === 100 && rL.trocas.maximoPorCamada === 3, `cubo com 4 cores nas faces laterais: ${rL.trocas.total} trocas (3 por camada × 100)`);
+  ok(rL.cores.every((c) => c.usada && c.massaG > 0.5) && rL.tempoS > 100 * 3 * p1s.troca.tempoS, `4 cores por camada: ${rL.cores.map((c) => c.massaG.toFixed(1)).join(" / ")} g, ${min(rL.tempoS)} min`);
+  const rK = fatiarPlaca([{ nome: "cubo", malha: m, posicoes: [[0, 0]], cores: porFaixa([5, 10, 15]) }], k3, plaK, ajustesPadrao(k3.processo), undefined, { filamentos: fils, troca: k3.troca }).r;
+  ok(rK.trocas.total === 3 && perto(rK.trocas.purgaMm3, 3 * k3.troca.purgaMm3, 1e-9), `Kobra 3: 4 cores → ${rK.trocas.total} trocas com a purga dela (${k3.troca.purgaMm3} mm³ cada)`);
+  // só o topo pintado (face horizontal): as camadas de topo ganham a cor no miolo; as paredes seguem as laterais
+  const soTopo = new Uint8Array(nTri);
+  for (let t = 0; t < nTri; t++) if (top.normal[t * 3 + 2] > 0.99) soTopo[t] = 1;
+  const rT = fatiarPlaca([{ nome: "cubo", malha: m, posicoes: [[0, 0]], cores: soTopo }], p1s, plaP, aj, undefined, opc).r;
+  ok(rT.trocas.total >= 1 && rT.trocas.camadas >= 1 && rT.trocas.camadas <= 5 && rT.cores[1].usada && rT.cores[1].massaG > 0.3, `cubo com só o topo pintado: ${rT.trocas.total} trocas nas camadas de topo, ${rT.cores[1].massaG.toFixed(2)} g na cor 2`);
+  const soFundo = new Uint8Array(nTri);
+  for (let t = 0; t < nTri; t++) if (top.normal[t * 3 + 2] < -0.99) soFundo[t] = 2;
+  const rF = fatiarPlaca([{ nome: "cubo", malha: m, posicoes: [[0, 0]], cores: soFundo }], p1s, plaP, aj, undefined, opc).r;
+  ok(rF.trocas.total >= 1 && rF.trocas.camadas <= 4 && rF.cores[2].usada, `cubo com só o fundo pintado: ${rF.trocas.total} trocas nas camadas de fundo`);
+  // uma cor só pintada (tudo na cor 2): nenhuma troca; material, densidade e preço do filamento 2
+  const fPetg = filamentosPadrao("pla", 120);
+  fPetg[1] = { ...fPetg[1], material: "petg", precoKg: 200 };
+  const r1p = fatiarPlaca([{ nome: "cubo", malha: m, posicoes: [[0, 0]], cores: new Uint8Array(nTri).fill(1) }], p1s, plaP, aj, undefined, { filamentos: fPetg, troca: p1s.troca }).r;
+  ok(r1p.trocas.total === 0 && !r1p.cores[0].usada && r1p.cores[1].usada, "peça toda pintada com a cor 2: nenhuma troca, a cor 1 não é usada");
+  ok(perto(r1p.cores[1].massaG, (r1p.cores[1].volumeMm3 / 1000) * materialDa(p1s, "petg").densidade, 1e-9) && perto(r1p.custo, (r1p.massaG / 1000) * 200, 1e-9), `filamento 2 em PETG a R$ 200/kg: ${r1p.massaG.toFixed(2)} g, R$ ${r1p.custo.toFixed(2)}`);
+  // duas peças: uma pintada e uma não → 1 troca por camada
+  const rDuas = fatiarPlaca([
+    { nome: "A", malha: cuboDiv(10, 2), posicoes: [[-20, 0]] },
+    { nome: "B", malha: cuboDiv(10, 2), posicoes: [[20, 0]], cores: new Uint8Array(48).fill(2) },
+  ], p1s, plaP, aj, undefined, opc).r;
+  ok(rDuas.trocas.total === 50 && rDuas.trocas.maximoPorCamada === 1, `duas peças de cores diferentes lado a lado: ${rDuas.trocas.total} trocas (1 por camada de 50)`);
+  ok(rDuas.avisos.every((a) => !a.includes("torre")), "torre de 35 mm cabe na mesa");
+
+  // cor por célula e corte do caminho
+  {
+    const g: Grade = { x0: -1, y0: -1, c: 0.5, cols: 50, lins: 50 };
+    const segs = Float64Array.from([0, 0, 10, 0, 0, 10, 10, 10]); // dois segmentos horizontais: y = 0 (cor 0) e y = 10 (cor 1)
+    const mapa = corDasCelulas(g, segs, Uint8Array.from([0, 1]));
+    const corEm = (x: number, y: number) => mapa[Math.floor((y - g.y0) / g.c) * g.cols + Math.floor((x - g.x0) / g.c)];
+    ok(corEm(5, 1) === 0 && corEm(5, 9) === 1, "cor da célula = a do trecho pintado mais perto");
+    const linha = { pts: Float64Array.from([5, 0.5, 5, 9.5]), fechado: false };
+    const partes = cortarPorCor(linha, g, mapa, 0, 0.4);
+    ok(partes.length === 2 && partes[0].cor === 0 && partes[1].cor === 1 && Math.abs(partes[0].t.pts[3] - 5) < 0.6, "linha que cruza a divisa é cortada no meio");
+    const laco = { pts: Float64Array.from([2, 1, 8, 1, 8, 9, 2, 9]), fechado: true };
+    const pedacos = cortarPorCor(laco, g, mapa, 0, 0.4);
+    ok(pedacos.length === 2 && pedacos.every((q) => !q.t.fechado), "laço que passa pelas duas cores vira dois caminhos abertos");
+  }
+}
+
+// ---------- projeto salvo ----------
+{
+  const m = caixas([[0, 0, 0, 10, 10, 10]]);
+  const cores = new Uint8Array(m.tri.length / 3).map((_, t) => t % 4);
+  const fils = filamentosPadrao("petg", 150);
+  const texto = await empacotar({
+    nome: "Teste", maquina: "acu-k3", material: "petg", ajustes: ajustesPadrao(k3.processo), precos: { petg: 150 }, filamentos: fils,
+    trocas: { "acu-k3": { ...k3.troca, purgaMm3: 321 } }, pecas: [{ nome: "Caixa", copias: 3, pos: m.pos, tri: m.tri, cores }],
+  });
+  const p = await desempacotar(texto);
+  ok(p.pecas.length === 1 && p.pecas[0].copias === 3 && p.pecas[0].tri.every((x, i) => x === m.tri[i]) && p.pecas[0].pos.every((x, i) => x === m.pos[i]), "projeto: malha volta exatamente igual");
+  ok(p.pecas[0].cores.every((c, i) => c === cores[i]), "projeto: pintura de cada triângulo volta igual");
+  ok(p.maquina === "acu-k3" && p.material === "petg" && p.filamentos[2].precoKg === 150 && p.trocas["acu-k3"].purgaMm3 === 321, "projeto: impressora, filamentos (cor, material, R$/kg) e purga editada");
+  let erro = "";
+  await desempacotar("{}").catch((e) => (erro = (e as Error).message));
+  ok(erro.includes("não é um projeto"), "projeto: arquivo estranho recusado com mensagem clara");
+  ok(texto.length < m.tri.length * 40 + 3000, `projeto compacto (${texto.length} bytes)`);
 }
 
 console.log(falhas ? `\n${falhas} falha(s)` : "\nWJSlicer3D: tudo certo");

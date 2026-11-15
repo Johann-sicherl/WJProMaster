@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 15/11/2026 (pedido C4: calculadora em todo campo numérico, cotas do recurso no duplo clique da árvore/corpo e depois do Mover corpo, linha sobre a aresta no esboço sobre a face; WJSlicer3D: só P1S e Kobra 3, fatiamento real próprio; caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
+> Última consolidação: 16/11/2026 (WJSlicer3D: pintura de até 4 cores, trocas/purga/torre e projeto no cofre); antes, 15/11/2026 (pedido C4: calculadora em todo campo numérico, cotas do recurso no duplo clique da árvore/corpo e depois do Mover corpo, linha sobre a aresta no esboço sobre a face; WJSlicer3D: só P1S e Kobra 3, fatiamento real próprio; caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -373,7 +373,11 @@
   camada), meta de **±5 % do fatiador de referência** nas mesmas configurações. O fatiador de referência é de
   código aberto AGPL: **proibido copiar código; o nome dele nunca aparece**. Prévia das camadas com deslizante,
   tempo por tipo de caminho, várias peças (cópias) na mesa; fatiamento no worker (o tablet não trava);
-  calibração do tempo por impressora continua. Os nomes das impressoras aparecem só na lista de máquinas,
+  calibração do tempo por impressora continua. **16/11/2026 (pedido do Johann): pintura de até 4 cores** (pincel,
+  balde por face/região/ângulo, corpo inteiro, borracha; **caneta pinta, dedo navega**; desfazer), **custo da
+  cor no orçamento** (trocas por camada, purga por troca editável por impressora, torre de purga, tempo de cada
+  troca, tudo somado ao material por cor e ao tempo), **cores e filamentos** (cor + material + R$/kg) no projeto,
+  preparados para a biblioteca de custos (S3), e **projeto `.wjslc` guardado no cofre** (pasta "Impressão 3D"). Os nomes das impressoras aparecem só na lista de máquinas,
   como dado técnico. STL do cofre, do aparelho ou do WJCAD (menu → Estimar impressão 3D). Detalhes em
   `docs/global/wjslicer3d.md`.
 - **WJTaskPlan — prazo da etapa ≤ prazo da tarefa** (10/11/2026; tarefa sem prazo = etapas sem limite):

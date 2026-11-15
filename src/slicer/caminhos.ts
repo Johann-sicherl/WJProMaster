@@ -106,6 +106,13 @@ export interface Fatias {
   segs: Float64Array[];
   bits: Uint32Array[];
   areas: number[];
+  /** cor (0–3) de cada segmento de `segs`, quando a peça foi pintada */
+  corSeg?: Uint8Array[];
+  /**
+   * Faces quase horizontais (topo e fundo) pintadas ou não: triângulos (ax, ay, bx, by, cx, cy, cor) que
+   * valem para as camadas logo abaixo (topo) ou logo acima (fundo) delas, onde o corte não as encontra
+   */
+  corPlano?: Float64Array[];
 }
 
 /** limite de células da grade e de memória dos mapas de todas as camadas (bytes) */
@@ -115,7 +122,7 @@ const MAX_CELULAS = 200_000, MAX_MAPAS = 48e6, CELULA_MIN = 0.15;
  * Corta a malha nos planos do meio de cada camada (`zs` = topo das camadas, base em z = 0).
  * `margem`: folga em volta da peça na grade (borda/aba).
  */
-export function fatiarMalha(m: MalhaImpressao, zs: number[], margem: number, progresso?: (f: number) => void): Fatias {
+export function fatiarMalha(m: MalhaImpressao, zs: number[], margem: number, progresso?: (f: number) => void, cores?: Uint8Array, prof?: [number, number]): Fatias {
   const { pos, tri } = m;
   const nt = tri.length / 3;
   const { min, max } = caixa(pos);
@@ -130,10 +137,40 @@ export function fatiarMalha(m: MalhaImpressao, zs: number[], margem: number, pro
     zmin[t] = Math.min(a, b, cc);
     zmax[t] = Math.max(a, b, cc);
   }
+  let corPlano: Float64Array[] | undefined;
+  if (cores && prof) {
+    // faces horizontais: sem segmento no corte, a cor vale para as camadas de topo (abaixo) e de fundo (acima)
+    const mid = Float64Array.from({ length: n }, (_, i) => ((i === 0 ? 0 : zs[i - 1]) + zs[i]) / 2);
+    const lb = (x: number) => {
+      let lo = 0, hi = n;
+      while (lo < hi) {
+        const m = (lo + hi) >> 1;
+        if (mid[m] < x) lo = m + 1;
+        else hi = m;
+      }
+      return lo;
+    };
+    const lis: number[][] = Array.from({ length: n }, () => []);
+    for (let t = 0; t < nt; t++) {
+      if (zmax[t] - zmin[t] >= zs[0]) continue;
+      const a = tri[t * 3] * 3, b = tri[t * 3 + 1] * 3, c = tri[t * 3 + 2] * 3;
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const L = Math.hypot(nx, ny, nz);
+      if (L < 1e-12 || Math.abs(nz) / L < 0.7) continue;
+      const topo = nz > 0, zt = (zmin[t] + zmax[t]) / 2, d = topo ? prof[0] : prof[1];
+      if (d <= 0) continue;
+      const i0 = topo ? lb(zt - d) : lb(zt), i1 = topo ? lb(zt) : lb(zt + d);
+      for (let i = i0; i < i1 && i < n; i++) lis[i].push(pos[a], pos[a + 1], pos[b], pos[b + 1], pos[c], pos[c + 1], cores[t]);
+    }
+    corPlano = lis.map((l) => Float64Array.from(l));
+  }
   const ordem = Uint32Array.from({ length: nt }, (_, i) => i).sort((a, b) => zmin[a] - zmin[b]);
   let proximo = 0;
   let ativos: number[] = [];
-  const segs: Float64Array[] = [], bits: Uint32Array[] = [], areas: number[] = [];
+  const segs: Float64Array[] = [], bits: Uint32Array[] = [], areas: number[] = [], corSeg: Uint8Array[] = [];
+  const bufCor: number[] = [];
   const dentro = new Uint8Array(cols * lins);
   const buf: number[] = [];
   for (let i = 0; i < n; i++) {
@@ -141,6 +178,7 @@ export function fatiarMalha(m: MalhaImpressao, zs: number[], margem: number, pro
     while (proximo < nt && zmin[ordem[proximo]] <= z) ativos.push(ordem[proximo++]);
     ativos = ativos.filter((t) => zmax[t] > z);
     buf.length = 0;
+    bufCor.length = 0;
     for (const t of ativos) {
       const ia = tri[t * 3], ib = tri[t * 3 + 1], ic = tri[t * 3 + 2];
       if (ia === ib || ib === ic || ia === ic) continue;
@@ -157,9 +195,11 @@ export function fatiarMalha(m: MalhaImpressao, zs: number[], margem: number, pro
       if (sb !== sc) corta(ib, ic, zb, zc);
       if (sc !== sa) corta(ic, ia, zc, za);
       if (achados !== 2) buf.length -= achados * 2;
+      else if (cores) bufCor.push(cores[t]);
     }
     const s = Float64Array.from(buf);
     segs.push(s);
+    if (cores) corSeg.push(Uint8Array.from(bufCor));
     rasterizar(s, s.length / 4, g, dentro);
     let conta = 0;
     for (let q = 0; q < dentro.length; q++) conta += dentro[q];
@@ -167,7 +207,7 @@ export function fatiarMalha(m: MalhaImpressao, zs: number[], margem: number, pro
     bits.push(compactar(dentro));
     if (progresso && i % 16 === 0) progresso(i / n);
   }
-  return { g, n, segs, bits, areas };
+  return { g, n, segs, bits, areas, corSeg: cores ? corSeg : undefined, corPlano };
 }
 
 // ---------- mapas de células ----------

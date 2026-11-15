@@ -109,3 +109,21 @@ body.disp-tablet .sl-copias button, body.disp-tablet .sl-remover, body.disp-tabl
   .sl-sub { display: none; }
 }
 body.disp-celular .wj-marca span { display: none; }
+
+/* pintura de cores */
+.sl-ferramentas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+.sl-ferramentas button { min-height: 44px; padding: 0 6px; font-size: 13px; }
+.sl-ferramentas button[aria-pressed="true"], #sl-pintar[aria-pressed="true"] { background: var(--acento); border-color: var(--acento); color: #fff; }
+.sl-paleta { display: flex; gap: 10px; margin-bottom: 12px; }
+.sl-paleta button { width: 48px; height: 48px; min-height: 48px; padding: 0; border-radius: 50%; border: 3px solid transparent; box-shadow: 0 0 0 1px var(--linha); font-weight: 700; font-size: 13px; }
+.sl-paleta button[aria-checked="true"] { border-color: var(--acento); box-shadow: 0 0 0 2px #fff inset, 0 0 0 1px var(--acento); }
+.sl-filamentos { display: grid; gap: 8px; margin: 8px 0; }
+.sl-filamento { display: grid; grid-template-columns: 44px minmax(0, 1fr) 96px 78px; gap: 6px; align-items: center; }
+.sl-filamento input[type="color"] { width: 44px; height: 44px; padding: 2px; }
+.sl-filamento input, .sl-filamento select { min-width: 0; width: 100%; min-height: 44px; font-size: 14px; }
+.sl-por-cor { margin: 8px 0; }
+.sl-por-cor table { width: 100%; font-size: 13px; }
+.sl-por-cor td:nth-child(n + 2) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sl-por-cor i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; box-shadow: 0 0 0 1px var(--linha); }
+.sl-campo[hidden], .sl-chave[hidden] { display: none; }
+#sl-pintura .sl-linha button, .sl-filamento button { min-height: 44px; }

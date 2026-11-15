@@ -3,8 +3,9 @@
 // leva alguns segundos e não pode travar a tela do tablet.
 
 import { fatiarPlaca, type Ajustes, type MalhaImpressao, type Previa, type Resultado } from "./fatiar";
+import type { Filamento } from "./cores";
 import { centralizar, malhaDeStl, malhaDeTriangulos, melhorApoio, orientarMalha, organizar, type Eixo } from "./malha";
-import { maquinaPorId, materialDa, type IdMaterial } from "./perfis";
+import { maquinaPorId, materialDa, type ConfigTroca, type IdMaterial } from "./perfis";
 
 export type PedidoSlicer =
   | { tipo: "stl"; nome: string; bytes: Uint8Array }
@@ -16,7 +17,13 @@ export type PedidoSlicer =
   | { tipo: "remover"; id: number }
   /** mesa da máquina e folga entre as peças: reorganiza */
   | { tipo: "mesa"; mesa: [number, number]; folga: number }
-  | { tipo: "estimar"; seq: number; maquina: string; material: IdMaterial; precoKg: number; ajustes: Ajustes }
+  /** pintura de uma peça (cor 0–3 de cada triângulo) */
+  | { tipo: "cores"; id: number; cores: Uint8Array }
+  /** abre um projeto salvo: troca todas as peças da mesa */
+  | { tipo: "projeto"; pecas: { nome: string; copias: number; pos: Float32Array; tri: Uint32Array; cores: Uint8Array }[] }
+  /** pede as peças (malha, cópias, pintura) para salvar o projeto */
+  | { tipo: "exportar" }
+  | { tipo: "estimar"; seq: number; maquina: string; material: IdMaterial; precoKg: number; ajustes: Ajustes; filamentos: Filamento[]; troca: ConfigTroca }
   | { tipo: "camada"; seq: number; i: number };
 
 export interface PecaInfo {
@@ -29,7 +36,8 @@ export interface PecaInfo {
 
 export type RespostaSlicer =
   /** lista de peças; `malhas` só das que mudaram de forma */
-  | { tipo: "pecas"; lista: PecaInfo[]; malhas: { id: number; pos: Float32Array; tri: Uint32Array }[] }
+  | { tipo: "pecas"; lista: PecaInfo[]; malhas: { id: number; pos: Float32Array; tri: Uint32Array; cores: Uint8Array }[] }
+  | { tipo: "projetoPecas"; pecas: { nome: string; copias: number; pos: Float32Array; tri: Uint32Array; cores: Uint8Array }[] }
   | { tipo: "progresso"; seq: number; f: number }
   | { tipo: "resultado"; seq: number; r: Resultado }
   | { tipo: "camada"; seq: number; i: number; z: number; seg: Float32Array; parte: Uint8Array }
@@ -41,6 +49,8 @@ interface Peca {
   malha: MalhaImpressao;
   copias: number;
   posicoes: [number, number][];
+  /** cor (0–3) de cada triângulo */
+  cores: Uint8Array;
 }
 
 let pecas: Peca[] = [];
@@ -70,12 +80,12 @@ function publicar(mudaram: Peca[]) {
   enviar({
     tipo: "pecas",
     lista: pecas.map((p) => ({ id: p.id, nome: p.nome, triangulos: p.malha.tri.length / 3, dims: dims(p.malha), posicoes: p.posicoes })),
-    malhas: mudaram.map((p) => ({ id: p.id, pos: p.malha.pos.slice(), tri: p.malha.tri })),
+    malhas: mudaram.map((p) => ({ id: p.id, pos: p.malha.pos.slice(), tri: p.malha.tri, cores: p.cores.slice() })),
   });
 }
 
-function nova(nome: string, m: MalhaImpressao) {
-  const p: Peca = { id: proximoId++, nome, malha: centralizar(m), copias: 1, posicoes: [] };
+function nova(nome: string, m: MalhaImpressao, cores?: Uint8Array, copias = 1) {
+  const p: Peca = { id: proximoId++, nome, malha: centralizar(m), copias, posicoes: [], cores: cores ?? new Uint8Array(m.tri.length / 3) };
   pecas.push(p);
   publicar([p]);
 }
@@ -99,6 +109,17 @@ self.onmessage = (e: MessageEvent<PedidoSlicer>) => {
       const x = peca(p.id);
       x.malha = centralizar(melhorApoio(x.malha));
       publicar([x]);
+    } else if (p.tipo === "cores") {
+      const x = peca(p.id);
+      if (p.cores.length === x.cores.length) x.cores = p.cores;
+      previa = null;
+    } else if (p.tipo === "projeto") {
+      pecas = [];
+      const novas: Peca[] = p.pecas.map((q) => ({ id: proximoId++, nome: q.nome, malha: { pos: q.pos, tri: q.tri }, copias: q.copias, posicoes: [], cores: q.cores }));
+      pecas = novas;
+      publicar(novas);
+    } else if (p.tipo === "exportar") {
+      enviar({ tipo: "projetoPecas", pecas: pecas.map((x) => ({ nome: x.nome, copias: x.copias, pos: x.malha.pos.slice(), tri: x.malha.tri.slice(), cores: x.cores.slice() })) });
     } else if (p.tipo === "copias") {
       peca(p.id).copias = Math.max(1, Math.min(50, Math.round(p.n)));
       publicar([]);
@@ -115,7 +136,7 @@ self.onmessage = (e: MessageEvent<PedidoSlicer>) => {
       const mat = { ...materialDa(maq, p.material), precoKg: p.precoKg };
       let ultimo = 0;
       const { r, previa: pv } = fatiarPlaca(
-        pecas.map((x) => ({ nome: x.nome, malha: x.malha, posicoes: x.posicoes })), maq, mat, p.ajustes,
+        pecas.map((x) => ({ nome: x.nome, malha: x.malha, posicoes: x.posicoes, cores: x.cores })), maq, mat, p.ajustes,
         (f) => {
           const agora = performance.now();
           if (agora - ultimo > 80) {
@@ -123,6 +144,7 @@ self.onmessage = (e: MessageEvent<PedidoSlicer>) => {
             enviar({ tipo: "progresso", seq: p.seq, f });
           }
         },
+        { filamentos: p.filamentos, troca: p.troca },
       );
       previa = pv;
       alturas = r.alturas;
