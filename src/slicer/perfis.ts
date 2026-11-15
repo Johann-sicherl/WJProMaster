@@ -1,9 +1,17 @@
-// WJSlicer3D: perfis de impressora e de material para a estimativa de tempo e material.
-// Valores tirados dos perfis de fábrica abertos (JSON) do fatiador de referência para bico de
-// 0,4 mm e processo "0,20 mm padrão" (velocidades, acelerações, larguras de linha, cascas,
-// limites da máquina) e dos perfis de filamento (densidade, vazão volumétrica máxima e tempo
-// mínimo de camada). Só dados técnicos de compatibilidade: nenhum texto ou código copiado.
-// Puro: testado em scripts/teste-slicer.ts.
+// WJSlicer3D: perfis de impressora e de material para o orçamento de tempo e material.
+// Só duas impressoras (pedido do Johann, 15/11/2026): Bambu Lab P1S e Anycubic Kobra 3, bico de 0,4 mm,
+// processo "0,20 mm padrão" de cada uma. Valores conferidos nos perfis de fábrica abertos (arquivos
+// JSON de dados) do fatiador de referência, com a herança resolvida: camada, paredes, cascas,
+// larguras de linha, velocidades, acelerações, jerk, suporte, borda, retração e levantamento do Z; dos
+// filamentos: densidade, fluxo, vazão volumétrica máxima e tempo mínimo de camada. Só dados técnicos
+// de compatibilidade: nenhum código, texto ou ícone copiado. Puro: testado em scripts/teste-slicer.ts.
+
+export type Padrao = "grade" | "linhas" | "cruzado" | "triangulos" | "cubico" | "giroide" | "favo";
+export const NOMES_PADROES: Record<Padrao, string> = {
+  grade: "Grade", linhas: "Linhas", cruzado: "Linhas cruzadas", triangulos: "Triângulos", cubico: "Cúbico", giroide: "Giroide", favo: "Favo de mel",
+};
+
+export type TipoSuporte = "nenhum" | "normal" | "arvore";
 
 export interface Processo {
   /** altura de camada e da primeira camada (mm) */
@@ -15,14 +23,17 @@ export interface Processo {
   /** espessura mínima das cascas (mm): vale o maior entre camadas × altura e este valor */
   topoMm: number;
   fundoMm: number;
-  /** preenchimento esparso (0–1) */
+  /** preenchimento esparso (0–1) e padrão */
   preenchimento: number;
+  padrao: Padrao;
   /** larguras de linha (mm) */
   lParedeExt: number;
   lParedeInt: number;
   lEsparso: number;
   lSolido: number;
+  lTopo: number;
   lPrimeira: number;
+  lSuporte: number;
   /** velocidades (mm/s) */
   vParedeExt: number;
   vParedeInt: number;
@@ -31,24 +42,57 @@ export interface Processo {
   vTopo: number;
   vPrimeira: number;
   vPrimeiraPreench: number;
+  vPonte: number;
   vSuporte: number;
+  vInterface: number;
   vDeslocamento: number;
+  vSaia: number;
+  /** parede em balanço: velocidade por faixa do quanto sai da camada de baixo (até 25/50/75/100% da largura; 0 = sem desacelerar) e além de 100% */
+  vBalanco: [number, number, number, number];
+  vBalancoTotal: number;
   /** acelerações (mm/s²) */
   aPadrao: number;
   aParedeExt: number;
   aParedeInt: number;
   aTopo: number;
   aEsparso: number;
+  aSolido: number;
+  aPonte: number;
   aPrimeira: number;
   aDeslocamento: number;
-  /** ângulo-limite do suporte (graus a partir da horizontal) */
+  aDeslocPrimeira: number;
+  /** jerk / velocidade de canto por recurso (mm/s); 0 = o da máquina */
+  jParedeExt: number;
+  jParedeInt: number;
+  jPreench: number;
+  jTopo: number;
+  jPrimeira: number;
+  jDeslocamento: number;
+  jPadrao: number;
+  /** sobreposição do preenchimento nas paredes (fração da largura do preenchimento) */
+  sobreposicao: number;
+  /** razões de fluxo de topo e de ponte */
+  fluxoTopo: number;
+  fluxoPonte: number;
+  /** ligação das linhas do preenchimento junto às paredes (mm) e área mínima de esparso (mm²; menor vira sólido) */
+  ancoraMax: number;
+  areaMinEsparso: number;
+  /** suporte */
+  suporteTipo: Exclude<TipoSuporte, "nenhum">;
   anguloSuporte: number;
-  /**
-   * parede externa em balanço: velocidade por faixa do quanto a linha sai da camada de baixo
-   * (até 25%, 50%, 75% e 100% da largura; 0 = sem desacelerar) e velocidade de ponte (mm/s)
-   */
-  vBalanco: [number, number, number, number];
-  vPonte: number;
+  suporteDistZ: number;
+  suporteDistXY: number;
+  /** vão entre as linhas do corpo do suporte e da interface (mm) e camadas de interface */
+  espacoSuporte: number;
+  espacoInterface: number;
+  interfaceTopo: number;
+  interfaceFundo: number;
+  soNaMesa: boolean;
+  arvore: { angulo: number; diametro: number; ponta: number; anguloDiametro: number; distancia: number; paredeDupla: number };
+  /** borda (aba) e saia */
+  bordaLargura: number;
+  bordaFolga: number;
+  saiaDistancia: number;
 }
 
 export interface Maquina {
@@ -61,21 +105,29 @@ export interface Maquina {
   /** limites do firmware */
   aMax: number;
   vMax: number;
-  /** velocidade de canto (mm/s): variação instantânea de velocidade permitida */
+  /** jerk da máquina (mm/s): variação instantânea de velocidade permitida em cada eixo */
   jerk: number;
-  /** firmware Klipper: pseudoaceleração "acelerar até desacelerar" de 50% nas linhas curtas */
-  klipper: boolean;
-  /** velocidade máxima do eixo Z (mm/s): levantamento e troca de camada */
+  /** firmware Klipper: "acelerar até desacelerar" (fração) nas linhas curtas; 0 = não */
+  aceleraDesacelera: number;
+  /** eixo Z: velocidade e aceleração máximas */
   vZ: number;
-  /** retração (mm, mm/s) e levantamento do eixo Z (mm) */
+  aZ: number;
+  /** retração (mm), velocidades de retrair e de voltar (mm/s), deslocamento mínimo que retrai (mm) */
   retracao: number;
   vRetracao: number;
+  vRecuperacao: number;
+  retracaoMin: number;
+  /** levantamento do Z ao retrair (mm) e altura a partir da qual levanta */
   zHop: number;
+  zHopAcima: number;
+  /** limpeza ao retrair: distância (mm) e fração da velocidade de deslocamento */
+  limpeza: number;
+  vLimpeza: number;
   /** preparo típico (aquecer mesa e bico, nivelar, linha de purga), minutos */
   preparoMin: number;
   processo: Processo;
-  /** materiais que a máquina oferece (ids de MATERIAIS) e ajustes do perfil desta máquina */
-  materiais: Partial<Record<IdMaterial, Partial<Material>>>;
+  /** materiais que a máquina oferece, com os valores do perfil desta máquina */
+  materiais: Partial<Record<IdMaterial, Omit<Material, "id" | "nome" | "precoKg">>>;
 }
 
 export type IdMaterial = "pla" | "plaRapido" | "petg" | "abs" | "asa" | "tpu";
@@ -85,6 +137,8 @@ export interface Material {
   nome: string;
   /** g/cm³ */
   densidade: number;
+  /** razão de fluxo do filamento (multiplica o material extrudado) */
+  fluxo: number;
   /** vazão volumétrica máxima do bico (mm³/s) */
   vazaoMax: number;
   /** tempo mínimo de camada (s) e velocidade mínima ao desacelerar para resfriar (mm/s) */
@@ -94,133 +148,72 @@ export interface Material {
   precoKg: number;
 }
 
-/** Valores de base de cada material (os perfis das máquinas ajustam o que muda). */
-export const MATERIAIS: Record<IdMaterial, Material> = {
-  pla: { id: "pla", nome: "PLA", densidade: 1.24, vazaoMax: 12, tempoCamada: 8, vMinResfriar: 20, precoKg: 120 },
-  plaRapido: { id: "plaRapido", nome: "PLA alta velocidade", densidade: 1.24, vazaoMax: 18, tempoCamada: 7, vMinResfriar: 20, precoKg: 130 },
-  petg: { id: "petg", nome: "PETG", densidade: 1.27, vazaoMax: 8, tempoCamada: 12, vMinResfriar: 20, precoKg: 130 },
-  abs: { id: "abs", nome: "ABS", densidade: 1.04, vazaoMax: 15, tempoCamada: 3, vMinResfriar: 20, precoKg: 120 },
-  asa: { id: "asa", nome: "ASA", densidade: 1.05, vazaoMax: 12, tempoCamada: 3, vMinResfriar: 20, precoKg: 150 },
-  tpu: { id: "tpu", nome: "TPU (flexível)", densidade: 1.22, vazaoMax: 3.2, tempoCamada: 8, vMinResfriar: 10, precoKg: 200 },
-};
-
-/** Processo 0,20 mm padrão das máquinas Bambu Lab (iguais em X1 Carbon, P1S, A1 e A1 mini, salvo acelerações). */
-const BAMBU: Processo = {
-  altura: 0.2, alturaPrimeira: 0.2, paredes: 3, topo: 5, fundo: 3, topoMm: 1, fundoMm: 0, preenchimento: 0.15,
-  lParedeExt: 0.4, lParedeInt: 0.45, lEsparso: 0.45, lSolido: 0.4, lPrimeira: 0.5,
-  vParedeExt: 200, vParedeInt: 300, vEsparso: 270, vSolido: 250, vTopo: 200, vPrimeira: 50, vPrimeiraPreench: 105, vSuporte: 150, vDeslocamento: 500,
-  aPadrao: 10000, aParedeExt: 5000, aParedeInt: 10000, aTopo: 2000, aEsparso: 10000, aPrimeira: 500, aDeslocamento: 10000,
-  anguloSuporte: 30, vBalanco: [0, 50, 30, 10], vPonte: 50,
-};
-const BAMBU_A1: Processo = { ...BAMBU, vDeslocamento: 700, aPadrao: 6000, aParedeInt: 6000, aEsparso: 6000, aDeslocamento: 6000 };
-
-/** Base dos processos Anycubic (cada máquina muda velocidades e acelerações). */
-const ANYCUBIC: Processo = {
-  altura: 0.2, alturaPrimeira: 0.2, paredes: 2, topo: 5, fundo: 3, topoMm: 1, fundoMm: 0, preenchimento: 0.15,
-  lParedeExt: 0.42, lParedeInt: 0.45, lEsparso: 0.45, lSolido: 0.42, lPrimeira: 0.5,
-  vParedeExt: 130, vParedeInt: 200, vEsparso: 300, vSolido: 130, vTopo: 130, vPrimeira: 45, vPrimeiraPreench: 45, vSuporte: 100, vDeslocamento: 350,
-  aPadrao: 10000, aParedeExt: 5000, aParedeInt: 6000, aTopo: 2000, aEsparso: 5000, aPrimeira: 500, aDeslocamento: 10000,
-  anguloSuporte: 30, vBalanco: [0, 50, 30, 10], vPonte: 30,
-};
-
-const PLA_BAMBU_X = { densidade: 1.26, vazaoMax: 21, tempoCamada: 4, vMinResfriar: 20 };
-const PLA_BAMBU_A = { densidade: 1.26, vazaoMax: 21, tempoCamada: 6, vMinResfriar: 10 };
-const MAT_BAMBU_X: Maquina["materiais"] = {
-  pla: PLA_BAMBU_X, petg: { densidade: 1.28, vazaoMax: 21, tempoCamada: 10, vMinResfriar: 20 },
-  abs: { vazaoMax: 16, tempoCamada: 12 }, asa: { vazaoMax: 18, tempoCamada: 12 }, tpu: { vazaoMax: 3.6, tempoCamada: 8, vMinResfriar: 10 },
-};
-const MAT_BAMBU_A: Maquina["materiais"] = {
-  pla: PLA_BAMBU_A, petg: { densidade: 1.28, vazaoMax: 18, tempoCamada: 7, vMinResfriar: 10 },
-  abs: { vazaoMax: 16, tempoCamada: 12, vMinResfriar: 10 }, asa: { vazaoMax: 18, tempoCamada: 12, vMinResfriar: 10 }, tpu: { vazaoMax: 3.6, tempoCamada: 8, vMinResfriar: 10 },
+const NOMES: Record<IdMaterial, [string, number]> = {
+  pla: ["PLA", 120], plaRapido: ["PLA alta velocidade", 130], petg: ["PETG", 130], abs: ["ABS", 120], asa: ["ASA", 150], tpu: ["TPU (flexível)", 200],
 };
 
 export const MAQUINAS: Maquina[] = [
   {
-    id: "bbl-x1c", marca: "Bambu Lab", modelo: "X1 Carbon", mesa: [256, 256], alturaMax: 250, aMax: 20000, vMax: 500, jerk: 9, klipper: false, vZ: 20,
-    retracao: 0.8, vRetracao: 30, zHop: 0.4, preparoMin: 6, processo: BAMBU, materiais: MAT_BAMBU_X,
-  },
-  {
-    id: "bbl-p1s", marca: "Bambu Lab", modelo: "P1S", mesa: [256, 256], alturaMax: 250, aMax: 20000, vMax: 500, jerk: 9, klipper: false, vZ: 20,
-    retracao: 0.8, vRetracao: 30, zHop: 0.4, preparoMin: 5, processo: BAMBU, materiais: MAT_BAMBU_X,
-  },
-  {
-    id: "bbl-a1", marca: "Bambu Lab", modelo: "A1", mesa: [256, 256], alturaMax: 256, aMax: 12000, vMax: 500, jerk: 9, klipper: false, vZ: 30,
-    retracao: 0.8, vRetracao: 30, zHop: 0.4, preparoMin: 5, processo: BAMBU_A1, materiais: MAT_BAMBU_A,
-  },
-  {
-    id: "bbl-a1m", marca: "Bambu Lab", modelo: "A1 mini", mesa: [180, 180], alturaMax: 180, aMax: 20000, vMax: 500, jerk: 9, klipper: false, vZ: 30,
-    retracao: 0.8, vRetracao: 30, zHop: 0.4, preparoMin: 4, processo: BAMBU_A1, materiais: MAT_BAMBU_A,
-  },
-  {
-    id: "acu-k2neo", marca: "Anycubic", modelo: "Kobra 2 Neo", mesa: [220, 220], alturaMax: 250, aMax: 2000, vMax: 300, jerk: 10, klipper: false, vZ: 8,
-    retracao: 2.5, vRetracao: 100, zHop: 0, preparoMin: 5,
+    id: "bbl-p1s", marca: "Bambu Lab", modelo: "P1S", mesa: [256, 256], alturaMax: 250,
+    aMax: 20000, vMax: 500, jerk: 9, aceleraDesacelera: 0, vZ: 20, aZ: 500,
+    retracao: 0.8, vRetracao: 30, vRecuperacao: 30, retracaoMin: 1, zHop: 0.4, zHopAcima: 0, limpeza: 2, vLimpeza: 0.8, preparoMin: 5,
     processo: {
-      ...ANYCUBIC, alturaPrimeira: 0.24, topo: 3, fundoMm: 0.6, lSolido: 0.42,
-      vParedeExt: 60, vParedeInt: 100, vEsparso: 150, vSolido: 100, vTopo: 60, vPrimeira: 50, vPrimeiraPreench: 50, vSuporte: 100, vDeslocamento: 300,
-      aPadrao: 2000, aParedeExt: 1000, aParedeInt: 1500, aTopo: 1000, aEsparso: 2000, aPrimeira: 500, aDeslocamento: 2000, anguloSuporte: 40, vBalanco: [60, 50, 30, 10],
-    },
-    materiais: { pla: { tempoCamada: 9 }, petg: {}, abs: {}, tpu: {} },
-  },
-  {
-    id: "acu-k2pro", marca: "Anycubic", modelo: "Kobra 2 Pro", mesa: [220, 220], alturaMax: 250, aMax: 20000, vMax: 500, jerk: 20, klipper: true, vZ: 16,
-    retracao: 1.5, vRetracao: 30, zHop: 0, preparoMin: 5,
-    processo: {
-      ...ANYCUBIC, alturaPrimeira: 0.24, fundoMm: 0.6,
-      vParedeExt: 120, vParedeInt: 200, vEsparso: 200, vSolido: 130, vTopo: 120, vPrimeira: 60, vPrimeiraPreench: 60, vSuporte: 150, vDeslocamento: 300,
-      aPadrao: 10000, aParedeExt: 5000, aParedeInt: 10000, aTopo: 2000, aEsparso: 10000, aPrimeira: 5000, aDeslocamento: 10000,
-      vBalanco: [0, 50, 40, 30], vPonte: 50,
-    },
-    materiais: { pla: { tempoCamada: 9 }, plaRapido: {}, petg: {}, abs: {}, tpu: {} },
-  },
-  {
-    id: "acu-k3", marca: "Anycubic", modelo: "Kobra 3", mesa: [255, 255], alturaMax: 260, aMax: 15000, vMax: 600, jerk: 20, klipper: true, vZ: 10,
-    retracao: 1, vRetracao: 60, zHop: 0.4, preparoMin: 4,
-    processo: { ...ANYCUBIC, fundoMm: 0.6, aDeslocamento: 15000, anguloSuporte: 40, vBalanco: [0, 50, 30, 20] },
-    materiais: { pla: {}, plaRapido: {}, petg: { tempoCamada: 10, vMinResfriar: 25 }, abs: {}, asa: { tempoCamada: 16 }, tpu: {} },
-  },
-  {
-    id: "acu-k3v2", marca: "Anycubic", modelo: "Kobra 3 V2", mesa: [255, 255], alturaMax: 260, aMax: 20000, vMax: 600, jerk: 20, klipper: true, vZ: 15,
-    retracao: 1, vRetracao: 60, zHop: 0.4, preparoMin: 4,
-    processo: ANYCUBIC,
-    materiais: { pla: {}, plaRapido: {}, petg: { densidade: 1.23, tempoCamada: 10, vMinResfriar: 25 }, abs: { densidade: 1.05, vazaoMax: 5, tempoCamada: 16, vMinResfriar: 25 }, asa: {}, tpu: { densidade: 1.23 } },
-  },
-  {
-    id: "acu-k3max", marca: "Anycubic", modelo: "Kobra 3 Max", mesa: [426, 420], alturaMax: 500, aMax: 10000, vMax: 600, jerk: 20, klipper: true, vZ: 20,
-    retracao: 0.8, vRetracao: 30, zHop: 0.4, preparoMin: 6,
-    processo: {
-      ...ANYCUBIC, vParedeExt: 150, vSolido: 150, vTopo: 100, vDeslocamento: 300,
-      aPadrao: 5000, aParedeExt: 2000, aParedeInt: 5000, aTopo: 1000, aEsparso: 5000,
+      altura: 0.2, alturaPrimeira: 0.2, paredes: 2, topo: 5, fundo: 3, topoMm: 1, fundoMm: 0, preenchimento: 0.15, padrao: "grade",
+      lParedeExt: 0.42, lParedeInt: 0.45, lEsparso: 0.45, lSolido: 0.42, lTopo: 0.42, lPrimeira: 0.5, lSuporte: 0.42,
+      vParedeExt: 200, vParedeInt: 300, vEsparso: 270, vSolido: 250, vTopo: 200, vPrimeira: 50, vPrimeiraPreench: 105, vPonte: 50,
+      vSuporte: 150, vInterface: 80, vDeslocamento: 500, vSaia: 50, vBalanco: [0, 50, 30, 10], vBalancoTotal: 10,
+      aPadrao: 10000, aParedeExt: 5000, aParedeInt: 10000, aTopo: 2000, aEsparso: 10000, aSolido: 10000, aPonte: 10000, aPrimeira: 500,
+      aDeslocamento: 10000, aDeslocPrimeira: 6000,
+      jParedeExt: 0, jParedeInt: 0, jPreench: 0, jTopo: 0, jPrimeira: 0, jDeslocamento: 0, jPadrao: 0,
+      sobreposicao: 0.15, fluxoTopo: 1, fluxoPonte: 1, ancoraMax: 20, areaMinEsparso: 15,
+      suporteTipo: "arvore", anguloSuporte: 30, suporteDistZ: 0.2, suporteDistXY: 0.35, espacoSuporte: 2.5, espacoInterface: 0.5,
+      interfaceTopo: 2, interfaceFundo: 2, soNaMesa: false,
+      arvore: { angulo: 45, diametro: 2, ponta: 0.8, anguloDiametro: 5, distancia: 5, paredeDupla: 3 },
+      bordaLargura: 5, bordaFolga: 0.1, saiaDistancia: 2,
     },
     materiais: {
-      pla: { vazaoMax: 13, tempoCamada: 9 }, plaRapido: { tempoCamada: 8 }, petg: { densidade: 1.3, tempoCamada: 10 },
-      abs: { densidade: 1.05, vazaoMax: 5, tempoCamada: 16 }, tpu: { densidade: 1.08 },
+      pla: { densidade: 1.26, fluxo: 0.98, vazaoMax: 21, tempoCamada: 4, vMinResfriar: 20 },
+      plaRapido: { densidade: 1.24, fluxo: 0.98, vazaoMax: 18, tempoCamada: 4, vMinResfriar: 20 },
+      petg: { densidade: 1.27, fluxo: 0.95, vazaoMax: 12, tempoCamada: 12, vMinResfriar: 20 },
+      abs: { densidade: 1.04, fluxo: 0.95, vazaoMax: 16, tempoCamada: 3, vMinResfriar: 20 },
+      asa: { densidade: 1.04, fluxo: 0.95, vazaoMax: 12, tempoCamada: 3, vMinResfriar: 20 },
+      tpu: { densidade: 1.24, fluxo: 1, vazaoMax: 3.2, tempoCamada: 8, vMinResfriar: 10 },
     },
   },
   {
-    id: "acu-s1", marca: "Anycubic", modelo: "Kobra S1", mesa: [250, 250], alturaMax: 250, aMax: 10000, vMax: 600, jerk: 9, klipper: true, vZ: 15,
-    retracao: 0.8, vRetracao: 40, zHop: 0.4, preparoMin: 5,
+    id: "acu-k3", marca: "Anycubic", modelo: "Kobra 3", mesa: [255, 255], alturaMax: 260,
+    aMax: 15000, vMax: 600, jerk: 20, aceleraDesacelera: 0.5, vZ: 10, aZ: 5000,
+    retracao: 1, vRetracao: 60, vRecuperacao: 60, retracaoMin: 1, zHop: 0.4, zHopAcima: 0.3, limpeza: 2, vLimpeza: 0.8, preparoMin: 4,
     processo: {
-      ...ANYCUBIC, vParedeExt: 200, vParedeInt: 300, vEsparso: 270, vSolido: 250, vTopo: 200, vPrimeira: 50, vPrimeiraPreench: 80, vSuporte: 150, vDeslocamento: 300,
-      aPadrao: 10000, aParedeExt: 5000, aParedeInt: 5000, aTopo: 2000, aEsparso: 10000, aPrimeira: 500, aDeslocamento: 10000,
+      altura: 0.2, alturaPrimeira: 0.2, paredes: 2, topo: 5, fundo: 3, topoMm: 1, fundoMm: 0.6, preenchimento: 0.15, padrao: "cruzado",
+      lParedeExt: 0.42, lParedeInt: 0.45, lEsparso: 0.45, lSolido: 0.42, lTopo: 0.42, lPrimeira: 0.5, lSuporte: 0.4,
+      vParedeExt: 130, vParedeInt: 200, vEsparso: 300, vSolido: 130, vTopo: 130, vPrimeira: 45, vPrimeiraPreench: 45, vPonte: 30,
+      vSuporte: 100, vInterface: 100, vDeslocamento: 350, vSaia: 50, vBalanco: [0, 50, 30, 20], vBalancoTotal: 20,
+      aPadrao: 10000, aParedeExt: 5000, aParedeInt: 6000, aTopo: 2000, aEsparso: 5000, aSolido: 10000, aPonte: 5000, aPrimeira: 500,
+      aDeslocamento: 15000, aDeslocPrimeira: 15000,
+      jParedeExt: 15, jParedeInt: 15, jPreench: 9, jTopo: 9, jPrimeira: 9, jDeslocamento: 12, jPadrao: 20,
+      sobreposicao: 0.15, fluxoTopo: 0.97, fluxoPonte: 0.9, ancoraMax: 20, areaMinEsparso: 15,
+      suporteTipo: "arvore", anguloSuporte: 40, suporteDistZ: 0.25, suporteDistXY: 0.25, espacoSuporte: 0.2, espacoInterface: 0.2,
+      interfaceTopo: 3, interfaceFundo: 3, soNaMesa: true,
+      arvore: { angulo: 40, diametro: 5, ponta: 0.8, anguloDiametro: 5, distancia: 5, paredeDupla: 3 },
+      bordaLargura: 5, bordaFolga: 0.15, saiaDistancia: 2,
     },
-    materiais: { pla: {}, plaRapido: { tempoCamada: 4 }, petg: { vazaoMax: 12 }, abs: {}, asa: {}, tpu: { densidade: 1.24 } },
-  },
-  {
-    id: "acu-s1max", marca: "Anycubic", modelo: "Kobra S1 Max", mesa: [350, 350], alturaMax: 350, aMax: 20000, vMax: 600, jerk: 15, klipper: true, vZ: 10,
-    retracao: 0.4, vRetracao: 30, zHop: 0.4, preparoMin: 6,
-    processo: {
-      ...ANYCUBIC, vParedeExt: 200, vParedeInt: 300, vEsparso: 300, vSolido: 250, vTopo: 200, vPrimeira: 50, vPrimeiraPreench: 100, vSuporte: 150, vDeslocamento: 300,
-      aPadrao: 10000, aParedeExt: 5000, aParedeInt: 5000, aTopo: 2000, aEsparso: 10000, aPrimeira: 500, aDeslocamento: 10000,
+    materiais: {
+      pla: { densidade: 1.24, fluxo: 0.96, vazaoMax: 12, tempoCamada: 8, vMinResfriar: 20 },
+      plaRapido: { densidade: 1.24, fluxo: 0.97, vazaoMax: 18, tempoCamada: 7, vMinResfriar: 20 },
+      petg: { densidade: 1.27, fluxo: 0.95, vazaoMax: 8, tempoCamada: 10, vMinResfriar: 25 },
+      abs: { densidade: 1.04, fluxo: 0.98, vazaoMax: 5, tempoCamada: 16, vMinResfriar: 25 },
+      asa: { densidade: 1.04, fluxo: 0.95, vazaoMax: 12, tempoCamada: 16, vMinResfriar: 20 },
+      tpu: { densidade: 1.24, fluxo: 1, vazaoMax: 3.2, tempoCamada: 8, vMinResfriar: 20 },
     },
-    materiais: { pla: { vazaoMax: 15 }, plaRapido: { tempoCamada: 4 }, petg: { vazaoMax: 12 }, abs: { vazaoMax: 16 }, asa: { densidade: 1.06, vazaoMax: 15 }, tpu: { densidade: 1.24 } },
   },
 ];
 
 export const maquinaPorId = (id: string) => MAQUINAS.find((m) => m.id === id) ?? MAQUINAS[0];
 
-/** Materiais disponíveis na máquina, já com os ajustes do perfil dela. */
+/** Materiais disponíveis na máquina, com os valores do perfil dela. */
 export function materiaisDa(m: Maquina): Material[] {
-  return (Object.keys(m.materiais) as IdMaterial[]).map((id) => ({ ...MATERIAIS[id], ...m.materiais[id] }));
+  return (Object.keys(m.materiais) as IdMaterial[]).map((id) => ({ id, nome: NOMES[id][0], precoKg: NOMES[id][1], ...m.materiais[id]! }));
 }
 
 export function materialDa(m: Maquina, id: IdMaterial): Material {

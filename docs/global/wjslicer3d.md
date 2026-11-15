@@ -1,104 +1,157 @@
-# WJSlicer3D — tempo de impressão e material para impressão 3D
+# WJSlicer3D — orçamento de impressão 3D (tempo e material)
 
-Face do WJProMaster pedida pelo Johann em 08/11/2026: **fatiar objetos STL para impressão 3D**. Por
-enquanto **sem G-code e sem envio para a impressora**: só a **estimativa prévia do tempo de impressão e
-da quantidade de material**. Base funcional: um fatiador de código aberto de referência, com os perfis
-das impressoras **Bambu Lab** e **Anycubic**. Sem configurações avançadas.
+Face do WJProMaster pedida pelo Johann em 08/11/2026: **fatiar objetos STL para impressão 3D** e orçar
+**tempo de impressão e material**. **Sem G-code e sem envio para a impressora.**
+
+15/11/2026 (pedido do Johann): **só duas impressoras — Bambu Lab P1S e Anycubic Kobra 3** (bico 0,4 mm,
+perfis de fábrica) — e o tempo passa a vir de um **fatiamento real feito com código nosso**, com meta de
+**±5 % do fatiador de referência** nas mesmas configurações. O fatiador de referência é de código aberto
+com licença AGPL: **nenhuma linha de código dele é copiada e o nome dele nunca aparece**; dele só se
+usam os perfis de fábrica (arquivos de dados) como dado técnico de compatibilidade.
 
 Página `slicer/`, código em `src/slicer/`, motor testado em Node (`scripts/teste-slicer.ts`, dentro do
-`pnpm teste`). Não cria documento próprio: lê STL do cofre do WJPDM, do aparelho ou a peça aberta no
-WJCAD.
+`pnpm teste`) e roteiro no tablet (`scripts/roteiro-slicer.cjs`). Não cria documento próprio: lê STL do
+cofre do WJPDM, do aparelho ou a peça aberta no WJCAD.
 
 ## 1. Uso
 
-1. **Abrir STL** → "STL do cofre (WJPDM)…" ou "STL do aparelho…". Pelo WJCAD: menu da Peça →
-   **Estimar impressão 3D (WJSlicer3D)** (a peça vai inteira, em pé: o Y do WJCAD vira o Z da impressora).
-2. A peça aparece na mesa da impressora (vermelha se não couber). **↻ X / ↻ Y / ↻ Z** giram 90°;
-   **Melhor apoio** deita a peça na face plana maior (menos suporte, melhor aderência).
-3. **Impressora** (Bambu Lab X1 Carbon, P1S, A1, A1 mini; Anycubic Kobra 2 Neo, Kobra 2 Pro, Kobra 3,
-   Kobra 3 V2, Kobra 3 Max, Kobra S1, Kobra S1 Max) e **material** (PLA, PLA alta velocidade, PETG, ABS,
-   ASA, TPU, conforme a máquina) com o **preço por kg** (lembrado por material).
+1. **Adicionar STL** (barra de cima ou "+ Peça" no cartão **Peças na mesa**) → "STL do cofre (WJPDM)…" ou
+   "STL do aparelho…". Pelo WJCAD: menu da Peça → **Estimar impressão 3D (WJSlicer3D)** (a peça vai em pé:
+   o Y do WJCAD vira o Z da impressora).
+2. **Peças na mesa**: cada peça com as **cópias** (− n× +) e ✕ para tirar da mesa. A mesa **se organiza
+   sozinha** (fileiras, da maior para a menor, 6 mm entre as peças; mais espaço com a borda). Tocar numa
+   peça (na lista ou na mesa) a escolhe; **↻ X / ↻ Y / ↻ Z** e **Melhor apoio** agem na peça escolhida.
+   Peça que não cabe ou passa da borda fica vermelha, com aviso.
+3. **Impressora** (Bambu Lab P1S, Anycubic Kobra 3) e **material** (PLA, PLA alta velocidade, PETG, ABS,
+   ASA, TPU) com o **preço por kg** (lembrado por material).
 4. **Ajustes**: altura da camada (0,08–0,28 mm), paredes, camadas de topo e fundo, preenchimento (%),
-   suporte e borda (aba de 5 mm). "Padrão do perfil" volta aos valores de fábrica da impressora.
-5. **Resultado** (recalcula sozinho a cada mudança, em segundo plano): tempo de impressão, material
-   (g), filamento (m de 1,75 mm), custo, preparo típico e total, camadas, volume da peça e o
-   **detalhamento por parte** (paredes, sólido, topo, pontes, esparso, suporte, borda, deslocamentos,
-   espera para resfriar), com avisos (não cabe na mesa, malha aberta).
-6. **Calibrar tempo…**: informa-se uma vez o tempo real (ou o do fatiador) de uma peça; o fator fica
-   guardado para aquela impressora e passa a corrigir todas as estimativas dela.
+   **padrão do preenchimento** (grade, linhas, linhas cruzadas, triângulos, cúbico, giroide, favo de mel),
+   **suporte** (sem, normal, árvore), **borda** (aba de 5 mm) e **saia** (uma volta a 2 mm). "Padrão do
+   perfil" volta aos valores de fábrica da impressora.
+5. **Resultado** (recalcula sozinho a cada mudança, no worker): tempo de impressão, material (g),
+   filamento (m de 1,75 mm), custo, preparo típico e total, camadas, volume das peças e o **tempo por tipo
+   de caminho** (parede externa, paredes internas, sólido, topo, pontes, esparso, suporte, interface,
+   borda e saia, deslocamentos/retrações/trocas de camada, desaceleração para resfriar), com o material
+   de cada um.
+6. **Prévia das camadas** (botão sobre a vista, depois de fatiar): deslizante (e − / +) escolhe a camada;
+   os caminhos dela aparecem coloridos por tipo (legenda) e as peças, cortadas na altura da camada.
+7. **Calibrar tempo…**: informa-se uma vez o tempo real (ou o do fatiador) de uma mesa; o fator fica
+   guardado para aquela impressora e corrige todas as estimativas dela.
 
 Preferências (impressora, material, preços, ajustes, calibração) ficam no aparelho
-(`localStorage["wjslicer:preferencias"]`).
+(`localStorage["wjslicer:preferencias"]`); impressora antiga que saiu da lista volta à P1S.
 
-## 2. Como a estimativa é feita (`src/slicer/fatiar.ts`)
+## 2. Como o fatiamento é feito (código próprio)
 
-Camada por camada, no plano do meio da camada (primeira camada com a altura do perfil):
+**Corte** (`caminhos.ts`, `fatiarMalha`): cada camada é cortada no plano do meio; os segmentos viram um
+mapa dentro/fora numa **grade da peça** (célula ≥ 0,15 mm, até 200 mil células; mapas de todas as
+camadas guardados em bits).
 
-1. **Corte da malha**: cada triângulo que cruza o plano dá um segmento; os segmentos se encadeiam pela
-   aresta da malha em comum (laços = contornos e furos, com perímetro, área com sinal e ângulo de cada
-   canto). O sentido de cada laço é decidido pela maioria das normais (triângulos-agulha não quebram o
-   contorno); triângulos colapsados pela solda dos vértices são ignorados.
-2. **Varredura por linhas** (par/ímpar): área exata da seção, comprimento médio das cordas (tamanho das
-   linhas de preenchimento) e um **mapa de bits** da camada (grade de ≥ 0,25 mm, até 160 mil células).
-3. Com os mapas das camadas vizinhas (operações de bits): **cascas de topo e fundo** (célula sólida se
-   faltar material em alguma das N camadas acima/abaixo), **superfície de topo exposta**, **pontes**
-   (sólido sem nada embaixo) e **suporte** (o que fica além da camada de baixo alargada pelo ângulo-limite
-   do perfil desce até a mesa ou até a peça; corpo com linhas a 2,5 mm e 2 camadas de interface densa).
-4. **Material**: paredes = perímetro × voltas × espaçamento; interior = sólido + esparso × densidade;
-   volume = área × altura (o espaçamento já desconta o arredondamento do filete:
-   `w − h·(1 − π/4)`). Massa = volume × densidade do material; comprimento de filamento de 1,75 mm.
-5. **Tempo**, como o planejador do firmware:
-   - trapézio de velocidade em cada segmento com a aceleração de cada recurso (parede externa, interna,
-     topo, esparso, primeira camada, deslocamento), limitada pela máquina;
-   - **velocidade de canto** pelo ângulo da junção (jerk do perfil), com passadas para trás e para a
-     frente (linhas curtas não chegam à velocidade);
-   - firmware **Klipper** (Anycubic, menos o Kobra 2 Neo): "acelerar até desacelerar" de 50%;
-   - **vazão volumétrica máxima** do material limita a velocidade (ex.: TPU 3,2–3,6 mm³/s);
-   - **parede externa em balanço** desacelera por faixa (até 25/50/75/100% da largura fora da camada
-     de baixo, pela inclinação da face) e as **pontes** vão na velocidade de ponte;
-   - **tempo mínimo de camada** do material (desacelera para resfriar, até a velocidade mínima);
-   - deslocamentos com retração, levantamento do Z e troca de camada.
-   O **preparo** (aquecer, nivelar, purgar) é um valor típico por máquina, mostrado à parte.
+**Geometria da camada** (`campo.ts`): a seção vira um **campo de distância com sinal** (positivo dentro;
+distância exata junto ao contorno e propagada em duas varreduras). Assim, sem operações booleanas de
+polígonos (frágeis em malhas reais):
+- **paredes** = curvas de nível do campo (marcha dos quadrados), já em laços com externo e furos;
+  parede externa a ½ espaçamento da borda, internas a cada espaçamento; seção fina fica com menos paredes;
+- **borda** = curvas de nível para fora (só os contornos externos);
+- **preenchimento** = linhas e curvas do padrão **recortadas** pela região (campo ≥ fim das paredes −
+  sobreposição de 15 %) e pela classe de cada célula;
+- **ilhas** da camada (componentes ligados) para a ordem de impressão.
+
+**Classes por célula** (pelas camadas vizinhas, em palavras de 32 bits): **ponte** (sem nada embaixo),
+**topo** (sem nada em cima), **sólido** (falta material em alguma das N camadas de topo/fundo; espessura
+mínima do perfil), **esparso**; área de esparso menor que 15 mm² vira sólido; primeira camada toda sólida.
+
+**Padrões**: grade (2 direções, 45°/135°), linhas (uma direção, alterna), linhas cruzadas (blocos de
+camadas alternando a direção), triângulos (3 direções), cúbico (3 direções que andam com a altura),
+giroide (curva de nível da função do giroide; densidade pela medida do comprimento por área) e favo de mel
+(ziguezague de hexágonos). O passo das linhas sai da densidade e do espaçamento.
+
+**Ligação e ordem**: ilha por ilha (a mais perto primeiro): paredes de dentro para fora, depois o
+preenchimento; as linhas são ligadas pela ponta mais próxima e, quando a ligação corre junto à parede
+(até 20 mm no esparso), viram uma extrusão só (âncora); senão, deslocamento. Laços começam no ponto mais
+perto do bico.
+
+**Suporte** (`calcularSuportes`), de cima para baixo: o que a camada tem além da camada de baixo alargada
+pelo **ângulo-limite** do perfil precisa de apoio; folga em Z (uma camada) e em XY; **interface** densa nas
+camadas logo abaixo do contato (2 na P1S, 3 no Kobra 3). **Normal**: colunas que descem até a mesa ou até a
+peça (Kobra 3: **só na mesa**, as colunas que encostam na peça saem inteiras), corpo em linhas no vão do
+perfil. **Árvore**: um galho por bloco de 5 mm de contato, que desce engrossando, se aproxima do vizinho e
+se junta, desvia da peça (e termina sobre ela se não tiver como desviar); cada galho é impresso como
+parede(s) circular(es) (duas acima do diâmetro de parede dupla).
+
+**Tempo** (`planejador.ts`), movimento a movimento, como o firmware:
+- trapézio de velocidade com a **aceleração de cada recurso** (parede externa, interna, topo, sólido,
+  esparso, ponte, primeira camada, deslocamento), limitada pela máquina;
+- **jerk por eixo** nas junções (e por recurso no Kobra 3), passadas para trás e para a frente (frear a
+  tempo para o próximo canto), partida e parada na velocidade segura do jerk;
+- Kobra 3 (Klipper): "acelerar até desacelerar" de 50 %;
+- **vazão volumétrica máxima** do material limita a velocidade de cada caminho;
+- **paredes em balanço** desaceleram por faixa (25/50/75/100 % da largura fora da camada de baixo) e
+  ponte na velocidade de ponte;
+- **deslocamentos** com retração (só acima de 1 mm e fora do preenchimento), limpeza, levantamento do Z
+  (Kobra 3 só acima de 0,3 mm) e **troca de camada**;
+- **tempo mínimo de camada** do material: a extrusão desacelera até o mínimo do perfil (sem espera parada).
+O **preparo** (aquecer, nivelar, purgar) é um valor típico por máquina, mostrado à parte.
+
+**Material**: cada extrusão = comprimento × espaçamento (largura menos o arredondamento do filete) ×
+altura × fluxo do recurso (topo, ponte) × fluxo do filamento; massa pela densidade; filamento de 1,75 mm.
+
+**Várias peças** (`fatiar.ts`): cada peça é fatiada uma vez; camada por camada, as cópias são percorridas
+na ordem de proximidade do bico (camadas até a peça mais alta). Os caminhos de cada camada ficam no
+worker para a prévia.
 
 ## 3. Perfis (`src/slicer/perfis.ts`)
 
-Valores dos perfis de fábrica abertos (JSON) do fatiador de referência, **bico de 0,4 mm e processo
-"0,20 mm padrão"** de cada máquina, resolvida a herança dos arquivos: alturas, paredes, cascas
-(camadas e espessura mínima), larguras de linha, velocidades, acelerações, velocidades de balanço e
-ponte, ângulo do suporte; da máquina: mesa, altura útil, aceleração e velocidade máximas, jerk,
-firmware, velocidade do Z, retração e levantamento do Z; dos filamentos de cada máquina: densidade,
-vazão volumétrica máxima e tempo mínimo de camada. Só dados técnicos de compatibilidade: nenhum
-código, texto ou ícone copiado.
+Conferidos em 15/11/2026 nos arquivos de dados de fábrica (herança resolvida), processo "0,20 mm padrão":
 
-## 4. Validação (08/11/2026)
+| | P1S | Kobra 3 |
+|---|---|---|
+| Paredes / topo / fundo | 2 / 5 (1 mm) / 3 | 2 / 5 (1 mm) / 3 (0,6 mm) |
+| Preenchimento | 15 % grade | 15 % linhas cruzadas |
+| Velocidades (mm/s) ext/int/esparso/sólido/topo/1ª camada | 200/300/270/250/200/50 (preench. 105) | 130/200/300/130/130/45 |
+| Ponte / deslocamento | 50 / 500 | 30 / 350 |
+| Acelerações (mm/s²) ext/int/topo/esparso/1ª/desloc. | 5000/10000/2000/10000/500/10000 | 5000/6000/2000/5000/500/15000 |
+| Máquina: aceleração, velocidade, jerk | 20000, 500, 9 | 15000, 600, 20 (por recurso 9–15) |
+| Retração / Z | 0,8 mm a 30 mm/s, levanta 0,4 | 1 mm a 60 mm/s, levanta 0,4 acima de 0,3 mm |
+| Suporte | árvore, 30°, folga 0,2/0,35 | árvore, 40°, folga 0,25/0,25, só na mesa |
+| PLA: densidade, fluxo, vazão, camada mínima | 1,26; 0,98; 21 mm³/s; 4 s | 1,24; 0,96; 12 mm³/s; 8 s |
 
-- `scripts/teste-slicer.ts` (Node): planejador (trapézio, triângulo, laços com cantos), cubo de 20 mm
-  (100 camadas; 100% de preenchimento = 8 000 mm³ = volume da peça; padrão = conta à mão de paredes +
-  cascas + 15%), tubo com furo, cubo de 60 mm (mais preenchimento = mais tempo e massa), TPU limitado
-  pela vazão, tempo mínimo de camada numa peça pequena, ponte com suporte (só o vão recebe suporte),
-  borda, aviso de mesa pequena, leitura de STL binário, giro e apoio na mesa.
-- Peça de calibração de referência (barco de teste, 225 mil triângulos), perfil padrão, PLA, sem
-  suporte: X1 Carbon/P1S **26 min, 12,4 g**; A1/A1 mini 31 min; Kobra 3 33 min, 10,6 g; Kobra 2 Neo
-  45 min. Cálculo em ~1 s no computador (worker; a tela não trava).
-- Tablet simulado (1280×800, toque, perfil tablet): abrir pelo menu, trocar impressora, suporte,
-  paredes, girar, melhor apoio, calibrar, preferências lembradas; WJCAD → WJSlicer3D com a peça em pé.
+## 4. Validação
 
-**Precisão**: a estimativa não gera o caminho real da ferramenta (sem G-code), então fica
-aproximada. O material costuma ficar perto do valor do fatiador; o tempo pode variar mais em peças
-com muitos detalhes. Para a impressora do dia a dia, a **calibração** com uma impressão real deixa o
-tempo fiel.
+- `scripts/teste-slicer.ts` (Node): campo de distância e contornos (quadrado deslocado para dentro e para
+  fora, anel com furo, recorte de linha), planejador (trapézio, jerk, tempo mínimo de camada), **cubo de 20
+  mm** (100 camadas; 100 % ≈ volume × fluxo; padrão ≈ conta à mão; parede externa = laço × camadas),
+  **cilindro Ø20 × 20**, **peça com balanço** (ponte sem suporte; suporte normal com interface e em árvore;
+  rampa a 60° sem suporte), os sete padrões (densidade de 20 %), TPU limitado pela vazão, várias peças (4
+  cópias = 4 × material, organizar dentro da mesa, avisos de mesa), borda e saia, STL, giro e apoio,
+  perfis. Esfera de Ø40 com árvore fatiada em ~2 s no Node.
+- **Referências medidas pelo Johann**: tabela `REFERENCIAS` no teste (cubo e cilindro na P1S e no Kobra 3,
+  peça com balanço na P1S; PLA, perfil padrão): **pendentes** — quando ele mandar os valores do fatiador de
+  referência, o teste passa a exigir ±5 % de tempo e de massa.
+- `scripts/roteiro-slicer.cjs` (tablet 1280×800, toque): STL do aparelho, cópias, segunda peça, Kobra 3 com
+  árvore e giroide, **tela sem travar** (nenhuma tarefa longa na página acima de 200 ms durante o
+  fatiamento), prévia das camadas, alvos ≥ 44 px, calibração, remover peça, preferências lembradas.
+
+**Precisão**: o caminho é gerado de verdade (paredes, linhas, ligações, deslocamentos), então material e
+tempo seguem a geometria. Diferenças para o fatiador de referência que ainda podem pesar: emenda e
+ordem exata dos caminhos, preenchimento de vãos estreitos, "uma parede só no topo", suporte em árvore
+(algoritmo próprio, mais simples) e a borda automática (aqui é liga/desliga). A **calibração** com uma
+impressão real deixa o tempo fiel para a impressora do dia a dia.
 
 ## 5. Decisões
 
 - Nome da face: **WJSlicer3D** (pedido do Johann: "WJ Slicer 3D").
-- Nomes das **impressoras** (marca e modelo) aparecem na lista de máquinas como dado técnico de
-  compatibilidade, como os formatos de arquivo; o nome do fatiador de referência **nunca** aparece na
-  interface.
-- Sem G-code e sem envio para a impressora **por enquanto** (decisão do Johann, 08/11/2026).
+- **Só P1S e Kobra 3** (15/11/2026). Nomes das impressoras só na lista de máquinas, como dado técnico; o
+  nome do fatiador de referência **nunca** aparece.
+- Fatiamento **com código próprio** (15/11/2026): proibido copiar código do fatiador de referência (AGPL).
+- Sem G-code e sem envio para a impressora (decisão do Johann, 08/11/2026; reafirmada em 15/11/2026).
 - Sem documento próprio: o STL vem do cofre (pasta CAD), do aparelho ou do WJCAD.
 
-## 6. Próximos passos possíveis (só se o Johann pedir)
+## 6. Estado e próximos passos
 
-- S2: várias peças na mesa (placa) e cópias; perfis 0,2/0,6/0,8 mm de bico; padrões de preenchimento
-  (giroide, favo) com o tempo próprio de cada um; suporte em árvore.
-- S3: G-code e envio para a impressora (rede local), se ele quiser.
+- S1 (08/11/2026): estimativa por camadas, perfis Bambu Lab e Anycubic. **Substituída** pela S2.
+- **S2 (15/11/2026, entregue)**: fatiamento real, P1S e Kobra 3, padrões, suporte normal e árvore, saia,
+  várias peças, prévia das camadas, tempo por tipo de caminho.
+- Pendente do Johann: valores de referência medidos (tabela do teste).
+- Possíveis (só se ele pedir): outros bicos (0,2/0,6/0,8), "uma parede só no topo", preenchimento de vãos,
+  borda automática, arrastar a peça na mesa à mão.
