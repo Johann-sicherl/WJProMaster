@@ -78,27 +78,27 @@ esvazia após 30 dias. Salvar seguido (cópia de trabalho ou rascunho nunca publ
 computador) + `WJPDM/.wjpdm/indice.json` e `.wjpdm/blobs/` (conteúdo de cada versão).
 ✅ Google Drive (`src/comum/drive.ts`): "Conectar ao Google Drive" na tela de cópias; cofre em
 Meu Drive/WJPDM; acesso de 1 hora renovado ao salvar/sincronizar (toque do usuário).
-✅ **Mudanças feitas fora do app — aplicadas sozinhas** (12/11/2026, decisão do Johann: "o que eu fizer à mão
-no Drive é o modelo atual do cofre"; substitui a janela de escolhas do #122). Ao abrir qualquer app e a cada
-sincronia, o app confere o espelho legível do Drive (pelos ids do que ele criou), do pendrive e da pasta do
-dispositivo (arquivo achado pelo conteúdo; pasta pelos arquivos de dentro) e **aplica no índice do cofre, sem
-perguntar**: renomear/mover → Renomear/Mover (histórico "Renomeado/Movido no Drive de X para Y"); excluído →
-**lixeira do cofre** (30 dias, versões preservadas, nunca destruído); pasta excluída sai do cofre só vazia (o
-que ficou nela a mantém e ela é recriada) — **nenhum órfão novo** (o #124 continua levando órfãos antigos para
-"Recuperados"). **Exceções, desfeitas na cópia com o motivo**: arquivo em GO-OUT (com qualquer pessoa);
-arquivo em estado protegido ("não excluir", ex.: Série em produção) não é excluído; renomear arquivo travado.
-**Fora do alcance (`drive.file`)**: pasta criada à mão e arquivo novo posto à mão não são vistos; arquivo do
-cofre movido para uma pasta criada à mão fica onde estava no índice (no Drive fica onde ele pôs, sem cópia
-repetida) com o aviso "crie a pasta pelo WJPDM"; arquivos novos entram por "Adicionar". **Nunca aceito de
-fora**: `WJPDM/.wjpdm` (o app recria o que faltar; WJPDM ou .wjpdm renomeada à mão é achada pelo indice.json
-e o nome volta), pastas "(versões)" (regravadas) e conteúdo editado fora do app (Drive pelo md5; pendrive pelo
-tamanho/data + conteúdo): vale a cópia do cofre, regravada, com aviso. Mudou no app e fora ao mesmo tempo: **a
-mais recente vence** (data do Drive; no pendrive, a da sincronia), a outra vai para a lixeira do cofre. Aviso
-único ao terminar, em qualquer app: **"Cofre atualizado pelo Drive: N movidos, N renomeados, N para a
-lixeira"** (+ desfeitos/avisos) com **"Ver detalhes"** (de → para e motivo); registro também em Ferramentas →
-"Mudanças no Drive". Pastas do Drive (também as "(versões)") achadas **pelo id guardado**, nunca pelo nome;
-remoção sempre pela lixeira do Drive (`trashed`), **nunca DELETE** (nem dos conteúdos internos). Testes:
-`teste-sincronia.ts` (§12–15c), `teste-drive.ts` (§11–13), `roteiro-mudancas-fora.cjs` (tablet).
+✅ **O cofre manda nas cópias** (15/11/2026, decisão do Johann: ele não mexe mais no Drive à mão; saiu a
+aplicação automática das mudanças feitas fora do app dos #122/#125, com o aviso "Cofre atualizado pelo Drive" e
+o botão "Mudanças no Drive"). O que alguém mexer à mão no Drive, no pendrive ou na pasta do dispositivo **não
+entra no cofre**: a sincronia regrava os arquivos visíveis como o cofre está. Ficou: pastas do Drive (também as
+"(versões)") achadas **pelo id guardado** (sem pastas duplicadas) e remoção sempre pela lixeira do Drive
+(`trashed`), **nunca DELETE**. Testes: `teste-sincronia.ts` §15, `teste-drive.ts` §11.
+✅ **Zerar cofre** (15/11/2026, Ferramentas → Zerar cofre, confirmar digitando **ZERAR**): apaga índice,
+versões, itens e arquivos visíveis em todas as cópias (no Drive, pela lixeira dele) e dá ao cofre uma
+**identidade nova**. Os outros aparelhos, ao sincronizar, veem a identidade nova e **limpam o banco deles sem
+reenviar o antigo** (aviso "O cofre foi zerado em outro aparelho"); pendrive e pasta do dispositivo antigos
+também são limpos quando voltam. Ficam o usuário, a máscara e o fluxo de trabalho. Testes: `teste-sincronia.ts`
+§15b (2 aparelhos), `teste-drive.ts` §12, `roteiro-zerar-importar.cjs` (tablet). Pendente: o que um aparelho
+desconectado criou depois do zerar, antes de sincronizar, também é limpo (decisão do pedido: sem reenviar).
+✅ **Importar pasta… / Importar arquivos…** (15/11/2026; faixa Cofre, menu da lista e arrastar): pasta do
+computador ou do tablet com todas as subpastas, mantendo a estrutura, para a pasta aberta (opção "Criar a
+pasta X" ou só o conteúdo dela). Cada arquivo entra **publicado** (versão 1, GO-IN, sem GO-OUT); vídeo, foto e
+áudio como **arquivo de mídia** (sem a pasta "(versões)"; repetido substitui o conteúdo). Ficam de fora
+`.wjpdm`, pastas "(versões)" e arquivos de sistema (desktop.ini, .DS_Store, Thumbs.db, `~$*`, `._*`). Nome
+repetido: **uma pergunta** (Substituir = versão seguinte / Pular / Manter os dois = "nome (2)"; GO-OUT de outra
+pessoa é pulado). Barra de progresso com Cancelar; resumo "N arquivos, N pastas, N ignorados". Motor puro
+`src/pdm/importar.ts`, teste `teste-sincronia.ts` §15c.
 ✅ **Reorganizar no WJPDM** (12/11/2026): **Mover pasta para…** (menu da pasta; ou pasta selecionada + Mover)
 leva a pasta com tudo dentro; **marcar vários arquivos** (caixinha à esquerda, "marcar todos" no cabeçalho,
 Ctrl+clique no mouse) e **Mover para…** de uma vez (nome repetido ganha " (2)"; GO-OUT de outra pessoa
@@ -113,8 +113,7 @@ cópias), com nome livre e histórico **"Pasta original não encontrada…"**, e
 "Cofre:") diz **quantos e quais**. Arquivos da lixeira ficam como estão (Restaurar já os leva para a raiz).
 Daí em diante é só mover pelo WJPDM. Função pura `recuperarOrfaos` (`src/pdm/sincronia.ts`), teste 16 em
 `teste-sincronia.ts`.
-🟡 Arquivos **novos** colocados à mão no pendrive ou no Drive ainda não entram no cofre (adicionar pelo
-WJPDM). Arquivo apagado à mão no espelho não é tratado (fica como está até mudar no app).
+🟡 Arquivos colocados à mão no pendrive ou no Drive não entram no cofre: trazer por **Importar pasta…**.
 
 ## Tabelas do cofre (29/10/2026)
 

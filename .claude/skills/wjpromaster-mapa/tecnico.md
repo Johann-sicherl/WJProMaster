@@ -148,29 +148,31 @@ impressão 3D manda a malha para o WJSlicer3D. Tudo local no aparelho até o ser
   `scripts/teste-drive.ts`): login do Google no navegador (token de 1 h, renovado no toque ao salvar),
   escopo `drive.file`, cliente OAuth `751073631393-8tmbb…` do projeto `wjpromaster`; o cofre fica em
   Meu Drive/WJPDM (arquivos atualizados no lugar: o Drive guarda as revisões). Chave secreta não é usada.
-- **Mudanças feitas fora do app no espelho** (12/11/2026, `src/pdm/espelho.ts`; **aplicadas sozinhas** desde a
-  decisão do Johann do mesmo dia — não há mais pendências, `decididos` nem janela de escolha): cada cópia tem
-  `lerEspelho` (antes de `gravarVisiveis`) e diz onde está cada arquivo/pasta que o app gravou — Drive pelo **id**
-  (listagem dos pais conhecidos, 40 por consulta, + GET do que sumiu: lixeira com `trashedTime` ou 404 =
-  **excluído**, `visto: undefined`), pendrive/pasta pelo caminho e, se sumiu, pelo **conteúdo** (nunca entre os
-  arquivos das pastas "(versões)": a v1 tem o mesmo conteúdo do atual e o empate na votação fazia a pasta
-  renomeada parecer excluída — achado pelo teste 15c); pasta local sem id é descoberta pelos arquivos de dentro
-  (votação; sem voto = excluída). `analisarEspelho` compara gravado × visto × cofre e **aplica** (via
-  `trazerParaOCofre`): pastas (rasas primeiro), arquivos, depois exclusões (arquivos → lixeira do cofre; pastas,
-  as mais fundas primeiro, só se ficarem vazias). Exceções viram relato `desfeito` (a cópia não está em `manter`,
-  então volta ao cofre: PATCH de volta no Drive, recria o excluído). `visto: null` (pasta criada à mão no Drive)
-  → `manter` + relato `fora` (sem cópia repetida). "O app também mudou" olha a pasta do cofre e o nome gravados
-  no registro (`pasta`/`pai`); exclusão × alteração no app: vence a data maior (`trashedTime` × `mod`).
-  Conteúdo editado: Drive pelo `md5Checksum` (guardado em `visiveis.json` ao enviar; registro antigo adota o atual),
-  pendrive pela marca `{tam, data}` + comparação byte a byte → `regravar`. Relatos (`RelatoFora`) → `resumoFora`
-  → aviso `.wjc-aviso-fora` (uma vez por id, registro em `localStorage["wjpdm:foraRegistro"]`, 60 últimos) e
-  "Ver detalhes" (`abrirMudancasFora`). Raiz `WJPDM` e `.wjpdm`: pelo nome; sumiu → pelo `indice.json` (só o app o
-  cria) e o nome volta (`localizar`). Pastas "(versões)" pelo id do registro (acompanham o arquivo movido).
-  Registros: `visiveis.json` `{caminho, blob, drive, pai, pasta, md5}`, `pastas.json` `{formato: 2, pastas: {id:
-  {caminho, drive, pai}}}` (o formato antigo é migrado achando a pasta pela pasta-mãe dos arquivos). **Nada de
-  DELETE no Drive** (blobs também vão para a lixeira). **Armadilhas:** com `drive.file` pasta criada à mão é
-  invisível (404); mover não muda `modifiedTime` com certeza, então a hora da mudança à mão é a do Drive ou a da
-  sincronia que a viu; no pendrive não há data da exclusão (vale a da sincronia).
+- **O cofre manda nas cópias** (15/11/2026, decisão do Johann: ele não mexe mais no Drive à mão; saiu o
+  `src/pdm/espelho.ts` dos #122/#125 — `lerEspelho`, aviso "Cofre atualizado pelo Drive", "Mudanças no Drive"):
+  `gravarVisiveis(i, lerBlob)` regrava os visíveis como o cofre está. Ficou do #122: no Drive, pastas e
+  "(versões)" **pelo id guardado** (`pastas.json` formato 2; o antigo é migrado), mover/renomear por PATCH
+  (`colocar`), **nada de DELETE** (lixeira do Drive, blobs também). `RepositorioPasta` só compara com o
+  `visiveis.json` (sem varrer o disco).
+- **Zerar cofre** (15/11/2026): `Indice.cofre = {id, zeradoEm}` (`indiceZerado`); `escolherIdentidade` dá a vitória ao
+  zerar mais recente; índices de outra identidade ficam fora da mescla e a cópia recebe o índice novo (blobs
+  apagados pela limpeza normal, visíveis pela lixeira/remoção) → `ResultadoSincronia.zeradas`. Banco do
+  aparelho guarda a identidade em `meta/identidade` e **recusa** índice de identidade mais antiga
+  (`ERRO_COFRE_ZERADO`, a sincronia para: sincronia de outra janela iniciada antes do zerar não traz o antigo de
+  volta). Índice nulo (cópia nova) nunca conta como zerada. `zerarCofre()` em `cofre.ts` (na fila, dentro do
+  toque) e evento `EVENTO_ZERADO` (WJPDM recarrega e avisa). Vínculos `wjpdm:vinculo:*` são esquecidos.
+- **Importar pasta/arquivos** (15/11/2026): plano puro em `src/pdm/importar.ts` (`planejarImportacao`: pastas
+  reaproveitadas pelo nome, repetidos contados e decididos numa escolha só; `registroImportado`: v1 publicada
+  ou versão seguinte; mídia substituída troca o conteúdo). `Arquivo.midia` tira a pasta "(versões)" em
+  `visiveisDoIndice`. Pasta pelo `showDirectoryPicker` (não entra em .wjpdm/"(versões)"; conta como 1
+  ignorado) ou `<input webkitdirectory>`.
+- **Login do Google** (15/11/2026): trava `wjgoogle:trava` (dono = id da janela, 120 s), token válido de outra
+  janela dispensa a janela, quem chega com a trava ocupada espera o evento `storage`; `login_hint` com
+  `wjgoogle:conta` (lida de `drive/v3/about` depois do 1º token) e `prompt: "none"` (falhou → `wjgoogle:interacao`
+  e a próxima abre normal); renovação automática do primeiro toque: 1 a cada 10 min entre todas as janelas
+  (`wjgoogle:ultimaAuto`); registro `wjgoogle:aberturas` (200) → WJPDM › Ferramentas › Login do Google.
+  **Armadilha do Drive simulado**: conteúdo vs. metadados se distingue pelo caminho `/upload/`, não pelo
+  Content-Type (o índice é JSON).
 - **Arquivo órfão** (12/11/2026): `mesclar` deixa a exclusão de uma pasta vencer sem olhar os arquivos postos
   nela em outra cópia (corrida entre aparelhos, ou versão antiga do app): o arquivo ficava com `pasta` de id
   inexistente — `caminhoDoArquivo` cai na raiz (Drive o publicava lá) e o WJPDM, que lista por `a.pasta === id`,

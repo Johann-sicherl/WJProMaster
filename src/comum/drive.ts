@@ -9,15 +9,12 @@
 //            Meu Drive/WJPDM/.wjpdm/visiveis.json      ← o que já foi gravado em <pastas> (id no Drive)
 //            Meu Drive/WJPDM/.wjpdm/pastas.json        ← pasta do cofre → id da pasta no Drive
 //
-// Mudanças feitas à mão no Drive (12/11/2026): as pastas e os arquivos que o app criou são achados
-// pelo id (não pelo nome), então pasta renomeada à mão não vira pasta duplicada e arquivo movido à
-// mão é visto onde está; o que foi excluído à mão é visto (lixeira do Drive ou 404) com a data, e o
-// conteúdo editado fora do app, pelo md5. O cofre aplica sozinho (src/pdm/espelho.ts). A pasta WJPDM
-// e a .wjpdm renomeadas/movidas à mão são achadas pelo indice.json (só o app o cria). Nada é apagado
-// de vez: o que sai vai para a lixeira do Drive (trashed), nunca DELETE.
+// As pastas e os arquivos que o app criou são achados pelo id (não pelo nome): nada de pastas
+// duplicadas. O cofre manda (15/11/2026): mudanças feitas à mão no Drive não entram no cofre; a
+// sincronia põe os visíveis de volta como o cofre está. Nada é apagado de vez: o que sai vai para a
+// lixeira do Drive (trashed), nunca DELETE.
 
-import { visiveisDoIndice, type Indice, type Repositorio } from "../pdm/sincronia";
-import { caminhoDaPasta, decisaoVazia, type DecisaoEspelho, type EspelhoVisto, type ItemVisto } from "../pdm/espelho";
+import { caminhoDaPasta, visiveisDoIndice, type Indice, type Repositorio } from "../pdm/sincronia";
 
 /** Cliente OAuth do projeto WJProMaster no Google Cloud (público; a chave secreta não é usada). */
 export const CLIENTE_GOOGLE = "751073631393-8tmbbv019s57975tbfv4h1g11gsahunb.apps.googleusercontent.com";
@@ -32,12 +29,12 @@ export interface DestinoNuvem {
   conectado(): boolean;
   situacao(): string;
   conectar(): Promise<void>;
-  /** Renova o acesso vencido (abre a janela do Google; precisa de um toque recente). */
-  renovar(): Promise<boolean>;
+  /** Renova o acesso vencido (abre a janela do Google; precisa de um toque recente). `motivo`: registro das aberturas. */
+  renovar(motivo?: string): Promise<boolean>;
   /** Já autorizado e o acesso vence em menos de `ms` (ou já venceu): vale renovar no próximo toque. */
   vencendo?(ms: number): boolean;
   /** Renova já (dentro de um toque), mesmo que ainda não tenha vencido. */
-  renovarAgora?(): Promise<boolean>;
+  renovarAgora?(motivo?: string): Promise<boolean>;
   /** Carrega antes o que a renovação precisa (a janela abre logo no toque). */
   preparar?(): void;
   repositorio(): Repositorio;
@@ -54,12 +51,12 @@ export class ErroDrive extends Error {
 type Buscar = typeof fetch;
 const q = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 /** Metadados de um item do Drive (null = sumiu, na lixeira ou fora do alcance do app). */
-type Meta = { id: string; name: string; parents?: string[]; mimeType?: string; modifiedTime?: string; trashed?: boolean; trashedTime?: string; md5Checksum?: string };
-/** Arquivo visível gravado: caminho no cofre, conteúdo, id no Drive, pasta onde foi posto no Drive, pasta do cofre e md5 do que o app gravou. */
-type RegVis = { caminho: string[]; blob: string; drive: string; pai?: string; pasta?: string; md5?: string };
+type Meta = { id: string; name: string; parents?: string[]; mimeType?: string; trashed?: boolean };
+/** Arquivo visível gravado: caminho no cofre, conteúdo, id no Drive, pasta onde foi posto no Drive e pasta do cofre. */
+type RegVis = { caminho: string[]; blob: string; drive: string; pai?: string; pasta?: string };
 /** Pasta do cofre → pasta no Drive (e a pasta-mãe no cofre). */
 type RegPastas = Record<string, { caminho: string[]; drive: string; pai?: string | null }>;
-const CAMPOS = "id,name,parents,mimeType,modifiedTime,trashed,trashedTime,md5Checksum";
+const CAMPOS = "id,name,parents,mimeType,trashed";
 const igual = (a?: string[], b?: string[]) => !!a && !!b && a.length === b.length && a.every((x, k) => x === b[k]);
 
 export class RepositorioDrive implements Repositorio {
@@ -129,14 +126,10 @@ export class RepositorioDrive implements Repositorio {
   private async baixar(id: string): Promise<Blob> {
     return (await this.req(`${API}/${id}?alt=media`)).blob();
   }
-  /** md5 de cada arquivo enviado nesta sincronia (o Drive devolve): conteúdo editado fora do app é visto por ele. */
-  private md5s = new Map<string, string>();
   /** Cria (multipart: dados + nome/pasta) ou atualiza o conteúdo de um arquivo existente. */
   private async enviar(dados: Blob, nome: string, pasta: string, id?: string): Promise<string> {
     if (id) {
-      const r = await this.req(`${UPLOAD}/${id}?uploadType=media&fields=id,md5Checksum`, { method: "PATCH", body: dados });
-      const j = (await r.json().catch(() => ({}))) as { md5Checksum?: string };
-      if (j.md5Checksum) this.md5s.set(id, j.md5Checksum);
+      await this.req(`${UPLOAD}/${id}?uploadType=media&fields=id`, { method: "PATCH", body: dados });
       return id;
     }
     const fronteira = `wjpdm${Math.random().toString(36).slice(2)}`;
@@ -144,10 +137,8 @@ export class RepositorioDrive implements Repositorio {
       `--${fronteira}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: nome, parents: [pasta] })}\r\n`,
       `--${fronteira}\r\nContent-Type: ${dados.type || "application/octet-stream"}\r\n\r\n`, dados, `\r\n--${fronteira}--`,
     ]);
-    const r = await this.req(`${UPLOAD}?uploadType=multipart&fields=id,md5Checksum`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${fronteira}` }, body: corpo });
-    const j = (await r.json()) as { id: string; md5Checksum?: string };
-    if (j.md5Checksum) this.md5s.set(j.id, j.md5Checksum);
-    return j.id;
+    const r = await this.req(`${UPLOAD}?uploadType=multipart&fields=id`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${fronteira}` }, body: corpo });
+    return ((await r.json()) as { id: string }).id;
   }
 
   /** Texto de um arquivo fora do cofre (ex.: Meu Drive/WJTaskPlan/tarefas.json); null se não existe. */
@@ -162,41 +153,12 @@ export class RepositorioDrive implements Repositorio {
     await this.enviar(dados, nome, p, await this.arquivoNa(p, nome));
   }
 
-  /** O que o app teve de pôr de volta na estrutura (pasta WJPDM ou .wjpdm renomeada/movida à mão). */
-  avisos: string[] = [];
   private base?: Promise<{ raiz: string; sis: string }>;
-  /**
-   * Meu Drive/WJPDM e WJPDM/.wjpdm. Pelo nome no lugar de sempre; se foram renomeadas ou movidas à
-   * mão, pelo indice.json (só o app o cria, então só ele aparece com drive.file) — e o nome volta,
-   * para os outros aparelhos acharem. Nunca uma segunda pasta WJPDM enquanto a original existir.
-   */
+  /** Meu Drive/WJPDM e WJPDM/.wjpdm, pelo nome (criadas se faltarem). */
   private localizar() {
     return (this.base ??= (async () => {
-      const porNome = async (nome: string, pai: string) => (await this.listar(`name='${q(nome)}' and '${pai}' in parents and mimeType='${PASTA}' and trashed=false`))[0]?.id;
-      let raiz = await porNome("WJPDM", "root");
-      let sis = raiz ? await porNome(".wjpdm", raiz) : undefined;
-      if (!sis) {
-        const indices = (await this.listar("name='indice.json' and trashed=false", "id,name,parents,modifiedTime")).sort((a, b) => (b.modifiedTime ?? "").localeCompare(a.modifiedTime ?? ""));
-        for (const x of indices) {
-          const s = x.parents?.[0];
-          const ms = s ? await this.meta(s) : null;
-          const r = ms?.parents?.[0];
-          const mr = r ? await this.meta(r) : null;
-          if (!s || !ms || !r || !mr || ms.mimeType !== PASTA || mr.mimeType !== PASTA || (raiz && r !== raiz)) continue;
-          [raiz, sis] = [r, s];
-          for (const [id, nome, m] of [[r, "WJPDM", mr], [s, ".wjpdm", ms]] as const) {
-            if (m.name === nome) continue;
-            await this.req(`${API}/${id}?fields=id`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome }) });
-            this.metas.set(id, { ...m, name: nome });
-            this.avisos.push(`A pasta ${nome} foi renomeada à mão no Drive (para "${m.name}"): o app pôs o nome de volta (ela guarda o cofre).`);
-          }
-          break;
-        }
-      }
-      raiz ??= await this.criarPasta("WJPDM", "root", false);
-      sis ??= await this.criarPasta(".wjpdm", raiz, false);
-      this.ids.set("WJPDM", raiz);
-      this.ids.set("WJPDM/.wjpdm", sis);
+      const raiz = await this.pasta(["WJPDM"]);
+      const sis = await this.pasta(["WJPDM", ".wjpdm"]);
       return { raiz, sis };
     })());
   }
@@ -236,12 +198,10 @@ export class RepositorioDrive implements Repositorio {
     this.blobIds!.delete(id);
   }
 
-  // ---------- espelho legível (Meu Drive/WJPDM/<pastas>) ----------
+  // ---------- arquivos visíveis (Meu Drive/WJPDM/<pastas>) ----------
 
   /** Metadados lidos nesta sincronia (cada sincronia usa um repositório novo). */
   private metas = new Map<string, Meta | null>();
-  /** itens que sumiram: na lixeira do Drive (com a data) ou apagados de vez ("") */
-  private sumidos = new Map<string, string>();
   private estado?: Promise<{ vis: Record<string, RegVis>; idVis?: string; pastas: RegPastas; idPastas?: string }>;
   private raiz = () => this.localizar().then((b) => b.raiz);
 
@@ -253,16 +213,8 @@ export class RepositorioDrive implements Repositorio {
         if (e instanceof ErroDrive && e.status === 404) return null; // apagado de vez ou fora do alcance (drive.file)
         throw e;
       });
-    if (!m || m.trashed) this.sumidos.set(id, m?.trashedTime ?? "");
     this.metas.set(id, m && !m.trashed ? m : null);
     return this.metas.get(id)!;
-  }
-  /** Tudo o que está nestas pastas (poucas consultas: vários pais por consulta). */
-  private async lerFilhos(pais: string[]) {
-    for (let k = 0; k < pais.length; k += 40) {
-      const grupo = pais.slice(k, k + 40);
-      for (const m of await this.listar(`trashed=false and (${grupo.map((p) => `'${p}' in parents`).join(" or ")})`, CAMPOS)) this.metas.set(m.id, m);
-    }
   }
   /** Leva o item para a pasta `pai` com o nome `nome` (PATCH: mesmo id, sem recriar). */
   private async colocar(id: string, nome: string, pai: string): Promise<"ok" | "sumiu" | "preso"> {
@@ -275,7 +227,7 @@ export class RepositorioDrive implements Repositorio {
     try {
       await this.req(`${API}/${id}?${[...params, "fields=id"].join("&")}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome }) });
     } catch (e) {
-      // pasta criada à mão (fora do alcance do drive.file): o app não consegue tirar o item de lá
+      // item posto à mão numa pasta fora do alcance do drive.file: o app não consegue tirar de lá
       if (e instanceof ErroDrive && (e.status === 403 || e.status === 404)) return "preso";
       throw e;
     }
@@ -335,51 +287,12 @@ export class RepositorioDrive implements Repositorio {
     })());
   }
 
-  /** Onde estão de fato as pastas e os arquivos que o app pôs em Meu Drive/WJPDM. */
-  async lerEspelho(i: Indice): Promise<EspelhoVisto> {
-    const { vis, pastas } = await this.carregar(i);
-    const raiz = await this.raiz();
-    const conhecidas = [raiz, ...Object.values(pastas).map((p) => p.drive), ...Object.values(vis).map((v) => v.pai).filter((x): x is string => !!x)];
-    await this.lerFilhos([...new Set(conhecidas)]);
-    // o que não apareceu nas pastas conhecidas: saiu delas (pasta criada à mão), lixeira ou apagado
-    for (const id of [...Object.values(pastas).map((p) => p.drive), ...Object.entries(vis).filter(([k]) => !k.includes("#")).map(([, v]) => v.drive)]) if (!this.metas.has(id)) await this.meta(id);
-    const caminho = (id: string, n = 0): string[] | null => {
-      if (id === raiz) return [];
-      const m = this.metas.get(id);
-      const pai = m?.parents?.[0];
-      if (!m || !pai || n > 64) return null;
-      const c = caminho(pai, n + 1);
-      return c && [...c, m.name];
-    };
-    const item = (id: string, gravado: string[], drive: string, noCofre: string | null | undefined): ItemVisto => {
-      const m = this.metas.get(drive);
-      const pai = noCofre !== undefined ? { pai: noCofre } : {};
-      // excluído à mão (lixeira do Drive ou apagado de vez): o cofre o leva para a lixeira dele
-      if (!m) return { id, gravado, visto: undefined, ...(this.sumidos.get(drive) ? { quando: this.sumidos.get(drive) } : {}), ...pai };
-      const d = m.parents?.[0] ? caminho(m.parents[0]) : null;
-      return { id, gravado, visto: d && [...d, m.name], quando: m.modifiedTime, ...pai };
-    };
-    // conteúdo mudado fora do app (o md5 não é o do que o app gravou): vale a cópia do cofre
-    const editados = Object.entries(vis).filter(([, v]) => {
-      const m = this.metas.get(v.drive);
-      return !!m && !!v.md5 && !!m.md5Checksum && m.md5Checksum !== v.md5;
-    }).map(([k]) => k);
-    return {
-      copia: this.nome,
-      pastas: Object.entries(pastas).map(([id, p]) => item(id, p.caminho, p.drive, p.pai)),
-      arquivos: Object.entries(vis).filter(([k]) => !k.includes("#")).map(([k, v]) => item(k, v.caminho, v.drive, v.pasta)),
-      editados,
-      estrutura: [...this.avisos],
-    };
-  }
-
   /**
    * Arquivos legíveis em Meu Drive/WJPDM, iguais ao cofre: conteúdo atualizado no lugar (o Drive
-   * guarda as revisões), mover/renomear pelo id, pastas pelo id (também as "(versões)"). O que está
-   * numa pasta criada à mão (`espelho.manter`) fica onde ele pôs; o que foi editado fora do app
-   * (`espelho.regravar`) recebe de novo o conteúdo do cofre. O que sai vai para a lixeira do Drive.
+   * guarda as revisões), mover/renomear pelo id, pastas pelo id (também as "(versões)"). O que sai
+   * vai para a lixeira do Drive.
    */
-  async gravarVisiveis(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>, espelho: DecisaoEspelho = decisaoVazia()) {
+  async gravarVisiveis(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>) {
     const sis = await this.sis();
     const raiz = await this.raiz();
     const { vis: antes, idVis, pastas: pastasAntes, idPastas } = await this.carregar(i);
@@ -389,10 +302,6 @@ export class RepositorioDrive implements Repositorio {
     const fundura = new Map(i.pastas.map((p) => [p.id, caminhoDaPasta(i, p.id)]));
     for (const p of [...i.pastas].sort((a, b) => fundura.get(a.id)!.length - fundura.get(b.id)!.length)) {
       const rec = pastasAntes[p.id];
-      if (rec && espelho.manter.has(`pasta:${p.id}`)) {
-        pastasAgora[p.id] = rec;
-        continue;
-      }
       const pai = p.pai && pastasAgora[p.pai] ? pastasAgora[p.pai].drive : raiz;
       let id: string | undefined = rec?.drive;
       if (id) {
@@ -425,20 +334,8 @@ export class RepositorioDrive implements Repositorio {
     // 2. arquivos (e, ao lado, as pastas de versões)
     const agora: Record<string, RegVis> = {};
     const pastaDoArquivo = new Map(i.arquivos.map((a) => [a.id, a.pasta]));
-    const md5 = (drive: string, v?: RegVis) => this.md5s.get(drive) ?? this.metas.get(drive)?.md5Checksum ?? v?.md5;
     for (const { chave: k, caminho, blob } of visiveisDoIndice(i)) {
       const v = antes[k];
-      const regravar = espelho.regravar.has(k);
-      if (espelho.manter.has(k.split("#")[0])) {
-        // numa pasta criada à mão: fica onde ele pôs; conteúdo novo (ou o do cofre, se editado fora) entra no lugar
-        if (!v) continue;
-        agora[k] = v;
-        if (v.blob !== blob || regravar) {
-          const dados = await lerBlob(blob);
-          if (dados && (await this.enviar(dados, "", "", v.drive).then(() => true, () => false))) agora[k] = { ...v, blob, md5: this.md5s.get(v.drive) ?? v.md5 };
-        }
-        continue;
-      }
       const versao = k.includes("#");
       const dirPrincipal = caminho.slice(0, versao ? -2 : -1);
       const principal = dirPrincipal.length ? pastaDe.get(JSON.stringify(dirPrincipal)) : raiz;
@@ -446,7 +343,7 @@ export class RepositorioDrive implements Repositorio {
       const pasta = versao ? await pastaVersoes(principal, caminho[caminho.length - 2], k.split("#")[0]) : principal;
       const nome = caminho[caminho.length - 1];
       let drive: string | undefined = v?.drive;
-      if (drive && (v.blob !== blob || regravar)) {
+      if (drive && v.blob !== blob) {
         const dados = await lerBlob(blob);
         if (!dados) continue;
         drive = await this.enviar(dados, nome, pasta, drive).catch((e) => {
@@ -467,7 +364,7 @@ export class RepositorioDrive implements Repositorio {
         const ja = !v ? await this.arquivoNa(pasta, nome) : undefined;
         drive = ja && !Object.values(agora).some((x) => x.drive === ja) ? await this.enviar(dados, nome, pasta, ja) : await this.enviar(dados, nome, pasta);
       }
-      agora[k] = { caminho, blob, drive, pai: pasta, pasta: pastaDoArquivo.get(k.split("#")[0]), md5: md5(drive, v?.drive === drive ? v : undefined) };
+      agora[k] = { caminho, blob, drive, pai: pasta, pasta: pastaDoArquivo.get(k.split("#")[0]) };
     }
     // 3. o que saiu do cofre (lixeira, destruído): para a lixeira do Drive, nunca apagado de vez
     const usados = new Set(Object.values(agora).map((x) => x.drive));
@@ -497,21 +394,55 @@ export class RepositorioDrive implements Repositorio {
 }
 
 // ---------- login do Google (Google Identity Services) ----------
+//
+// 15/11/2026 (Johann: "a janela de login aparece várias vezes, mesmo já conectado"). Causas medidas:
+// cada página e cada janela aberta renovava sozinha no primeiro toque (o token é comum a todas, mas a
+// decisão era de cada uma) e a janela abria com o seletor de conta. Agora:
+// - uma renovação só para todas as páginas e janelas: trava em localStorage (`wjgoogle:trava`); quem
+//   chega com a trava ocupada espera o token novo que a outra janela grava (evento `storage`);
+// - token ainda válido gravado por outra janela: nenhuma janela abre;
+// - `login_hint` com a conta já autorizada e `prompt: "none"`: a janela pisca e fecha, sem seletor;
+//   se o Google pedir interação (sessão do Google encerrada), a próxima vez abre normal;
+// - cada abertura fica registrada (`wjgoogle:aberturas`: quando, página, janela, motivo, resultado),
+//   visível no WJPDM › Ferramentas › Login do Google.
+// O que sobra até a G5: o token vale 1 h e o navegador só deixa abrir a janela num toque; sem um
+// servidor guardando o token de renovação, a janela ainda pisca uma vez por hora de uso.
 
 interface ClienteToken {
-  requestAccessToken(o?: { prompt?: string }): void;
+  requestAccessToken(o?: { prompt?: string; login_hint?: string }): void;
 }
-type Google = { accounts: { oauth2: { initTokenClient(o: { client_id: string; scope: string; callback: (r: { access_token?: string; expires_in?: number; error?: string }) => void; error_callback?: (e: { type?: string }) => void }): ClienteToken } } };
+type RespostaToken = { access_token?: string; expires_in?: number; error?: string };
+type Google = { accounts: { oauth2: { initTokenClient(o: { client_id: string; scope: string; login_hint?: string; callback: (r: RespostaToken) => void; error_callback?: (e: { type?: string }) => void }): ClienteToken } } };
 const CHAVE = "wjgoogle:acesso";
+const CONTA = "wjgoogle:conta";
+const TRAVA = "wjgoogle:trava";
+const ABERTURAS = "wjgoogle:aberturas";
+const INTERACAO = "wjgoogle:interacao";
+const ULTIMA_AUTO = "wjgoogle:ultimaAuto";
 
+const ler = (k: string) => {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+};
+const gravar = (k: string, v: string | null) => {
+  try {
+    if (v === null) localStorage.removeItem(k);
+    else localStorage.setItem(k, v);
+  } catch {
+    /* sem armazenamento */
+  }
+};
 function lerAcesso(): { token: string; expira: number } | null {
   try {
-    return JSON.parse(localStorage.getItem(CHAVE) ?? "null");
+    return JSON.parse(ler(CHAVE) ?? "null");
   } catch {
     return null;
   }
 }
-const autorizado = () => localStorage.getItem("wjgoogle:autorizado") === "1";
+const autorizado = () => ler("wjgoogle:autorizado") === "1";
 
 let script: Promise<Google> | null = null;
 function carregarGoogle(): Promise<Google> {
@@ -557,35 +488,166 @@ export function pedidoUnico<T>(fazer: (terminar: (v: T) => void) => void, prazo:
     }));
 }
 
+// ---------- trava e registro (puros: testados em scripts/teste-drive.ts) ----------
+
+/** Trava da renovação, comum a todas as páginas e janelas (localStorage). */
+export interface TravaGoogle {
+  dono: string;
+  ate: number;
+}
+/** A trava está com outra janela e ainda vale? */
+export const travadoPorOutra = (t: TravaGoogle | null, eu: string, agora: number) => !!t && t.dono !== eu && t.ate > agora;
+
+/** Uma abertura (ou abertura evitada) da janela do Google. */
+export interface AberturaGoogle {
+  /** ISO */
+  quando: string;
+  pagina: string;
+  janela: string;
+  /** por que a janela foi pedida */
+  motivo: string;
+  /** "none" (sem seletor), "consent" (1ª autorização) ou "" (normal) */
+  modo: string;
+  /** ok, recusado (fechada/erro), sem resposta, evitada (token já renovado por outra janela) */
+  resultado?: "ok" | "recusado" | "sem resposta" | "evitada";
+}
+export const MAX_ABERTURAS = 200;
+
+/** Junta o registro: a mais recente primeiro, no máximo 200. */
+export const registrar = (lista: AberturaGoogle[], a: AberturaGoogle) => [a, ...lista].slice(0, MAX_ABERTURAS);
+
+/** Quantas janelas abriram (sem as evitadas), por página, janela, hora e motivo, nas últimas `horas`. */
+export function resumoAberturas(lista: AberturaGoogle[], agora: number, horas = 24) {
+  const desde = agora - horas * 3600000;
+  const recentes = lista.filter((a) => Date.parse(a.quando) >= desde);
+  const abertas = recentes.filter((a) => a.resultado !== "evitada");
+  const contar = (f: (a: AberturaGoogle) => string) => {
+    const m: Record<string, number> = {};
+    for (const a of abertas) m[f(a)] = (m[f(a)] ?? 0) + 1;
+    return m;
+  };
+  const hora = (a: AberturaGoogle) => {
+    const d = new Date(a.quando);
+    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}h`;
+  };
+  return {
+    abertas: abertas.length,
+    evitadas: recentes.length - abertas.length,
+    semSeletor: abertas.filter((a) => a.modo === "none").length,
+    porPagina: contar((a) => a.pagina),
+    porJanela: contar((a) => a.janela),
+    porHora: contar(hora),
+    porMotivo: contar((a) => a.motivo),
+  };
+}
+
+const lerAberturas = (): AberturaGoogle[] => {
+  try {
+    const r = JSON.parse(ler(ABERTURAS) ?? "[]");
+    return Array.isArray(r) ? r : [];
+  } catch {
+    return [];
+  }
+};
+/** Registro das aberturas da janela do Google neste aparelho (mais recentes primeiro). */
+export const aberturasGoogle = lerAberturas;
+const anotar = (a: AberturaGoogle) => gravar(ABERTURAS, JSON.stringify(registrar(lerAberturas(), a)));
+
+const eu = () => {
+  if (!window.name.startsWith("wj:")) window.name = `wj:${Math.random().toString(36).slice(2, 10)}`;
+  return window.name.slice(3);
+};
+const pagina = () => location.pathname.replace(/\/index\.html$/, "/").split("/").filter(Boolean).filter((x) => x !== "WJProMaster").join("/") || "início";
+const lerTrava = (): TravaGoogle | null => {
+  try {
+    return JSON.parse(ler(TRAVA) ?? "null");
+  } catch {
+    return null;
+  }
+};
+
 const PRAZO_GOOGLE = 120000; // a janela do Google nunca segura o app mais que isto
 const ESPERA_AO_VOLTAR = 4000; // voltou para o app sem resposta: a janela foi fechada sem aviso
+const RENOVAR_AUTO = 10 * 60 * 1000; // renovação automática (primeiro toque): uma por 10 min entre todas as janelas
 
-let consentirPedido = false;
-const pedirUmaVez = pedidoUnico<boolean>((terminar) => {
+/** Espera a outra janela terminar a renovação: token novo gravado, trava solta ou fim do prazo. */
+function esperarOutraJanela(ate: number): Promise<boolean> {
+  return new Promise((ok) => {
+    const fim = (v: boolean) => {
+      removeEventListener("storage", ouvir);
+      clearTimeout(relogio);
+      ok(v);
+    };
+    const ouvir = (e: StorageEvent) => {
+      if (e.key === CHAVE && valido()) fim(true);
+      else if (e.key === TRAVA && !travadoPorOutra(lerTrava(), eu(), Date.now())) fim(valido());
+    };
+    addEventListener("storage", ouvir);
+    const relogio = setTimeout(() => fim(valido()), Math.max(0, Math.min(PRAZO_GOOGLE, ate - Date.now())));
+  });
+}
+
+let pedido: { modo: string; conta: string } = { modo: "", conta: "" };
+const pedirUmaVez = pedidoUnico<"ok" | "recusado" | "sem resposta" | "interacao">((terminar) => {
   void carregarGoogle().then((g) => {
     // fechada sem o Google avisar (acontece no Android): ao voltar para o app, desiste em 4 s
-    const aoVoltar = () => setTimeout(() => terminar(false), ESPERA_AO_VOLTAR);
+    const aoVoltar = () => setTimeout(() => terminar("sem resposta"), ESPERA_AO_VOLTAR);
     addEventListener("focus", aoVoltar, { once: true });
     const c = g.accounts.oauth2.initTokenClient({
       client_id: CLIENTE_GOOGLE,
       scope: ESCOPO,
+      ...(pedido.conta ? { login_hint: pedido.conta } : {}),
       callback: (r) => {
         removeEventListener("focus", aoVoltar);
-        if (!r.access_token) return terminar(false);
-        localStorage.setItem(CHAVE, JSON.stringify({ token: r.access_token, expira: Date.now() + (r.expires_in ?? 3600) * 1000 }));
-        localStorage.setItem("wjgoogle:autorizado", "1");
-        terminar(true);
+        if (!r.access_token) return terminar(/interaction|login|consent|account/.test(r.error ?? "") ? "interacao" : "recusado");
+        gravar(CHAVE, JSON.stringify({ token: r.access_token, expira: Date.now() + (r.expires_in ?? 3600) * 1000 }));
+        gravar("wjgoogle:autorizado", "1");
+        terminar("ok");
       },
-      error_callback: () => terminar(false), // janela fechada ou bloqueada
+      error_callback: () => terminar("recusado"), // janela fechada ou bloqueada
     });
-    c.requestAccessToken({ prompt: consentirPedido ? "consent" : "" });
-  }, () => terminar(false));
-}, PRAZO_GOOGLE, false);
+    c.requestAccessToken({ prompt: pedido.modo, ...(pedido.conta ? { login_hint: pedido.conta } : {}) });
+  }, () => terminar("recusado"));
+}, PRAZO_GOOGLE, "sem resposta");
 
-/** Pede o acesso (janela do Google). `consentir`: mostra a tela de permissão (1ª vez). */
-async function pedirAcesso(consentir: boolean): Promise<boolean> {
-  consentirPedido = consentir;
-  return pedirUmaVez();
+/** E-mail da conta autorizada (para o login_hint), lido uma vez do próprio Drive. */
+async function guardarConta() {
+  if (ler(CONTA)) return;
+  const t = lerAcesso()?.token;
+  if (!t) return;
+  const r = await fetch("https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)", { headers: { Authorization: `Bearer ${t}` } }).catch(() => null);
+  const j = r?.ok ? ((await r.json().catch(() => null)) as { user?: { emailAddress?: string } } | null) : null;
+  if (j?.user?.emailAddress) gravar(CONTA, j.user.emailAddress);
+}
+
+/**
+ * Pede o acesso (janela do Google), uma vez para todas as janelas. `consentir`: tela de permissão (1ª
+ * vez). `forcar`: renova mesmo com o token ainda válido (perto de vencer).
+ */
+async function pedirAcesso(consentir: boolean, motivo: string, forcar = false): Promise<boolean> {
+  if (!forcar && valido()) return true; // outra janela já renovou
+  const base = { quando: new Date().toISOString(), pagina: pagina(), janela: eu(), motivo };
+  const t = lerTrava();
+  if (travadoPorOutra(t, eu(), Date.now())) {
+    anotar({ ...base, modo: "", resultado: "evitada" });
+    return esperarOutraJanela(t!.ate);
+  }
+  gravar(TRAVA, JSON.stringify({ dono: eu(), ate: Date.now() + PRAZO_GOOGLE }));
+  const conta = ler(CONTA) ?? "";
+  pedido = { conta, modo: consentir || !autorizado() ? "consent" : conta && ler(INTERACAO) !== "1" ? "none" : "" };
+  try {
+    const r = await pedirUmaVez();
+    anotar({ ...base, modo: pedido.modo, resultado: r === "interacao" ? "recusado" : r });
+    // sem seletor não deu (sessão do Google encerrada): a próxima vez abre normal, com a conta sugerida
+    if (r === "interacao" && pedido.modo === "none") gravar(INTERACAO, "1");
+    if (r === "ok") {
+      gravar(INTERACAO, null);
+      void guardarConta();
+    }
+    return r === "ok";
+  } finally {
+    if (lerTrava()?.dono === eu()) gravar(TRAVA, null);
+  }
 }
 
 const valido = () => {
@@ -596,20 +658,28 @@ const valido = () => {
 /** Drive com o acesso atual (para pastas irmãs do cofre, como Meu Drive/WJTaskPlan). */
 export const driveGoogle = () => new RepositorioDrive(() => lerAcesso()?.token ?? "");
 
+/** Conta Google autorizada neste aparelho (vazio se ainda não se sabe). */
+export const contaGoogle = () => ler(CONTA) ?? "";
+
 export const nuvemGoogle: DestinoNuvem = {
   nome: "Google Drive",
   conectado: () => valido(),
   situacao() {
-    if (valido()) return "Conectado: o cofre fica em Meu Drive/WJPDM.";
+    if (valido()) return `Conectado${contaGoogle() ? ` (${contaGoogle()})` : ""}: o cofre fica em Meu Drive/WJPDM.`;
     if (autorizado()) return "Acesso vencido (o Google libera por 1 hora): toque em Sincronizar agora ou Reconectar.";
     return "Não conectado. Toque em Conectar e autorize com a sua conta Google (o app só vê as pastas que ele cria: WJPDM e WJTaskPlan).";
   },
   async conectar() {
-    if (!(await pedirAcesso(!autorizado()))) throw new Error("O Google não liberou o acesso (janela fechada, bloqueada ou usuário fora da lista de teste).");
+    if (!(await pedirAcesso(!autorizado(), "conectar (Cópias do cofre)", true))) throw new Error("O Google não liberou o acesso (janela fechada, bloqueada ou usuário fora da lista de teste).");
   },
-  renovar: () => (valido() ? Promise.resolve(true) : autorizado() ? pedirAcesso(false).catch(() => false) : Promise.resolve(false)),
+  renovar: (motivo = "ação com toque") => (valido() ? Promise.resolve(true) : autorizado() ? pedirAcesso(false, motivo).catch(() => false) : Promise.resolve(false)),
   vencendo: (ms) => autorizado() && (lerAcesso()?.expira ?? 0) - Date.now() < ms,
-  renovarAgora: () => (autorizado() ? pedirAcesso(false).catch(() => false) : Promise.resolve(false)),
+  renovarAgora: (motivo = "primeiro toque (acesso perto de vencer)") => {
+    // automática: uma tentativa a cada 10 min entre TODAS as janelas e páginas
+    if (!autorizado() || Date.now() - Number(ler(ULTIMA_AUTO) ?? 0) < RENOVAR_AUTO) return Promise.resolve(valido());
+    gravar(ULTIMA_AUTO, String(Date.now()));
+    return pedirAcesso(false, motivo, true).catch(() => false);
+  },
   preparar: () => {
     if (autorizado()) void carregarGoogle().catch(() => {});
   },

@@ -7,8 +7,7 @@
 
 import { Armazem } from "./armazem";
 import { permissao, RepositorioAparelho, RepositorioPasta, type PastaDisco } from "./repositorios";
-import { sincronizar, type MetaCofre, type Repositorio, type ResultadoSincronia } from "../pdm/sincronia";
-import { ondeNaCopia, resumoFora, type RelatoFora } from "../pdm/espelho";
+import { indiceZerado, sincronizar, type MetaCofre, type Repositorio, type ResultadoSincronia } from "../pdm/sincronia";
 import { nuvemGoogle, type DestinoNuvem } from "./drive";
 import { acoesDoCofre, bloqueioDoCheckout, estadoDe, extensao, fluxoAtual, modoDeAbrir, nomeLivre, textoDaVersao, trocarReferencias, usarFluxo, type Arquivo, type DadosModelo, type Pasta, type ReferenciaArquivo } from "../pdm/regras";
 import { abrirEmNovaJanela, fixarNaJanela, gravarNaJanela, lerDaJanela, removerDaJanela } from "./janelas";
@@ -51,8 +50,8 @@ export function registrarNuvem(d: DestinoNuvem | null) {
  * Acesso ao Drive vencido: pede a renovação JÁ (antes de qualquer espera), enquanto o toque do
  * usuário ainda vale — senão o navegador bloqueia a janela do Google.
  */
-function renovarNuvem(pedir: boolean): Promise<boolean> {
-  return pedir && nuvem ? nuvem.renovar().catch(() => false) : Promise.resolve(!!nuvem?.conectado());
+function renovarNuvem(pedir: boolean, motivo?: string): Promise<boolean> {
+  return pedir && nuvem ? nuvem.renovar(motivo).catch(() => false) : Promise.resolve(!!nuvem?.conectado());
 }
 
 // ---------- banco do cofre e pastas das cópias ----------
@@ -88,39 +87,16 @@ const usuarioDo = async (db: Armazem) => {
 // ---------- sincronia ----------
 
 let ultima: { quando: string; texto: string } | null = null;
-/**
- * Mudanças feitas fora do app (Drive, pendrive, pasta do dispositivo) que as últimas sincronias
- * aplicaram no cofre ou desfizeram (decisão do Johann, 12/11/2026: aplicar sozinho, só avisar).
- * Guardadas por aparelho para o "Ver detalhes" e o botão do WJPDM (as 60 mais recentes).
- */
-const REGISTRO_FORA = "wjpdm:foraRegistro";
-type RegistroFora = RelatoFora & { em: string };
-const lerRegistroFora = (): RegistroFora[] => {
+/** Evento na janela quando a sincronia limpa este aparelho (cofre zerado em outro aparelho). */
+export const EVENTO_ZERADO = "wj-cofre-zerado";
+/** Vínculos dos apps com arquivos do cofre (todas as janelas): depois de zerar, o próximo salvar cria arquivo novo. */
+function esquecerVinculos() {
   try {
-    const r = JSON.parse(localStorage.getItem(REGISTRO_FORA) ?? "[]");
-    return Array.isArray(r) ? r : [];
+    for (const k of Object.keys(localStorage)) if (k.startsWith("wjpdm:vinculo:")) localStorage.removeItem(k);
   } catch {
-    return [];
+    /* sem armazenamento */
   }
-};
-/** Guarda as novas (a mesma mudança vista de novo só atualiza); devolve as que ainda não tinham sido avisadas. */
-function registrarFora(relatos: RelatoFora[]): RelatoFora[] {
-  const antes = lerRegistroFora();
-  const ja = new Set(antes.map((x) => x.id));
-  const novas = relatos.filter((x) => !ja.has(x.id));
-  const em = agora();
-  const lista = [...relatos.map((x) => ({ ...x, em: antes.find((y) => y.id === x.id)?.em ?? em })), ...antes.filter((x) => !relatos.some((y) => y.id === x.id))].slice(0, 60);
-  try {
-    localStorage.setItem(REGISTRO_FORA, JSON.stringify(lista));
-  } catch {
-    /* sem armazenamento: o aviso aparece de novo na próxima vez */
-  }
-  return novas;
 }
-/** Evento na janela quando a sincronia aplica (ou desfaz) mudanças feitas fora do app. */
-export const EVENTO_FORA = "wj-fora-do-app";
-/** Mudanças feitas fora do app registradas neste aparelho (mais recentes primeiro). */
-export const mudancasForaDoApp = (): RegistroFora[] => lerRegistroFora();
 /** A renovação do Google nunca segura a fila de sincronia mais que isto (GO-IN travado, 10/11/2026). */
 const PRAZO_RENOVACAO = 150000;
 const comPrazo = <T,>(p: Promise<T>, ms: number, valor: T): Promise<T> =>
@@ -149,6 +125,8 @@ export interface OpcoesSincronia {
   publicar?: boolean;
   /** renovação do Drive já pedida no toque (ver renovarNuvem) */
   renovacao?: Promise<boolean>;
+  /** por que a sincronia com toque pode abrir a janela do Google (registro das aberturas) */
+  motivo?: string;
 }
 
 /**
@@ -157,7 +135,7 @@ export interface OpcoesSincronia {
  */
 export function sincronizarCofre(o: OpcoesSincronia = {}): Promise<string> {
   const pedir = o.pedir ?? true, publicar = o.publicar ?? true;
-  const renovacao = publicar ? (o.renovacao ?? renovarNuvem(pedir)) : Promise.resolve(false);
+  const renovacao = publicar ? (o.renovacao ?? renovarNuvem(pedir, o.motivo ?? "sincronizar com toque")) : Promise.resolve(false);
   const tarefa = fila.then(async () => {
     const db = await abrirCofre();
     const repos: Repositorio[] = [new RepositorioAparelho(db)];
@@ -196,19 +174,43 @@ export function sincronizarCofre(o: OpcoesSincronia = {}): Promise<string> {
       const t = ausentes.length ? `Só no banco do app · ${ausentes.join(", ")}.` : publicar ? "Nenhuma cópia conectada: conecte o pendrive ou o Google Drive (📁 Cópias do cofre)." : "Salvo só no banco do app: escolha a pasta padrão do dispositivo (📁 Cópias do cofre).";
       return (ultima = { quando: agora(), texto: t }).texto;
     }
-    const r = await sincronizar(repos, agora(), { usuario: await usuarioDo(db), novoId: uid });
+    await usuarioDo(db);
+    const r = await sincronizar(repos, agora());
     for (const f of r.falhas) {
       const c = repoDe.get(f.repo);
       if (c) situacao[c] = "desconectado";
     }
-    // mudanças feitas fora do app, já aplicadas no cofre (ou desfeitas): aviso único com "Ver detalhes"
-    // (uma vez por mudança; a que continua igual, como arquivo numa pasta criada à mão, não repete)
-    const novas = registrarFora(r.foraDoApp);
-    if (novas.length) setTimeout(() => (avisoFora(novas), window.dispatchEvent(new Event(EVENTO_FORA))), 0);
+    // o cofre foi zerado em outro aparelho e este aparelho foi limpo: vínculos dos apps não valem mais
+    if (r.zeradas.includes("aparelho")) {
+      esquecerVinculos();
+      setTimeout(() => window.dispatchEvent(new Event(EVENTO_ZERADO)), 0);
+    }
     return (ultima = { quando: agora(), texto: resumo(r, repos, ausentes) }).texto;
   });
   fila = tarefa.catch(() => {});
   return tarefa;
+}
+
+/**
+ * Zerar cofre (15/11/2026, WJPDM › Ferramentas): apaga índice, versões e arquivos visíveis em todas as
+ * cópias (no Drive, pela lixeira dele) e dá ao cofre uma identidade nova; os outros aparelhos, na
+ * próxima sincronia, veem a identidade nova e limpam o banco deles sem reenviar o antigo. Ficam o
+ * usuário, a máscara e o fluxo de trabalho. Chamar dentro do toque (a janela do Google pode abrir).
+ */
+export function zerarCofre(): Promise<string> {
+  const renovacao = renovarNuvem(true, "zerar cofre");
+  const tarefa = fila.then(async () => {
+    const db = await abrirCofre();
+    const meta = (await db.ler<MetaCofre>("meta", "meta")) ?? null;
+    await new RepositorioAparelho(db).gravarIndice(indiceZerado({ meta }, uid(), agora()));
+    for (const id of await db.chaves("blobs")) await db.apagar("blobs", id);
+    esquecerVinculos();
+  });
+  fila = tarefa.catch(() => {});
+  return tarefa.then(() => {
+    avisarMudanca();
+    return sincronizarCofre({ pedir: true, publicar: true, renovacao });
+  });
 }
 
 let abriu = false;
@@ -262,11 +264,10 @@ function sincroniaAutomatica() {
   setInterval(() => tentar(), AUTO_MS);
   addEventListener("online", () => tentar(true));
   document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && tentar());
-  // renovação do Google no primeiro gesto com o acesso perto de vencer (uma tentativa a cada 10 min)
-  let ultimoPedido = 0;
+  // renovação do Google no primeiro gesto com o acesso perto de vencer: uma tentativa a cada 10 min
+  // entre TODAS as páginas e janelas, e uma janela do Google por vez (trava em drive.ts)
   const noGesto = () => {
-    if (!nuvem?.vencendo?.(RENOVAR_ANTES) || !navigator.onLine || Date.now() - ultimoPedido < RENOVAR_ANTES) return;
-    ultimoPedido = Date.now();
+    if (!nuvem?.vencendo?.(RENOVAR_ANTES) || !navigator.onLine) return;
     void nuvem.renovarAgora?.().then((ok) => ok && tentar(true));
   };
   // eventos que o navegador aceita como gesto para abrir a janela do Google
@@ -353,8 +354,7 @@ function resumo(r: ResultadoSincronia, repos: Repositorio[], ausentes: string[])
   if (r.conflitos.length) partes.push(`conflito em ${r.conflitos.join(", ")} (a mais recente ficou; a outra está na lixeira)`);
   if (r.recuperados.length) partes.push(`${r.recuperados.length} arquivo(s) sem pasta (pasta excluída em outra cópia) levado(s) para a pasta Recuperados: ${r.recuperados.join(", ")}`);
   if (r.faltando.length) partes.push(`${r.faltando.length} conteúdo(s) não encontrado(s) em nenhuma cópia`);
-  const aplicadas = resumoFora(r.foraDoApp.filter((x) => x.acao !== "fora"));
-  if (aplicadas) partes.push(`${tituloFora(r.foraDoApp)}: ${aplicadas}`);
+  if (r.zeradas.length) partes.push(`cofre zerado em outro aparelho: ${r.zeradas.map((x) => (x === "aparelho" ? "este aparelho" : x)).join(", ")} limpo(s), sem reenviar o antigo`);
   return `${partes.join(" · ")}.`;
 }
 
@@ -1214,17 +1214,6 @@ body.disp-celular .wjc-aba{width:26px;min-height:72px;font-size:12px}
 .wjc-goin textarea{width:100%;box-sizing:border-box;min-height:88px;margin:6px 0;padding:8px 10px;border:1px solid #c9d3de;border-radius:8px;font:inherit;resize:vertical}
 .wjc-rotulo{display:block;font-size:13px;color:#55606d}
 .wjc-pergunta{width:min(480px,100%)}
-.wjc-fora{width:min(720px,100%)}
-.wjc-fora-lista{list-style:none;margin:0;padding:0}
-.wjc-fora-lista li{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 16px;border-bottom:1px solid #eef1f5}
-.wjc-fora-txt{flex:1 1 280px;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:14px;overflow-wrap:anywhere}
-.wjc-fora-txt small{color:#8a5a00}.wjc-fora-txt span{color:#55606d;font-size:13px}.wjc-fora-txt code{color:#1d2733;font:600 13px system-ui,sans-serif}
-.wjc-fora-lista li.atencao{background:#fffaf0}.wjc-motivo{color:#7a4a00!important}
-.wjc-aviso-fora{position:fixed;left:50%;bottom:calc(12px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:985;display:flex;align-items:center;gap:8px;width:min(720px,calc(100% - 16px));padding:8px 8px 8px 14px;background:#eef6ff;color:#12324f;border:1px solid #8db8e4;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);font:14px system-ui,sans-serif}
-.wjc-aviso-fora.atencao{background:#fff8e6;color:#4a3500;border-color:#e0b44a}
-.wjc-aviso-fora span{flex:1;min-width:0;overflow-wrap:anywhere}
-.wjc-aviso-fora button{flex:none;min-height:44px;padding:0 12px;border:1px solid #c9d3de;border-radius:8px;background:#fff;font:inherit;cursor:pointer}
-.wjc-aviso-fora button.destaque{background:#2f7fd0;border-color:#2f7fd0;color:#fff}
 .wjc-nota{background:#f3f7fb;border-radius:8px;padding:8px 10px}
 .wjc-versoes{list-style:none;margin:4px 0;padding:0}.wjc-versoes li{padding:4px 0;border-bottom:1px solid #eef1f5;font-size:13px}.wjc-versoes small{color:#55606d}.wjc-versoes q{display:block;color:#1d2733;quotes:none}
 .wjc-comp{list-style:none;margin:6px 0;padding:0}.wjc-comp li{padding:6px 0;border-bottom:1px solid #eef1f5}.wjc-comp li .wjc-botoes{margin-top:4px}.wjc-comp small{color:#55606d}
@@ -1373,83 +1362,6 @@ export async function desfazerConfirmando(id: string): Promise<string | null> {
 /** Pastas que cada app grava na raiz escolhida (o cofre e as pastas irmãs dele). */
 const PASTAS_DOS_APPS = ["WJPDM", "WJTaskPlan"];
 const DISPOSITIVOS: [string, string][] = [["celular", "Celular"], ["tablet", "Tablet"], ["computador", "Computador"]];
-
-// ---------- mudanças feitas fora do app (12/11/2026) ----------
-// Decisão do Johann: "o que eu fizer à mão no Drive é o modelo atual do cofre". A sincronia já aplicou
-// (src/pdm/espelho.ts); aqui só o aviso único e o "Ver detalhes".
-
-const ROTULO_FORA: Record<RelatoFora["acao"], [string, string]> = {
-  movido: ["Movido", "Movida"],
-  renomeado: ["Renomeado", "Renomeada"],
-  lixeira: ["Excluído", "Excluída"],
-  desfeito: ["Desfeito pelo app", "Desfeita pelo app"],
-  fora: ["Numa pasta criada à mão", "Numa pasta criada à mão"],
-  mantida: ["Excluída, mas mantida", "Excluída, mas mantida"],
-  editado: ["Editado fora do app", "Editada fora do app"],
-  conflito: ["Conflito com o app", "Conflito com o app"],
-};
-const APLICADA = new Set<RelatoFora["acao"]>(["movido", "renomeado", "lixeira"]);
-/** "Cofre atualizado pelo Drive" / "pelo pendrive" / "pela pasta do dispositivo" / "pelas cópias". */
-function tituloFora(lista: RelatoFora[]): string {
-  const copias = [...new Set(lista.map((x) => x.copia))];
-  const pelo = copias.length !== 1 ? "pelas cópias do cofre" : copias[0] === "Google Drive" ? "pelo Drive" : copias[0] === "pendrive" ? "pelo pendrive" : `pela ${copias[0]}`;
-  return lista.some((x) => APLICADA.has(x.acao)) ? `Cofre atualizado ${pelo}` : `Mudanças feitas ${pelo.replace(/^pel[oa]s? /, (p) => ({ "pelo ": "no ", "pela ": "na ", "pelas ": "nas " })[p] ?? p)}`;
-}
-
-/**
- * Aviso único ao fim da sincronia que aplicou mudanças feitas fora do app: "Cofre atualizado pelo
- * Drive: 2 movidos, 1 renomeado, 1 para a lixeira" com "Ver detalhes". Aparece em qualquer app (não
- * depende da faixa "Cofre:"); some sozinho, a não ser que algo tenha sido desfeito ou precise de ação.
- */
-function avisoFora(lista: RelatoFora[]) {
-  if (typeof document === "undefined") return;
-  document.querySelector(".wjc-aviso-fora")?.remove();
-  if (!document.getElementById("wjc-css")) document.head.append(Object.assign(document.createElement("style"), { id: "wjc-css", textContent: CSS }));
-  const a = document.createElement("div");
-  a.className = "wjc-aviso-fora";
-  a.setAttribute("role", "status");
-  const atencao = lista.some((x) => !APLICADA.has(x.acao));
-  a.classList.toggle("atencao", atencao);
-  a.innerHTML = `<span><b>${esc(tituloFora(lista))}:</b> ${esc(resumoFora(lista))}.</span><button class="destaque" data-v>Ver detalhes</button><button data-x title="Fechar" aria-label="Fechar">✕</button>`;
-  a.querySelector<HTMLElement>("[data-x]")!.onclick = () => a.remove();
-  a.querySelector<HTMLElement>("[data-v]")!.onclick = () => {
-    a.remove();
-    void abrirMudancasFora(lista);
-  };
-  if (!atencao) setTimeout(() => a.remove(), 15000);
-  document.body.append(a);
-}
-
-/**
- * "Ver detalhes": cada mudança feita fora do app (de → para) e o que o cofre fez com ela — aplicada,
- * desfeita (com o motivo), mantida numa pasta criada à mão, editada (vale a cópia do cofre).
- * Sem `lista`: as registradas neste aparelho (botão do WJPDM).
- */
-export async function abrirMudancasFora(lista: RelatoFora[] = mudancasForaDoApp()): Promise<void> {
-  return new Promise((ok) => {
-    const { caixa, fechar } = janela(lista.length ? tituloFora(lista) : "Mudanças feitas fora do app", () => ok());
-    caixa.closest(".wjc-janela")!.classList.add("wjc-fora");
-    const quando = (x: RelatoFora) => {
-      const em = (x as RegistroFora).em;
-      return em ? ` · ${new Date(em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "";
-    };
-    caixa.innerHTML = `<section>
-        <p>${lista.length ? `O que foi feito direto no Google Drive, no pendrive ou na pasta do dispositivo já está no cofre: <b>o que você faz à mão nas cópias é o modelo do cofre</b>. Excluídos vão para a lixeira do cofre (30 dias, com as versões). Exceções voltam ao lugar, com o motivo.` : "Nenhuma mudança feita fora do app neste aparelho."}</p>
-      </section>
-      ${lista.length ? `<ul class="wjc-fora-lista">${lista.map((m) => {
-        const rot = `${ROTULO_FORA[m.acao][m.tipo === "pasta" ? 1 : 0]} ${ondeNaCopia(m.copia)}`;
-        const para = m.acao === "lixeira" ? "<i>lixeira do cofre</i>" : m.para ? `<code>${esc(m.para.join("/"))}</code>` : m.acao === "fora" ? "<i>uma pasta criada à mão (o Google não mostra o nome dela ao app)</i>" : "";
-        return `<li class="${APLICADA.has(m.acao) ? "" : "atencao"}">
-          <div class="wjc-fora-txt"><b>${m.tipo === "pasta" ? "📁" : "📄"} ${esc(m.nome)}</b> <small>${esc(rot)}${quando(m)}</small>
-            ${m.de.length ? `<span>${para && m.acao !== "editado" ? "de " : "em "}<code>${esc(m.de.join("/"))}</code>${para && m.acao !== "editado" ? ` para ${para}` : ""}</span>` : ""}
-            ${m.motivo ? `<span class="wjc-motivo">${esc(m.motivo)}</span>` : ""}</div>
-        </li>`;
-      }).join("")}</ul>` : ""}
-      ${lista.some((m) => m.acao === "fora") ? `<section><p class="wjc-nota">Pasta nova no Drive: crie pelo WJPDM (Nova pasta). O app só enxerga no Drive as pastas que ele mesmo cria; depois é só mover à mão no Drive ou pelo WJPDM.</p></section>` : ""}
-      <footer><button data-ok class="destaque">Fechar</button></footer>`;
-    caixa.querySelector<HTMLButtonElement>("[data-ok]")!.onclick = fechar;
-  });
-}
 
 /**
  * Tela "Cópias do cofre": pendrive, pasta do tablet, Google Drive e sincronizar agora.

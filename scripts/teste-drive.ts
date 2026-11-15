@@ -2,8 +2,8 @@
 // responde como a API REST v3 (consulta q, pastas, upload multipart, atualização de conteúdo,
 // download e exclusão). Confere a estrutura Meu Drive/WJPDM/..., atualização no lugar (mesmo id,
 // o Drive guarda as revisões), exclusão e acesso vencido (401).
-import { pedidoUnico, RepositorioDrive } from "../src/comum/drive";
-import { caminhoDoArquivo, indiceVazio, sincronizar, type Indice, type Repositorio } from "../src/pdm/sincronia";
+import { pedidoUnico, registrar, RepositorioDrive, resumoAberturas, travadoPorOutra, type AberturaGoogle } from "../src/comum/drive";
+import { caminhoDoArquivo, indiceVazio, indiceZerado, sincronizar, type Indice, type Repositorio } from "../src/pdm/sincronia";
 import type { Arquivo } from "../src/pdm/regras";
 
 let falhas = 0;
@@ -224,144 +224,74 @@ tab.indice.exclusoes.push({ id: "p2", tipo: "pasta", data: "2026-10-28T11:55:00.
 r = await sincronizar([tab, repo()], AGORA);
 igual("pasta excluída vai para a lixeira do Drive", [pastaNoDrive("Projetos")?.lixo, pastaNoDrive("Sub")?.lixo, pastaNoDrive("Vazia")?.lixo], [true, true, undefined]);
 
-// 11. o Johann reorganiza À MÃO no Drive (decisão de 12/11/2026: o que ele faz à mão é o modelo do
-//     cofre): aplicado sozinho, exceções desfeitas no Drive com o motivo, pasta criada à mão
-//     (invisível com drive.file) só com aviso; nunca pasta duplicada nem DELETE.
+// 11. o cofre manda (15/11/2026): mudança feita à mão no Drive não entra no cofre; a sincronia põe os
+//     visíveis de volta como o cofre está, pelos ids (sem pasta duplicada, nada apagado de vez).
 {
   const dv = new DriveFalso();
   const ap = new Memoria("aparelho");
-  const T0 = "2026-11-12T08:00:00.000Z";
+  const T0 = "2026-11-15T08:00:00.000Z";
   ap.indice = {
     ...indiceVazio(),
-    pastas: [{ id: "p1", nome: "CAD", pai: null, mod: T0 }, { id: "p2", nome: "Projetos", pai: null, mod: T0 }, { id: "p3", nome: "Sub", pai: "p1", mod: T0 }],
-    arquivos: [
-      arq("a1", "Eixo.wjcad", ["b1"], T0), arq("a2", "Mancal.wjcad", ["b2"], T0), arq("a3", "Tampa.wjcad", ["b3"], T0, { pasta: "p3" }), arq("a4", "Pino.wjcad", ["b4"], T0, { pasta: "p2" }),
-      arq("a5", "Bucha.wjcad", ["b5"], T0, { estado: "serie-prod" }), arq("a6", "Arruela.wjcad", ["b6"], T0, { checkout: { usuario: "Ana", data: T0 } }),
-    ],
+    pastas: [{ id: "p1", nome: "CAD", pai: null, mod: T0 }, { id: "p2", nome: "Projetos", pai: null, mod: T0 }],
+    arquivos: [arq("a1", "Eixo.wjcad", ["b1"], T0), arq("a2", "Pino.wjcad", ["b2"], T0, { pasta: "p2" })],
   };
-  for (const [k, v] of [["b1", "eixo"], ["b2", "mancal"], ["b3", "tampa"], ["b4", "pino"], ["b5", "bucha"], ["b6", "arruela"]]) ap.blobs.set(k, v);
+  ap.blobs.set("b1", "eixo").set("b2", "pino");
   const rp = () => new RepositorioDrive(() => dv.token, dv.responder as typeof fetch);
-  const sinc = (agora = "2026-11-12T10:00:00.000Z") => sincronizar([ap, rp()], agora, { usuario: "Johann", novoId: () => `n${++dv.n}` });
   const visiveis = () => dv.arquivos().filter((x) => !x.includes(".wjpdm") && !x.includes("versões"));
-  const reg = (id: string) => ap.indice!.arquivos.find((a) => a.id === id)!;
-  const pastasCom = (nome: string) => [...dv.itens.values()].filter((x) => x.mimeType.endsWith("folder") && !dv.naLixeira(x) && x.name === nome).length;
-  let r = await sinc();
-  igual("11.0 espelho inicial", visiveis(), ["WJPDM/CAD/Arruela.wjcad", "WJPDM/CAD/Bucha.wjcad", "WJPDM/CAD/Eixo.wjcad", "WJPDM/CAD/Mancal.wjcad", "WJPDM/CAD/Sub/Tampa.wjcad", "WJPDM/Projetos/Pino.wjcad"]);
-  const raiz = dv.pastaPorCaminho("WJPDM")!;
-  // à mão: CAD → "CAD 2026"; Mancal → Projetos; Tampa → pasta criada à mão; Pino e Bucha (Série em
-  // produção) para a lixeira do Drive; Arruela (GO-OUT da Ana) → Projetos; Eixo editado
-  dv.relogio = "2026-11-12T09:00:00.000Z";
+  await sincronizar([ap, rp()], "2026-11-15T09:00:00.000Z");
+  igual("11.0 visíveis iniciais", visiveis(), ["WJPDM/CAD/Eixo.wjcad", "WJPDM/Projetos/Pino.wjcad"]);
   dv.renomearAMao(dv.pastaPorCaminho("WJPDM/CAD")!, "CAD 2026");
-  dv.moverAMao(dv.arquivoPorCaminho("WJPDM/CAD 2026/Mancal.wjcad")!, dv.pastaPorCaminho("WJPDM/Projetos")!.id);
-  const morto = dv.criarPastaAMao("Arquivo morto", raiz.id);
-  dv.moverAMao(dv.arquivoPorCaminho("WJPDM/CAD 2026/Sub/Tampa.wjcad")!, morto.id);
-  dv.lixeiraAMao(dv.arquivoPorCaminho("WJPDM/Projetos/Pino.wjcad")!);
-  dv.lixeiraAMao(dv.arquivoPorCaminho("WJPDM/CAD 2026/Bucha.wjcad")!);
-  dv.moverAMao(dv.arquivoPorCaminho("WJPDM/CAD 2026/Arruela.wjcad")!, dv.pastaPorCaminho("WJPDM/Projetos")!.id);
-  dv.editarAMao(dv.arquivoPorCaminho("WJPDM/CAD 2026/Eixo.wjcad")!, "eixo mexido à mão");
-  r = await sinc();
-  igual("11.1 tudo visto e resolvido sem perguntar", r.foraDoApp.map((m) => `${m.acao} ${m.nome}`).sort(),
-    ["desfeito Arruela.wjcad", "desfeito Bucha.wjcad", "editado Eixo.wjcad", "fora Tampa.wjcad", "lixeira Pino.wjcad", "movido Mancal.wjcad", "renomeado CAD"]);
-  igual("11.2 cofre: pasta renomeada, Mancal movido (histórico), Pino na lixeira do cofre", [ap.indice!.pastas.find((p) => p.id === "p1")?.nome, caminhoDoArquivo(ap.indice!, reg("a2")).join("/"), reg("a2").historico.at(-1)?.texto, reg("a4").lixeira, reg("a4").versoes.length],
-    ["CAD 2026", "Projetos/Mancal.wjcad", "Movido no Drive de CAD 2026/Mancal.wjcad para Projetos/Mancal.wjcad", true, 1]);
-  igual("11.3 exceções ficam no cofre: Bucha (protegida) e Arruela (GO-OUT da Ana)", [reg("a5").lixeira, caminhoDoArquivo(ap.indice!, reg("a6")).join("/"), reg("a3").pasta], [undefined, "CAD 2026/Arruela.wjcad", "p3"]);
-  igual("11.4 Drive igual ao cofre: Bucha recriada, Arruela de volta, Tampa onde ele pôs (sem cópia repetida)", visiveis(),
-    ["WJPDM/Arquivo morto/Tampa.wjcad", "WJPDM/CAD 2026/Arruela.wjcad", "WJPDM/CAD 2026/Bucha.wjcad", "WJPDM/CAD 2026/Eixo.wjcad", "WJPDM/Projetos/Mancal.wjcad"]);
-  igual("11.5 conteúdo editado à mão: vale o cofre", dv.arquivoPorCaminho("WJPDM/CAD 2026/Eixo.wjcad")?.dados, "eixo");
-  igual("11.6 a pasta (versões) acompanha o arquivo movido (pelo id), nada sobra no lugar antigo", dv.arquivos().filter((x) => x.includes("Mancal (versões)")), ["WJPDM/Projetos/Mancal (versões)/Mancal v1.wjcad"]);
-  igual("11.7 sem pasta duplicada (procurada pelo id)", [pastasCom("CAD"), pastasCom("CAD 2026"), pastasCom("Projetos"), pastasCom("WJPDM"), pastasCom("Sub")], [0, 1, 1, 1, 1]);
-  igual("11.8 o motivo das exceções", r.foraDoApp.filter((m) => m.acao === "desfeito" || m.acao === "fora").map((m) => m.motivo?.split(":")[0]).sort(), ["\"Série em produção\" não deixa excluir (torne-o obsoleto antes)", "em GO-OUT com Ana", "posto numa pasta criada à mão no Drive"]);
-  r = await sinc("2026-11-12T10:05:00.000Z");
-  igual("11.9 sincronia seguinte: só o aviso da pasta criada à mão (continua igual)", r.foraDoApp.map((m) => `${m.acao} ${m.nome}`), ["fora Tampa.wjcad"]);
-  // GO-IN da Tampa com ela na pasta criada à mão: o conteúdo novo entra no lugar, sem cópia repetida
-  ap.indice!.arquivos = ap.indice!.arquivos.map((a) => (a.id === "a3" ? arq("a3", "Tampa.wjcad", ["b3", "b3b"], "2026-11-12T10:10:00.000Z", { pasta: "p3" }) : a));
-  ap.blobs.set("b3b", "tampa v2");
-  await sinc("2026-11-12T10:11:00.000Z");
-  igual("11.10 GO-IN com o arquivo na pasta criada à mão: atualizado lá, sem repetir", [dv.arquivoPorCaminho("WJPDM/Arquivo morto/Tampa.wjcad")?.dados, visiveis().filter((x) => x.endsWith("Tampa.wjcad")).length], ["tampa v2", 1]);
-  // ele cria a pasta pelo WJPDM ("Arquivo morto" no cofre) e move a Tampa para ela à mão no Drive
-  ap.indice!.pastas.push({ id: "p9", nome: "Morto", pai: null, mod: "2026-11-12T10:20:00.000Z" });
-  await sinc("2026-11-12T10:21:00.000Z");
-  dv.relogio = "2026-11-12T10:30:00.000Z";
-  dv.moverAMao(dv.arquivoPorCaminho("WJPDM/Arquivo morto/Tampa.wjcad")!, dv.pastaPorCaminho("WJPDM/Morto")!.id);
-  r = await sinc("2026-11-12T10:31:00.000Z");
-  igual("11.11 movida para a pasta criada pelo WJPDM: aplicada no cofre", [r.foraDoApp.map((m) => `${m.acao} ${m.nome}`), caminhoDoArquivo(ap.indice!, reg("a3")).join("/")], [["movido Tampa.wjcad"], "Morto/Tampa.wjcad"]);
-  // conflito: arquivo movido à mão E renomeado no app depois → a mais recente (app) vence; a outra vai para a lixeira do cofre
-  dv.relogio = "2026-11-12T12:00:00.000Z";
   dv.moverAMao(dv.arquivoPorCaminho("WJPDM/CAD 2026/Eixo.wjcad")!, dv.pastaPorCaminho("WJPDM/Projetos")!.id);
-  const e2 = reg("a1");
-  e2.nome = "Eixo motor.wjcad";
-  e2.mod = "2026-11-12T12:30:00.000Z";
-  r = await sinc("2026-11-12T12:31:00.000Z");
-  igual("11.12 conflito: a mudança do app (mais recente) vence", dv.arquivos().filter((x) => x.includes("Eixo") && !x.includes("versões")), ["WJPDM/CAD 2026/Eixo motor.wjcad"]);
-  const lix = ap.indice!.arquivos.find((a) => a.lixeira && a.id.startsWith("a1~"));
-  igual("11.13 a outra (onde o Johann pôs) vai para a lixeira do cofre", [lix?.nome, lix && caminhoDoArquivo(ap.indice!, lix).slice(0, -1).join("/"), r.conflitos], ["Eixo (conflito 2026-11-12).wjcad", "Projetos", ["Eixo motor.wjcad"]]);
-  // movido à mão às 13:00 depois de renomeado no app às 12:45: o Drive (mais recente) vence
-  const e3 = reg("a1"); // a sincronia troca o índice: o registro de agora
-  e3.nome = "Eixo B.wjcad";
-  e3.mod = "2026-11-12T12:45:00.000Z";
-  dv.relogio = "2026-11-12T13:00:00.000Z";
-  // (o app ainda não levou o nome novo ao Drive: o Johann mexe no arquivo com o nome antigo)
-  const ex = dv.arquivoPorCaminho("WJPDM/CAD 2026/Eixo motor.wjcad")!;
-  dv.moverAMao(ex, dv.pastaPorCaminho("WJPDM/Projetos")!.id);
-  ex.mod = dv.relogio;
-  r = await sinc("2026-11-12T13:01:00.000Z");
-  igual("11.14 conflito: a mudança do Drive (mais recente) vence", [caminhoDoArquivo(ap.indice!, reg("a1")).join("/"), r.foraDoApp.map((m) => m.acao)], ["Projetos/Eixo motor.wjcad", ["conflito"]]);
-  // pasta inteira para a lixeira do Drive: arquivos para a lixeira do cofre, pasta fora, sem órfão
-  dv.relogio = "2026-11-12T14:00:00.000Z";
-  dv.lixeiraAMao(dv.pastaPorCaminho("WJPDM/Projetos")!);
-  r = await sinc("2026-11-12T14:01:00.000Z");
-  igual("11.15 pasta excluída no Drive: arquivos na lixeira do cofre, pasta sai, sem órfão", [r.foraDoApp.map((m) => `${m.acao} ${m.nome}`).sort(), ap.indice!.pastas.some((p) => p.id === "p2"), r.recuperados, ap.indice!.arquivos.filter((a) => !a.lixeira && !ap.indice!.pastas.some((p) => p.id === a.pasta) && a.pasta !== "raiz").length],
-    [["lixeira Eixo motor.wjcad", "lixeira Mancal.wjcad", "lixeira Projetos"], false, [], 0]);
-  igual("11.16 nada apagado de vez no Drive (nenhum DELETE, nem de conteúdo)", dv.apagados, []);
+  const antes = JSON.stringify(ap.indice);
+  const r = await sincronizar([ap, rp()], "2026-11-15T10:00:00.000Z");
+  igual("11.1 cofre intacto (nada aplicado de fora)", [JSON.stringify(ap.indice!.arquivos) === JSON.stringify(JSON.parse(antes).arquivos), ap.indice!.pastas.map((p) => p.nome).sort(), r.falhas], [true, ["CAD", "Projetos"], []]);
+  igual("11.2 o Drive volta a ser o cofre, sem pasta duplicada nem DELETE", [visiveis(), [...dv.itens.values()].filter((x) => x.name === "CAD" && x.mimeType.endsWith("folder")).length, dv.apagados], [["WJPDM/CAD/Eixo.wjcad", "WJPDM/Projetos/Pino.wjcad"], 1, []]);
 }
 
-// 12. o Drive do Johann hoje: pastas.json antigo (só caminhos) e a pasta JÁ renomeada à mão antes
-//     desta versão — a pasta é reconhecida pela pasta-mãe dos arquivos dela (sem duplicar) e o cofre a segue
+// 12. zerar cofre com o Drive e dois aparelhos (15/11/2026): o Drive vai para a lixeira dele (nunca
+//     DELETE), ganha a identidade nova; o outro aparelho é limpo sem reenviar o antigo.
 {
   const dv = new DriveFalso();
-  const ap = new Memoria("aparelho");
-  const T0 = "2026-11-12T08:00:00.000Z";
-  ap.indice = { ...indiceVazio(), pastas: [{ id: "p1", nome: "CAD", pai: null, mod: T0 }], arquivos: [arq("a1", "Eixo.wjcad", ["b1"], T0)] };
-  ap.blobs.set("b1", "eixo");
+  const pc = new Memoria("aparelho"), tablet = new Memoria("aparelho");
+  const T0 = "2026-11-15T08:00:00.000Z";
+  pc.indice = { ...indiceVazio(), meta: { id: "meta", nome: "Cofre", usuario: "Johann", mascara: "12-####", mod: T0 }, pastas: [{ id: "p1", nome: "CAD", pai: null, mod: T0 }], arquivos: [arq("a1", "Eixo.wjcad", ["b1", "b2"], T0)] };
+  pc.blobs.set("b1", "eixo v1").set("b2", "eixo v2");
   const rp = () => new RepositorioDrive(() => dv.token, dv.responder as typeof fetch);
-  await sincronizar([ap, rp()], "2026-11-12T09:00:00.000Z");
-  const pj = dv.arquivoPorCaminho("WJPDM/.wjpdm/pastas.json")!;
-  pj.dados = JSON.stringify([["CAD"]]); // formato antigo
-  const vj = dv.arquivoPorCaminho("WJPDM/.wjpdm/visiveis.json")!;
-  const vis = JSON.parse(vj.dados) as Record<string, { pai?: string; md5?: string }>;
-  for (const v of Object.values(vis)) delete v.pai, delete v.md5;
-  vj.dados = JSON.stringify(vis); // sem a pasta de cada arquivo nem o md5 (formato antigo)
-  dv.renomearAMao(dv.pastaPorCaminho("WJPDM/CAD")!, "Mecânica");
-  const r = await sincronizar([ap, rp()], "2026-11-12T10:00:00.000Z", { usuario: "Johann" });
-  igual("12.1 pastas.json antigo + pasta já renomeada: aplicada, sem CAD duplicada", [r.foraDoApp.map((m) => `${m.acao} ${m.de.join("/")} → ${m.para?.join("/")}`), ap.indice!.pastas[0].nome, !!dv.pastaPorCaminho("WJPDM/CAD")], [["renomeado CAD → Mecânica"], "Mecânica", false]);
-  igual("12.2 pastas.json passa a guardar o id; visiveis.json, o md5", [Object.keys(JSON.parse(dv.arquivoPorCaminho("WJPDM/.wjpdm/pastas.json")!.dados).pastas ?? {}), Object.values(JSON.parse(dv.arquivoPorCaminho("WJPDM/.wjpdm/visiveis.json")!.dados) as { md5?: string }[]).every((v) => !!v.md5)], [["p1"], true]);
+  await sincronizar([pc, rp()], "2026-11-15T09:00:00.000Z");
+  await sincronizar([tablet, rp()], "2026-11-15T09:05:00.000Z");
+  igual("12.0 o tablet recebeu o cofre", [tablet.indice!.arquivos.length, tablet.blobs.size], [1, 2]);
+  // zerar no computador
+  pc.indice = indiceZerado(pc.indice!, "cofre2", "2026-11-15T10:00:00.000Z");
+  pc.blobs.clear();
+  const r1 = await sincronizar([pc, rp()], "2026-11-15T10:00:00.000Z");
+  const sisDrive = (x: string) => x.includes(".wjpdm/indice.json") || x.includes(".wjpdm/visiveis.json") || x.includes(".wjpdm/pastas.json");
+  igual("12.1 Drive zerado: visíveis, versões e conteúdos na lixeira do Drive; só o índice novo", [dv.arquivos().filter((x) => !sisDrive(x)), r1.zeradas, dv.apagados], [[], ["Google Drive"], []]);
+  const noDrive = JSON.parse(dv.arquivoPorCaminho("WJPDM/.wjpdm/indice.json")!.dados) as Indice;
+  igual("12.2 índice do Drive: identidade nova, meta mantida, nada mais", [noDrive.cofre?.id, noDrive.meta?.usuario, noDrive.arquivos.length, noDrive.pastas.length], ["cofre2", "Johann", 0, 0]);
+  igual("12.3 o que saiu está na lixeira do Drive (recuperável)", [...dv.itens.values()].filter((x) => x.mimeType === "file" && x.lixo).length > 0, true);
+  const r2 = await sincronizar([tablet, rp()], "2026-11-15T10:30:00.000Z");
+  igual("12.4 tablet limpo ao sincronizar, sem reenviar o antigo", [tablet.indice!.arquivos.length, tablet.indice!.pastas.length, tablet.blobs.size, tablet.indice!.cofre?.id, r2.zeradas, dv.arquivos().filter((x) => !sisDrive(x))], [0, 0, 0, "cofre2", ["aparelho"], []]);
 }
 
-// 13. a estrutura do cofre no Drive nunca aceita mudança de fora: WJPDM renomeada à mão é achada pelo
-//     indice.json (sem criar outra WJPDM) e o nome volta; .wjpdm apagada é recriada; (versões) regravada
+// 13. login do Google: trava comum a todas as janelas e registro das aberturas (15/11/2026)
 {
-  const dv = new DriveFalso();
-  const ap = new Memoria("aparelho");
-  const T0 = "2026-11-12T08:00:00.000Z";
-  ap.indice = { ...indiceVazio(), pastas: [{ id: "p1", nome: "CAD", pai: null, mod: T0 }], arquivos: [arq("a1", "Eixo.wjcad", ["b1", "b2"], T0)] };
-  ap.blobs.set("b1", "eixo v1");
-  ap.blobs.set("b2", "eixo v2");
-  const rp = () => new RepositorioDrive(() => dv.token, dv.responder as typeof fetch);
-  await sincronizar([ap, rp()], "2026-11-12T09:00:00.000Z");
-  dv.renomearAMao(dv.pastaPorCaminho("WJPDM")!, "Meu cofre");
-  let r = await sincronizar([ap, rp()], "2026-11-12T10:00:00.000Z", { usuario: "Johann" });
-  const raizes = [...dv.itens.values()].filter((x) => x.parents[0] === "root" && x.mimeType.endsWith("folder") && !dv.naLixeira(x)).map((x) => x.name);
-  igual("13.1 WJPDM renomeada à mão: achada pelo id, nome de volta, nenhuma outra criada", [raizes, r.foraDoApp.map((m) => `${m.acao} ${m.nome}`), r.falhas], [["WJPDM"], ["desfeito WJPDM"], []]);
-  // versão excluída e editada à mão: o app regrava a pasta (versões)
-  dv.lixeiraAMao(dv.arquivoPorCaminho("WJPDM/CAD/Eixo (versões)/Eixo v1.wjcad")!);
-  dv.editarAMao(dv.arquivoPorCaminho("WJPDM/CAD/Eixo (versões)/Eixo v2.wjcad")!, "mexido");
-  r = await sincronizar([ap, rp()], "2026-11-12T10:05:00.000Z", { usuario: "Johann" });
-  igual("13.2 (versões): excluída é recriada e editada volta ao conteúdo do cofre", [dv.arquivoPorCaminho("WJPDM/CAD/Eixo (versões)/Eixo v1.wjcad")?.dados, dv.arquivoPorCaminho("WJPDM/CAD/Eixo (versões)/Eixo v2.wjcad")?.dados, ap.indice!.arquivos[0].lixeira], ["eixo v1", "eixo v2", undefined]);
-  // .wjpdm para a lixeira do Drive: recriada com tudo (índice, conteúdos), sem duplicar o visível
-  dv.lixeiraAMao(dv.pastaPorCaminho("WJPDM/.wjpdm")!);
-  r = await sincronizar([ap, rp()], "2026-11-12T10:10:00.000Z", { usuario: "Johann" });
-  igual("13.3 .wjpdm na lixeira: recriada, nada repetido nem perdido", [dv.arquivos().filter((x) => x.includes(".wjpdm")).sort(), dv.arquivos().filter((x) => !x.includes(".wjpdm")), ap.indice!.arquivos.filter((a) => !a.lixeira).length, r.falhas],
-    [["WJPDM/.wjpdm/blobs/b1", "WJPDM/.wjpdm/blobs/b2", "WJPDM/.wjpdm/indice.json", "WJPDM/.wjpdm/pastas.json", "WJPDM/.wjpdm/visiveis.json"], ["WJPDM/CAD/Eixo (versões)/Eixo v1.wjcad", "WJPDM/CAD/Eixo (versões)/Eixo v2.wjcad", "WJPDM/CAD/Eixo.wjcad"], 1, []]);
+  const agora = Date.parse("2026-11-15T12:00:00.000Z");
+  igual("13.1 trava de outra janela, ainda valendo: espera", travadoPorOutra({ dono: "B", ate: agora + 1000 }, "A", agora), true);
+  igual("13.2 trava minha, vencida ou nenhuma: pode abrir", [travadoPorOutra({ dono: "A", ate: agora + 1000 }, "A", agora), travadoPorOutra({ dono: "B", ate: agora - 1 }, "A", agora), travadoPorOutra(null, "A", agora)], [false, false, false]);
+  let lista: AberturaGoogle[] = [];
+  const ab = (min: number, pagina: string, janela: string, motivo: string, modo = "none", resultado: AberturaGoogle["resultado"] = "ok") =>
+    (lista = registrar(lista, { quando: new Date(agora - min * 60000).toISOString(), pagina, janela, motivo, modo, resultado }));
+  ab(300, "cad", "j1", "primeiro toque", "");
+  ab(90, "pdm", "j2", "sincronizar com toque");
+  ab(30, "cad", "j1", "primeiro toque");
+  ab(30, "cad/montagem", "j3", "primeiro toque", "", "evitada");
+  ab(26 * 60, "pdm", "j2", "antiga");
+  const r = resumoAberturas(lista, agora, 24);
+  igual("13.3 últimas 24 h: abertas, evitadas, sem seletor", [r.abertas, r.evitadas, r.semSeletor], [3, 1, 2]);
+  igual("13.4 por página, por janela e por quê", [r.porPagina, r.porJanela, r.porMotivo], [{ cad: 2, pdm: 1 }, { j1: 2, j2: 1 }, { "primeiro toque": 2, "sincronizar com toque": 1 }]);
+  igual("13.5 por hora (3 horas diferentes)", Object.keys(r.porHora).length, 3);
+  for (let k = 0; k < 250; k++) lista = registrar(lista, lista[0]);
+  igual("13.6 registro limitado a 200", lista.length, 200);
 }
 
 // 10. janela do Google: um pedido por vez e sempre termina (GO-IN travado, 10/11/2026)

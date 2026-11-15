@@ -4,7 +4,9 @@
 
 import "./pdm.css";
 import { $, baixar, Casca, el, escapar, janela, menu, registrarOffline, salvarArquivo } from "../comum/casca";
-import { abrirArquivoNoApp, abrirCopias, abrirMudancasFora, aoMudarCofre, APPS, EVENTO_FORA, goIn, janelaGoIn, sincronizarCofre } from "../comum/cofre";
+import { abrirArquivoNoApp, abrirCopias, aoMudarCofre, APPS, EVENTO_ZERADO, goIn, janelaGoIn, perguntar, sincronizarCofre, zerarCofre } from "../comum/cofre";
+import { aberturasGoogle, contaGoogle, resumoAberturas } from "../comum/drive";
+import { ignorarNaImportacao, planejarImportacao, registroImportado, resumoImportacao, type EntradaImportar, type Repetido } from "./importar";
 import { IC } from "../comum/icones";
 import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
@@ -248,7 +250,8 @@ lista.addEventListener("contextmenu", (e) => {
     ]);
   } else if (local.tipo === "pasta") {
     menu(e.clientX, e.clientY, [
-      { rotulo: "Adicionar arquivos…", icone: "importar", acao: () => void adicionarDoAparelho() },
+      { rotulo: "Importar arquivos…", icone: "importar", acao: () => void adicionarDoAparelho() },
+      { rotulo: "Importar pasta…", icone: "pasta", acao: () => void importarPasta() },
       { rotulo: "Nova pasta", icone: "novaPasta", acao: () => novaPasta(pastaAtual()) },
     ]);
   }
@@ -607,40 +610,216 @@ function historico(a: Arquivo, texto: string) {
   a.historico.push({ data: agora(), usuario: usuario(), texto });
 }
 
-async function adicionar(files: File[], pasta: string) {
-  const pastaCartao = [...caminho(pasta)].reverse().find((p) => p.cartao?.projeto)?.cartao?.projeto;
-  for (const f of files) {
-    const nomes = arquivos.filter((a) => a.pasta === pasta && !a.lixeira).map((a) => a.nome);
-    const nome = nomeLivre(f.name, nomes);
-    const blob = uid();
-    await db.porBlob(blob, f);
-    const base = f.name.replace(/\.[^.]+$/, "");
-    const a: Arquivo = {
-      id: uid(), nome, pasta, revisao: "", estado: fluxoAtual().inicial, historico: [],
-      cartao: { descricao: base, projetista: usuario(), ...(pastaCartao ? { projeto: pastaCartao } : {}) },
-      versoes: [{ n: 1, blob, tamanho: f.size, autor: usuario(), data: agora(), comentario: "Adicionado ao cofre", revisao: "", estado: fluxoAtual().inicial }],
-    };
-    historico(a, `Adicionado ao cofre${nome !== f.name ? ` (renomeado de ${f.name})` : ""}`);
-    arquivos.push(a);
-    await gravarArquivo(a);
-    sel = { tipo: "arquivo", id: a.id };
-  }
-  aba = "cartao";
-  casca.avisar(`${files.length} arquivo(s) adicionado(s) em ${nomePasta(pasta)}.`);
-  renderizar();
-}
+// ---------- importar pasta / arquivos (15/11/2026) ----------
 
-function escolherVarios(): Promise<File[]> {
+/** Arquivo escolhido no aparelho, com o caminho relativo (pastas + nome). */
+type Escolhido = { caminho: string[]; arquivo: File | null };
+
+function escolherVarios(pasta = false): Promise<File[]> {
   return new Promise((ok) => {
-    const inp = el("input", { type: "file", multiple: "" }) as HTMLInputElement;
+    const inp = el("input", { type: "file", multiple: "", ...(pasta ? { webkitdirectory: "" } : {}) }) as HTMLInputElement;
     inp.onchange = () => ok([...(inp.files ?? [])]);
+    inp.addEventListener("cancel", () => ok([]));
     inp.click();
   });
 }
+
+type PastaSistema = FileSystemDirectoryHandle & { values(): AsyncIterable<FileSystemHandle> };
+/**
+ * Pasta do computador ou do tablet, com todas as subpastas. Com o seletor de pastas do navegador
+ * (computador e Chrome do tablet), anda pelas pastas sem entrar nas que ficam de fora (.wjpdm,
+ * "(versões)"); senão, o seletor de arquivos em modo pasta. null = cancelado.
+ */
+async function escolherPastaDoAparelho(): Promise<Escolhido[] | null> {
+  const w = window as unknown as { showDirectoryPicker?(o?: { id?: string; mode?: "read" }): Promise<PastaSistema> };
+  if (typeof w.showDirectoryPicker === "function") {
+    let raiz: PastaSistema;
+    try {
+      raiz = await w.showDirectoryPicker({ id: "wjpdm-importar", mode: "read" });
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return null;
+      throw e;
+    }
+    const out: Escolhido[] = [];
+    const andar = async (d: PastaSistema, c: string[]) => {
+      for await (const h of d.values()) {
+        const k = [...c, h.name];
+        if (h.kind === "directory") {
+          // pasta que fica de fora: conta como um item ignorado, sem entrar nela
+          if (ignorarNaImportacao([...k, "x"])) out.push({ caminho: [...k, ""], arquivo: null });
+          else await andar(h as PastaSistema, k);
+        } else out.push({ caminho: k, arquivo: await (h as FileSystemFileHandle).getFile() });
+      }
+    };
+    await andar(raiz, [raiz.name]);
+    return out;
+  }
+  const fs = await escolherVarios(true);
+  if (!fs.length) return null;
+  return fs.map((f) => ({ caminho: (f.webkitRelativePath || f.name).split("/").filter(Boolean), arquivo: f }));
+}
+
+/** Pergunta única para os nomes repetidos (substituir / pular / manter os dois). null = cancelar. */
+async function perguntarRepetidos(n: number, pasta: string): Promise<Repetido | null> {
+  const r = await perguntar("Nomes repetidos", `${n === 1 ? "1 arquivo já existe" : `${n} arquivos já existem`} em ${nomePasta(pasta)} (ou nas subpastas) com o mesmo nome. O que fazer com ${n === 1 ? "ele" : "todos eles"}?`, [
+    ["substituir", "Substituir (vira a versão seguinte)", true],
+    ["pular", "Pular"],
+    ["manter", "Manter os dois (\"nome (2)\")"],
+  ]);
+  return (r as Repetido | null) ?? null;
+}
+
+/** Barra de progresso com Cancelar. */
+function janelaProgresso(titulo: string, total: number) {
+  let cancelado = false;
+  const { corpo, fechar } = janela(titulo, `<p id="ip-txt">Preparando…</p><progress id="ip-barra" max="${total}" value="0" style="width:100%;height:18px"></progress><p class="pd-nota" id="ip-n">0 de ${total}</p>`, [
+    { rotulo: "Cancelar", acao: () => ((cancelado = true), false) },
+  ]);
+  corpo.closest(".wj-janela")?.querySelector<HTMLElement>("[data-x]")?.addEventListener("click", () => (cancelado = true));
+  return {
+    passo(k: number, nome: string) {
+      $<HTMLProgressElement>("#ip-barra", corpo).value = k;
+      $("#ip-txt", corpo).textContent = nome;
+      $("#ip-n", corpo).textContent = `${k} de ${total}`;
+    },
+    get cancelado() {
+      return cancelado;
+    },
+    fechar,
+  };
+}
+
+/**
+ * Importa para a pasta `destino`: pastas que faltam são criadas (as de mesmo nome, reaproveitadas);
+ * cada arquivo entra publicado (versão 1) ou, com "Substituir", como a versão seguinte. No fim, o
+ * resumo e a sincronia com as cópias do cofre.
+ */
+async function importar(escolhidos: Escolhido[], destino: string) {
+  const entradas: EntradaImportar[] = escolhidos.map((e) => ({ caminho: e.caminho, tamanho: e.arquivo?.size ?? 0 }));
+  const planejar = (r: Repetido | null) => planejarImportacao(pastas, arquivos, destino, entradas, r, usuario(), uid, agora());
+  let plano = planejar(null);
+  if (plano.repetidos) {
+    const r = await perguntarRepetidos(plano.repetidos, destino);
+    if (!r) return casca.avisar("Importação cancelada.");
+    plano = planejar(r);
+  }
+  if (!plano.arquivos.length && !plano.pastasNovas.length) return casca.avisar(`Nada a importar (${resumoImportacao(plano, 0)}).`, 6000);
+  const prog = janelaProgresso("Importando para o cofre", plano.arquivos.length);
+  for (const p of plano.pastasNovas) {
+    pastas.push(p);
+    await gravar("pastas", p);
+  }
+  let feitos = 0;
+  for (const p of plano.arquivos) {
+    if (prog.cancelado) break;
+    const f = escolhidos[p.entrada].arquivo;
+    if (!f) continue;
+    prog.passo(feitos, p.nome);
+    const blob = uid();
+    await db.porBlob(blob, f);
+    const existente = p.existente ? arquivos.find((a) => a.id === p.existente) : undefined;
+    const projeto = [...caminho(p.pasta)].reverse().find((x) => x.cartao?.projeto)?.cartao?.projeto;
+    const { arquivo: a, sobra } = registroImportado(p, existente, blob, f.size, usuario(), agora(), fluxoAtual().inicial, uid(), projeto);
+    await gravarArquivo(a);
+    if (sobra) await db.apagar("blobs", sobra);
+    const k = arquivos.findIndex((x) => x.id === a.id);
+    if (k >= 0) arquivos[k] = a;
+    else arquivos.push(a);
+    feitos++;
+  }
+  prog.fechar();
+  renderizar();
+  const resumo = `${prog.cancelado ? `Importação cancelada: ${feitos} de ${plano.arquivos.length} arquivos entraram` : "Importado"} (${resumoImportacao(plano, feitos)}) em ${nomePasta(destino)}.`;
+  janela("Importação", `<p><b>${escapar(resumo)}</b></p>
+    ${plano.pulados.length ? `<p>Pulados:</p><ul class="pd-lista-curta">${plano.pulados.slice(0, 30).map((x) => `<li>${escapar(x)}</li>`).join("")}${plano.pulados.length > 30 ? `<li>… e mais ${plano.pulados.length - 30}</li>` : ""}</ul>` : ""}
+    ${plano.ignorados.length ? `<p>Ignorados (.wjpdm, pastas "(versões)" e arquivos de sistema): ${plano.ignorados.length}.</p>` : ""}
+    <p class="pd-nota">Cada arquivo entrou publicado (versão 1; vídeo, foto e áudio como arquivo de mídia). As cópias do cofre recebem na sincronia.</p>`);
+  levarPastasParaAsCopias(resumo.replace(/\.$/, ""));
+}
+
+/** Arquivos soltos (botão, menu ou arrastar para a lista). */
+async function adicionar(files: File[], pasta: string) {
+  await importar(files.map((f) => ({ caminho: [f.name], arquivo: f })), pasta);
+}
 async function adicionarDoAparelho() {
-  if (local.tipo !== "pasta") return casca.avisar("Abra uma pasta do cofre para adicionar arquivos.");
+  if (local.tipo !== "pasta") return casca.avisar("Abra uma pasta do cofre para importar arquivos.");
+  const destino = pastaAtual();
   const fs = await escolherVarios();
-  if (fs.length) await adicionar(fs, pastaAtual());
+  if (fs.length) await adicionar(fs, destino);
+}
+
+/** "Importar pasta…": a pasta escolhida entra (ou só o que está dentro dela) na pasta aberta do cofre. */
+async function importarPasta() {
+  if (local.tipo !== "pasta") return casca.avisar("Abra uma pasta do cofre para importar.");
+  const destino = pastaAtual();
+  let esc: Escolhido[] | null;
+  try {
+    esc = await escolherPastaDoAparelho();
+  } catch (e) {
+    return casca.avisar(`Não foi possível ler a pasta: ${(e as Error).message}`, 6000);
+  }
+  if (!esc) return;
+  const nome = esc[0]?.caminho[0] ?? "";
+  const validos = esc.filter((e) => e.arquivo && !ignorarNaImportacao(e.caminho));
+  const subpastasN = new Set(validos.map((e) => e.caminho.slice(1, -1).join("/")).filter(Boolean)).size;
+  const ign = esc.length - validos.length;
+  janela(`Importar pasta "${nome}"`, `
+    <p><b>${validos.length}</b> arquivo(s) em <b>${subpastasN}</b> subpasta(s)${ign ? ` · ${ign} ignorado(s) (.wjpdm, "(versões)", arquivos de sistema)` : ""}.</p>
+    <p>Para: <b>${escapar([meta.nome, ...caminho(destino).map((p) => p.nome)].join(" › "))}</b></p>
+    <label class="pd-check"><input type="checkbox" id="ip-raiz" checked /> Criar a pasta "${escapar(nome)}" no cofre (desmarque para trazer só o que está dentro dela)</label>`, [
+    { rotulo: "Cancelar" },
+    {
+      rotulo: "Importar", destaque: true, acao: (c) => {
+        const comRaiz = (c.querySelector("#ip-raiz") as HTMLInputElement).checked;
+        const lista = comRaiz ? esc! : esc!.map((e) => ({ ...e, caminho: e.caminho.slice(1) })).filter((e) => e.caminho.length);
+        void importar(lista, destino);
+      },
+    },
+  ]);
+}
+
+// ---------- zerar cofre e login do Google (15/11/2026) ----------
+
+function confirmarZerar() {
+  janela("Zerar cofre", `
+    <p><b>Apaga todos os arquivos, pastas, versões e itens do cofre</b> neste aparelho, na pasta do dispositivo, no pendrive e no Google Drive (no Drive, pela lixeira dele: recuperável lá por 30 dias).</p>
+    <p>Os outros aparelhos, ao sincronizar, veem que o cofre foi zerado e limpam o banco deles <b>sem reenviar o antigo</b>.</p>
+    <p>Ficam: seu usuário, a máscara de código e o fluxo de trabalho.</p>
+    <div class="wj-campo"><label>Para confirmar, digite ZERAR</label><input id="zr-v" autocomplete="off" autocapitalize="characters" /></div>`, [
+    { rotulo: "Cancelar" },
+    {
+      rotulo: "Zerar cofre", destaque: true, acao: (c) => {
+        if ((c.querySelector("#zr-v") as HTMLInputElement).value.trim() !== "ZERAR") return void casca.avisar("Digite ZERAR (em maiúsculas) para confirmar."), false;
+        casca.avisar("Zerando o cofre em todas as cópias…", 60000);
+        // dentro do toque: a janela do Google pode precisar abrir
+        void zerarCofre().then(
+          async (m) => {
+            sel = null;
+            local = { tipo: "pasta", id: RAIZ };
+            await carregar();
+            casca.avisar(`Cofre zerado. ${m}`, 10000);
+          },
+          (e: Error) => casca.avisar(`Não foi possível zerar: ${e.message}`, 8000),
+        );
+      },
+    },
+  ]);
+}
+
+function loginGoogle() {
+  const lista = aberturasGoogle();
+  const r = resumoAberturas(lista, Date.now(), 24);
+  const tabela = (t: string, m: Record<string, number>) => {
+    const linhas = Object.entries(m).sort((a, b) => b[1] - a[1]);
+    return linhas.length ? `<p><b>${t}</b></p><ul class="pd-lista-curta">${linhas.map(([k, n]) => `<li>${escapar(k)}: ${n}</li>`).join("")}</ul>` : "";
+  };
+  const fmt = (s: string) => new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  janela("Login do Google", `
+    <p>Conta: <b>${escapar(contaGoogle() || "ainda não identificada (aparece depois da próxima renovação)")}</b></p>
+    <p>Últimas 24 h: <b>${r.abertas}</b> janela(s) do Google aberta(s) (${r.semSeletor} sem seletor de conta) · <b>${r.evitadas}</b> evitada(s) (outra janela já estava renovando).</p>
+    ${tabela("Por página", r.porPagina)}${tabela("Por janela", r.porJanela)}${tabela("Por hora", r.porHora)}${tabela("Por quê", r.porMotivo)}
+    ${lista.length ? `<p><b>Últimas</b></p><ul class="pd-lista-curta">${lista.slice(0, 12).map((a) => `<li>${fmt(a.quando)} · ${escapar(a.pagina)} · janela ${escapar(a.janela)} · ${escapar(a.motivo)} · ${a.modo === "none" ? "sem seletor" : a.modo === "consent" ? "autorização" : "normal"} · ${escapar(a.resultado ?? "")}</li>`).join("")}</ul>` : "<p>Nenhuma abertura registrada neste aparelho.</p>"}
+    <p class="pd-nota">Uma renovação só para todas as páginas e janelas, com a conta já autorizada e sem seletor. O que sobra até a G5: o acesso do Google vale 1 hora e o navegador só deixa abrir a janela do Google num toque, então ela ainda pisca e fecha uma vez por hora de uso. Renovar sem nenhum toque precisa de um servidor próprio guardando o token de renovação (G5).</p>`, [{ rotulo: "Fechar" }], true);
 }
 
 async function obter(a: Arquivo, v: Versao = versaoAtual(a), deTrabalho = false) {
@@ -1186,7 +1365,8 @@ const casca: Casca = new Casca({
       id: "cofre", rotulo: "Cofre", grupos: [
         [
           { id: "pasta", rotulo: "Nova pasta", icone: "novaPasta", acao: () => novaPasta() },
-          { id: "add", rotulo: "Adicionar", icone: "importar", dica: "Adicionar arquivos do aparelho (ou arraste para a lista)", acao: () => void adicionarDoAparelho() },
+          { id: "add", rotulo: "Importar arquivos…", icone: "importar", dica: "Arquivos do aparelho para a pasta aberta, publicados (versão 1); ou arraste para a lista", acao: () => void adicionarDoAparelho() },
+          { id: "impPasta", rotulo: "Importar pasta…", icone: "pasta", dica: "Uma pasta do computador ou do tablet, com todas as subpastas, mantendo a estrutura", acao: () => void importarPasta() },
         ],
         [
           { id: "obter", rotulo: "Obter", icone: "exportar", dica: "Baixar a versão atual", acao: exigeArquivo((a) => void obter(a)) },
@@ -1226,11 +1406,12 @@ const casca: Casca = new Casca({
         ],
         [
           { id: "copias", rotulo: "Cópias do cofre", icone: "pasta", dica: "Pendrive, Google Drive e pasta do tablet: escolher e sincronizar", acao: () => void abrirCopias(() => void carregar()) },
-          { id: "fora", rotulo: "Mudanças no Drive", icone: "sincronizar", dica: "O que foi movido, renomeado ou excluído direto no Google Drive, no pendrive ou na pasta do dispositivo e o que o cofre fez (aplicado sozinho; exceções com o motivo)", acao: () => void abrirMudancasFora() },
+          { id: "login", rotulo: "Login do Google", icone: "sincronizar", dica: "Quantas vezes a janela do Google abriu (por página, janela e hora) e por quê", acao: () => loginGoogle() },
           { id: "exp", rotulo: "Exportar cofre", icone: "exportar", dica: "Cópia de segurança completa (.wjpdm)", acao: () => void exportarCofre() },
           { id: "imp", rotulo: "Restaurar cópia", icone: "importar", acao: () => void importarCofre() },
           { id: "arm", rotulo: "Armazenamento", icone: "pasta", acao: () => void armazenamento() },
         ],
+        [{ id: "zerar", rotulo: "Zerar cofre", icone: "apagar", dica: "Apagar tudo do cofre em todas as cópias (confirmar digitando ZERAR)", acao: () => confirmarZerar() }],
       ],
     },
   ],
@@ -1281,9 +1462,13 @@ void (async () => {
   void navigator.storage?.persist?.();
 })();
 registrarOffline();
-// mudanças feitas fora do app (Drive, pendrive, pasta do dispositivo): a sincronia já as aplicou no
-// cofre e mostrou o aviso (decisão do Johann, 12/11/2026); aqui só recarrega a lista
-addEventListener(EVENTO_FORA, () => db && void carregar().catch(() => {}));
+// o cofre foi zerado em outro aparelho: este foi limpo na sincronia
+addEventListener(EVENTO_ZERADO, () => {
+  if (!db) return;
+  sel = null;
+  local = { tipo: "pasta", id: RAIZ };
+  void carregar().then(() => casca.avisar("O cofre foi zerado em outro aparelho: este aparelho foi limpo (nada foi reenviado).", 10000), () => {});
+});
 // a sincronia ao abrir trouxe novidades (outro aparelho, pendrive, Drive): recarrega a lista
 aoMudarCofre(() => db && void carregar().catch(() => {}));
 // outro app salvou no cofre (ou a sincronia trouxe novidades): recarrega ao voltar para o WJPDM
