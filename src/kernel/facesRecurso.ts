@@ -4,7 +4,7 @@
 // filete…); faces só recortadas por ele continuam do recurso que as criou. No fim, cada face da
 // peça final é atribuída aos recursos cujas faces próprias a contêm.
 
-import { DistanceQuery, makeVertex, type Face, type Shape3D } from "replicad";
+import { DistanceQuery, makeCompound, makeVertex, type Face, type Shape3D } from "replicad";
 import type { Vec3 } from "../model";
 import { listarTopo } from "./topologia";
 
@@ -142,6 +142,7 @@ export class RastreadorFaces {
       // a consulta à peça anterior inteira é cara em peças com milhares de faces (sólido vindo de
       // STL): só é criada se uma face nova NÃO plana precisar dela
       let consultaAntes: DistanceQuery | null = null;
+      let cascaAntes: { delete(): void } | null = null;
       type PlanoAntigo = { n: Vec3; d: number; face: Face; caixa?: Caixa | null; q?: DistanceQuery };
       let planosAntes: PlanoAntigo[] | null = null;
       let indiceAntes: IndicePlanos<PlanoAntigo> | null = null;
@@ -163,7 +164,14 @@ export class RastreadorFaces {
           }
           return false;
         }
-        consultaAntes ??= new DistanceQuery(antes!);
+        // contra as FACES da peça anterior, não o sólido: ponto dentro do sólido dá distância 0 e a
+        // face curva nova (filete, parede de furo do Corte) passava por "só recortada"
+        // (cópias: o makeCompound apaga as faces que recebe; liberado no fim)
+        if (!consultaAntes) {
+          const casca = makeCompound(velhas.map((g) => g.clone()));
+          cascaAntes = casca;
+          consultaAntes = new DistanceQuery(casca);
+        }
         return distancia(consultaAntes, p) < TOL;
       };
       const faces: FacesProprias["faces"] = [];
@@ -183,6 +191,7 @@ export class RastreadorFaces {
         }
       } finally {
         (consultaAntes as DistanceQuery | null)?.delete();
+        (cascaAntes as { delete(): void } | null)?.delete();
         for (const g of (planosAntes as PlanoAntigo[] | null) ?? []) g.q?.delete();
       }
       if (faces.length) this.proprias.push({ id, faces });

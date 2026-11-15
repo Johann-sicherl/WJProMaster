@@ -253,6 +253,19 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
 
 ## Observações técnicas
 
+- **Caixa de seleção ativa e seleção rápida de arestas** (15/11/2026): `campoInicial` (primeira caixa vazia; sem
+  vazia, a 1ª de um item só listada em `comPadrao` — o valor de fábrica posto por `criarRecurso`, ex.: Superior do
+  Plano, Direito do Espelhar) e `proximoCampo` (próxima vazia depois da cheia, depois volta ao começo) em
+  `src/ui/caixasSelecao.ts`; pulam aba fechada, caixa escondida e caixa opcional desmarcada. Seleção rápida do
+  Filete/Chanfro em `src/selecaoArestas.ts`, **sem kernel**: vizinhança face↔aresta por `topologia.arestasDaFace`,
+  corpo por vizinhança, côncava/convexa pela malha da vista (normal dos vértices sobre a aresta + centro do
+  triângulo mais próximo de cada face; tangente < 5° fica de fora), em cache por malha. As opções viram
+  referências **no toque** (a prévia muda a topologia logo depois) e deixam de fora as arestas das faces do
+  próprio recurso em edição (só existem na prévia). **Armadilha corrigida**: o `RastreadorFaces` media a face
+  curva nova contra o **sólido** anterior (ponto dentro do sólido = distância 0) e a face do filete / a parede do
+  furo do Corte passava por "recortada" (sem dono em `facesPorRecurso`); agora mede contra as **faces** antigas
+  (`makeCompound` de **cópias** — o replicad apaga as faces que recebe).
+
 - **WJTaskPlan: prazo da etapa ≤ prazo da tarefa** (10/11/2026, `src/tarefas/regras.ts`): `adicionarEtapa`,
   `prazoEtapa` e `mudarPrazoTarefa` recusam o conflito sem `escolha` (`EscolhaPrazo`: "trazer" as etapas para o
   prazo da tarefa / "estender" a tarefa até `maiorPrazoEtapas`); `conflitoPrazos` simula a mudança pedida e dá

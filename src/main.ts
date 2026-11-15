@@ -72,6 +72,8 @@ import * as op from "./esboco/operacoes";
 import wasmPlaneGcs from "@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url";
 import { esquemaDe, esquemaParametrosChapa, type DadosEsquema } from "./ui/esquemas";
 import { ler, renderizarFormulario, type ContextoFormulario, type Esquema, type TipoSel } from "./ui/formulario";
+import { ajustarCampo, campoInicial, camposDeSelecao, proximoCampo } from "./ui/caixasSelecao";
+import { opcoesSelecaoRapida } from "./selecaoArestas";
 import { aplicarEquacoes, avaliarExpressao, resolverVariaveis } from "./equacoes";
 import type { Analise } from "./analises";
 import { absorvidosDe, excluirRecursos, filhosDe } from "./dependencias";
@@ -171,6 +173,8 @@ interface ComandoAtivo {
   recolhidas: Set<string>;
   /** "chapa": item "Chapa metálica" da árvore (só os parâmetros globais da flange base). */
   modo?: "chapa";
+  /** Caixas de seleção vazias no último desenho do painel (a que aparecer vazia depois fica ativa). */
+  vazias?: string[];
 }
 
 type FerramentaAvaliar =
@@ -699,6 +703,8 @@ function criarRecurso(id: string) {
   const facesPlanas = faces.filter((r) => r.tipo === "face" && r.ass.geom === "plano");
   const planoSel: Referencia | undefined = planosArvore[0] ?? facesPlanas[0] ?? faces[0];
   const repetir = featsSel.filter((x) => REPETIVEIS.includes(x.tipo)).map((x) => x.id);
+  /** Caixas que ficaram com o valor de fábrica (sem pré-seleção): a 1ª vira a ativa se nenhuma estiver vazia. */
+  const comPadrao: string[] = [];
   switch (f.tipo) {
     case "extrusao":
     case "revolucao": {
@@ -827,6 +833,7 @@ function criarRecurso(id: string) {
       // plano neutro: plano escolhido na árvore; faces: as tocadas no modelo
       f.faces = faces;
       f.planoNeutro = planosArvore[0] ?? { tipo: "plano", id: "XZ" }; // Superior
+      if (!planosArvore[0]) comPadrao.push("planoNeutro");
       break;
     case "flangeBase":
     case "abaChapa":
@@ -907,11 +914,15 @@ function criarRecurso(id: string) {
         const ax = eixosArvore[0] ?? selPeca.find((r) => r.tipo === "aresta" || r.tipo === "face");
         if (ax) f.eixo = ax;
       }
-      if (f.tipo === "espelhar") f.plano = planoSel ?? { tipo: "plano", id: "YZ" };
+      if (f.tipo === "espelhar") {
+        f.plano = planoSel ?? { tipo: "plano", id: "YZ" };
+        if (!planoSel) comPadrao.push("plano");
+      }
       break;
     case "planoRef": {
       const planos = [...planosArvore, ...facesPlanas];
       f.ref1 = planos[0] ?? { tipo: "plano", id: "XZ" }; // Superior
+      if (!planos[0]) comPadrao.push("ref1");
       // dois planos: plano médio; plano + aresta/eixo: em ângulo
       const linha = selPeca.find((r) => r.tipo === "aresta") ?? eixosArvore[0];
       if (planos.length >= 2) {
@@ -962,7 +973,7 @@ function criarRecurso(id: string) {
   }
   limparSelPeca();
   inserirFeature(f);
-  abrirComando(f, true);
+  abrirComando(f, true, undefined, comPadrao);
 }
 
 /** Tipos de recurso que padrões e espelhar sabem repetir. */
@@ -1159,7 +1170,11 @@ function esquemaComando(c: { f: Feature; modo?: "chapa" }): Esquema<Feature> {
   return c.modo === "chapa" ? esquemaParametrosChapa() : (esquemaDe(c.f, dadosEsquema(c.f)) as Esquema<Feature>);
 }
 
-function abrirComando(f: Feature, novo: boolean, modo?: "chapa") {
+/**
+ * Abre o painel do recurso. `comPadrao`: caixas de seleção que o comando novo preencheu com o valor de
+ * fábrica (sem pré-seleção); sem caixa vazia, a primeira delas fica ativa (o toque troca o padrão).
+ */
+function abrirComando(f: Feature, novo: boolean, modo?: "chapa", comPadrao: string[] = []) {
   if (editor) sairEsboco();
   fecharCotasNoModelo();
   fecharAvaliacao();
@@ -1170,21 +1185,8 @@ function abrirComando(f: Feature, novo: boolean, modo?: "chapa") {
     f, novo, snapshot: fotografia, campo: null, recolhidas: new Set(),
     aba: f.tipo === "furo" ? "Tipo" : undefined, modo,
   };
-  // campo de seleção ativo: o primeiro vazio
-  const esq = esquemaComando(comando);
-  for (const cx of esq.caixas) {
-    if (cx.aba && cx.aba !== comando.aba) continue;
-    if (cx.vis && !cx.vis(f)) continue;
-    for (const c of cx.campos) {
-      if (c.t !== "refs" || (c.vis && !c.vis(f))) continue;
-      const v = ler(f, c.cam);
-      if (!v || (Array.isArray(v) && !v.length)) {
-        comando.campo = { cam: c.cam, aceita: c.aceita, multiplo: c.multiplo };
-        break;
-      }
-    }
-    if (comando.campo) break;
-  }
+  // caixa de seleção ativa (rosa): a primeira vazia; sem vazia, a que ficou com o padrão de fábrica
+  comando.campo = campoInicial(camposDeSelecao(esquemaComando(comando), f, comando.aba), f, novo ? comPadrao : []);
   definirSel({ tipo: "feature", id: f.id });
   mostrarPainel("comando");
   renderizarComando();
@@ -1199,6 +1201,9 @@ function renderizarComando() {
   if (!comando) return;
   const c = comando;
   const esq = esquemaComando(c);
+  const aj = ajustarCampo(camposDeSelecao(esq, c.f, c.aba), c.f, c.campo, c.vazias);
+  c.campo = aj.campo;
+  c.vazias = aj.vazias;
   const ctx: ContextoFormulario = {
     erro: errosPorFeature.get(c.f.id),
     aviso: avisosPorFeature.get(c.f.id),
@@ -1329,6 +1334,7 @@ function arrastarCaixaFlutuante(cab: HTMLElement) {
 
 function confirmarComando() {
   if (!comando) return;
+  esconderBarraContexto(); // a seleção rápida do Filete/Chanfro não sobra depois do comando
   const f = comando.f;
   // como nos CADs profissionais, o OK só vale com a seleção obrigatória feita
   if ((f.tipo === "flangeBase" || f.tipo === "abaChapa" || f.tipo === "corteChapa" || f.tipo === "dobraEsboco" || f.tipo === "junta") && !f.esboco) {
@@ -1359,6 +1365,7 @@ function confirmarComando() {
 
 function cancelarComando() {
   if (!comando) return;
+  esconderBarraContexto(); // a seleção rápida do Filete/Chanfro não sobra depois do comando
   doc = JSON.parse(comando.snapshot);
   const novo = comando.novo;
   fecharComando();
@@ -1530,10 +1537,11 @@ function refsDestacadas(): Referencia[] {
   return comando ? refsDoComando() : avaliacao?.tipo === "medir" ? avaliacao.refs : selPeca;
 }
 
-function atualizarDestaques(realce: Referencia | null = null) {
+function atualizarDestaques(realce: Referencia | Referencia[] | null = null) {
   const refs = refsDestacadas();
   const ents = refs.map(entidadeDeRef).filter((e): e is Entidade => !!e);
-  viewport.destacarEntidades(ents, realce ? entidadeDeRef(realce) : null, facesDosSelecionados(), facesDaPrevia());
+  const real = Array.isArray(realce) ? realce.map(entidadeDeRef).filter((e): e is Entidade => !!e) : realce ? entidadeDeRef(realce) : null;
+  viewport.destacarEntidades(ents, real, facesDosSelecionados(), facesDaPrevia());
   // planos de referência usados pelo comando aparecem destacados
   const planoUsado = refs.find((r): r is Extract<Referencia, { tipo: "plano" }> => r.tipo === "plano");
   const principal = planoUsado && ["XY", "XZ", "YZ"].includes(planoUsado.id) ? (planoUsado.id as Plano) : null;
@@ -1982,7 +1990,12 @@ function instalarToqueCurto() {
       }
       const r = refDeEntidade(ent)!;
       if (c.aceita.includes("plano") && !c.aceita.includes("face") && (r.tipo !== "face" || r.ass.geom !== "plano")) return avisar("Escolha uma face plana.");
+      // Filete/Chanfro: a seleção rápida (opções a partir da aresta) usa a topologia de antes do toque
+      const rapida = ent.tipo === "aresta" ? preparoSelecaoRapida(ent.indice) : null;
       adicionarAoCampo(r);
+      if (rapida && comando?.campo?.cam === "itens" && ((comando.f as { itens?: Referencia[] }).itens ?? []).some((x) => mesmaRef(x, r))) {
+        mostrarSelecaoRapida(rapida, e.clientX, e.clientY);
+      }
       return;
     }
     if (avaliacao?.tipo === "propSecao") {
@@ -2053,6 +2066,84 @@ function instalarToqueCurto() {
 }
 instalarToqueCurto();
 
+// ---------- Filete/Chanfro: barra de seleção rápida de arestas ----------
+
+const GEOM_FACE: Record<string, string> = { plano: "face plana", cilindro: "face cilíndrica", cone: "face cônica", esfera: "face esférica" };
+
+/** Opções para a aresta tocada (índice da topologia atual), já como referências: a prévia muda a topologia logo depois. */
+function preparoSelecaoRapida(aresta: number): { rotulo: string; refs: Referencia[] }[] | null {
+  const c = comando;
+  if (!c || (c.f.tipo !== "filete" && c.f.tipo !== "chanfro") || c.campo?.cam !== "itens" || !c.campo.aceita.includes("aresta")) return null;
+  const topo = viewport.topologia;
+  if (!ultimaMalha || !topo?.arestasDaFace) return null;
+  const idx = doc.features.indexOf(c.f);
+  const antes = (idx < 0 ? doc.features : doc.features.slice(0, idx)).filter((x) => !x.suprimida && x.tipo !== "esboco" && facesPorRecurso[x.id]?.length);
+  const opcoes = opcoesSelecaoRapida({
+    malha: ultimaMalha, topo, aresta,
+    facesPorRecurso: antes.map((x) => [x.id, x.nome, facesPorRecurso[x.id]]),
+    facesExcluidas: new Set(facesPorRecurso[c.f.id] ?? []),
+    rotuloFace: (f) => GEOM_FACE[topo.faces[f]?.geom] ?? "face",
+  });
+  const out = opcoes.map((o) => ({ rotulo: o.rotulo, refs: o.arestas.map((a) => refDeEntidade({ tipo: "aresta", indice: a })).filter((r): r is Referencia => !!r) }));
+  return out.length ? out : null;
+}
+
+/** Mesma aresta: pelo nome persistente (par de faces) quando os dois têm; senão pelo meio. */
+function mesmaAresta(a: Referencia, b: Referencia) {
+  if (a.tipo !== "aresta" || b.tipo !== "aresta") return mesmaRef(a, b);
+  if (a.ass.nome && b.ass.nome) return a.ass.nome[0] === b.ass.nome[0] && a.ass.nome[1] === b.ass.nome[1];
+  return Math.hypot(a.ass.meio[0] - b.ass.meio[0], a.ass.meio[1] - b.ass.meio[1], a.ass.meio[2] - b.ass.meio[2]) < 1e-6 && Math.abs(a.ass.comprimento - b.ass.comprimento) < 1e-6;
+}
+
+/**
+ * Barra ao lado da aresta tocada: todas as arestas de cada face dela, as do recurso que a criou e todas
+ * as côncavas / convexas do corpo, com a quantidade. Mouse/caneta sobre a opção = prévia das arestas
+ * no modelo; tocar soma as arestas à caixa (a prévia do recurso se refaz) e a barra oferece Desfazer.
+ * Nada é confirmado antes do ✓ do comando.
+ */
+function mostrarSelecaoRapida(opcoes: { rotulo: string; refs: Referencia[] }[], x: number, y: number) {
+  const c = comando;
+  if (!c || !("itens" in c.f)) return;
+  const alvo = c.f;
+  const atuais = () => (comando?.f === alvo ? (alvo as { itens: Referencia[] }).itens : []);
+  mostrarBarra(opcoes.map((o) => {
+    const novas = () => o.refs.filter((r) => !atuais().some((a) => mesmaAresta(a, r)));
+    return {
+      rotulo: `${o.rotulo} (${o.refs.length})`,
+      icone: "aresta" as NomeIcone,
+      aoPassar: () => atualizarDestaques(novas()),
+      aoSair: () => atualizarDestaques(),
+      acao: () => {
+        if (comando?.f !== alvo) return;
+        const antes = atuais().slice();
+        const soma = novas();
+        if (!soma.length) return avisar(`${o.rotulo}: as arestas já estão na lista.`);
+        (alvo as { itens: Referencia[] }).itens = [...antes, ...soma];
+        alterouComando();
+        avisar(`${o.rotulo}: ${soma.length} ${soma.length === 1 ? "aresta somada" : "arestas somadas"} (prévia no modelo; ✓ confirma).`);
+        mostrarBarra([{
+          rotulo: `Desfazer: ${o.rotulo.charAt(0).toLowerCase()}${o.rotulo.slice(1)}`,
+          icone: "desfazer",
+          acao: () => {
+            if (comando?.f !== alvo) return;
+            (alvo as { itens: Referencia[] }).itens = antes;
+            alterouComando();
+            avisar(`${o.rotulo}: desfeito.`);
+          },
+        }], x, y);
+      },
+    };
+  }), x, y);
+}
+
+/** Mudança feita fora do painel (seleção rápida): grava, redesenha o painel e refaz a prévia. */
+function alterouComando() {
+  salvarAutosave();
+  renderizarComando();
+  renderizarArvore();
+  regenerarPrevia(80);
+}
+
 function adicionarAoCampo(r: Referencia) {
   if (!comando?.campo) return;
   const { cam, multiplo } = comando.campo;
@@ -2065,7 +2156,8 @@ function adicionarAoCampo(r: Referencia) {
     gravarCaminho(f, cam, lista);
   } else {
     gravarCaminho(f, cam, r);
-    comando.campo = null; // seleção única: passa a vez
+    // seleção única: a vez passa para a próxima caixa vazia (nenhuma = nenhuma ativa)
+    comando.campo = proximoCampo(camposDeSelecao(esquemaComando(comando), comando.f, comando.aba), comando.f, cam);
   }
   renderizarComando();
   regenerarPrevia(80);
@@ -2112,6 +2204,9 @@ interface AcaoContexto {
   rotulo: string;
   icone: NomeIcone;
   acao: () => void;
+  /** mouse/caneta sobre o botão: prévia no modelo (sair do botão desfaz a prévia) */
+  aoPassar?: () => void;
+  aoSair?: () => void;
 }
 
 function acoesDoModelo(): AcaoContexto[] {
@@ -2206,8 +2301,15 @@ function mostrarBarra(acoes: AcaoContexto[], x: number, y: number) {
     b.title = a.rotulo;
     b.onclick = () => {
       esconderBarraContexto();
+      a.aoSair?.();
       a.acao();
     };
+    if (a.aoPassar) {
+      b.onpointerenter = (e) => {
+        if (e.pointerType !== "touch") a.aoPassar!();
+      };
+      b.onpointerleave = () => a.aoSair?.();
+    }
     barra.appendChild(b);
   }
   const wrap = $("viewport").getBoundingClientRect();
