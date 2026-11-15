@@ -201,6 +201,32 @@ export class RastreadorFaces {
   }
 
   /**
+   * Mover corpo / Escala: cada recurso ganha também as suas faces movidas (uma cópia por movimento), para
+   * a face transformada da peça final continuar dele — senão o recurso que move fica com todas as faces e
+   * o duplo toque no corpo mostra só ΔX/fator, nunca o D1 da extrusão. As originais ficam (corpos que não
+   * se moveram). Peças enormes (sólido de STL) ficam de fora: seria caro e o destaque é só visual.
+   */
+  transportar(movimentos: ((s: Shape3D) => Shape3D)[], limite = 20000) {
+    let total = 0;
+    for (const r of this.proprias) total += r.faces.length;
+    if (!movimentos.length || total * movimentos.length > limite) return;
+    for (const r of this.proprias) {
+      const novas: FacePropria[] = [];
+      for (const mov of movimentos) {
+        for (const pr of r.faces) {
+          try {
+            novas.push({ face: mov(pr.face as unknown as Shape3D) as unknown as Face, consulta: null });
+          } catch {
+            /* face que o kernel não consegue mover: fica só a original */
+          }
+        }
+      }
+      r.faces.push(...novas);
+      r.indice = undefined;
+    }
+  }
+
+  /**
    * Índices (na ordem de `peca.faces`) das faces da peça final de cada recurso. Cada face vai para
    * o primeiro recurso (na ordem da árvore) que a tem: a mesma face (pelo hash, rápido) ou uma face
    * que a contém (teste geométrico, só nos recursos antes do que tem a face idêntica).

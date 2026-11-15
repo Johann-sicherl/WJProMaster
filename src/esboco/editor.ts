@@ -17,7 +17,7 @@ import { gerarContornos, OPCOES_TEXTO_PADRAO, type GuiaTexto } from "./texto";
 import type { Font } from "opentype.js";
 import { atualizarExternas, criarExterna, idsExternos, idsOcultos, ocultarRefsDeCota, podarExternas, pontoNaProjecao, projetar, type ProjecaoExterna } from "./externas";
 import { referencial, type Referencial } from "./referencial";
-import { ALVO_MODELO, alvoDoArraste, aplicarAutoLinha, candidatosLinha, linhaSobreModelo, tentarRelacao, type CandidatoAuto } from "./relacoesAuto";
+import { ALVO_MODELO, alvoDoArraste, aplicarAutoLinha, aplicarAutoModelo, candidatosLinha, LINHA_NOVA, previaLinhaSobreModelo, tentarRelacao, type ArestaProjetada, type CandidatoAuto } from "./relacoesAuto";
 import { abrirTecladoCota, avaliarTeclado, numeroVisor } from "../ui/tecladoCota";
 
 /** Símbolo de calculadora do botão da caixa de cota. */
@@ -959,34 +959,32 @@ export class EditorEsboco {
     this.resolver(true);
   }
 
+  /** Arestas retas da peça projetadas no plano do esboço (guardadas até a peça ou o plano mudarem). */
+  private cacheArestasModelo: { topo: unknown; ref: Referencial; lista: ArestaProjetada<Referencia, Extract<ProjecaoExterna, { tipo: "linha" }>>[] } | null = null;
+  private arestasDoModelo(): ArestaProjetada<Referencia, Extract<ProjecaoExterna, { tipo: "linha" }>>[] {
+    const topo = this.h.viewport.topologia;
+    if (!topo) return [];
+    if (this.cacheArestasModelo?.topo === topo && this.cacheArestasModelo.ref === this.ref) return this.cacheArestasModelo.lista;
+    const lista: ArestaProjetada<Referencia, Extract<ProjecaoExterna, { tipo: "linha" }>>[] = [];
+    for (const ass of topo.arestas) {
+      if (ass.geom !== "linha") continue;
+      const ref: Referencia = { tipo: "aresta", ass };
+      const proj = projetar(ref, this.ref);
+      if (proj?.tipo === "linha") lista.push({ ref, proj });
+    }
+    this.cacheArestasModelo = { topo, ref: this.ref, lista };
+    return lista;
+  }
+
   /**
    * Linhas novas desenhadas sobre uma aresta reta da peça: referência + Colinear com ela (se a direção
    * já estiver presa, o ponto da ponta fica Coincidente com a aresta). Ctrl/chave desligada: nada.
    */
   private autoModeloLinhas(ids: string[], tol: number) {
-    const topo = this.h.viewport.topologia;
-    if (!this.autoAtivo || !topo || !ids.length) return;
-    const cands: { ref: Referencia; proj: Extract<ProjecaoExterna, { tipo: "linha" }> }[] = [];
-    for (const ass of topo.arestas) {
-      if (ass.geom !== "linha") continue;
-      const ref: Referencia = { tipo: "aresta", ass };
-      const proj = projetar(ref, this.ref);
-      if (proj?.tipo === "linha") cands.push({ ref, proj });
-    }
-    if (!cands.length) return;
-    let criou = false;
-    for (const id of ids) {
-      const k = linhaSobreModelo(this.esb, id, cands.map((c) => c.proj), tol);
-      const l = this.esb.geos.find((g) => g.id === id);
-      if (k < 0 || l?.tipo !== "linha") continue;
-      const g = criarExterna(this.esb, cands[k].proj, cands[k].ref);
-      const ok = tentarRelacao(this.esb, this.h.solver, { tipo: "colinear", a: id, b: g.id }) ||
-        tentarRelacao(this.esb, this.h.solver, { tipo: "coincidente", a: l.p1, b: g.id }) ||
-        tentarRelacao(this.esb, this.h.solver, { tipo: "coincidente", a: l.p2, b: g.id });
-      if (ok) criou = true;
-    }
+    if (!this.autoAtivo || !ids.length) return;
+    const n = aplicarAutoModelo(this.esb, this.h.solver, ids, this.arestasDoModelo(), tol, (e, proj, ref) => criarExterna(e, proj, ref));
     podarExternas(this.esb, new Set());
-    if (criou) this.h.avisar("Relação automática: Colinear com a aresta do modelo.");
+    if (n) this.h.avisar("Relação automática: Colinear com a aresta do modelo.");
   }
 
   private cancelarPonteiro() {
@@ -2195,7 +2193,7 @@ export class EditorEsboco {
     const titulo = c.tipo === "angulo" ? "Ângulo" : c.tipo === "raio" ? "Raio" : c.tipo === "diametro" ? "Diâmetro" : "Distância";
     const caixa = document.createElement("form");
     caixa.className = "cota-edicao";
-    caixa.innerHTML = `<input inputmode="decimal" aria-label="Valor da cota (${un})" /><span class="ce-un">${un}</span>`
+    caixa.innerHTML = `<input inputmode="decimal" data-calculadora aria-label="Valor da cota (${un})" /><span class="ce-un">${un}</span>`
       + `<button type="button" class="ce-calc" title="Calculadora (normal e científica)" aria-label="Abrir a calculadora">${ICONE_CALCULADORA}</button>`
       + `<button type="submit" class="ce-ok" title="Aplicar (Enter)" aria-label="Aplicar">✓</button>`;
     const inp = caixa.querySelector("input")!;
@@ -2987,6 +2985,9 @@ export class EditorEsboco {
     if (!ini || dist(ini.p, cur.p) < 1e-6) return null;
     const a = this.tipoLinha === "pontoMedio" ? { x: 2 * ini.p.x - cur.p.x, y: 2 * ini.p.y - cur.p.y } : ini.p;
     const tol = this.tolMm(this.tela?.tipo ?? "mouse");
+    // linha sobre a aresta da peça: Colinear com ela (o mesmo que será gravado ao soltar)
+    const naPeca = ini.sobreModelo && cur.sobreModelo ? -1 : previaLinhaSobreModelo(a, cur.p, this.arestasDoModelo().map((x) => x.proj), tol);
+    if (naPeca >= 0) return { c: { r: { tipo: "colinear", a: LINHA_NOVA, b: ALVO_MODELO }, simbolo: "⫽", rotulo: "Colinear com a aresta do modelo" }, p: cur.p };
     const c = candidatosLinha(this.esb, a, cur.p, { pontas: [ini.ponto, cur.ponto], tol })[0];
     return c ? { c, p: cur.p } : null;
   }

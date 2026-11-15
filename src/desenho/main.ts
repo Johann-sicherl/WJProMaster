@@ -3,6 +3,7 @@
 // vista projetada, notas, propriedades da folha e PDF. Especificação: docs/funcional/desenho.md.
 // Modelo puro em ./modelo.ts (testado em scripts/teste-desenho.ts).
 
+import { instalarCalculadoras } from "../comum/calculadora";
 import { registrarComAtualizacao } from "../comum/atualizacao";
 import { instalarLateralAjustavel } from "../ui/lateral";
 import { abrirEmNovaJanela, gravarNaJanela, lerDaJanela, podarJanelas } from "../comum/janelas";
@@ -2864,3 +2865,4 @@ void sincronizarAoAbrir(kernel.pronto)?.catch(() => {});
 if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__drw = { doc: () => doc, abrir: (d: unknown) => abrirDesenho(validarDesenho(d)), projecoes, folha };
 
 registrarComAtualizacao();
+instalarCalculadoras();

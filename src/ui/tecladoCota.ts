@@ -50,7 +50,7 @@ const ROTULO: Record<string, string> = { sin: "sen", asin: "sen⁻¹", acos: "co
 const OPERADORES = ["+", "−", "×", "÷", "^"];
 
 const CSS = `
-.tc{position:fixed;z-index:60;width:292px;padding:8px;background:#fff;border:1px solid #2f7fd0;border-radius:12px;box-shadow:0 6px 24px rgba(30,45,60,.28);font:15px system-ui,sans-serif;color:#1e2730;user-select:none;touch-action:none}
+.tc{position:fixed;z-index:10000;width:292px;padding:8px;background:#fff;border:1px solid #2f7fd0;border-radius:12px;box-shadow:0 6px 24px rgba(30,45,60,.28);font:15px system-ui,sans-serif;color:#1e2730;user-select:none;touch-action:none}
 .tc header{display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .tc header b{flex:1;font-size:13px;color:#5e6b78;font-weight:600}
 .tc header button{min-height:32px;padding:0 10px;border:1px solid #d5dbe1;border-radius:8px;background:#f5f7f9;font:inherit;font-size:13px;cursor:pointer}

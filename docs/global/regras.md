@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 15/11/2026 (WJSlicer3D: só P1S e Kobra 3, fatiamento real próprio; caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
+> Última consolidação: 15/11/2026 (pedido C4: calculadora em todo campo numérico, cotas do recurso no duplo clique da árvore/corpo e depois do Mover corpo, linha sobre a aresta no esboço sobre a face; WJSlicer3D: só P1S e Kobra 3, fatiamento real próprio; caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -249,7 +249,8 @@
   de faces; a **assinatura geométrica** fica só de reserva (STEP importado, faces sem história) e as referências
   antigas migram sozinhas. Referência perdida = **aviso no recurso dizendo qual**, sem derrubar os seguintes.
   Esboço sobre a peça: as referências do modelo acompanham na reconstrução e encaixar ponto/linha na aresta da
-  peça cria **Coincidente/Colinear** com ela (Ctrl suprime). Corpos continuam por assinatura.
+  peça cria **Coincidente/Colinear** com ela (Ctrl suprime), também no 2º esboço sobre a face e com o símbolo
+  antes de soltar. Corpos continuam por assinatura.
 - **Importar**: STEP/STP/STL criam o recurso `importado`. STL com mais de 10 000 triângulos = **corpo de
   malha** (só exibido; janela "STL grande" oferece simplificar para sólido e, até 50 000 triângulos, **sólido na
   forma exata**, sem simplificar — 10/11/2026: simplificar pode abrir a malha e os cortes perderem material).
@@ -261,7 +262,14 @@
 - **STEP AP214/AP242 abre com as cores do arquivo** (04/11/2026), na Peça e na Montagem.
 - **Cotas do esboço com teclado-calculadora** (09/11/2026; 10/11/2026: **abre pelo botão com símbolo de
   calculadora** na caixa do valor da cota): pequena calculadora ao lado da cota (normal ↔ científica,
-  trigonometria em graus), sem subir o teclado do sistema.
+  trigonometria em graus), sem subir o teclado do sistema. **15/11/2026 (pedido C4): o mesmo botão em todo campo
+  numérico** — painéis de comando, ⚙ Configurações, caixas de valor do WJCAD e os campos das outras faces
+  (componente comum); o campo continua aceitando "=expressão". Passo "− campo +" de contagem pequena fica sem
+  o botão (não cabe; já tem − e +).
+- **Cotas do recurso no modelo** (15/11/2026, pedido C4): duplo clique/duplo toque na face, no **recurso na
+  árvore** (como no CAD de referência; esboço continua abrindo para editar) ou no **corpo** mostra as cotas
+  (esboços + D1/D2, ângulos…) editáveis no lugar, também depois de Mover corpo/Escala; valor conforme o campo do
+  painel (ΔX negativo vale); recurso sem onde mostrar → aviso dizendo qual.
 - **Filete de esboço** (10/11/2026): cantos vão para a caixa **"Entidades a filetar"** e são aplicados juntos,
   por padrão **iguais** (uma cota R controla todos); o canto tirado vira **canto virtual** (relações e cotas
   continuam nele: mudar o raio não move o perfil). Vale também para o chanfro de esboço.
