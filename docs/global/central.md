@@ -93,15 +93,15 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
   3. GO-IN pergunta se sobe a revisão (**uma revisão só para PDM e ERP; versões = histórico**) + BOM
      multinível da montagem pai.
   O ajuste de etapas do WJTaskPlan que estava nesta lista saiu: entregue e conferido (#118, #119).
-- **Fila de 15/11 (prompts na conversa da central de 15/11; ordem sugerida):** (1) WJPDM: Zerar cofre +
-  Importar pasta + login do Google repetido (o Drive tem só `WJPDM/.wjpdm` em 15/11; o índice e os aparelhos
-  ainda têm tudo e recriariam); (2) WJCAD: nome persistente de faces/arestas (filete perde aresta ao mudar
-  cota: `acharAresta` `src/kernel/topologia.ts:200`) + referências do modelo no esboço atualizadas na
-  reconstrução (hoje só ao abrir o esboço, `src/esboco/editor.ts:307`: rasgo vira furo); (3) WJCAD: 1ª caixa
-  ativa ao abrir comando + auto-seleção de arestas no filete; (4) WJSlicer3D (3 conversas: P1S/Kobra 3 +
-  fatiamento; pintura multicor + purga; orçamento pela MATRIZ_V01.xlsx + proposta pelo .docx da GRAFIX,
-  arquivos no Drive do Johann, não versionar); (5) WJFlow: fluxo de projeto de asa — aguardando respostas.
-  Código do fatiador de referência é AGPL: só reimplementar, nunca copiar.
+- **Fila de 15/11 → `docs/global/fila-central.md`** (estado e prompts). Entregues: #127 (WJPDM zerar/importar/login),
+  #128 (nome persistente), #129 (1ª caixa + seleção rápida; falta "arestas do laço"), #131 (fatiamento real P1S/Kobra 3),
+  #132 (aresta da peça, calculadora em todo campo, cotas no duplo clique), #133 (pintura multicor), #134 (custos,
+  orçamento MATRIZ_V01 e proposta no WJWrite). **Pausada** até o Johann mandar "retomar a fila": faltam C1, C2, C3.
+- **Importar no WJPDM:** só lê pasta do aparelho; no tablet (Android) o seletor não enxerga o Google Drive. Johann fará no
+  notebook a partir de `G:\Meu Drive\PDM TEMP` (tirar as pastas dele de dentro de `WJPDM`).
+- **Lições de orquestração (15/11):** a central abre e acompanha conversas (create_session/get_session/send_later); uma
+  central criada por outra conversa NÃO tem essas ferramentas — a central nova é aberta pelo Johann. Conferir com
+  get_session (barato), nunca list_events. Sonnet custou ≈ 1/2 a 1/3 do Opus por tarefa (S2 4,3; S3 8,4 × Opus 9,5–17).
 - **Pendências das entregas:** linhas de inferência pontilhadas e Tangente automática em arcos (F3,
   `docs/funcional/sketch.md`).
 - Conversa antiga "Software CAD": mantida só para consulta; não usar para pedidos novos.
