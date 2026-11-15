@@ -7,8 +7,13 @@ CABEÇALHO (pôr antes de cada prompt):
 1. WJPDM — PRONTO PR #127 (15/11)
 2. WJCAD referências — PRONTO PR #128
 3. WJCAD 1ª caixa — PRONTO PR #129 (pendente: arestas do laço)
-S1 — session_01MWdNyfBTLbNGim4GgrpJXi (04:15 UTC). Conversas prontas são arquivadas.
-NOTA: conferir só com get_session (post_turn_summary); list_events é caro. Ordem: S1 (rodando) → C4 (correções, prioridade) → S2 → S3 → C1 → C2 → C3. WJFlow e agente: só futuro.
+S1 — PRONTO PR #131 (Opus, ≈ US$ 17)
+C4 — PRONTO PR #132 (Opus, ≈ US$ 13,9)
+S2 — PRONTO PR #133 (Sonnet, ≈ US$ 4,3)
+S3 — PRONTO PR #134 (Sonnet, ≈ US$ 8,4)
+**FILA PAUSADA (Johann, 15/11): só retomar com "retomar a fila".** Faltam: C1 (Sonnet) → C2 (Sonnet) → C3 (Opus).
+Custos Opus: 1 ≈ 10,1 · 2 ≈ 9,5 · 3 ≈ 9,6 (US$ de tabela). Modelo: Sonnet em S2, S3, C1, C2; Opus no C3; Sonnet falhou/travou → refazer em Opus.
+NOTA: conferir só com get_session (post_turn_summary) e lista de PRs; list_events é caro. A central tem de ser aberta pelo Johann (conversa criada por outra conversa não tem create_session/get_session). WJFlow e agente: só futuro.
 
 ## 2. WJCAD referências persistentes
 Face/lugar: WJCAD › Peça › referências de faces/arestas e esboço sobre face.
