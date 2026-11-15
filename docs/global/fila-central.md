@@ -8,7 +8,7 @@ CABEÇALHO (pôr antes de cada prompt):
 2. WJCAD referências — PRONTO PR #128
 3. WJCAD 1ª caixa — PRONTO PR #129 (pendente: arestas do laço)
 S1 — session_01MWdNyfBTLbNGim4GgrpJXi (04:15 UTC). Conversas prontas são arquivadas.
-NOTA: conferir só com get_session (post_turn_summary); list_events é caro. Ordem: S1 (rodando) → S2 → S3 → C1 → C2 → C3 → C4. WJFlow e agente: só futuro.
+NOTA: conferir só com get_session (post_turn_summary); list_events é caro. Ordem: S1 (rodando) → C4 (correções, prioridade) → S2 → S3 → C1 → C2 → C3. WJFlow e agente: só futuro.
 
 ## 2. WJCAD referências persistentes
 Face/lugar: WJCAD › Peça › referências de faces/arestas e esboço sobre face.
