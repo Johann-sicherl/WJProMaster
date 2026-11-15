@@ -15,7 +15,7 @@ import { ABAS, type Comando, type IdAba } from "./comandos";
 import { ICONES, type NomeIcone } from "./icones";
 import { iconeFeature } from "./ui/iconeRecurso";
 import { ClienteKernel } from "./kernel/cliente";
-import type { InfoCorpo, InfoReferencia, RegiaoDividirInfo, ResultadoRegeneracao } from "./kernel/regenerar";
+import type { AtualizacaoRef, InfoCorpo, InfoReferencia, RegiaoDividirInfo, ResultadoRegeneracao } from "./kernel/regenerar";
 import type { PropriedadesMassa } from "./kernel/avaliar";
 import {
   documentoExemplo,
@@ -306,7 +306,8 @@ async function acompanharPeca(r: ResultadoRegeneracao): Promise<boolean> {
       mudou = true;
     }
   }
-  if (r.topologia) {
+  // o kernel já levou as referências do modelo à peça e resolveu os esboços (aplicarAtualizacoes)
+  if (r.topologia && !r.externasNoKernel) {
     const comExternas = ativas().filter((f): f is FeatureEsboco => f.tipo === "esboco" && !f.suprimida && f.geos.some((g) => g.externa) && f.id !== editor?.esb.id);
     if (comExternas.length) {
       const s = await obterSolver();
@@ -327,7 +328,39 @@ async function acompanharPeca(r: ResultadoRegeneracao): Promise<boolean> {
   return mudou;
 }
 
+/**
+ * Grava no documento o que a reconstrução atualizou nas referências (nome persistente das faces e
+ * arestas, geometria de reserva, esboços resolvidos porque a peça andou). Só onde o documento ainda
+ * tem o valor antigo e fora do recurso/esboço em edição; sem passo de desfazer (é a mesma peça).
+ */
+function aplicarAtualizacoes(lista: AtualizacaoRef[] | undefined): boolean {
+  let n = 0;
+  for (const a of lista ?? []) {
+    if (a.id === comando?.f.id || a.id === editor?.esb.id) continue;
+    const f = doc.features.find((x) => x.id === a.id);
+    if (!f) continue;
+    if (!a.caminho.length) {
+      if (f.tipo !== "esboco") continue;
+      if (JSON.stringify({ pontos: f.pontos, geos: f.geos, restricoes: f.restricoes }) !== a.antes) continue;
+      const v = a.valor as Pick<FeatureEsboco, "pontos" | "geos" | "restricoes">;
+      f.pontos = v.pontos;
+      f.geos = v.geos;
+      f.restricoes = v.restricoes;
+      n++;
+      continue;
+    }
+    let o: unknown = f;
+    for (const k of a.caminho.slice(0, -1)) o = o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined;
+    const k = a.caminho[a.caminho.length - 1];
+    if (!o || typeof o !== "object" || JSON.stringify((o as Record<string, unknown>)[k]) !== a.antes) continue;
+    (o as Record<string, unknown>)[k] = a.valor;
+    n++;
+  }
+  return n > 0;
+}
+
 function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
+  if (aplicarAtualizacoes(r.atualizacoes)) salvarAutosave();
   // a peça mudou e os esboços precisaram acompanhar: grava e reconstrói de novo (no máximo 2 vezes)
   if (passesDeAcompanhar < 2) {
     void acompanharPeca(r).then((mudou) => {

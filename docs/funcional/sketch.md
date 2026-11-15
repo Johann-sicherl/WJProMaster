@@ -107,7 +107,11 @@ Pontos de atenção: **Cônica** geral não existe no solver (PlaneGCS tem elips
 
 **Relações automáticas ("magnetismo")** ✅ (10/11/2026) — `src/esboco/relacoesAuto.ts`, teste `scripts/teste-relacoes-auto.ts`:
 - **Ao desenhar** (como antes): terminar num ponto reaproveita o ponto; sobre curva/eixo → Coincidente (sobre);
-  ponto médio → Ponto médio; aresta/vértice da peça → referência do modelo.
+  ponto médio → Ponto médio; aresta/vértice da peça → referência do modelo + **Coincidente** com ela.
+- **Linha sobre a aresta da peça** (15/11/2026): linha (ou lado de retângulo) desenhada sobre uma aresta reta da
+  peça, dentro do raio de encaixe e ±1°, ganha a referência do modelo + **Colinear** com ela (se a direção já
+  estiver presa, a ponta fica Coincidente com a aresta) — o perfil acompanha a borda quando a peça muda.
+- **Arrastar um ponto e soltar sobre aresta/vértice da peça** (15/11/2026) → referência do modelo + **Coincidente**.
 - **Linha nova** ganha **uma** relação de direção, na ordem **Colinear** (mesma reta de outra linha solta, dentro
   do raio de encaixe) › **Horizontal/Vertical** › **Paralela** (a mais alinhada; empate: a mais perto) ›
   **Perpendicular** (só com linha ligada a ela, no canto). Tolerância **±1°** (o encaixe H/V de ±4° continua
@@ -236,7 +240,10 @@ Parâmetros: X/Y.
 - ✅ Tocar aresta ou vértice da peça no esboço (Selecionar) cria a **referência do modelo**:
   geometria de construção fixa, em roxo, projetada no plano; "Alternar construção" a torna perfil.
 - ✅ Encaixe das ferramentas de desenho em **vértice do modelo** e **sobre aresta do modelo**.
-- ✅ Ao abrir o esboço, as referências acompanham a peça atual (entidade mais parecida).
+- ✅ As referências acompanham a peça **na reconstrução** (15/11/2026): pelo **nome persistente** da aresta (par de
+  faces da história; reserva: entidade mais parecida), com a peça daquele ponto da árvore, e o esboço é resolvido
+  ali mesmo (rasgo cotado a partir da borda acompanha a borda). Referência que sumiu: aviso no esboço (fica onde
+  estava). Detalhes em `features.md` §0.
 - ✅ **Face inteira**: com Converter, tocar uma face da peça converte todas as arestas dela
   (contorno externo e furos) de uma vez, projetadas no plano do esboço (as perpendiculares ao plano
   ficam de fora).

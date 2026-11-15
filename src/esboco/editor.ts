@@ -17,7 +17,7 @@ import { gerarContornos, OPCOES_TEXTO_PADRAO, type GuiaTexto } from "./texto";
 import type { Font } from "opentype.js";
 import { atualizarExternas, criarExterna, idsExternos, idsOcultos, ocultarRefsDeCota, podarExternas, pontoNaProjecao, projetar, type ProjecaoExterna } from "./externas";
 import { referencial, type Referencial } from "./referencial";
-import { alvoDoArraste, aplicarAutoLinha, candidatosLinha, tentarRelacao, type CandidatoAuto } from "./relacoesAuto";
+import { ALVO_MODELO, alvoDoArraste, aplicarAutoLinha, candidatosLinha, linhaSobreModelo, tentarRelacao, type CandidatoAuto } from "./relacoesAuto";
 import { abrirTecladoCota, avaliarTeclado, numeroVisor } from "../ui/tecladoCota";
 
 /** Símbolo de calculadora do botão da caixa de cota. */
@@ -238,6 +238,8 @@ export class EditorEsboco {
   private semAuto = false;
   /** Ponto arrastado sobre outro ponto/curva: a relação que será criada ao soltar. */
   private autoArraste: CandidatoAuto | null = null;
+  /** Aresta/vértice da peça sob o ponto arrastado (vira referência + Coincidente ao soltar). */
+  private autoArrasteModelo: AlvoModelo | null = null;
   estado: ResultadoSolver = { ok: true, gl: 0, conflitantes: [], redundantes: [], definicao: "subdefinido" };
   livres = new Set<string>();
   private conflito = new Set<string>();
@@ -942,16 +944,56 @@ export class EditorEsboco {
 
   /** Fim do arraste: solto sobre um ponto/curva cria a relação (se não sobrar nem conflitar); um passo de desfazer. */
   private concluirArraste() {
-    const alvo = this.autoArraste;
+    const alvo = this.autoArraste, m = this.autoArrasteModelo;
     this.autoArraste = null;
-    if (alvo && this.autoAtivo && tentarRelacao(this.esb, this.h.solver, alvo.r)) this.h.avisar(`Relação automática: ${alvo.rotulo}.`);
+    this.autoArrasteModelo = null;
+    if (alvo && this.autoAtivo && alvo.r.tipo === "coincidente" && alvo.r.b === ALVO_MODELO) {
+      // solto sobre aresta/vértice da peça: a referência entra no esboço e o ponto fica preso a ela
+      if (m) {
+        const g = criarExterna(this.esb, m.proj, m.ref);
+        const b = g.tipo === "ponto" ? g.p : g.id;
+        if (tentarRelacao(this.esb, this.h.solver, { ...alvo.r, b })) this.h.avisar(`Relação automática: Coincidente com ${m.rotulo.toLowerCase()}.`);
+        else podarExternas(this.esb, new Set());
+      }
+    } else if (alvo && this.autoAtivo && tentarRelacao(this.esb, this.h.solver, alvo.r)) this.h.avisar(`Relação automática: ${alvo.rotulo}.`);
     this.resolver(true);
+  }
+
+  /**
+   * Linhas novas desenhadas sobre uma aresta reta da peça: referência + Colinear com ela (se a direção
+   * já estiver presa, o ponto da ponta fica Coincidente com a aresta). Ctrl/chave desligada: nada.
+   */
+  private autoModeloLinhas(ids: string[], tol: number) {
+    const topo = this.h.viewport.topologia;
+    if (!this.autoAtivo || !topo || !ids.length) return;
+    const cands: { ref: Referencia; proj: Extract<ProjecaoExterna, { tipo: "linha" }> }[] = [];
+    for (const ass of topo.arestas) {
+      if (ass.geom !== "linha") continue;
+      const ref: Referencia = { tipo: "aresta", ass };
+      const proj = projetar(ref, this.ref);
+      if (proj?.tipo === "linha") cands.push({ ref, proj });
+    }
+    if (!cands.length) return;
+    let criou = false;
+    for (const id of ids) {
+      const k = linhaSobreModelo(this.esb, id, cands.map((c) => c.proj), tol);
+      const l = this.esb.geos.find((g) => g.id === id);
+      if (k < 0 || l?.tipo !== "linha") continue;
+      const g = criarExterna(this.esb, cands[k].proj, cands[k].ref);
+      const ok = tentarRelacao(this.esb, this.h.solver, { tipo: "colinear", a: id, b: g.id }) ||
+        tentarRelacao(this.esb, this.h.solver, { tipo: "coincidente", a: l.p1, b: g.id }) ||
+        tentarRelacao(this.esb, this.h.solver, { tipo: "coincidente", a: l.p2, b: g.id });
+      if (ok) criou = true;
+    }
+    podarExternas(this.esb, new Set());
+    if (criou) this.h.avisar("Relação automática: Colinear com a aresta do modelo.");
   }
 
   private cancelarPonteiro() {
     const pt = this.ponteiro;
     this.ponteiro = null;
     this.autoArraste = null;
+    this.autoArrasteModelo = null;
     this.fecharLupa();
     this.gesto = null;
     if (pt?.arraste || this.rastro) {
@@ -985,6 +1027,14 @@ export class EditorEsboco {
     if (a.tipo === "ponto") {
       // sobre outro ponto ou curva: encaixa nele e mostra o símbolo da relação que será criada
       this.autoArraste = this.autoAtivo ? alvoDoArraste(this.esb, a.id, p, this.tolMm(pt.tipo)) : null;
+      this.autoArrasteModelo = null;
+      // nada do esboço embaixo: aresta/vértice da peça (Coincidente com a referência ao soltar)
+      const m = this.autoAtivo && !this.autoArraste && this.tela ? this.acharModelo(this.tela.x, this.tela.y, this.tela.tipo, ["vertice", "aresta"]) : null;
+      if (m) {
+        this.autoArrasteModelo = m;
+        const pm = m.proj.tipo === "ponto" ? m.proj.p : pontoNaProjecao(m.proj, p);
+        this.autoArraste = { r: { tipo: "coincidente", a: a.id, b: ALVO_MODELO }, simbolo: "◉", rotulo: m.rotulo, p: pm };
+      }
       const q = this.autoArraste?.p ?? p;
       this.h.solver.resolver(this.esb, { pontos: [{ id: a.id, x: q.x, y: q.y }] });
     }
@@ -1185,8 +1235,12 @@ export class EditorEsboco {
           const a = this.pontoDo(c[0]);
           const b = this.pontoDo(c[1]);
           const l = op.linha(esb, a, b, cons || this.tipoLinha === "centro");
-          // relação automática (H/V, colinear, paralela, perpendicular) entra no mesmo passo de desfazer
-          if (this.autoAtivo) aplicarAutoLinha(esb, this.h.solver, l.id, tol);
+          // relação automática (sobre a aresta da peça, H/V, colinear, paralela, perpendicular) entra no
+          // mesmo passo de desfazer
+          if (this.autoAtivo) {
+            this.autoModeloLinhas([l.id], tol);
+            aplicarAutoLinha(esb, this.h.solver, l.id, tol);
+          }
           const fecha = !!c[1].ponto; // terminou num ponto que já existia: fecha a cadeia
           this.cliques = fecha ? [] : [{ p: c[1].p, ponto: b }];
           this.resolver(true);
@@ -1194,19 +1248,23 @@ export class EditorEsboco {
         }
         // primeiro clique: se ele cair num ponto existente, a linha parte dele
         break;
-      case "retangulo":
+      case "retangulo": {
+        let novas: GeoEsboco[] = [];
         if (this.tipoRetangulo === "centro3") {
-          if (c.length === 3) { op.retanguloCentro3Pontos(esb, this.pontoDo(c[0]), c[1].p, c[2].p, cons); pronto = true; }
+          if (c.length === 3) { novas = op.retanguloCentro3Pontos(esb, this.pontoDo(c[0]), c[1].p, c[2].p, cons); pronto = true; }
         } else if (this.tipoRetangulo === "paralelogramo") {
-          if (c.length === 3) { op.paralelogramo(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), c[2].p, cons); pronto = true; }
+          if (c.length === 3) { novas = op.paralelogramo(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), c[2].p, cons); pronto = true; }
         } else if (this.tipoRetangulo === "3pontos") {
-          if (c.length === 3) { op.retangulo3Pontos(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), c[2].p, cons); pronto = true; }
+          if (c.length === 3) { novas = op.retangulo3Pontos(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), c[2].p, cons); pronto = true; }
         } else if (c.length === 2) {
-          if (this.tipoRetangulo === "centro") op.retanguloCentro(esb, this.pontoDo(c[0]), c[1].p, cons);
-          else op.retangulo(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), cons);
+          if (this.tipoRetangulo === "centro") novas = op.retanguloCentro(esb, this.pontoDo(c[0]), c[1].p, cons);
+          else novas = op.retangulo(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), cons);
           pronto = true;
         }
+        // lado do retângulo sobre a aresta da peça: Colinear (ou ponta Coincidente) com ela
+        this.autoModeloLinhas(novas.filter((g) => g.tipo === "linha" && !g.construcao).map((g) => g.id), tol);
         break;
+      }
       case "circulo":
         if (this.tipoCirculo === "perimetro") {
           if (c.length === 3) {
