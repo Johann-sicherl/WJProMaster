@@ -8,7 +8,7 @@ CABEÇALHO (pôr antes de cada prompt):
 2. WJCAD referências — PRONTO PR #128
 3. WJCAD 1ª caixa — PRONTO PR #129 (pendente: arestas do laço)
 S1 — session_01MWdNyfBTLbNGim4GgrpJXi (04:15 UTC). Conversas prontas são arquivadas.
-NOTA: conferir só com get_session (post_turn_summary); list_events é caro. Ordem: S1 (rodando) → S2 → S3 → C1 → C2 → C3. WJFlow e agente: só futuro.
+NOTA: conferir só com get_session (post_turn_summary); list_events é caro. Ordem: S1 (rodando) → S2 → S3 → C1 → C2 → C3 → C4. WJFlow e agente: só futuro.
 
 ## 2. WJCAD referências persistentes
 Face/lugar: WJCAD › Peça › referências de faces/arestas e esboço sobre face.
@@ -158,3 +158,15 @@ Testes: Node (geometria do perfil evolvente: espessura do dente no primitivo = �
 
 ## Futuro (não executar)
 - Agente no notebook para abrir o fatiador do fabricante com o STL (Opção 2; decidir depois do S3).
+
+## C4. WJCAD: relação com aresta da peça, calculadora em todos os campos, cotas no duplo clique (fila, depois do C3 — ou antes do C1 se o Johann pedir)
+Face/lugar: WJCAD › esboço sobre a peça; painéis de comando; cotas sobre o modelo.
+
+Hoje (relato do Johann, 15/11; causas prováveis da central, reproduzir antes de corrigir):
+A) Num 2º esboço sobre a peça extrudada, desenhar uma linha em cima de uma aresta do modelo não cria Coincidente nem Colinear. O #128 (item 3) devia criar: conferir se a relação nasce só ao encaixar em ponto e não ao desenhar sobre a aresta (src/esboco/relacoesAuto.ts, editor.ts), e se a aresta da peça entra como referência (geo.externa) automaticamente.
+B) Duplo clique no corpo/recurso para editar cotas: a cota da extrusão (D1) não aparece. rotulosDoRecurso (src/main.ts, "valores do recurso") usa viewport.centroFaces(facesPorRecurso[f.id]) e pula em silêncio quando não há centro: provável que facesPorRecurso da extrusão fique vazio depois do nome persistente (#128). Conferir em TODOS os recursos com PARAMETROS_RECURSO (src/configuracoes.ts). Aproveitar: a edição no modelo recusa zero e negativos (`n <= 0`), o que impede ΔX = −20 no Mover corpo: aceitar conforme o campo.
+Quero:
+1. Linha desenhada sobre aresta da peça (ou ponto sobre aresta/vértice) cria Colinear/Coincidente com a referência do modelo, com o símbolo antes de soltar; Ctrl suprime; nunca superdefinir.
+2. Duplo clique/duplo toque no corpo ou no recurso mostra todas as cotas do recurso (esboços + D1/D2, ângulos, etc.), editáveis no lugar; aviso claro se algum recurso não tiver onde mostrar.
+3. Botão calculadora (o mesmo teclado-calculadora das cotas, src/ui/tecladoCota.ts) em TODOS os campos numéricos: painéis de comando do WJCAD (esquemas.ts), ⚙ Configurações e caixas de valor; depois, via componente comum (src/comum/), nos campos numéricos das outras faces. Aceita expressão (=, variáveis) onde o campo já aceitava.
+Testes: Node (relação com aresta externa; rótulos de todos os recursos com faces) e roteiro no tablet (linha sobre aresta, duplo toque mostrando D1, calculadora em 5 painéis diferentes). Atualizar docs/funcional/sketch.md e features.md.
