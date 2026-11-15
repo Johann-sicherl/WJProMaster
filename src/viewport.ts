@@ -1279,7 +1279,7 @@ export class Viewport {
     this.precisaRender = true;
   }
 
-  destacarEntidades(sel: Entidade[], realce: Entidade | null = null, doRecurso: Entidade[] = [], previa: Entidade[] = []) {
+  destacarEntidades(sel: Entidade[], realce: Entidade | Entidade[] | null = null, doRecurso: Entidade[] = [], previa: Entidade[] = []) {
     for (const o of [...this.grupoDestaque.children]) {
       this.grupoDestaque.remove(o);
       (o as THREE.Mesh).geometry?.dispose();
@@ -1290,7 +1290,7 @@ export class Viewport {
       ...previa.map((e) => ({ e, cor: COR_PREVIA })),
       ...doRecurso.map((e) => ({ e, cor: COR_RECURSO })),
       ...sel.map((e) => ({ e, cor: COR_SELECAO })),
-      ...(realce ? [{ e: realce, cor: COR_REALCE }] : []),
+      ...(Array.isArray(realce) ? realce : realce ? [realce] : []).map((e) => ({ e, cor: COR_REALCE })),
     ];
     const { w, h } = this.tamanho();
     for (const { e, cor } of itens) {

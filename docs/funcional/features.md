@@ -25,6 +25,13 @@ Como nos CADs profissionais, cada face da peça tem um **nome pela história** (
   própria reconstrução**, antes dos recursos que o usam (a referência anda em passos de ~2 mm para a cota sem sinal
   não "espelhar" o perfil). Um rasgo cotado (ou Colinear) a partir da borda continua rasgo ao mudar a altura.
 - Sem nome ainda: revolução, varredura, loft, filete, padrões e espelho (usam a assinatura).
+- **Caixa de seleção ativa** ✅ (15/11/2026, todos os comandos): ao abrir, a **primeira caixa vazia** já fica
+  ativa (rosa) para tocar na geometria; com **pré-seleção**, cada item entra na caixa certa e a próxima vazia fica
+  ativa; sem caixa vazia, fica ativa a que recebeu o **valor de fábrica** (plano Superior do Plano, plano Direito
+  do Espelhar, plano neutro da Inclinação) e o primeiro toque o troca. **Ao encher uma caixa de um item só, a vez
+  passa para a próxima vazia** (depois dela; sem nenhuma, volta ao começo; todas cheias = nenhuma ativa). Caixas
+  de vários itens continuam ativas até tocar outra. Aba fechada, caixa escondida e opcional desmarcada (Direção 2
+  desligada) não recebem a vez.
 - Teste: `scripts/teste-nomes.ts` (filete 80 → 120 e 100 → 60, rasgo subindo e descendo a altura, migração,
   aviso, STEP pela assinatura).
 
@@ -295,9 +302,15 @@ Abas do painel: **Manual** · **Assistente** (sugere/organiza filetes — ⏸)
 **Caixa "Tipo de filete"**: Tamanho constante · Tamanho variável · Filete de face · Arredondamento completo
 
 **Tamanho constante**
-- **Itens a filetar**: lista de arestas, faces, recursos, loops; barra de seleção rápida
-  (arestas conectadas, do recurso, do loop, todas côncavas/convexas); **propagação tangente**;
+- **Itens a filetar**: lista de arestas, faces, recursos, loops; **propagação tangente**;
   pré-visualização completa / parcial / nenhuma
+- **Barra de seleção rápida** ✅ (15/11/2026, Filete e Chanfro): tocar uma aresta com a caixa ativa a põe na lista
+  e abre, ao lado do toque, a barra com a quantidade de cada opção: **Arestas da face …** (uma para cada face da
+  aresta), **Arestas do <recurso>** (as do recurso que criou a aresta, ex.: o Corte), **Todas as côncavas** e
+  **Todas as convexas** (do corpo da aresta; bordas tangentes, como as de um filete, não são nenhuma das duas).
+  Mouse/caneta sobre a opção destaca as arestas antes; tocar soma à lista (sem repetir) e refaz a **prévia**; a
+  barra passa a oferecer **Desfazer** (volta a lista de antes). Nada é confirmado antes do ✓. Arestas das faces do
+  próprio filete em edição ficam de fora (só existem na prévia). Do loop: pendente.
 - **Parâmetros**: Simétrico · Assimétrico (distância 1 e 2) · Raio / Comprimento de corda ·
   **Filete de múltiplos raios** (raio por aresta, editável no rótulo)
 - **Perfil**: Circular · Cônico Rho · Cônico Raio · Curvatura contínua
@@ -315,7 +328,8 @@ Abas do painel: **Manual** · **Assistente** (sugere/organiza filetes — ⏸)
 ✅ distância-distância, ângulo-distância, assimétrico, inverter, só nas arestas escolhidas, **vértice** (D1/D2/D3 ou iguais, canto com três arestas retas; 08/11/2026). Deslocamento de face e face-face: ⏸.
 
 **Caixa "Tipo de chanfro"**: Ângulo-distância · Distância-distância · Vértice · Deslocamento de face · Face-face
-**Itens a chanfrar**: arestas/faces/vértices, propagação tangente, pré-visualização
+**Itens a chanfrar**: arestas/faces/vértices, propagação tangente, pré-visualização, **barra de seleção rápida**
+(a mesma do Filete, §7) ✅
 **Parâmetros**
 - Ângulo-distância: distância, ângulo, **inverter direção**
 - Distância-distância: Simétrico (D) · Assimétrico (D1, D2)

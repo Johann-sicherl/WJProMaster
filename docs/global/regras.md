@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 15/11/2026 (nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
+> Última consolidação: 15/11/2026 (caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -108,6 +108,10 @@
   **painel de comando à esquerda** (no lugar da árvore) com ✓/✕ e o **canto de confirmação** no viewport;
   campos rosa recebem a geometria tocada; esboços consumidos ficam aninhados no recurso; barra de
   retrocesso.
+- **Caixa de seleção ativa** (15/11/2026, pedido do Johann): todo comando abre com a primeira caixa vazia já
+  ativa (rosa); com pré-seleção, cada item vai para a caixa certa e a próxima vazia fica ativa; ao encher uma caixa
+  de um item só, a vez passa para a próxima. **Filete/Chanfro**: barra de seleção rápida ao tocar uma aresta
+  (arestas da face, do recurso, todas côncavas / todas convexas), com prévia e Desfazer antes do ✓.
 - **Planos padrão começam ocultos** em todos os ambientes (olho fechado na árvore; na Montagem a pasta
   "Planos e origem" tem olho para mostrar/ocultar tudo).
 - **Início limpo**: o app abre sem documento (Novo/Abrir e recentes). Novo abre a escolha do ambiente.
