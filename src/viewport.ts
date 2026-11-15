@@ -138,6 +138,8 @@ export class Viewport {
   private estilo: EstiloExibicao = "sombreado-arestas";
   private raioCena = 60;
   private precisaRender = true;
+  /** pedidos de captura da vista (atendidos no próximo quadro, antes da tríade) */
+  private capturas: ((url: string) => void)[] = [];
 
   // tríade
   private cenaTriade = new THREE.Scene();
@@ -663,6 +665,17 @@ export class Viewport {
   /** Alvo da câmera (centro da órbita). */
   alvoCamera(): Vec3 {
     return this.controles.target.toArray() as Vec3;
+  }
+
+  /**
+   * Foto da vista atual (JPEG sobre fundo branco, até 1280 px de largura, sem a tríade): serve de imagem da peça
+   * na proposta comercial do WJSlicer3D. Sai no próximo quadro desenhado.
+   */
+  capturarVista(): Promise<string> {
+    return new Promise((ok) => {
+      this.capturas.push(ok);
+      this.precisaRender = true;
+    });
   }
 
   /** Canvas WebGL (a lupa copia dele logo depois de cada quadro). */
@@ -1633,6 +1646,19 @@ export class Viewport {
     this.renderer.setViewport(0, 0, w, h);
     this.renderer.clear();
     this.renderer.render(this.cena, this.camera);
+    if (this.capturas.length) {
+      const fonte = this.renderer.domElement;
+      const k = Math.min(1, 1280 / Math.max(1, fonte.width));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(fonte.width * k));
+      c.height = Math.max(1, Math.round(fonte.height * k));
+      const g = c.getContext("2d")!;
+      g.fillStyle = "#ffffff";
+      g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(fonte, 0, 0, c.width, c.height);
+      const url = c.toDataURL("image/jpeg", 0.88);
+      for (const f of this.capturas.splice(0)) f(url);
+    }
 
     // tríade: mesma orientação da câmera principal, num quadrado no canto inferior esquerdo
     this.cameraTriade.position.set(0, 0, 6).applyQuaternion(this.camera.quaternion);

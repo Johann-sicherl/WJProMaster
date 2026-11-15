@@ -4611,6 +4611,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   exportar: { rotulo: "Exportar (STEP, STL)…", icone: "exportar", fazer: () => void abrirExportar() },
   fluxo: { rotulo: "Abrir no WJFlow (escoamento de ar)", icone: "exportar", fazer: () => void abrirNoWJFlow() },
   slicer: { rotulo: "Estimar impressão 3D (WJSlicer3D)", icone: "exportar", fazer: () => void abrirNoWJSlicer3D() },
+  vistaproposta: { rotulo: "Guardar esta vista para a proposta (WJSlicer3D)", icone: "exportar", fazer: () => void guardarVistaParaProposta() },
   imagem3d: { rotulo: "Imagens → modelo 3D (fotos das vistas)…", icone: "abrir", fazer: () => void abrirEmNovaJanela(new URL(`${import.meta.env.BASE_URL}cad/imagem3d/`, location.href).href) },
   desenho: { rotulo: "Criar desenho desta peça", icone: "desenho", fazer: () => {
     salvarAutosave();
@@ -4625,6 +4626,19 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   atalhos: { rotulo: "Atalhos de teclado e mouse", icone: "menu", fazer: mostrarAtalhos },
   sobre: { rotulo: "Sobre e licenças", icone: "menu", fazer: mostrarSobre },
 };
+
+/** Guarda a vista que está na tela (junto do nome da peça) para o WJSlicer3D pôr na proposta comercial. */
+async function guardarVistaParaProposta() {
+  try {
+    const url = await viewport.capturarVista();
+    const lista = (await pegar<{ nome: string; peca: string; url: string }[]>("slicer:vistas", false)) ?? [];
+    lista.push({ nome: `Vista ${lista.filter((v) => v.peca === doc.nome).length + 1} — ${doc.nome}`, peca: doc.nome, url });
+    await deixar("slicer:vistas", lista);
+    avisar(`Vista guardada para a proposta (${lista.length} no total). No WJSlicer3D, em Proposta, ela aparece para escolher.`);
+  } catch (e) {
+    avisar(`Não foi possível guardar a vista: ${(e as Error).message}`);
+  }
+}
 
 /** Manda a malha da peça para o WJFlow (IndexedDB do aparelho) e abre o WJFlow com ela. */
 async function abrirNoWJFlow() {

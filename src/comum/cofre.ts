@@ -399,7 +399,7 @@ async function pastaDaFace(db: Armazem, app: ChaveApp): Promise<string> {
 /** Rótulo do tipo de arquivo pela extensão (coluna "Tipo" e filtro). */
 const TIPO_EXT: Record<string, string> = {
   wjcad: "Peça (WJCAD)", jlscad: "Peça (WJCAD)", wjasm: "Montagem (WJCAD)", wjdrw: "Desenho (WJCAD)", wjpl: "Planilha (WJPlan)", wjdoc: "Documento (WJWrite)",
-  wjapn: "Apresentação (WJApresentation)", wjcron: "Cronograma (WJCronProject)", wjflow: "Estudo (WJFlow)", wjcalc: "Cálculo (WJCalcEng)", wjgd: "Joia (WJGoldDiamond)", wjslc: "Projeto de impressão (WJSlicer3D)", wjvid: "Projeto de vídeo (WJVideoMaker)", wjpdm: "Cópia do cofre (WJPDM)", wjerp: "Dados (WJERP)",
+  wjapn: "Apresentação (WJApresentation)", wjcron: "Cronograma (WJCronProject)", wjflow: "Estudo (WJFlow)", wjcalc: "Cálculo (WJCalcEng)", wjgd: "Joia (WJGoldDiamond)", wjslc: "Projeto de impressão (WJSlicer3D)", wjcus: "Biblioteca de custos (WJSlicer3D)", wjvid: "Projeto de vídeo (WJVideoMaker)", wjpdm: "Cópia do cofre (WJPDM)", wjerp: "Dados (WJERP)",
 };
 const tipoDe = (nome: string) => TIPO_EXT[extensao(nome)] ?? (extensao(nome) ? `Arquivo ${extensao(nome).toUpperCase()}` : "Arquivo");
 const IC_PASTA = `<svg viewBox="0 0 24 24" width="22" height="22"><path d="M2.5 6.5a1.5 1.5 0 0 1 1.5-1.5h5l2 2.2h9a1.5 1.5 0 0 1 1.5 1.5V18a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 18z" fill="#f2c14e" stroke="#c99a1e"/></svg>`;
@@ -896,6 +896,58 @@ async function gravarExportacao(db: Armazem, app: ChaveApp, pasta: string, nome:
   if (destino.faltou) faixaConexoes(sinc);
   const onde = caminhoDaPasta(await db.todos<Pasta>("pastas"), a.pasta);
   return `✓ Exportado: ${onde ? `${onde}/` : ""}${a.nome} (versão ${a.versoes[a.versoes.length - 1].n}). ${destino.texto}`;
+}
+
+/** Pasta da face (e subpastas, criadas se faltarem) — ex.: Documentos › Propostas. */
+async function pastaDaFaceComSub(db: Armazem, app: ChaveApp, sub: string[]): Promise<string> {
+  let atual = await pastaDaFace(db, app);
+  for (const nome of sub) {
+    const ps = await db.todos<Pasta>("pastas");
+    const achada = ps.find((p) => p.pai === atual && p.nome === nome);
+    if (achada) atual = achada.id;
+    else {
+      const nova: Pasta = { id: uid(), nome, pai: atual, mod: agora() };
+      await db.por("pastas", nova);
+      atual = nova.id;
+    }
+  }
+  return atual;
+}
+
+/**
+ * Arquivo de nome fixo na pasta da face (ex.: "Biblioteca de custos.wjcus" em Impressão 3D): um só no cofre, igual em
+ * todos os aparelhos. Devolve o texto atual (cópia de trabalho ou última versão) ou null se ainda não existe.
+ */
+export async function lerArquivoFixo(app: ChaveApp, nome: string, sub: string[] = []): Promise<{ id: string; texto: string } | null> {
+  const db = await abrirCofre();
+  const ps = await db.todos<Pasta>("pastas");
+  let pasta: string | undefined = ps.find((p) => p.pai === null && p.nome === PASTA_DA_FACE[app])?.id;
+  for (const n of sub) pasta = pasta ? ps.find((p) => p.pai === pasta && p.nome === n)?.id : undefined;
+  if (!pasta) return null;
+  const a = (await db.todos<Arquivo>("arquivos")).find((x) => x.pasta === pasta && x.nome.toLowerCase() === nome.toLowerCase() && !x.lixeira);
+  if (!a) return null;
+  const r = await lerDoCofre(a.id);
+  return r ? { id: a.id, texto: r.texto } : null;
+}
+
+/**
+ * Grava o arquivo de nome fixo na pasta da face, publicado e sem GO-OUT (como uma exportação): nome repetido substitui
+ * (`semVersoes`) ou vira a versão seguinte. Vai para todas as cópias do cofre. Devolve o id e a mensagem de onde chegou.
+ */
+export async function gravarArquivoFixo(app: ChaveApp, nome: string, dados: Blob, o: { sub?: string[]; semVersoes?: boolean } = {}): Promise<{ id: string; mensagem: string }> {
+  const db = await abrirCofre();
+  const pasta = await pastaDaFaceComSub(db, app, o.sub ?? []);
+  const mensagem = await gravarExportacao(db, app, pasta, nome, dados, !!o.semVersoes);
+  const a = (await db.todos<Arquivo>("arquivos")).find((x) => x.pasta === pasta && x.nome.toLowerCase() === nome.toLowerCase() && !x.lixeira);
+  return { id: a?.id ?? "", mensagem };
+}
+
+/** Abre um arquivo do cofre no app dele numa janela nova (sem perguntar GO-OUT). null = abriu; texto = motivo de não abrir. */
+export async function abrirArquivoPorId(id: string, novaJanela = true): Promise<string | null> {
+  const db = await abrirCofre();
+  const a = await db.ler<Arquivo>("arquivos", id);
+  if (!a || a.lixeira) return "O arquivo não está mais no cofre.";
+  return abrirArquivoNoApp(a, db, novaJanela, false);
 }
 
 /** Onde o último salvar chegou (pela situação das cópias na sincronia que acabou de rodar). */

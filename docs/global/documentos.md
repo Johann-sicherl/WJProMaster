@@ -23,6 +23,16 @@ margens em mm, padrão ABNT):
 - colar de outros programas limpo (sem scripts/estilos estranhos);
 - arquivos `.wjdoc`, abrir/exportar HTML e Markdown, abrir TXT, salvamento automático, offline.
 
+✅ **Exportar DOCX** (16/11/2026): botão **DOCX** (canto direito) e menu Exibir → "Exportar DOCX" abrem o explorador do cofre
+(pasta do documento, ou "No dispositivo") e gravam um `.docx` (formato aberto, escrito por código próprio, sem dependência):
+parágrafos com alinhamento, títulos 1–3, negrito/itálico/sublinhado/tachado/cor/tamanho, listas, tabelas (linha de cabeçalho),
+imagens PNG/JPEG (tamanho e alinhamento), quebra de página, A4/Carta/Ofício/A5 com as margens do documento
+(`src/documento/docx.ts`; conferido abrindo no LibreOffice). PDF segue pelo botão **PDF** (imprimir/salvar em PDF).
+✅ **Proposta comercial** (16/11/2026): o WJSlicer3D gera um `.wjdoc` no modelo da proposta do Johann (título, emissor e data;
+Dados do Cliente; Informações do Produto / Serviço; Custo de Investimento; Entrega do Pedido; página nova com "Imagens do Pedido":
+"N x item" e "(R$ valor)" / "(R$ valor – Cada)" com a vista isométrica de cada peça e as vistas do WJCAD) e o salva no cofre em
+**Documentos › Propostas**; abre no WJWrite como qualquer documento (editável, PDF, DOCX). Detalhes em `docs/global/wjslicer3d.md` §6.
+
 🟡 Próximos: viúvas/órfãs e manter com o próximo ( motor `@wj/paginacao`), estilos editáveis, notas de rodapé,
 legendas e referências cruzadas, controle de alterações e comentários, mala direta, `.docx`.
 
