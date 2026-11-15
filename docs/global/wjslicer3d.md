@@ -184,7 +184,70 @@ pinta e dedo não, ferramentas, desfazer, filamentos e trocas editáveis, alvos 
 reabrir. **Pendente**: medir uma impressão multicolorida para ajustar purga/tempo de fábrica; roteiro com a
 caneta física do TCL.
 
-## 6. Decisões
+## 6. Orçamento, biblioteca de custos e proposta comercial (16/11/2026)
+
+Pedido do Johann: orçar com a **mesma conta da planilha MATRIZ_V01** (lida no Google Drive; o arquivo **não é versionado**,
+é dado comercial), ter uma **biblioteca de custos** única no cofre e gerar a **proposta comercial** no WJWrite a partir do
+modelo `PROPOSTA COMERCIAL GRAFIX.docx`.
+
+**A conta da MATRIZ (conferida nas fórmulas): o lucro é MARKUP sobre o custo, não margem.**
+- custo bruto da mesa = matéria-prima (g ÷ 1000 × R$/kg) + energia (kW × R$/kWh × h; 630 W × R$ 1,16 = R$ 0,7308/h) +
+  desgaste da máquina (R$ 1,00/h × h);
+- preço = custo × fator; faixas da matriz: **Variável 1,8 · Mínimo escala 2,5 · Mínimo 3 · Médio escala 3,5 · Médio 4 ·
+  Máximo escala 5 · Máximo 6 · Máximo hyper 8 · Máximo ultra hyper 10** (fator 1,8 = lucro de 80 % sobre o custo);
+- preço de 1 unidade = arredondado **para cima** (centavos) de preço da mesa ÷ unidades por mesa; valor do pedido = preço
+  de 1 unidade × quantidade; lucro bruto = arredondado para cima de (preço − custo) por mesa; **lucro líquido = bruto − 30 %**
+  ("oferta", editável); lucro total = líquido × quantidade ÷ unidades por mesa; valor da hora = preço da mesa ÷ horas da mesa;
+  dias de produção = horas ÷ 20 h por dia; conversor de horas (dias × 24 + horas);
+- a coluna "PORCENT. LUCRO" da planilha divide o líquido pelo preço da faixa **Variável** (célula fixa `$E$9`): é replicada
+  na tabela de faixas, com o rótulo "% matriz". Nos totais aparecem o **markup** (sobre o custo) e a **margem** (sobre o preço).
+
+**Biblioteca de custos** (botão no topo): item = **categoria** (Material comprado, Mão de obra H-H, Serviço, Filamento,
+Máquina) + nome + unidade (kg, h, un, m…) + **custo por unidade** + **lucro padrão %** (markup). **Incluir, editar,
+duplicar, desativar/reativar e buscar** (sem acento; por nome, categoria, unidade ou código). De fábrica: os preços médios da
+planilha (PLA nacional 90, PLA importado 139, ABS 75, TPU 135, PETG 100, resina 149 R$/kg), energia e desgaste da máquina e
+os exemplos do Johann (Chumbo 60 R$/kg 0 %; H-H Modelagem 30 R$/h 0 %; Ímã 10×4 R$ 5/un 30 %). **Um arquivo só no cofre**,
+`Biblioteca de custos.wjcus` na pasta Impressão 3D, publicado e sem GO-OUT: igual em todos os aparelhos (a mais recente vence;
+aparelho sem cópia usa a do cofre). **WJERP**: "Importar do WJERP" traz os itens que têm código e custo (custo padrão ou
+preço) como Material comprado, atualiza pelo código e mantém o lucro dos que já existem (novos entram com lucro 0 %).
+
+**Orçamento** (botão no topo; vale para o pedido inteiro): linhas **da impressão** (uma de filamento por cor usada, com a
+massa que inclui purga e torre; energia e desgaste da máquina, com as horas calibradas) e **"+ Item da biblioteca"** com a
+quantidade (custo = quantidade × custo por unidade). Cada linha mostra **custo, lucro % editável ali mesmo (começa no padrão
+do item) e preço**; "Trocar" muda o item da linha. **Totais**: custo, lucro bruto (R$), markup e margem (%), lucro líquido,
+preço de 1 unidade e **preço final**. Campos do pedido como na MATRIZ: quantidade pedida, unidades por mesa, oferta (30 %),
+horas de impressão por dia; mesas, horas totais, dias e valor da hora; **tabela das 9 faixas** (com "Usar" para pôr o lucro
+da faixa em todas as linhas) e conversor de horas. **Os valores ficam gravados no orçamento**: mudar ou desativar o item na
+biblioteca não muda orçamento antigo. O orçamento vai no projeto `.wjslc` e fica no aparelho; as linhas da impressão se
+atualizam a cada fatiada (preservando lucro e item editados), "Atualizar da impressão" traz de volta as que foram tiradas.
+
+**Proposta comercial** (botão "Gerar proposta" no orçamento): formulário com emissor e data, cliente (nome/empresa, endereço,
+bairro, cidade, telefone), produto (descritivo, dimensões, cores, material, obs.), forma de pagamento, prazo e local de entrega;
+**itens = peças da mesa** (nome, quantidade, preço de 1 un; o valor do orçamento é rateado pelo volume, em centavos, e a tela
+avisa a diferença para o preço final se o preço for mexido) com as **imagens de cada item: vista isométrica automática** (gerada
+da própria peça, com as cores pintadas) **e as vistas escolhidas no WJCAD** (menu do WJCAD → **"Guardar esta vista para a
+proposta"**, que acumula as vistas; aparecem na proposta para marcar). Logotipo/QR do emissor opcional, guardado só no aparelho.
+"Gerar proposta no WJWrite" grava `Proposta comercial - <cliente>.wjdoc` no cofre (**Documentos › Propostas**) no modelo do
+documento do Johann (Proposta comercial; Dados do Cliente; Informações do Produto / Serviço; Custo de Investimento; Entrega do
+Pedido; Imagens do Pedido com "N x item (R$ valor)" e "(R$ 20,00 – Cada)") e oferece **Abrir no WJWrite** e **Exportar DOCX**.
+No WJWrite: **PDF** (botão PDF = imprimir/salvar em PDF) e **DOCX** (botão DOCX ou menu Exibir).
+
+**Peças**: do WJCAD (menu → Estimar impressão 3D) ou STL do cofre/aparelho, como antes.
+
+**Testes**: `scripts/teste-orcamento.ts` (Node): **as contas da matriz em 3 casos** — 650 g/26 h/1 un (a própria planilha),
+120 g/5,5 h/12 un em 4 por mesa e 1,83 kg PLA importado/61,75 h/7 un em 3 por mesa — comparando custo da mesa, mesas, dias e as
+9 faixas coluna a coluna (preço de 1 un, lucro bruto, líquido, % matriz, valor do pedido, lucro total, valor/hora) com os
+valores obtidos **recalculando a planilha original no LibreOffice** com as mesmas entradas; lucro por linha, linhas da
+impressão, valores gravados, biblioteca (incluir/editar/duplicar/desativar/buscar/arquivo/WJERP), rateio, proposta e DOCX
+(zip, CRC-32, XML). `scripts/roteiro-orcamento.cjs` (tablet 1280×800, toque): do STL à proposta — biblioteca (os 5 verbos, vinda
+do cofre depois de limpar o aparelho), orçamento (item da biblioteca, lucro por linha, faixa, orçamento antigo não muda, alvos
+≥ 44 px), vista guardada no WJCAD, proposta salva no cofre, aberta no WJWrite, DOCX (zip válido, LibreOffice abre).
+
+**Limites conhecidos**: o planejamento de impressão da aba "Planilha1" da matriz (grade de dias × horas) não foi trazido (não
+faz parte do cálculo de preço); PDF sai pelo "imprimir/salvar em PDF" do WJWrite (sem gerador próprio); itens novos do WJERP
+entram com lucro 0 % (o WJERP não tem esse dado).
+
+## 7. Decisões
 
 - Nome da face: **WJSlicer3D** (pedido do Johann: "WJ Slicer 3D").
 - **Só P1S e Kobra 3** (15/11/2026). Nomes das impressoras só na lista de máquinas, como dado técnico; o
@@ -193,12 +256,13 @@ caneta física do TCL.
 - Sem G-code e sem envio para a impressora (decisão do Johann, 08/11/2026; reafirmada em 15/11/2026).
 - Sem documento próprio: o STL vem do cofre (pasta CAD), do aparelho ou do WJCAD.
 
-## 7. Estado e próximos passos
+## 8. Estado e próximos passos
 
 - S1 (08/11/2026): estimativa por camadas, perfis Bambu Lab e Anycubic. **Substituída** pela S2.
 - **S2 (15/11/2026, entregue)**: fatiamento real, P1S e Kobra 3, padrões, suporte normal e árvore, saia,
   várias peças, prévia das camadas, tempo por tipo de caminho.
 - **S2.1 (16/11/2026, entregue)**: pintura de até 4 cores, trocas/purga/torre no orçamento, filamentos editáveis e projeto `.wjslc` no cofre.
+- **S3 (16/11/2026, entregue)**: biblioteca de custos no cofre, orçamento com a conta da MATRIZ_V01, proposta comercial no WJWrite (PDF e DOCX).
 - Pendente do Johann: valores de referência medidos (tabela do teste) e uma impressão multicolorida medida (purga e tempo da troca).
 - Possíveis (só se ele pedir): outros bicos (0,2/0,6/0,8), "uma parede só no topo", preenchimento de vãos,
   borda automática, arrastar a peça na mesa à mão.

@@ -4,6 +4,8 @@
 // localizar/substituir, contagem de palavras, arquivos .wjdoc, HTML, Markdown e PDF (impressão).
 
 import "./documento.css";
+import { exportarComo } from "../comum/cofre";
+import { gerarDocx, htmlParaBlocos, type PaginaDocx } from "./docx";
 import { $, autosave, baixar, Casca, el, escapar, escolherArquivo, janela, menu, registrarOffline, type Aba, salvarArquivo } from "../comum/casca";
 
 interface Pagina {
@@ -590,6 +592,22 @@ function exportarHTML() {
   baixar(html, doc.nome, "html", "text/html");
 }
 
+/** Exporta para .docx (formato aberto): explorador do cofre (pasta do documento) ou "No dispositivo". */
+async function exportarDocx() {
+  doc.html = htmlDoTexto();
+  const p = doc.pagina;
+  const [l, a] = TAMANHOS[p.tamanho];
+  const pag: PaginaDocx = { larguraMm: p.orientacao === "paisagem" ? a : l, alturaMm: p.orientacao === "paisagem" ? l : a, margens: { ...p.margens } };
+  const raiz = document.createElement("div");
+  raiz.innerHTML = doc.html;
+  try {
+    const msg = await exportarComo("word", doc.nome, [{ ext: "docx", rotulo: "Documento DOCX (.docx)" }], async () => new Blob([gerarDocx(htmlParaBlocos(raiz, pag), pag, doc.nome) as BlobPart], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }));
+    casca.avisar(msg, 7000);
+  } catch (e) {
+    casca.avisar(`Não foi possível exportar o DOCX: ${(e as Error).message}`, 7000);
+  }
+}
+
 function exportarMarkdown() {
   baixar(htmlParaMarkdown(texto), doc.nome, "md", "text/markdown");
 }
@@ -820,6 +838,7 @@ const abas: Aba[] = [
         { id: "imprimir", rotulo: "Imprimir / PDF", icone: "imprimir", acao: () => window.print() },
         { id: "html", rotulo: "Exportar HTML", icone: "exportar", acao: exportarHTML },
         { id: "md", rotulo: "Exportar Markdown", icone: "exportar", acao: exportarMarkdown },
+        { id: "docx", rotulo: "Exportar DOCX", icone: "exportar", dica: "Exportar para .docx (cofre ou dispositivo)", acao: () => void exportarDocx() },
       ],
     ],
   },
@@ -843,7 +862,10 @@ const casca: Casca = new Casca({
   salvar,
   desfazer: () => cmd("undo"),
   refazer: () => cmd("redo"),
-  direita: [{ id: "pdf", rotulo: "PDF", icone: "imprimir", dica: "Imprimir ou salvar em PDF", acao: () => window.print() }],
+  direita: [
+    { id: "pdf", rotulo: "PDF", icone: "imprimir", dica: "Imprimir ou salvar em PDF", acao: () => window.print() },
+    { id: "docx", rotulo: "DOCX", icone: "exportar", dica: "Exportar para .docx", acao: () => void exportarDocx() },
+  ],
 });
 
 // os botões da faixa não tiram o cursor do texto

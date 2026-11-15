@@ -17,6 +17,8 @@ import { MAQUINAS, maquinaPorId, materiaisDa, materialDa, NOMES_PADROES, type Co
 import { balde, filamentosPadrao, MAX_CORES, pincel, pintarCorpo, topologia, type Filamento, type Topologia } from "./cores";
 import { desempacotar, empacotar, EXTENSAO_PROJETO, type ProjetoSlicer } from "./projeto";
 import { VistaMesa } from "./vista";
+import { vistaIsometrica } from "./isometrica";
+import { iniciarOrcamento } from "./orcamentoUi";
 import type { PecaInfo, PedidoSlicer, RespostaSlicer } from "./worker";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -406,6 +408,7 @@ function mostrarResultado() {
   av.innerHTML = r.avisos.map((a) => `<p>⚠ ${escapar(a)}</p>`).join("");
   av.hidden = !r.avisos.length;
   desenharPecas();
+  orcamento.impressaoMudou();
 }
 
 // ---------- cores: filamentos, trocas, pintura ----------
@@ -654,6 +657,48 @@ $("sl-limpar-cor").onclick = () => {
 };
 lerPincel();
 
+// ---------- orçamento e biblioteca de custos ----------
+
+/** volume de uma malha fechada (mm³), pela soma dos tetraedros com a origem */
+function volumeDe(d: DadosPeca) {
+  let v = 0;
+  for (let t = 0; t < d.tri.length; t += 3) {
+    const a = d.tri[t] * 3, b = d.tri[t + 1] * 3, c = d.tri[t + 2] * 3;
+    v += (d.pos[a] * (d.pos[b + 1] * d.pos[c + 2] - d.pos[b + 2] * d.pos[c + 1]) - d.pos[a + 1] * (d.pos[b] * d.pos[c + 2] - d.pos[b + 2] * d.pos[c]) + d.pos[a + 2] * (d.pos[b] * d.pos[c + 1] - d.pos[b + 1] * d.pos[c])) / 6;
+  }
+  return Math.abs(v);
+}
+
+const orcamento = iniciarOrcamento({
+  impressao: () => {
+    if (!ultimo) return null;
+    const fil = filamentosEfetivos();
+    const fator = pref.calibracao[pref.maquina] ?? 1;
+    return {
+      horasMesa: (ultimo.tempoS * fator) / 3600,
+      cores: ultimo.cores.map((c, i) => ({ c, i })).filter((x) => x.c.usada).map(({ c, i }) => ({ indice: i, nome: fil[i].nome, material: fil[i].material, massaG: c.massaG })),
+    };
+  },
+  pecas: () =>
+    pecas.map((p) => {
+      const d = malhas.get(p.id);
+      return {
+        nome: p.nome, copias: Math.max(1, p.posicoes.length), peso: d ? volumeDe(d) : 1,
+        isometrica: () => (d ? vistaIsometrica(d.pos, d.tri, d.cores, hexCores()) : null),
+      };
+    }),
+  resumo: () => {
+    const fil = filamentosEfetivos();
+    const usadas = ultimo ? ultimo.cores.map((c, i) => ({ c, i })).filter((x) => x.c.usada).map((x) => fil[x.i]) : [];
+    const mats = [...new Set((usadas.length ? usadas : [fil[0]]).map((f) => materialDa(maquina(), f.material).nome))];
+    const dim = ultimo ? `${ultimo.dimensoes.map((x) => num(x, 0)).join(" × ")} mm` : "";
+    return { cores: usadas.map((f) => f.nome).join(", "), material: mats.join(", "), dimensoes: dim };
+  },
+  avisar: (m, ms) => avisar(m, ms),
+});
+$("sl-orcamento").onclick = () => orcamento.abrirOrcamento();
+$("sl-biblioteca").onclick = () => orcamento.abrirBiblioteca();
+
 // ---------- projeto no cofre (.wjslc) ----------
 
 function pecasDoWorker() {
@@ -674,7 +719,7 @@ async function salvarProjeto(): Promise<string> {
   const trocas: Record<string, ConfigTroca> = {};
   for (const m of MAQUINAS) if (pref.trocas[m.id]) trocas[m.id] = { ...m.troca, ...pref.trocas[m.id] };
   const nome = nomeProjeto || lista[0].nome || "Projeto de impressão";
-  const texto = await empacotar({ nome, maquina: pref.maquina, material: pref.material, ajustes: pref.ajustes, precos: pref.precos, filamentos: filamentosEfetivos(), trocas, pecas: lista });
+  const texto = await empacotar({ nome, maquina: pref.maquina, material: pref.material, ajustes: pref.ajustes, precos: pref.precos, filamentos: filamentosEfetivos(), trocas, orcamento: orcamento.obter(), pecas: lista });
   avisar("Salvando no cofre…");
   const msg = await salvarNoCofre("slicer", `${nome}.${EXTENSAO_PROJETO}`, new Blob([texto], { type: "application/json" }), (n) => (nomeProjeto = n));
   avisar(msg, 7000);
@@ -691,6 +736,7 @@ function aplicarProjeto(p: ProjetoSlicer) {
   pref.filamentos = p.filamentos;
   pref.trocas = { ...pref.trocas, ...p.trocas };
   guardar();
+  orcamento.definir(p.orcamento as never);
   vista.definirMesa(...maquina().mesa);
   vista.enquadrar();
   preencherPainel();

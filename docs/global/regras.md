@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 16/11/2026 (WJSlicer3D: pintura de até 4 cores, trocas/purga/torre e projeto no cofre); antes, 15/11/2026 (pedido C4: calculadora em todo campo numérico, cotas do recurso no duplo clique da árvore/corpo e depois do Mover corpo, linha sobre a aresta no esboço sobre a face; WJSlicer3D: só P1S e Kobra 3, fatiamento real próprio; caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
+> Última consolidação: 16/11/2026 (WJSlicer3D: biblioteca de custos, orçamento pela conta da MATRIZ_V01 e proposta comercial no WJWrite com PDF/DOCX; antes, pintura de até 4 cores, trocas/purga/torre e projeto no cofre); antes, 15/11/2026 (pedido C4: calculadora em todo campo numérico, cotas do recurso no duplo clique da árvore/corpo e depois do Mover corpo, linha sobre a aresta no esboço sobre a face; WJSlicer3D: só P1S e Kobra 3, fatiamento real próprio; caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -379,7 +379,16 @@
   troca, tudo somado ao material por cor e ao tempo), **cores e filamentos** (cor + material + R$/kg) no projeto,
   preparados para a biblioteca de custos (S3), e **projeto `.wjslc` guardado no cofre** (pasta "Impressão 3D"). Os nomes das impressoras aparecem só na lista de máquinas,
   como dado técnico. STL do cofre, do aparelho ou do WJCAD (menu → Estimar impressão 3D). Detalhes em
-  `docs/global/wjslicer3d.md`.
+  `docs/global/wjslicer3d.md`. **16/11/2026 (pedido do Johann): biblioteca de custos, orçamento e proposta comercial.** O
+  cálculo é o da planilha **MATRIZ_V01** (do Drive dele, não versionada): o lucro é **markup sobre o custo** (preço = custo ×
+  fator; faixas 1,8 a 10), valores arredondados para cima em centavos, líquido = bruto − 30 % ("oferta"). **Biblioteca de
+  custos** = categoria (Material comprado, Mão de obra H-H, Serviço, Filamento, Máquina), nome, unidade, custo por unidade e lucro
+  padrão %, com incluir/editar/duplicar/desativar/buscar; **um arquivo só no cofre** (`Biblioteca de custos.wjcus`, Impressão 3D),
+  igual em todos os aparelhos; itens com código do WJERP entram por "Importar do WJERP". **Orçamento**: linhas da impressão
+  (filamento por cor, energia e desgaste da máquina) + itens da biblioteca com quantidade; lucro % editável por linha; **valores
+  gravados no orçamento** (mudar a biblioteca não muda orçamento antigo). **Proposta comercial** gerada no WJWrite a partir do
+  modelo do .docx dele, salva no cofre (Documentos › Propostas), com a vista isométrica automática de cada peça e as vistas
+  guardadas no WJCAD (menu → "Guardar esta vista para a proposta"); exporta PDF (imprimir) e **DOCX** (botão novo do WJWrite).
 - **WJTaskPlan — prazo da etapa ≤ prazo da tarefa** (10/11/2026; tarefa sem prazo = etapas sem limite):
   calendário da etapa limitado ao prazo da tarefa; data depois dele ou antecipar o prazo da tarefa avisa as etapas que passariam
   (com os nomes); dado já errado (antigo ou da sincronia) **não é alterado sozinho**: fica marcado e se corrige

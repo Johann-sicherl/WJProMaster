@@ -27,6 +27,8 @@ export interface ProjetoSlicer {
   filamentos: Filamento[];
   /** troca de cor editada, por impressora (o que não está aqui usa o de fábrica) */
   trocas: Record<string, ConfigTroca>;
+  /** orçamento do projeto (linhas com os valores gravados, lucro por linha); normalizado por quem usa */
+  orcamento?: unknown;
   pecas: PecaProjeto[];
 }
 
@@ -59,7 +61,7 @@ export async function empacotar(p: ProjetoSlicer): Promise<string> {
   }
   return JSON.stringify({
     formato: EXTENSAO_PROJETO, versao: 1, nome: p.nome,
-    config: { maquina: p.maquina, material: p.material, ajustes: p.ajustes, precos: p.precos, filamentos: p.filamentos, trocas: p.trocas },
+    config: { maquina: p.maquina, material: p.material, ajustes: p.ajustes, precos: p.precos, filamentos: p.filamentos, trocas: p.trocas, ...(p.orcamento ? { orcamento: p.orcamento } : {}) },
     pecas,
   });
 }
@@ -91,6 +93,6 @@ export async function desempacotar(texto: string): Promise<ProjetoSlicer> {
   const filamentos = Array.from({ length: MAX_CORES }, (_, k) => ({ ...padrao[k], ...(c.filamentos?.[k] ?? {}) }));
   return {
     nome: j.nome || "Projeto de impressão", maquina, material: c.material ?? "pla", ajustes: c.ajustes as Ajustes, precos: c.precos ?? {},
-    filamentos, trocas: c.trocas ?? {}, pecas,
+    filamentos, trocas: c.trocas ?? {}, ...(c.orcamento ? { orcamento: c.orcamento } : {}), pecas,
   };
 }
