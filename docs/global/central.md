@@ -92,6 +92,15 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
   3. GO-IN pergunta se sobe a revisão (**uma revisão só para PDM e ERP; versões = histórico**) + BOM
      multinível da montagem pai.
   O ajuste de etapas do WJTaskPlan que estava nesta lista saiu: entregue e conferido (#118, #119).
+- **Fila de 15/11 (prompts na conversa da central de 15/11; ordem sugerida):** (1) WJPDM: Zerar cofre +
+  Importar pasta + login do Google repetido (o Drive tem só `WJPDM/.wjpdm` em 15/11; o índice e os aparelhos
+  ainda têm tudo e recriariam); (2) WJCAD: nome persistente de faces/arestas (filete perde aresta ao mudar
+  cota: `acharAresta` `src/kernel/topologia.ts:200`) + referências do modelo no esboço atualizadas na
+  reconstrução (hoje só ao abrir o esboço, `src/esboco/editor.ts:307`: rasgo vira furo); (3) WJCAD: 1ª caixa
+  ativa ao abrir comando + auto-seleção de arestas no filete; (4) WJSlicer3D (3 conversas: P1S/Kobra 3 +
+  fatiamento; pintura multicor + purga; orçamento pela MATRIZ_V01.xlsx + proposta pelo .docx da GRAFIX,
+  arquivos no Drive do Johann, não versionar); (5) WJFlow: fluxo de projeto de asa — aguardando respostas.
+  Código do fatiador de referência é AGPL: só reimplementar, nunca copiar.
 - **Pendências das entregas:** linhas de inferência pontilhadas e Tangente automática em arcos (F3,
   `docs/funcional/sketch.md`).
 - Conversa antiga "Software CAD": mantida só para consulta; não usar para pedidos novos.
