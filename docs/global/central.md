@@ -1,5 +1,6 @@
 # Central de eficiência e orquestração do WJProMaster
 
+> Fila em andamento e prompts prontos: `docs/global/fila-central.md`.
 > Estado da "central": a conversa em que o Johann aprende a pedir melhor e o Claude aprimora pedidos,
 > confere entregas e acompanha as conversas de código. **A central não altera código do app.**
 > Ao trocar de central (contexto acima de **~200 mil tokens** ou aviso de conversa resumida), abrir conversa

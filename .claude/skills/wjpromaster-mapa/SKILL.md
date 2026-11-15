@@ -70,7 +70,7 @@ ou fase entregue → `tecnico.md` (e `docs/global/regras.md` se for decisão do 
 | WJSlicer3D (tempo e material de impressão 3D, fatiamento real sem G-code) | `src/slicer/main.ts` (tela, peças na mesa, prévia das camadas), `vista.ts` (mesa 3D, cópias, corte na camada), `worker.ts` (peças, cópias, fatiar, prévia), `slicer.css` · motor: `fatiar.ts` (mesa inteira: cópias em ordem, saia, retrações, prévia), `caminhos.ts` (corte da malha, paredes, padrões de preenchimento, topo/fundo/ponte, suporte normal e árvore, borda), `campo.ts` (campo de distância da camada, contornos, recorte de linhas, ilhas), `planejador.ts` (trapézio, jerk, tempo mínimo de camada) · perfis P1S e Kobra 3 `perfis.ts` · STL, giro, apoio e organizar a mesa `malha.ts` | `docs/global/wjslicer3d.md` |
 | WJFlow | `src/flow/main.ts`, `gpu.ts` (WebGPU), `lbm.ts`, `geometria.ts`, `estudo.ts`, `campo.ts`, `vista3d.ts`, `aparelho.ts`, workers `cpu-worker.ts`, `pos-worker.ts`, `preparo-worker.ts` | `docs/global/wjflow.md` |
 | Integrações entre faces | — | `docs/global/integracoes.md` |
-| Central de eficiência (aprimorar pedidos, conferir entregas, registro de custo e acerto) | — | `docs/global/central.md` |
+| Central de eficiência (aprimorar pedidos, conferir entregas, registro de custo e acerto) | — | `docs/global/central.md` · fila e prompts: `docs/global/fila-central.md` |
 | Status geral do CAD / lacunas priorizadas | — | `docs/funcional/README.md`, `referencia-introducao.md` |
 
 ## 2. Testes (Node, sem DOM) — `pnpm teste` roda todos
