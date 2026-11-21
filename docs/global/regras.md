@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 16/11/2026 (WJSlicer3D: biblioteca de custos, orçamento pela conta da MATRIZ_V01 e proposta comercial no WJWrite com PDF/DOCX; antes, pintura de até 4 cores, trocas/purga/torre e projeto no cofre); antes, 15/11/2026 (pedido C4: calculadora em todo campo numérico, cotas do recurso no duplo clique da árvore/corpo e depois do Mover corpo, linha sobre a aresta no esboço sobre a face; WJSlicer3D: só P1S e Kobra 3, fatiamento real próprio; caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
+> Última consolidação: 21/11/2026 (Biblioteca de componentes de fixação na Montagem); antes, 16/11/2026 (WJSlicer3D: biblioteca de custos, orçamento pela conta da MATRIZ_V01 e proposta comercial no WJWrite com PDF/DOCX; antes, pintura de até 4 cores, trocas/purga/torre e projeto no cofre); antes, 15/11/2026 (pedido C4: calculadora em todo campo numérico, cotas do recurso no duplo clique da árvore/corpo e depois do Mover corpo, linha sobre a aresta no esboço sobre a face; WJSlicer3D: só P1S e Kobra 3, fatiamento real próprio; caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -319,6 +319,14 @@
   flutuante**; clique sem arrastar seleciona; caneta parada abre o menu; **o dedo gira a vista** (mover com
   o dedo = comando Mover componente). Componente fixo não se move por arraste. Componentes de malha (STL)
   são selecionáveis e arrastáveis.
+- **Biblioteca de componentes de fixação** (21/11/2026, pedido C2): na Montagem, comando "Biblioteca de componentes" (nome nosso)
+  com busca e árvore (Parafusos, Porcas, Arruelas, Rebites, Pinos; ISO/DIN métricos M2–M30, passo grosso e fino, tabelas em
+  `src/biblioteca/dados.ts`). Escolher tipo + tamanho + comprimento (lista do padrão, valor ou "sugerido pela espessura") gera a peça
+  paramétrica no kernel (rosca cosmética por padrão, real opcional nos parafusos), **salva em CAD › Biblioteca com nome padronizado**
+  ("Parafuso ISO 4762 M6x20") e **reaproveita se já existir**. Arrastar até um furo (ou armar e tocar) encaixa **concêntrico +
+  coincidente** e oferece **"repetir em todos os furos iguais"**; arruelas/porcas empilham sozinhas. Propriedades (norma, descrição,
+  material, massa) vão para a lista de materiais. Famílias de forma/cotas aproximadas ficam marcadas "≈" até o Johann conferir.
+  `docs/funcional/biblioteca.md`.
 - Medir e propriedades de massa funcionam em corpos importados (STEP e malha STL).
 - Arquivo `.wjcad` (abre `.jlscad`/`.cadt`). Chaves internas `jlscad:` ficam como estão.
 

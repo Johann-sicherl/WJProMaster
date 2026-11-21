@@ -36,8 +36,16 @@ import type { Topologia } from "../kernel/topologia";
 import { compRel, NOME_TIPO, primitivaLocal, resolverMontagem, tiposPossiveis, transformar, type ResultadoSolver } from "./solver";
 import {
   abrirArquivoNoApp, abrirCopias, abrirDoCofre, aoMudarCofre, desfazerConfirmando, desligar, documentosDoCofre, escolherDoCofre, goInComJanela, goOut,
-  instalarPainelCofre, lerDoCofre, salvarNoCofre, sincronizarAoAbrir, situacaoNoCofre, vinculo, type SituacaoNoCofre,
+  instalarPainelCofre, lerDoCofre, perguntar, salvarNoCofre, sincronizarAoAbrir, situacaoNoCofre, vinculo, type SituacaoNoCofre,
 } from "../comum/cofre";
+import { renderizarPainelBiblioteca, estadoInicialBib, itemEscolhido, type EstadoBib } from "../biblioteca/painel";
+import { LISTA_COMPRIMENTOS, diametroNominal, familiaPorId } from "../biblioteca/dados";
+import { comprimentosDoPadrao, nomePadrao, passoGrosso } from "../biblioteca/gerar";
+import { pecaDaBiblioteca } from "../biblioteca/cofre";
+import {
+  compatibilidadeDoFuro, comprimentoMinimo, empilhadoNoLado, entradaDoFuro, furosDoComponente, furosIguais, ladoParaCamera, planasDoComponente, poseDoFixador,
+  posicionamentosDoEncaixe, proximoDaLista, type Furo,
+} from "../biblioteca/encaixe";
 import { renderizarFormulario, type ContextoFormulario, type Esquema } from "../ui/formulario";
 import {
   $, abrirGaveta, abrirJanela, abrirPopover, aplicarDispositivo, avisar, baixar, escapar, esconderBarra, fecharJanela,
@@ -69,6 +77,8 @@ const errosPeca = new Map<string, string>();
 
 type Comando =
   | { tipo: "inserir"; manter: boolean }
+  /** biblioteca de componentes de fixação: `armado` = o próximo toque num furo encaixa o item */
+  | { tipo: "biblioteca"; armado: boolean }
   | { tipo: "mover"; girar: boolean; snapshot: string; f: DadosMover }
   | { tipo: "posicionar"; snapshot: string; sel: RefMontagem[]; m: Posicionamento; editando: boolean }
   /** padrão linear/circular ou espelhar: campo ativo = sementes (tocar componentes) ou referência */
@@ -478,6 +488,7 @@ function atualizarStatus(texto?: string) {
   if (!texto && comando?.tipo === "posicionar") estado = `Posicionar: ${comando.sel.length < 2 ? `toque a ${comando.sel.length ? "2ª" : "1ª"} entidade (face, aresta, vértice ou plano)` : NOME_TIPO[comando.m.tipo]}`;
   else if (!texto && comando?.tipo === "mover") estado = `${comando.girar ? "Girar" : "Mover"} componente: arraste um componente flutuante`;
   else if (!texto && comando?.tipo === "inserir") estado = "Inserir componentes: escolha a peça no painel";
+  else if (!texto && comando?.tipo === "biblioteca") estado = comando.armado ? "Biblioteca: toque a parede de um furo para encaixar" : "Biblioteca: escolha o item, arraste até o furo (ou toque num furo para ver a espessura)";
   else if (!texto && comando?.tipo === "padrao") estado = comando.campo === "sementes" ? "Toque os componentes a repetir" : `Toque a referência: ${comando.refNome}`;
   else if (!texto && comando?.tipo === "explodir") estado = "Vista explodida: toque os componentes do passo, escolha a direção e a distância";
   else if (!texto && comando?.tipo === "medir") estado = "Medir: toque uma ou duas entidades (faces, arestas, vértices)";
@@ -781,6 +792,7 @@ const ABAS_M: { id: string; rotulo: string; comandos: Cmd[] }[] = [
   {
     id: "montagem", rotulo: "Montagem", comandos: [
       { id: "inserir", rotulo: "Inserir componentes", icone: "inserirComponente", dica: "Insere peças do cofre ou do aparelho (I)", grupo: 0 },
+      { id: "biblioteca", rotulo: "Biblioteca de componentes", icone: "biblioteca", dica: "Parafusos, porcas, arruelas, rebites e pinos ISO/DIN: escolha e arraste até um furo (encaixa sozinho)", grupo: 0 },
       { id: "posicionar", rotulo: "Posicionar", icone: "posicionar", dica: "Posicionamentos: coincidente, paralelo, perpendicular, tangente, concêntrico, travar, distância, ângulo (M)", grupo: 0 },
       { id: "mover", rotulo: "Mover componente", icone: "moverComponente", dica: "Arrastar livre, por ΔXYZ ou para uma posição XYZ", grupo: 1 },
       { id: "girar", rotulo: "Girar componente", icone: "girarComponente", dica: "Arrastar livre ou por ângulos em X, Y e Z", grupo: 1 },
@@ -836,7 +848,7 @@ function renderizarAbas() {
       b.setAttribute("aria-disabled", "true");
       b.insertAdjacentHTML("beforeend", `<em class="selo">breve</em>`);
     }
-    const ativo = (c.id === "posicionar" && comando?.tipo === "posicionar") || (c.id === "inserir" && comando?.tipo === "inserir")
+    const ativo = (c.id === "posicionar" && comando?.tipo === "posicionar") || (c.id === "inserir" && comando?.tipo === "inserir") || (c.id === "biblioteca" && comando?.tipo === "biblioteca")
       || (c.id === "mover" && comando?.tipo === "mover" && !comando.girar) || (c.id === "girar" && comando?.tipo === "mover" && comando.girar)
       || (c.id === "isolar" && !!isolados) || (c.id === "explodir-recolher" && mostrarExplodida)
       || (c.id === "medir" && comando?.tipo === "medir") || (c.id === "explodida" && comando?.tipo === "explodir")
@@ -853,6 +865,7 @@ function executar(c: Cmd) {
   esconderBarra();
   switch (c.id) {
     case "inserir": return abrirInserir();
+    case "biblioteca": return abrirBiblioteca();
     case "posicionar": return abrirPosicionar();
     case "mover": return abrirMover(false);
     case "girar": return abrirMover(true);
@@ -1089,7 +1102,7 @@ function componenteSob(x: number, y: number, tol = 10): { comp: string; ent: Ent
 }
 
 function tocarComponente(id: string, somar: boolean, ancora?: HTMLElement, xy?: { x: number; y: number }) {
-  if (comando?.tipo === "inserir") return;
+  if (comando?.tipo === "inserir" || comando?.tipo === "biblioteca") return;
   selMate = null;
   if (somar) selComps = selComps.includes(id) ? selComps.filter((x) => x !== id) : [...selComps, id];
   else selComps = selComps.length === 1 && selComps[0] === id ? [] : [id];
@@ -1145,6 +1158,7 @@ viewport.aoToqueCurto = (e) => {
     return;
   }
   if (comando?.tipo === "inserir") return colocarInserido(e.clientX, e.clientY);
+  if (comando?.tipo === "biblioteca") return void tocarFuroBiblioteca(e.clientX, e.clientY, comando.armado);
   if (comando?.tipo === "medir") {
     const ent = picarNoToque(e);
     if (ent) void adicionarMedida(ent);
@@ -1286,6 +1300,7 @@ function caixa(p: HTMLElement, titulo: string): HTMLElement {
 function renderizarComando() {
   if (!comando) return;
   if (comando.tipo === "inserir") return renderizarInserir();
+  if (comando.tipo === "biblioteca") return renderizarBiblioteca();
   if (comando.tipo === "mover") return renderizarMover();
   if (comando.tipo === "padrao") return renderizarPadrao();
   if (comando.tipo === "explodir") return renderizarExplodir();
@@ -1419,6 +1434,232 @@ function colocarInserido(x: number, y: number) {
   salvarAutosave();
   if (comando?.tipo === "inserir" && !comando.manter) fecharComando();
   else avisar("Colocado. Escolha outra peça ou ✓.");
+}
+
+// ---------- Biblioteca de componentes (fixação) ----------
+// Regras puras em src/biblioteca (testadas em scripts/teste-biblioteca.ts); aqui só a ligação com a cena.
+
+let estadoBib: EstadoBib = estadoInicialBib();
+try {
+  const g = JSON.parse(localStorage.getItem("wjcad:biblioteca") ?? "null");
+  if (g && typeof g === "object") estadoBib = { ...estadoInicialBib(), ...g, busca: "" };
+} catch {
+  // sem armazenamento: começa do zero
+}
+/** Último furo tocado (info e comprimento sugerido no painel). */
+let furoBib: { furo: Furo; texto: string; sugerido?: number } | null = null;
+
+function guardarEstadoBib() {
+  try {
+    localStorage.setItem("wjcad:biblioteca", JSON.stringify({ ...estadoBib, busca: "" }));
+  } catch {
+    // sem armazenamento: só não lembra
+  }
+}
+
+function abrirBiblioteca() {
+  if (comando) cancelarComando();
+  comando = { tipo: "biblioteca", armado: false };
+  furoBib = null;
+  mostrarPainel(true);
+  renderizarAbas();
+  atualizarStatus();
+  renderizarBiblioteca();
+}
+
+function renderizarBiblioteca() {
+  if (comando?.tipo !== "biblioteca") return;
+  guardarEstadoBib();
+  renderizarPainelBiblioteca({
+    painelBase: (t) => painelBase(t),
+    caixa,
+    aoMudar: () => {
+      recalcularSugestaoBib();
+      renderizarBiblioteca();
+    },
+    aoSoltar: (x, y) => {
+      if (comando?.tipo !== "biblioteca") return;
+      if (Number.isNaN(x)) {
+        comando.armado = !comando.armado;
+        avisar(comando.armado ? "Toque a parede de um furo no modelo para encaixar." : "Encaixe cancelado.");
+        atualizarStatus();
+        return;
+      }
+      void tocarFuroBiblioteca(x, y, true);
+    },
+    aoInserirSolto: () => void inserirBibliotecaSolto(),
+    infoDoFuro: () => furoBib?.texto ?? "",
+    sugerido: () => furoBib?.sugerido,
+    areaDoModelo: () => $("viewport").getBoundingClientRect(),
+  }, estadoBib);
+}
+
+/** Furos (faces cilíndricas côncavas) de todos os componentes visíveis, na pose atual. */
+function furosDaCena(): Furo[] {
+  if (!doc) return [];
+  return doc.componentes.filter(visivel).flatMap((c) => {
+    const r = malhas.get(chaveDe(pecaDe(c)));
+    return r?.malha && r.topologia ? furosDoComponente(c.id, c.t, r.topologia, r.malha) : [];
+  });
+}
+function planasDaCena() {
+  if (!doc) return [];
+  return doc.componentes.filter(visivel).flatMap((c) => {
+    const r = malhas.get(chaveDe(pecaDe(c)));
+    return r?.topologia ? planasDoComponente(c.id, c.t, r.topologia) : [];
+  });
+}
+
+/** Furo sob o toque (parede cilíndrica côncava), ou null. */
+function furoSob(x: number, y: number): Furo | null {
+  if (!cena) return null;
+  const ent = viewport.picarEntidade(x, y, new Set<TipoEntidade>(["face"]), 2);
+  if (!ent) return null;
+  const l = localDaEntidade(cena.mapa, "face", ent.indice);
+  if (!l) return null;
+  return furosDaCena().find((f) => f.comp === l.comp && f.indice === l.indice) ?? null;
+}
+
+/** Altura de apoio de um componente que empilha (arruela/porca da biblioteca); null = não empilha. */
+function alturaEmpilhavel(compId: string): number | null {
+  const c = compDe(compId);
+  const pr = c ? pecaDe(c).doc.propriedades : undefined;
+  return pr && (pr.grupo === "Arruelas" || pr.grupo === "Porcas") && pr.apoio !== undefined ? Number(pr.apoio) : null;
+}
+const direcaoYDe = (compId: string): Vec3 | null => {
+  const c = compDe(compId);
+  return c ? aplicarDirecaoComp(c.t) : null;
+};
+const aplicarDirecaoComp = (t: Transformacao): Vec3 => {
+  // +Y do componente no mundo
+  const [x, y, z, w] = t.rot;
+  return [2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x)];
+};
+
+/** Lado de entrada: voltado para a câmera (ou o oposto, se escolhido no painel). */
+function ladoDeEntrada(f: Furo): 1 | -1 {
+  const d = viewport.eixosCamera().dir;
+  const l = ladoParaCamera(f, [-d[0], -d[1], -d[2]]);
+  return estadoBib.oposto ? ((l * -1) as 1 | -1) : l;
+}
+
+function empilhadoDe(f: Furo, u: Vec3): number {
+  return doc ? empilhadoNoLado(doc.posicionamentos, f, u, direcaoYDe, alturaEmpilhavel) : 0;
+}
+
+/** Comprimento sugerido pela espessura do furo (com o que já está empilhado e a porca do outro lado). */
+function sugestaoBib(f: Furo): number | undefined {
+  const fam = estadoBib.familia ? familiaPorId(estadoBib.familia) : undefined;
+  if (!fam?.comprimento) return undefined;
+  const tam = estadoBib.tam ?? fam.tamanhos[0].tam;
+  const lado = ladoDeEntrada(f);
+  const u: Vec3 = [f.eixo[0] * lado, f.eixo[1] * lado, f.eixo[2] * lado];
+  const oposto: Vec3 = [-u[0], -u[1], -u[2]];
+  const nutM = familiaPorId("iso4032")!.tamanhos.find((t) => t.tam === tam)?.cotas.m ?? 0;
+  const arruelaH = familiaPorId("iso7089")!.tamanhos.find((t) => t.tam === tam)?.cotas.h ?? 0;
+  const jaOposto = empilhadoDe(f, oposto);
+  const min = comprimentoMinimo({
+    espessura: f.comprimento, empilhado: empilhadoDe(f, u), comPorca: estadoBib.comPorca, alturaPorca: jaOposto > 0 ? jaOposto : nutM + arruelaH, d: diametroNominal(tam),
+    passo: estadoBib.passo ?? passoGrosso(tam),
+  });
+  return proximoDaLista(comprimentosDoPadrao(fam, tam, LISTA_COMPRIMENTOS), min);
+}
+
+function recalcularSugestaoBib() {
+  if (furoBib) furoBib = { ...furoBib, texto: textoDoFuro(furoBib.furo), sugerido: sugestaoBib(furoBib.furo) };
+}
+
+function textoDoFuro(f: Furo): string {
+  const fam = estadoBib.familia ? familiaPorId(estadoBib.familia) : undefined;
+  const base = `Furo Ø${(f.raio * 2).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} mm · espessura atravessada ${f.comprimento.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} mm.`;
+  if (!fam) return base;
+  const tam = estadoBib.tam ?? fam.tamanhos[0].tam;
+  if (!/^M/.test(tam)) return base;
+  const c = compatibilidadeDoFuro(diametroNominal(tam), estadoBib.passo ?? passoGrosso(tam), f.raio * 2);
+  const nota = { folga: `Passa com folga em ${tam}.`, roscado: `Diâmetro de furo de rosca para ${tam}.`, apertado: `⚠ Apertado para ${tam} (menor que ${tam}, maior que o furo de rosca).`, pequeno: `⚠ Pequeno demais para ${tam}.`, grande: `⚠ Folga grande demais para ${tam}.` }[c];
+  return `${base} ${nota}`;
+}
+
+/** Toque (ou soltar do arraste) num ponto: mostra os dados do furo e, se armado, encaixa o item. */
+async function tocarFuroBiblioteca(x: number, y: number, encaixar: boolean) {
+  if (!doc || comando?.tipo !== "biblioteca") return;
+  const furo = furoSob(x, y);
+  if (!furo) {
+    avisar(doc.componentes.length ? "Toque a parede cilíndrica de um furo (não a borda nem a face plana)." : "A montagem ainda não tem peças: insira uma peça com furos primeiro.");
+    return;
+  }
+  furoBib = { furo, texto: textoDoFuro(furo), sugerido: sugestaoBib(furo) };
+  renderizarBiblioteca();
+  if (!encaixar) return;
+  await encaixarNoFuro(furo);
+  if (comando?.tipo === "biblioteca") comando.armado = false;
+  atualizarStatus();
+}
+
+/** Gera (ou reaproveita do cofre) a peça e encaixa no furo; pergunta se repete nos furos iguais. */
+async function encaixarNoFuro(furo: Furo) {
+  if (!doc) return;
+  if (estadoKernel !== "pronto") return avisar("O kernel ainda está carregando. Tente em instantes.");
+  const sug = sugestaoBib(furo);
+  const item = itemEscolhido(estadoBib, sug);
+  if (typeof item === "string") return avisar(item);
+  const nome = nomePadrao(item.familia, item.tam, item.comprimento, item.passo);
+  const pedido = { familia: item.familia.id, tam: item.tam, comprimento: item.comprimento, passo: item.passo, roscaReal: estadoBib.roscaReal };
+  avisar(`Preparando ${nome}…`);
+  let alvos = [furo];
+  const iguais = furosIguais(furosDaCena(), furo);
+  if (iguais.length) {
+    const r = await perguntar("Repetir em todos os furos iguais?", `Há mais ${iguais.length} furo(s) iguais a este (Ø${(furo.raio * 2).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} mm, espessura ${furo.comprimento.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} mm, no padrão da peça).\nRepetir ${nome} em todos eles?`, [["so", "Só neste furo"], ["todos", `Em todos (${iguais.length + 1} furos)`, true]]);
+    if (r === null) return;
+    if (r === "todos") alvos = [furo, ...iguais];
+  }
+  let peca: Awaited<ReturnType<typeof pecaDaBiblioteca>>;
+  try {
+    peca = await pecaDaBiblioteca(pedido);
+  } catch (e) {
+    return avisar(`Não foi possível criar ${nome}: ${(e as Error).message}`);
+  }
+  const planas = planasDaCena();
+  const lado0 = ladoDeEntrada(furo);
+  const u0: Vec3 = [furo.eixo[0] * lado0, furo.eixo[1] * lado0, furo.eixo[2] * lado0];
+  const pecaId = embutirPeca(doc, peca.doc, { arquivo: peca.arquivo || undefined, versao: peca.arquivo ? peca.versao : undefined, nome: peca.nome });
+  const novos: string[] = [];
+  for (const f of alvos) {
+    // mesmo sentido do primeiro (furos em peças viradas): o lado cujo eixo aponta como u0
+    const lado: 1 | -1 = f.eixo[0] * u0[0] + f.eixo[1] * u0[1] + f.eixo[2] * u0[2] >= 0 ? 1 : -1;
+    const entrada = entradaDoFuro(f, lado, planas);
+    const desloc = empilhadoDe(f, entrada.u);
+    const c = inserirComponente(doc, pecaId, poseDoFixador(entrada, desloc));
+    doc.posicionamentos.push(...posicionamentosDoEncaixe(c.id, f, entrada, desloc));
+    novos.push(c.id);
+  }
+  await atualizarCena();
+  for (const id of novos) resolver({ preferido: id });
+  selComps = novos;
+  montarCena();
+  registrarPasso();
+  salvarAutosave();
+  renderizarArvore();
+  recalcularSugestaoBib();
+  renderizarBiblioteca();
+  avisar(`${nome} encaixado${alvos.length > 1 ? ` em ${alvos.length} furos` : ""} (concêntrico + apoiado)${peca.reaproveitada ? " · peça reaproveitada do cofre (CAD › Biblioteca)" : " · peça criada e guardada no cofre (CAD › Biblioteca)"}.`, 7000);
+}
+
+/** Insere o item sem furo (fica ao lado do modelo, para posicionar depois). */
+async function inserirBibliotecaSolto() {
+  if (!doc) return;
+  const item = itemEscolhido(estadoBib, furoBib?.sugerido);
+  if (typeof item === "string") return avisar(item);
+  const nome = nomePadrao(item.familia, item.tam, item.comprimento, item.passo);
+  avisar(`Preparando ${nome}…`);
+  try {
+    const peca = await pecaDaBiblioteca({ familia: item.familia.id, tam: item.tam, comprimento: item.comprimento, passo: item.passo, roscaReal: estadoBib.roscaReal });
+    await inserirDoc(peca.doc, { arquivo: peca.arquivo || undefined, versao: peca.arquivo ? peca.versao : undefined, nome: peca.nome });
+    pendenteColocar = null;
+    avisar(`${nome} inserido ao lado do modelo: use Posicionar ou arraste até um furo.`);
+  } catch (e) {
+    avisar(`Não foi possível criar ${nome}: ${(e as Error).message}`);
+  }
 }
 
 /** Montagem STEP (de qualquer CAD) → montagem WJCAD: uma peça por corpo, componentes fixos no lugar. */
@@ -2354,14 +2595,29 @@ function renderizarMedir() {
 
 // ---------- lista de materiais ----------
 
-async function linhasLista(): Promise<{ item: number; codigo: string; descricao: string; material: string; qtd: number; nome: string }[]> {
-  const out: { item: number; codigo: string; descricao: string; material: string; qtd: number; nome: string }[] = [];
+interface LinhaLista { item: number; codigo: string; descricao: string; material: string; qtd: number; nome: string; norma: string; massa: string }
+async function linhasLista(): Promise<LinhaLista[]> {
+  const out: LinhaLista[] = [];
   let item = 0;
-  for (const { peca, qtd } of quantidades(doc!)) {
+  const itens = quantidades(doc!);
+  // massa de cada peça (g): volume do kernel × densidade do material (peças da biblioteca e as demais)
+  let massas: Awaited<ReturnType<typeof kernel.massaPecas>> = {};
+  try {
+    if (estadoKernel === "pronto") massas = await comSolidos(() => kernel.massaPecas(itens.filter((x) => malhas.has(chaveDe(x.peca))).map((x) => chaveDe(x.peca))));
+  } catch {
+    massas = {};
+  }
+  for (const { peca, qtd } of itens) {
     let cartao: Record<string, string> = {};
     if (peca.arquivo) cartao = (await lerDoCofre(peca.arquivo).catch(() => null))?.arquivo.cartao ?? {};
-    const mat = peca.doc.material ? MATERIAIS[peca.doc.material]?.nome : undefined;
-    out.push({ item: ++item, nome: peca.nome, codigo: cartao.codigo ?? "", descricao: cartao.descricao || peca.nome, material: mat ?? cartao.material ?? "", qtd });
+    const mat = peca.doc.material ? MATERIAIS[peca.doc.material] : undefined;
+    const pr = peca.doc.propriedades ?? {};
+    const m = massas[chaveDe(peca)];
+    const g = m && mat ? (m.volume * mat.densidade) / 1000 : null;
+    out.push({
+      item: ++item, nome: peca.nome, codigo: cartao.codigo ?? "", descricao: cartao.descricao || pr.descricao || peca.nome, material: mat?.nome ?? cartao.material ?? "", qtd,
+      norma: pr.norma ?? "", massa: g === null ? "" : g.toLocaleString("pt-BR", { maximumFractionDigits: g < 10 ? 2 : 1 }),
+    });
   }
   return out;
 }
@@ -2370,12 +2626,12 @@ async function mostrarListaMateriais() {
   if (!doc) return;
   const linhas = await linhasLista();
   abrirJanela("Lista de materiais (nível superior)", linhas.length
-    ? `<table class="tabela"><thead><tr><th>ITEM</th><th>CÓDIGO</th><th>DESCRIÇÃO</th><th>MATERIAL</th><th>QTD</th></tr></thead><tbody>${linhas.map((l) => `<tr><td>${l.item}</td><td>${escapar(l.codigo)}</td><td>${escapar(l.descricao)}</td><td>${escapar(l.material)}</td><td>${l.qtd}</td></tr>`).join("")}</tbody></table>
+    ? `<table class="tabela"><thead><tr><th>ITEM</th><th>CÓDIGO</th><th>DESCRIÇÃO</th><th>NORMA</th><th>MATERIAL</th><th>MASSA (g)</th><th>QTD</th></tr></thead><tbody>${linhas.map((l) => `<tr><td>${l.item}</td><td>${escapar(l.codigo)}</td><td>${escapar(l.descricao)}</td><td>${escapar(l.norma)}</td><td>${escapar(l.material)}</td><td>${escapar(l.massa)}</td><td>${l.qtd}</td></tr>`).join("")}</tbody></table>
       <p class="dica">Código e descrição vêm do cartão de dados do cofre (WJPDM). Na Fase de Desenho a mesma lista vira a tabela com balões.</p>
       <div class="pc-botoes"><button data-b="csv" class="destaque">Exportar CSV</button></div>`
     : `<p>A montagem ainda não tem componentes.</p>`, true);
   $("janela-corpo").querySelector<HTMLElement>('[data-b="csv"]')?.addEventListener("click", () => {
-    const csv = ["ITEM;CÓDIGO;DESCRIÇÃO;MATERIAL;QTD", ...linhas.map((l) => [l.item, l.codigo, l.descricao, l.material, l.qtd].map((x) => `"${String(x).replace(/"/g, '""')}"`).join(";"))].join("\r\n");
+    const csv = ["ITEM;CÓDIGO;DESCRIÇÃO;NORMA;MATERIAL;MASSA (g);QTD", ...linhas.map((l) => [l.item, l.codigo, l.descricao, l.norma, l.material, l.massa, l.qtd].map((x) => `"${String(x).replace(/"/g, '""')}"`).join(";"))].join("\r\n");
     baixar(new Blob(["﻿" + csv], { type: "text/csv" }), `${doc!.nome} - lista de materiais.csv`);
   });
 }

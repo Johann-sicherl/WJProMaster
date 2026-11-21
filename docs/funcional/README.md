@@ -20,6 +20,7 @@ Arquivos:
 | Sheet Metal (chapa metálica) | [chapa.md](chapa.md) |
 | Avaliar (medições, propriedades de massa, análises) | [avaliar.md](avaliar.md) |
 | Montagem (componentes, posicionamentos, explodida, interferência, lista de materiais) | [montagem.md](montagem.md) |
+| Biblioteca de componentes de fixação (parafusos, porcas, arruelas, rebites, pinos; encaixe em furos) | [biblioteca.md](biblioteca.md) |
 | Desenho (folhas, vistas, cotas, anotações, tabelas, PDF/DXF) | [desenho.md](desenho.md) |
 | Comparação com o guia introdutório do CAD de referência (lacunas priorizadas) | [referencia-introducao.md](referencia-introducao.md) |
 
