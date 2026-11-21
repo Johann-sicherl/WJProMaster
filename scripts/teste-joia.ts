@@ -7,7 +7,10 @@ import {
   agruparLacos, area, contorno, diametroInterno, diametroPorQuilates, docNovo, ficha, intervalosLivres, LAPIDACOES, montar, poligonoFacetas, quilates, raioNaDirecao,
   tamanhos, uExterno, uInterno, validarDoc, verificar, zonasOcupadas, type DocJoia, type Lapidacao, type P2,
 } from "../src/joia/regras";
-import { construir, medidas, paraFabricar } from "../src/joia/geometria";
+import { booleana, capsulaRev, construir, cortador, fazerAro, medidas, paraFabricar } from "../src/joia/geometria";
+import { gemaLivreNova, noMundo, type GemaLivre } from "../src/joia/gemasLivres";
+import { anelFolhasOval } from "../src/joia/modelos";
+import { superficie, verificar as verificarJoia, quilates as qt } from "../src/joia/regras";
 import { malhaGema } from "../src/joia/malhaGema";
 import { aplicarToque, codificar, decodificar, dentroDoRaio, esculturaNova, icosfera, malhaLocal, malhasNoMundo, normais, subdividir, vizinhanca, volumeMalha } from "../src/joia/escultura";
 import { carregarManifold, stlBinario, unir } from "../src/joia/uniao";
@@ -97,6 +100,60 @@ const ornTeste = (): Ornamento => {
   ok(r.pontos.length === 2 && r.pontos.every((q) => q.tipo === "inglesa"), "ponto espelhado vira duas pedrinhas");
   const m = montar({ ...docNovo(), cabeca: { ...docNovo().cabeca, ativo: false }, ornamentos: [o] });
   ok(m.gemasOrn.length === 2 && ficha({ ...docNovo(), ornamentos: [o] }, m, 100).gemas.some((g) => g.descricao.startsWith("Rubi")), "pedrinhas dos ornamentos na ficha");
+}
+
+// gemas livres (puro)
+{
+  const R = diametroInterno("BR", 16) / 2;
+  const base: DocJoia = { ...docNovo(), cabeca: { ...docNovo().cabeca, ativo: false }, aro: { ...docNovo().aro, perfil: "reto", largura: 2.4, espessura: 1.7, larguraBase: 2.4, espessuraBase: 1.7 } };
+  // redonda 2 mm de lado (θ = 90°), seguindo a superfície: eixo da gema = +X (normal), comprimento = tangente (−Y)
+  const red: GemaLivre = { ...gemaLivreNova("r", 1, "redonda"), gema: { lapidacao: "redonda", material: "diamante", comprimento: 2, largura: 2 }, th: 90, altura: 0.4, garras: 4, diamGarra: 0.6 };
+  const m = montar({ ...base, gemasLivres: [red] });
+  const l = m.livres[0];
+  ok(m.livres.length === 1 && perto(l.gema.ref.p[0], R + 1.7 + 0.4, 1e-9) && perto(l.gema.ref.p[1], 0, 1e-9), "gema livre: cintura em R + t + altura no lado do aro");
+  // garra a 45°: topo = p + rc·cos45·T + yTopo·n − rc·sin45·Z (à mão: T = (0,−1,0), n = (1,0,0), Z = (0,0,1))
+  const pr = { coroa: 0.15 * 2, cintura: 0.03 * 2 }, rc = 1 + 0.6 * 0.25, yTopo = pr.cintura + pr.coroa * 0.55;
+  const esperado = [R + 1.7 + 0.4 + yTopo, -rc * Math.SQRT1_2, -rc * Math.SQRT1_2];
+  ok(l.hastes.some((h) => Math.hypot(h.topo[0] - esperado[0], h.topo[1] - esperado[1], h.topo[2] - esperado[2]) < 1e-9), "gema livre: topo da garra a 45° conferido à mão");
+  ok(l.hastes.length === 8 && l.folga > 0 && l.folga < 0.3 && l.hastes.filter((h) => perto(h.r, 0.3 * 1.04, 1e-9)).every((h) => perto(Math.hypot(h.base[0], h.base[1]), R + 1.7 - 0.25, 1e-6)), "gema livre: 4 garras + 4 hastes até o aro (embutidas 0,25 mm)");
+  // navete no topo, de pé: garra em V nas duas pontas (ápice além da ponta, ao longo do comprimento = X)
+  const nav: GemaLivre = { ...gemaLivreNova("n", 2, "navete"), th: 0, seguir: false, altura: 0.5, diamGarra: 0.6 };
+  const mn = montar({ ...base, gemasLivres: [nav] }).livres[0];
+  const pN = mn.gema.ref.p, prN = { coroa: 0.14, cintura: 0.03 };
+  const apice = [1 + 0.6 * 0.45, prN.cintura + prN.coroa * 0.55 - 0.6 * 0.15];
+  ok([1, -1].every((sx) => mn.hastes.some((h) => Math.hypot(h.base[0] - pN[0] - sx * apice[0], h.base[1] - pN[1] - apice[1], h.base[2]) < 1e-9)), "navete: garra em V nas duas pontas (ápice conferido)");
+  ok(mn.hastes.length === 8 && mn.hastes.every((h) => h.r >= 0.3 - 1e-9), "navete: 2 V × (2 braços + descida + apoio), nenhuma haste abaixo do Ø pedido");
+  const nav90 = montar({ ...base, gemasLivres: [{ ...nav, giro: 90 }] }).livres[0];
+  ok(perto(noMundo(nav90.gema.ref, [1, 0, 0])[2] - nav90.gema.ref.p[2], -1, 1e-9), "giro 90°: eixo longo ao longo do dedo");
+  const inc = montar({ ...base, gemasLivres: [{ ...nav, inclinacao: 30 }] }).livres[0];
+  ok(perto(noMundo(inc.gema.ref, [1, 0, 0])[1] - inc.gema.ref.p[1], -0.5, 1e-9), "inclinação 30°: a ponta da frente desce (sen 30°)");
+  // simetria
+  const fora: GemaLivre = { ...nav, th: 20, z: 0.5, giro: 30 };
+  const cop = montar({ ...base, gemasLivres: [{ ...fora, simetria: "xy" }] }).livres;
+  const ps = cop.map((x) => x.gema.ref.p);
+  ok(cop.length === 4 && [[1, 1], [-1, 1], [1, -1], [-1, -1]].every(([sx, sz]) => ps.some((q) => perto(q[0], sx * ps[0][0], 1e-9) && perto(q[2], sz * ps[0][2], 1e-9) && perto(q[1], ps[0][1], 1e-9))), "simetria dois eixos: 4 cópias espelhadas");
+  const eixo = (x: (typeof cop)[0]) => { const e = noMundo(x.gema.ref, [1, 0, 0]); return [e[0] - x.gema.ref.p[0], e[2] - x.gema.ref.p[2]]; };
+  ok(perto(eixo(cop[1])[0], -eixo(cop[0])[0], 1e-9) && perto(eixo(cop[1])[1], eixo(cop[0])[1], 1e-9), "simetria: a cópia esquerda↔direita espelha o eixo longo");
+  ok(montar({ ...base, gemasLivres: [{ ...nav, simetria: "x" }] }).livres.length === 1, "simetria: gema sobre o plano de espelho não duplica");
+  const dLivres = { ...base, gemasLivres: [{ ...fora, simetria: "xy" as const }] };
+  const fL = ficha(dLivres, montar(dLivres), 100);
+  ok(fL.gemas.length === 1 && fL.gemas[0].quantidade === 4 && perto(fL.ctTotal, 4 * qt(nav.gema), 1e-12), "ficha: as cópias contam (4 navetes, ct somado)");
+  // colisões e avisos
+  ok(montar({ ...base, gemasLivres: [nav, { ...nav, id: "n2", nome: "Gema 3", z: 0.3 }] }).avisos.some((x) => x.includes("colide com Gema 3")), "colisão gema × gema gera aviso");
+  ok(montar({ ...docNovo(), gemasLivres: [{ ...nav, refAltura: "central", altura: 0 }] }).avisos.some((x) => x.includes("colide com a gema central")), "colisão com a gema central gera aviso");
+  const garraC = montar(docNovo()).garras[0].topo;
+  ok(montar({ ...docNovo(), gemasLivres: [{ ...nav, refAltura: "central", th: Math.atan2(garraC[0], garraC[1]) * 180 / Math.PI, z: garraC[2] + 0.55, altura: 0.6 }] }).avisos.some((x) => x.includes("garra da gema central")), "colisão gema × garra da central gera aviso");
+  ok(montar({ ...base, gemasLivres: [{ ...nav, altura: 2.5 }] }).avisos.some((x) => x.includes("sem apoio")), "garra sem apoio a até 1,5 mm gera aviso");
+  ok(montar({ ...base, gemasLivres: [{ ...nav, altura: 6 }] }).avisos.some((x) => x.includes("fora do metal")), "gema longe do metal gera aviso");
+  ok(montar({ ...base, gemasLivres: [{ ...nav, altura: -1 }] }).avisos.some((x) => x.includes("dentro do aro")), "gema enterrada no aro gera aviso");
+  ok(verificarJoia({ ...base, gemasLivres: [{ ...nav, diamGarra: 0.45 }] }, montar(base), 0).some((x) => x.includes("mínimo recomendado")), "garra da gema livre abaixo do mínimo da liga gera aviso");
+  // .wjgd antigo (sem o campo) abre igual
+  const antigo = JSON.parse(JSON.stringify(docNovo()));
+  delete antigo.gemasLivres; delete antigo.gemasLivresAtivo; delete antigo.aro.afastamento;
+  const lido = validarDoc(antigo);
+  ok(Array.isArray(lido.gemasLivres) && lido.gemasLivres.length === 0 && lido.gemasLivresAtivo && lido.aro.afastamento === 0 && JSON.stringify(montar(lido).avisos) === JSON.stringify(montar(docNovo()).avisos), ".wjgd antigo abre igual (lista vazia)");
+  const ida = validarDoc(JSON.parse(JSON.stringify({ ...base, gemasLivres: [fora, { ...red, garras: 99, simetria: "zz" }] })));
+  ok(ida.gemasLivres.length === 2 && ida.gemasLivres[0].giro === 30 && ida.gemasLivres[1].garras === 8 && ida.gemasLivres[1].simetria === "nenhuma", "gema livre ida e volta pelo arquivo (valores fora da faixa limitados)");
 }
 
 // escultura (puro)
@@ -287,6 +344,66 @@ tempo("anel vintage com filigrana", () => {
   ok(u.volume > metal && u.volume < metal + somaEsc && !u.avisos.length, `união: metal ${metal.toFixed(1)} + folhas ${somaEsc.toFixed(1)} → ${u.volume.toFixed(1)} mm³ (sobreposição descontada) em ${(performance.now() - t0).toFixed(0)} ms`);
   const stl = stlBinario(u.malha, 1.02);
   ok(stl.byteLength === 84 + 50 * (u.malha.tri.length / 3), `STL da união numa peça só (${stl.byteLength} bytes)`);
+}
+
+// gemas livres: assento no mesmo corte em lote, volume com e sem assento
+tempo("gema livre: volume com e sem assento", () => {
+  const b = docNovo();
+  const d: DocJoia = { ...b, cabeca: { ...b.cabeca, ativo: false }, aro: { ...b.aro, perfil: "reto", largura: 2.4, espessura: 1.7, larguraBase: 2.4, espessuraBase: 1.7 }, gemasLivres: [{ ...gemaLivreNova("n", 1, "navete"), gema: { lapidacao: "navete", material: "diamante", comprimento: 4, largura: 2 }, th: 0, altura: -0.2, seguir: true, diamGarra: 0.6 }] };
+  const r = construir(d);
+  const l = r.montagem.livres[0];
+  const sem = booleana("unir", fazerAro(d, r.montagem.R), l.hastes.map(capsulaRev));
+  const assento = cortador(l.gema, 0, 16);
+  const vSem = medidas(sem).volume, vCom = medidas(r.forma).volume, vInter = medidas(booleana("comum", sem, [assento])).volume;
+  ok(vInter > 0.5 && perto(vSem - vCom, vInter, 0.01 * vSem), `assento da gema livre: ${vSem.toFixed(2)} − ${vCom.toFixed(2)} = ${(vSem - vCom).toFixed(2)} ≈ interseção ${vInter.toFixed(2)} mm³`);
+});
+
+// modelo "Anel folhas com oval" (ANEL AMOR)
+{
+  const d = validarDoc(JSON.parse(JSON.stringify(anelFolhasOval())));
+  const m = montar(d);
+  const nGemas = (m.cabeca ? 1 : 0) + m.livres.length + m.pave.length + m.gemasOrn.length;
+  const f0 = ficha(d, m, 0);
+  const ctSoma = (m.cabeca ? qt(m.cabeca.gema) : 0) + m.livres.reduce((s2, x) => s2 + qt(x.gema.gema), 0);
+  ok(perto(2 * m.R, 15.92, 0.02), `modelo: Ø interno ${(2 * m.R).toFixed(3)} mm (BR 10)`);
+  ok(nGemas === 9 && f0.gemas.reduce((s2, g) => s2 + g.quantidade, 0) === 9, `modelo: 9 gemas (${f0.gemas.map((g) => `${g.quantidade}× ${g.descricao}`).join("; ")})`);
+  ok(perto(f0.ctTotal, ctSoma, 1e-9) && f0.ctTotal > 1.3 && f0.ctTotal < 1.5, `modelo: ct total ${f0.ctTotal.toFixed(3)} coerente com a soma das gemas`);
+  ok(m.livres.every((x) => x.hastes.every((h) => 2 * h.r >= 0.6 - 1e-9)) && m.garras.every((h) => 2 * h.r >= 0.6) && m.orn.fios.every((f) => f.raios.every((r) => 2 * r >= 0.6 - 1e-9)), "modelo: garras e fios estruturais ≥ 0,6 mm");
+  const av = verificar(d, m, 0);
+  ok(av.length === 0, `modelo: nenhum aviso (${av.join(" | ")})`);
+  const t0 = performance.now();
+  const r = construir(d);
+  const ms = performance.now() - t0;
+  let solidos = 0;
+  const ex = new (OC as any).TopExp_Explorer(r.forma.wrapped, (OC as any).TopAbs_ShapeEnum.TopAbs_SOLID, (OC as any).TopAbs_ShapeEnum.TopAbs_SHAPE);
+  for (; ex.More(); ex.Next()) solidos++;
+  const vMetal = medidas(r.forma).volume;
+  ok(solidos === 1 && !r.avisos.length, `modelo: sólido único (${solidos}) sem avisos do kernel ${r.avisos.join(" ")}`);
+  const w = await carregarManifold();
+  const esc = malhasNoMundo(d.esculturas, m.R, (th) => superficie(d.aro, th, 0));
+  const u = unir(w, r.forma, esc);
+  const mesh = new w.Mesh({ numProp: 3, vertProperties: u.malha.pos, triVerts: u.malha.tri });
+  mesh.merge();
+  const mf = new w.Manifold(mesh);
+  const comps = mf.decompose().length;
+  const peso = (u.volume / 1000) * 15.5;
+  ok(comps === 1 && !u.avisos.length && peso >= 2.5 && peso <= 3.5, `modelo: peça única fechada com as folhinhas (${comps} componente), metal ${vMetal.toFixed(1)} → ${u.volume.toFixed(1)} mm³ = ${peso.toFixed(2)} g em ouro 750 (faixa 2,5–3,5 g)`);
+  console.log(`   tempo de reconstrução do modelo (Node): ${(ms / 1000).toFixed(1)} s`);
+  // STL exportado e reaberto: volume igual (± 1 %)
+  const volStl = (buf: ArrayBuffer) => {
+    const dv = new DataView(buf), n = dv.getUint32(80, true);
+    let v = 0;
+    for (let i = 0; i < n; i++) {
+      const o = 84 + 50 * i + 12, p = (k: number) => dv.getFloat32(o + 4 * k, true);
+      v += p(0) * (p(4) * p(8) - p(5) * p(7)) - p(1) * (p(3) * p(8) - p(5) * p(6)) + p(2) * (p(3) * p(7) - p(4) * p(6));
+    }
+    return v / 6;
+  };
+  const vU = volStl(stlBinario(u.malha));
+  ok(perto(vU, u.volume, 0.01 * u.volume), `STL da joia com as folhinhas reaberto: ${vU.toFixed(1)} ≈ ${u.volume.toFixed(1)} mm³`);
+  const vO = volStl(await r.forma.blobSTL({ tolerance: 0.005, angularTolerance: 3, binary: true } as never).arrayBuffer());
+  ok(perto(vO, vMetal, 0.01 * vMetal), `STL do metal paramétrico reaberto: ${vO.toFixed(1)} ≈ ${vMetal.toFixed(1)} mm³ (OpenCascade)`);
+  mf.delete();
 }
 
 if (falhas) { console.error(`${falhas} falha(s)`); process.exit(1); }

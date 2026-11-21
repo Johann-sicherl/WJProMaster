@@ -377,6 +377,9 @@
   simetria, pontos = bolinha ou pedrinha em inglesa), ponta da garra (bolinha/alongada/dupla) e aro dividido.
   08/11/2026 (J8, pedido do Johann): **escultura livre em malha** unida à joia (pincéis com a caneta, dedo
   navega; peso e STL pela união de malhas `manifold-3d`).
+  21/11/2026 (J9a, pedido do Johann: modelar a partir de uma foto o anel "ANEL AMOR"): **gemas livres** (qualquer
+  lapidação num ponto livre, girada/inclinada, garras próprias com V nas pontas da navete ou inglesa, simetria por
+  gema, posicionar tocando na vista) e o modelo **"Anel folhas com oval"** (BR 10, 9 gemas, ~3 g em ouro 750).
 - **WJSlicer3D** (08/11/2026): face para **orçar impressão 3D de STL**: tempo de impressão e material
   (g, m, custo), **sem G-code e sem envio para a impressora**. **15/11/2026 (Johann): só duas impressoras,
   Bambu Lab P1S e Anycubic Kobra 3** (bico 0,4, perfis de fábrica de camada, velocidades, acelerações e fluxo

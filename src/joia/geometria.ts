@@ -5,9 +5,10 @@
 
 import { assembleWire, makeCompound, cast, draw, drawCircle, drawPointsInterpolation, genericSweep, getOC, makeBSplineApproximation, makeCircle, makeCylinder, makeSphere, measureArea, measureShapeVolumeProperties, Plane, type Drawing, type Shape3D } from "replicad";
 import {
-  angulosFrisos, contorno, intervalosLivres, montar, poligonoFacetas, pontosPerfil, porLoft, proporcoes, secao, superficie, superficieInterna, torcaoEfetiva, zonasOcupadas,
+  angulosFrisos, contorno, intervalosLivres, montar, poligonoFacetas, pontosPerfil, porLoft, proporcoes, ramo, secao, superficie, superficieInterna, torcaoEfetiva, zonasOcupadas,
   type DocJoia, type GemaPosta, type GrupoTexto, type Haste, type Montagem, type P2, type Perfil, type V3,
 } from "./regras";
+import { eixoAngulo } from "./gemasLivres";
 
 type Sk = {
   extrude(d: number): Shape3D;
@@ -130,22 +131,27 @@ function aroAfunilado(d: DocJoia, R: number): Shape3D {
 
 const CURVAS = new Set(["oval", "almofada", "gota", "navete", "coracao"]);
 /** Contorno da cintura: círculo, spline (lapidações curvas: poucas faces) ou polígono (facetadas). */
-function contornoGema(g: GemaPosta["gema"], k: number): Drawing {
-  if (g.lapidacao === "redonda") return drawCircle((g.largura / 2) * k);
-  const pts = contorno(g.lapidacao, g.comprimento, g.largura, 32).map(([x, y]) => [x * k, y * k] as P2);
-  if (!CURVAS.has(g.lapidacao)) return poligono(pts);
+function contornoGema(g: GemaPosta["gema"], k: number, lados = 0): Drawing {
+  if (g.lapidacao === "redonda" && !lados) return drawCircle((g.largura / 2) * k);
+  const pts = contorno(g.lapidacao, g.comprimento, g.largura, lados || 32).map(([x, y]) => [x * k, y * k] as P2);
+  if (lados || !CURVAS.has(g.lapidacao)) return poligono(pts);
   return drawPointsInterpolation([...pts, pts[0]], { tolerance: 1e-3 * k * g.largura, degMax: 3 }, { closeShape: true });
 }
 
 const noLugar = (s: Shape3D, g: GemaPosta) => {
   let r = s;
+  if (g.ref.m) {
+    const { eixo, graus } = eixoAngulo(g.ref.m);
+    if (graus > 1e-9) r = r.rotate(graus, [0, 0, 0], eixo);
+    return r.translate(g.ref.p);
+  }
   if (g.ref.ry) r = r.rotate(g.ref.ry / RAD, [0, 0, 0], [0, 1, 0]);
   if (g.ref.rz) r = r.rotate(g.ref.rz / RAD, [0, 0, 0], [0, 0, 1]);
   return r.translate(g.ref.p);
 };
 
 /** Cortador da gema: furo de luz, pavilhão, cintura e passagem (reta ou acompanhando a coroa). */
-export function cortador(g: GemaPosta, furo: number): Shape3D {
+export function cortador(g: GemaPosta, furo: number, lados = 0): Shape3D {
   const pr = proporcoes(g.gema);
   const sF = 0.5, cul = Math.max(pr.culaca, 0.2);
   const yF = (-pr.pavilhao * (1 - sF)) / (1 - cul);
@@ -154,7 +160,7 @@ export function cortador(g: GemaPosta, furo: number): Shape3D {
   const secs: [number, number][] = furo > 0.05 ? [[sF, -pr.pavilhao - furo], [sF, yF], [1, 0]] : [[cul, -pr.pavilhao], [1, 0]];
   if (g.passagem === "reta") secs.push([1, topo + 1.5]);
   else secs.push([1, pr.cintura], [pr.mesa, topo], [pr.mesa, topo + 0.5]);
-  const sk = secs.map(([k, y]) => naPlano(contornoGema(g.gema, k), [0, y, 0], [1, 0, 0], [0, 1, 0]));
+  const sk = secs.map(([k, y]) => naPlano(contornoGema(g.gema, k, lados), [0, y, 0], [1, 0, 0], [0, 1, 0]));
   return noLugar(sk[0].loftWith(sk.slice(1), { ruled: true }), g);
 }
 
@@ -219,6 +225,31 @@ function faixaAngular(a0: number, a1: number, r0: number, r1: number, v0: number
   return naPlano(dr, [0, 0, 0], rHat(a1), tHat(a1)).revolve([0, 0, 1], { origin: [0, 0, 0], angle: (a1 - a0) / RAD });
 }
 
+/**
+ * Lados do assento das gemas livres: polígono de 16 lados (desvio de ~0,02 mm numa gema de 2,5 mm). Planos
+ * cortando cilindros são analíticos no kernel: o corte em lote fica ~2× mais rápido que com spline.
+ */
+const LADOS_LIVRE = 16;
+
+/**
+ * Cápsula num sólido só (revolução do meio perfil: semicírculo, reta, semicírculo). Sem a junta
+ * cilindro + esfera, que deixa arestas exatamente coincidentes (booleana 2–3× mais lenta).
+ */
+export function capsulaRev(h: Haste): Shape3D {
+  const ax: V3 = [h.topo[0] - h.base[0], h.topo[1] - h.base[1], h.topo[2] - h.base[2]];
+  const L = Math.hypot(...ax);
+  if (L < 1e-4) return makeSphere(h.r).translate(h.base);
+  const a = esc(ax, 1 / L);
+  const ref: V3 = Math.abs(a[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const dt = ref[0] * a[0] + ref[1] * a[1] + ref[2] * a[2];
+  const xu: V3 = [ref[0] - dt * a[0], ref[1] - dt * a[1], ref[2] - dt * a[2]];
+  const x = esc(xu, 1 / Math.hypot(...xu));
+  const n: V3 = [x[1] * a[2] - x[2] * a[1], x[2] * a[0] - x[0] * a[2], x[0] * a[1] - x[1] * a[0]];
+  const r = h.r, c = Math.SQRT1_2;
+  const dr = draw([0, -r]).threePointsArcTo([r, 0], [r * c, -r * c]).lineTo([r, L]).threePointsArcTo([0, L + r], [r * c, L + r * c]).close();
+  return naPlano(dr, h.base, x, n).revolve(a, { origin: h.base });
+}
+
 /** Cápsula (cilindro com esfera nas duas pontas): ponta alongada da garra. */
 function capsula(h: Haste): Shape3D {
   return booleana("unir", haste(h), [makeSphere(h.r).translate(h.base)]);
@@ -280,6 +311,50 @@ function divisao(d: DocJoia, R: number): Shape3D {
   return secs[0].loftWith(secs.slice(1), { ruled: false });
 }
 
+/**
+ * Ramos afastados do aro dividido: a faixa do topo (±divisão) sai do aro e entra um loft do meio
+ * perfil de cada lado, deslocado ao longo do dedo pelo afastamento (cos² suave até zero nas pontas).
+ * Os ramos passam 3° da divisão para dentro do aro, com o perfil recuado 0,01 mm (sem faces coincidentes).
+ */
+function ramosAfastados(d: DocJoia, R: number): { corte: Shape3D; ramos: Shape3D[] } {
+  const a = d.aro, div = a.divisao * RAD, T = Math.max(a.espessura, a.espessuraBase), W = Math.max(a.largura, a.larguraBase);
+  const corte = faixaAngular(-div, div, R - 1, R + T + 1, -W, W);
+  const N = 12, ext = div + 3 * RAD, eps = 0.01, k = 7;
+  const ramos = [1, -1].map((sg) => {
+    const secs = Array.from({ length: N + 1 }, (_, i) => {
+      const th = -ext + (2 * ext * i) / N;
+      const h = secao(a, th).w / 2, rm = ramo(a, th);
+      const hw = rm ? rm.hw : 0.02, s = rm ? rm.s : 0;
+      const v0 = hw + eps, v1 = h - 0.05;
+      const fora: P2[] = [], dentro: P2[] = [];
+      for (let j = 0; j <= k; j++) {
+        const v = v0 + ((v1 - v0) * j) / k;
+        const uo = superficie(a, th, v) - eps, ui = superficieInterna(a, th, v) + eps;
+        const um = Math.max(uo, ui + 0.05);
+        fora.push([um, sg * (v + s)]);
+        dentro.push([ui, sg * (v + s)]);
+      }
+      return naPlano(poligono([...fora, ...dentro.reverse()]), esc(rHat(th), R), rHat(th), tHat(th));
+    });
+    return secs[0].loftWith(secs.slice(1), { ruled: false });
+  });
+  return { corte, ramos };
+}
+
+/** Tira as lascas soltas que um corte deixa (< 0,5 mm³); peça solta maior fica, com aviso. */
+export function semLascas(s: Shape3D, avisos: string[]): Shape3D {
+  const oc = getOC() as any;
+  const ex = new oc.TopExp_Explorer(s.wrapped, oc.TopAbs_ShapeEnum.TopAbs_SOLID, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  const solidos: { s: Shape3D; v: number }[] = [];
+  for (; ex.More(); ex.Next()) { const x = cast(ex.Current()) as Shape3D; solidos.push({ s: x, v: vol(x) }); }
+  ex.delete();
+  if (solidos.length <= 1) return s;
+  solidos.sort((a, b) => b.v - a.v);
+  const ficam = solidos.filter((x, i) => i === 0 || x.v >= 0.5);
+  if (ficam.length > 1) avisos.push(`${ficam.length - 1} peça(s) de metal solta(s) (${ficam.slice(1).map((x) => x.v.toFixed(1)).join(", ")} mm³): ligue-as à joia.`);
+  return ficam.length === 1 ? ficam[0].s : (makeCompound(ficam.map((x) => x.s)) as Shape3D);
+}
+
 // ---------------------------------------------------------------------------------------------
 // gravação
 
@@ -321,7 +396,11 @@ export function construir(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 
   const tMax = Math.max(a.espessura, a.espessuraBase) + 20;
   let metal = fazerAro(d, R);
   if (!(vol(metal) > 1)) throw new Error("O aro não pôde ser gerado com essas medidas (perfil, largura e espessura).");
-  if (a.dividido > 0) metal = segura("cortar", metal, [divisao(d, R)], avisos, "Aro dividido");
+  if (a.dividido > 0 && a.afastamento > 0) {
+    const r = ramosAfastados(d, R);
+    metal = segura("cortar", metal, [r.corte], avisos, "Aro dividido");
+    metal = segura("unir", metal, r.ramos, avisos, "Ramos do aro dividido");
+  } else if (a.dividido > 0) metal = segura("cortar", metal, [divisao(d, R)], avisos, "Aro dividido");
 
   // texturas (só no aro, fora das zonas ocupadas)
   if (d.textura.tipo !== "nenhuma" && !rapida) {
@@ -368,20 +447,29 @@ export function construir(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 
   partes.push(...esferas.map(([p, raio]) => makeSphere(raio).translate(p)));
   for (const q of m.orn.pontos) if (q.tipo === "conta") partes.push(makeSphere(q.d / 2).translate(q.p));
   for (const x of m.gemasOrn) partes.push(noLugar(naPlano(drawCircle(x.gema.gema.largura / 2 + 0.4).cut(drawCircle(x.gema.gema.largura * 0.4)), [0, x.yBase, 0], [1, 0, 0], [0, 1, 0]).extrude(x.yTopo - x.yBase), x.gema));
+  // gemas livres: cada haste é uma cápsula (um sólido só); tubo da inglesa
+  const pecasLivres: Shape3D[] = [];
+  for (const l of m.livres) {
+    pecasLivres.push(...l.hastes.map(capsulaRev));
+    if (l.tubo) pecasLivres.push(noLugar(naPlano(contornoGema(l.gema.gema, l.tubo.escala, LADOS_LIVRE).cut(contornoGema(l.gema.gema, l.tubo.escalaFuro, LADOS_LIVRE)), [0, l.tubo.yBase, 0], [1, 0, 0], [0, 1, 0]).extrude(l.tubo.yTopo - l.tubo.yBase), l.gema));
+  }
   partes.push(...m.contas.map((c) => makeSphere(c.r).translate(c.topo)));
   partes.push(...m.trilhos.map((t) => faixaAngular(t.a0, t.a1, t.rBase, t.rTopo, t.v - t.espessura / 2, t.v + t.espessura / 2)));
   // prévia: tudo junto sem booleanas (aparece na hora; a união e os cortes vêm na versão final)
+  partes.push(...pecasLivres);
   if (rapida) return { forma: makeCompound([metal, ...partes]) as Shape3D, montagem: m, avisos };
-  metal = segura("unir", metal, partes, avisos, "Cabeça, contas e trilhos");
+  metal = segura("unir", metal, partes, avisos, "Cabeça, contas, trilhos e garras");
 
   // assentos das gemas e gravação (um corte só)
   const cortes: Shape3D[] = [];
   // furo de luz da cabeça só até o topo do aro: não corta o aro sob a gema
   if (m.cabeca) cortes.push(cortador(m.cabeca, m.cabeca.ref.p[1] - proporcoes(m.cabeca.gema).pavilhao - (R + superficie(a, 0, 0)) - 0.15));
   for (const x of m.gemasOrn) cortes.push(cortador(x.gema, 0.6));
+  // gemas livres no mesmo corte em lote (sem furo de luz: o pavilhão termina na culaça)
+  for (const l of m.livres) cortes.push(cortador(l.gema, 0, LADOS_LIVRE));
   for (const g of m.pave) cortes.push(cortador(g, Math.hypot(g.ref.p[0], g.ref.p[1]) - proporcoes(g.gema).pavilhao - R + 0.5));
   if (d.gravacao.ativo && grupos.length) cortes.push(...gravacao(d, m, grupos));
-  metal = segura("cortar", metal, cortes, avisos, "Assentos e gravação");
+  metal = semLascas(segura("cortar", metal, cortes, avisos, "Assentos e gravação"), avisos);
 
   // ocar: canal interno nas zonas livres
   if (d.fabricacao.ocar) {
