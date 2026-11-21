@@ -403,6 +403,30 @@ export class Viewport {
         }, this.tempoToqueLongo),
       };
     });
+    // escala real ligada: roda e pinça não aproximam; avisam (no máximo a cada 2,5 s)
+    const dedos = new Map<number, { x: number; y: number }>();
+    let distAnt = 0, ultimoAviso = 0;
+    const avisarZoomTravado = () => {
+      const agora = performance.now();
+      if (!this.escalaTravada || agora - ultimoAviso < 2500) return;
+      ultimoAviso = agora;
+      this.aoTentarZoom?.();
+    };
+    el.addEventListener("wheel", avisarZoomTravado, { passive: true });
+    el.addEventListener("pointerdown", (e) => { dedos.set(e.pointerId, { x: e.clientX, y: e.clientY }); distAnt = 0; });
+    el.addEventListener("pointerup", (e) => dedos.delete(e.pointerId));
+    el.addEventListener("pointercancel", (e) => dedos.delete(e.pointerId));
+    el.addEventListener("pointermove", (e) => {
+      if (!dedos.has(e.pointerId)) return;
+      dedos.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (dedos.size !== 2 || !this.escalaTravada) return;
+      const [a, b] = [...dedos.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (distAnt && Math.abs(d - distAnt) > 24) {
+        avisarZoomTravado();
+        distAnt = d;
+      } else if (!distAnt) distAnt = d;
+    });
     el.addEventListener("pointermove", (e) => {
       const ini = inicios.get(e.pointerId);
       if (longo?.id === e.pointerId && ini && Math.hypot(e.clientX - ini.x, e.clientY - ini.y) > 8) pararLongo();
@@ -445,6 +469,7 @@ export class Viewport {
           return;
         }
       }
+      this.pontoTocado = this.pontoNaPeca(e.clientX, e.clientY);
       // segundo toque curto logo depois e perto do primeiro: toque duplo
       const agora = performance.now();
       if (ultimo && agora - ultimo.t < 380 && Math.hypot(e.clientX - ultimo.x, e.clientY - ultimo.y) < (e.pointerType === "touch" ? 28 : 8)) {
@@ -481,16 +506,49 @@ export class Viewport {
   /** Pixels CSS por mm do modelo com a escala travada (escala real 1:1), ou null. */
   private escalaTravada: number | null = null;
   private planoTravado: Referencial | null = null;
+  /** Escala real na vista 3D: o giro continua livre (só o zoom fica travado). */
+  private giroLivreNaEscala = false;
+  /** Zoom de antes de ligar a escala real na vista 3D (volta a ele ao desligar). */
+  private zoomAntesEscala: number | null = null;
+  /** Último ponto da peça tocado (F centraliza nele com a escala real ligada). */
+  private pontoTocado: THREE.Vector3 | null = null;
+  /** Roda ou pinça com a escala real ligada: quem usa o viewport avisa o usuário. */
+  aoTentarZoom: (() => void) | null = null;
+
+  /** Ponto da peça sob o dedo/cursor (null se o toque caiu fora da peça). */
+  private pontoNaPeca(clientX: number, clientY: number): THREE.Vector3 | null {
+    if (!this.grupoPeca.children.length) return null;
+    const hit = this.raio(clientX, clientY).intersectObjects(this.grupoPeca.children, true).find((h) => (h.object as THREE.Mesh).isMesh);
+    return hit ? hit.point.clone() : null;
+  }
 
   /**
    * Escala real 1:1 (esboço): zoom fixo em `pxPorMm` (pixels CSS por milímetro físico da tela,
    * da calibração), sem girar nem aproximar; o dedo/roda do meio só arrastam a vista. null solta.
    */
-  travarEscala(pxPorMm: number | null, plano: Referencial | null = null) {
+  travarEscala(pxPorMm: number | null, plano: Referencial | null = null, giroLivre = false) {
+    const antes = this.escalaTravada;
     this.escalaTravada = pxPorMm && pxPorMm > 0 ? pxPorMm : null;
     this.planoTravado = this.escalaTravada ? plano : null;
+    this.giroLivreNaEscala = !!this.escalaTravada && giroLivre;
     this.aplicarControles();
+    if (!this.escalaTravada) {
+      // desligou a escala real da vista 3D: volta ao zoom de antes
+      if (antes && this.zoomAntesEscala) {
+        const z = this.zoomAntesEscala;
+        if (this.animacao) this.animacao.para[2] = z;
+        else {
+          this.camera.zoom = z;
+          this.camera.updateProjectionMatrix();
+          this.precisaRender = true;
+          this.aoMudarCamera?.();
+          this.ouvintesCamera.forEach((f) => f());
+        }
+      }
+      this.zoomAntesEscala = null;
+    }
     if (this.escalaTravada) {
+      if (!antes && giroLivre) this.zoomAntesEscala = this.animacao ? this.animacao.para[2] : this.camera.zoom;
       if (this.animacao) this.animacao.para[2] = this.escalaTravada;
       else {
         this.camera.zoom = this.escalaTravada;
@@ -518,6 +576,11 @@ export class Viewport {
     return this.escalaTravada;
   }
 
+  /** Pixels CSS por mm do modelo na tela agora (a câmera ortográfica guarda o zoom em px/mm). */
+  get pxPorMmNaTela(): number {
+    return this.camera.zoom;
+  }
+
   /** Vista só 2D (WJCalcEng): sem girar; dedo e botão do meio arrastam, roda e pinça aproximam. */
   private so2D = false;
   definir2D(ativo: boolean) {
@@ -527,7 +590,7 @@ export class Viewport {
 
   private aplicarControles() {
     const travada = !!this.escalaTravada;
-    const semGiro = travada || this.so2D;
+    const semGiro = (travada && !this.giroLivreNaEscala) || this.so2D;
     this.controles.enableZoom = !travada;
     this.controles.enableRotate = !semGiro;
     this.controles.mouseButtons = this.emEsboco
@@ -1552,6 +1615,13 @@ export class Viewport {
       this.raioCena = Math.max(caixa.getSize(new THREE.Vector3()).length() / 2, 5);
     }
     const dir = this.camera.position.clone().sub(this.controles.target).normalize();
+    // escala real na vista 3D: não muda o zoom; centraliza o ponto tocado (ou o centro da peça)
+    if (this.escalaTravada && this.giroLivreNaEscala) {
+      const alvo = this.pontoTocado ?? centro;
+      this.pontoTocado = null;
+      this.moverCamera(alvo.clone(), alvo.clone().add(dir.multiplyScalar(this.distCam)), animado);
+      return;
+    }
     // a esfera da peça cabe no menor lado da tela (em retrato manda a largura)
     const { clientWidth: w, clientHeight: h } = this.container;
     const zoom = Math.min(w || 800, h || 600) / (2 * this.raioCena * 1.15);

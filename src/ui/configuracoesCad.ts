@@ -93,7 +93,7 @@ function itensDaSecao(s: IdSecao, a: AdaptadorConfig): Item[] {
           nota: `De ${PASSO_ZOOM_MIN} % a ${PASSO_ZOOM_MAX} % (padrão ${PASSO_ZOOM_PADRAO} %). O touchpad aproxima na mesma proporção, em passos menores.`,
           valor: () => passoZoom(p()), mudar: (v) => a.mudar({ passoZoom: v }),
         },
-        { tipo: "nota", texto: "Vale na Peça, na Montagem e no Desenho. No esboço em Escala 1:1 o zoom continua travado (tamanho real)." },
+        { tipo: "nota", texto: "Vale na Peça, na Montagem e no Desenho. No esboço em Escala 1:1 (e na vista 3D com a Escala real ligada) o zoom continua travado (tamanho real)." },
       ];
     case "esboco":
       return [
