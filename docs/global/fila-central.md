@@ -11,7 +11,11 @@ S1 — PRONTO PR #131 (Opus, ≈ US$ 17)
 C4 — PRONTO PR #132 (Opus, ≈ US$ 13,9)
 S2 — PRONTO PR #133 (Sonnet, ≈ US$ 4,3)
 S3 — PRONTO PR #134 (Sonnet, ≈ US$ 8,4)
-**FILA PAUSADA (Johann, 15/11): só retomar com "retomar a fila".** Faltam: C1 (Sonnet) → C2 (Sonnet) → C3 (Opus).
+**Fila retomada (Johann, 21/11).** C1 em andamento (Sonnet, sessão session_01MWdNyi9Jh9BAbaJvgZDmF6) → C2 (Sonnet) → C3 (Opus).
+**Fora da fila, em paralelo (Johann, 21/11): J9a (Opus) → J9b (Opus), em sequência** (só WJGoldDiamond, src/joia/; não cruza com C1/C2/C3). J9b só depois de "PRONTO" do J9a; parte do main com o J9a.
+J9a — em andamento (Opus, sessão session_01MWdNyfhFyRPmcDQCE25BD9)
+J9b — aguardando o J9a
+Objetivo do J9: modelar no WJGoldDiamond, a partir de UMA foto, um anel igual ao da foto (ANEL AMOR, descrito no J9a), pronto para resina e fundição; tudo em parâmetros para o Johann ajustar olhando a foto no app (J9b). Inspiração só de FUNÇÃO nos CADs de joalheria; nenhum nome, ícone ou texto de terceiros na interface.
 Custos Opus: 1 ≈ 10,1 · 2 ≈ 9,5 · 3 ≈ 9,6 (US$ de tabela). Modelo: Sonnet em S2, S3, C1, C2; Opus no C3; Sonnet falhou/travou → refazer em Opus.
 NOTA: conferir só com get_session (post_turn_summary) e lista de PRs; list_events é caro. A central tem de ser aberta pelo Johann (conversa criada por outra conversa não tem create_session/get_session). WJFlow e agente: só futuro.
 
@@ -175,3 +179,95 @@ Quero:
 2. Duplo clique/duplo toque no corpo ou no recurso mostra todas as cotas do recurso (esboços + D1/D2, ângulos, etc.), editáveis no lugar; aviso claro se algum recurso não tiver onde mostrar.
 3. Botão calculadora (o mesmo teclado-calculadora das cotas, src/ui/tecladoCota.ts) em TODOS os campos numéricos: painéis de comando do WJCAD (esquemas.ts), ⚙ Configurações e caixas de valor; depois, via componente comum (src/comum/), nos campos numéricos das outras faces. Aceita expressão (=, variáveis) onde o campo já aceitava.
 Testes: Node (relação com aresta externa; rótulos de todos os recursos com faces) e roteiro no tablet (linha sobre aresta, duplo toque mostrando D1, calculadora em 5 painéis diferentes). Atualizar docs/funcional/sketch.md e features.md.
+
+## J9a. WJGoldDiamond — gemas livres + modelo "Anel folhas com oval" (fora da fila, 21/11, Opus)
+Face/lugar: WJGoldDiamond (joia/, src/joia/: regras.ts, geometria.ts, main.ts, vista.ts, worker.ts, ornamento.ts, escultura.ts). Ler antes: CLAUDE.md, docs/global/regras.md e docs/global/wjgolddiamond.md.
+
+Hoje:
+- As pedras extras só entram como pavé ao longo do aro (J4) ou como "pedrinha em inglesa" REDONDA nos pontos do ornamento (J7).
+- Não dá para pôr uma gema de qualquer lapidação (ex.: navete) num ponto livre, girada e inclinada, presa por garras próprias.
+
+Quero:
+1. Construtor novo "Gemas livres" (DocJoia.gemasLivres: GemaLivre[], liga/desliga por gema e no construtor):
+   - gema: qualquer lapidação da biblioteca (J2), material, comprimento × largura (ct como hoje);
+   - posição: ângulo θ ao longo do aro (0 = topo), deslocamento lateral e altura da cintura (absoluta ou relativa à cintura da gema central);
+   - orientação: giro no plano (eixo longo, °), inclinação (°) e a opção "seguir a superfície";
+   - engaste: garras (nº, Ø, ponta bolinha/alongada/dupla, como na cabeça) ou inglesa. Na navete, padrão = garras nas duas pontas (garra em V protegendo a ponta) + opção de garras laterais. As hastes descem até o apoio mais próximo (aro, ramo do aro dividido, fio de ornamento ou, depois do J9b, folha); sem apoio a ≤ 1,5 mm → aviso;
+   - simetria por gema: nenhuma, esquerda↔direita, frente↔trás ou dois eixos (cópias contam na ficha);
+   - duplicar gema; editar pelos campos e também tocar/clicar na vista para posicionar sobre a superfície, nos três perfis (caneta, dedo, mouse);
+   - assentos de todas as gemas livres no MESMO corte em lote já usado (booleana conferida pelo volume, `segura`);
+   - avisos: gema × gema, gema × garra da central, gema fora do metal, garra abaixo do mínimo da liga;
+   - ficha técnica, ct total, peso, preço e CSV incluem as gemas livres por tipo/medida;
+   - .wjgd antigo sem o campo abre igual (lista vazia); desfazer/refazer; GO-OUT/GO-IN do cofre.
+2. Modelo pronto "Anel folhas com oval" em Joia → Modelos, nas medidas do ANEL AMOR:
+   - aro BR 10 (circunferência 50 mm, Ø interno 15,92 mm), largura 1,80 mm, espessura 1,45 mm, ouro 750 amarelo;
+   - aro dividido perto da cabeça (dois ramos que sobem até a cabeça);
+   - central: oval 8 × 6 mm vermelha (rubi), eixo longo AO LONGO DO DEDO, 4 garras Ø 0,92 mm, cintura ~1,35 mm acima do aro;
+   - ao longo do dedo: redonda 2,4 mm numa ponta da oval e redonda 2,0 mm na outra, com 4 garras cada;
+   - de cada lado da oval, um leque de 3 navetes saindo dela como folhas: 1 de 2,5 × 1,25 mm e 2 de 2,0 × 1,0 mm (leque aprox. +50°, 0° e −50° em relação à transversal; registre onde pôs a de 2,5), garras nas pontas, um pouco abaixo da cintura da central. Total: 9 gemas;
+   - folhinhas de metal entre as navetes e nos ombros (por ora, escultura J8 partindo da forma "folha"; o J9b troca por folhas paramétricas) e gavinhas/volutas (ornamento J7) onde o aro se divide, com simetria;
+   - mínimos de fundição: fios estruturais ≥ 0,6 mm, garras ≥ 0,6 mm; metal esperado entre 2,5 e 3,5 g em ouro 18k (referência: o modelo v1 em Python deu 182 mm³ ≈ 2,8 g);
+   - é ponto de partida editável: tudo em parâmetros/construtores.
+3. Docs: docs/global/wjgolddiamond.md (J9a ✅; J9b "próximo"; seções 2/3/4/6 com tempos medidos) e CLAUDE.md (estado).
+
+Testes:
+- Node (scripts/teste-joia.ts, no pnpm teste):
+  - gema livre isolada: posição/orientação das garras conferidas à mão;
+  - a simetria gera as cópias certas;
+  - colisão gera aviso;
+  - volume com e sem assento confere;
+  - .wjgd antigo abre.
+- Modelo: Ø interno 15,92 ± 0,02 mm; 9 gemas; ct total coerente; sólido único fechado; peso na faixa; nenhum aviso de mínimo; tempo de reconstrução registrado.
+- STL exportado e reaberto com volume igual (± 1 %).
+- Playwright nos perfis Celular, Tablet 1280×800 com toque e Computador: abrir o modelo, mover uma navete pelo toque, aro 10 → 12 → 10, exportar STL; capturas no PR.
+- pnpm check && pnpm teste && pnpm build; PR → CI verde → MERGE → publicado.
+
+## J9b. WJGoldDiamond — referência por foto, fios avançados, folhas e concordância (fora da fila, depois do J9a, Opus)
+Face/lugar: WJGoldDiamond (src/joia/: vista.ts, main.ts, ornamento.ts, editorOrnamento.ts, geometria.ts, uniao.ts, escultura.ts, regras.ts). Parte do main com o J9a. Ler antes: CLAUDE.md, docs/global/regras.md e docs/global/wjgolddiamond.md.
+
+Hoje:
+- Não há como pôr a foto da joia como referência: o Johann modela no olho.
+- Os fios do ornamento (J7) só têm perfil redondo, com altura e Ø só no início e no fim, e não torcem. Os ramos de anéis de folhas são achatados, torcidos e sobem e descem ao longo do caminho.
+- A folha só sai esculpida à mão (J8): demora e fica irregular para fundir.
+- A união de fios, folhas, garras e aro é seca, sem transição suave.
+
+Quero:
+1. Imagem de referência (por joia, salva no .wjgd, com liga/desliga):
+   - carregar foto (galeria, câmera ou arquivo); opacidade; por trás do modelo ou por cima, semitransparente;
+   - fixar a foto numa vista (Frente, Cima, Lado) OU no modo "alinhar câmera à foto": o Johann marca 2–4 pontos na foto e os pontos correspondentes no modelo (ex.: as pontas da oval e o centro das redondas), e a câmera (posição, giro e campo de visão) se ajusta para casar a perspectiva;
+   - escala pela medida conhecida (tocar nas duas pontas de algo e digitar a medida, ex.: oval = 8 mm);
+   - a mesma foto aparece no esboço do ornamento para decalcar por cima;
+   - botão "comparar": alterna e mistura modelo × foto no mesmo ângulo.
+   A foto fica só no arquivo do Johann; nunca é enviada para fora do aparelho.
+2. Fios avançados no ornamento:
+   - perfil por fio: redondo, meia-cana, oval achatado (largura × altura) e faca;
+   - Ø/largura, altura e inclinação variáveis ao longo do fio por pontos de controle (não só início/fim), com prévia;
+   - torção do fio (voltas ao longo do comprimento) e fio "trançado" (dois fios torcidos um no outro), para os ramos;
+   - fio que se apoia na superfície ou sobe livre em 3D até uma gema, garra ou folha (encaixe no apoio).
+3. Construtor "Folhas" (paramétrico, sólido de fundição; a escultura continua como opção livre):
+   - contorno: lanceolada, oval, coração e personalizado (spline do esboço); comprimento, largura e ponta (aguda/arredondada);
+   - nervura central (vinco ou saliente, profundidade), dobra ao longo da nervura, curvatura no comprimento, espessura (mínimo da liga), borda arredondada;
+   - posição e orientação como nas gemas livres (θ, lateral, altura, giro, inclinação, seguir a superfície), simetria, duplicar, posicionar tocando na vista;
+   - "folha com pedra": a navete pode ficar engastada sobre/dentro de uma folha (a folha vira o apoio das garras);
+   - o modelo "Anel folhas com oval" do J9a passa a usar estas folhas e os fios avançados nos ramos.
+4. Concordância (transição suave) entre aro, fios, folhas, garras e cabeça: raio de concordância global (padrão 0,2 mm) e por peça. Use filete no OpenCascade onde funcionar e, como reserva, suavização local na malha unida (manifold-3d) só perto das junções, conferindo volume e espessura mínima depois. Prévia rápida sem concordância; a concordância entra na versão final e no STL.
+5. Docs: docs/global/wjgolddiamond.md (J9b ✅; passa para "próximo" só o que sobrar do J9 antigo), seção 4 (como usar a referência por foto), CLAUDE.md (estado).
+
+Testes:
+- Node:
+  - alinhamento de câmera: com 4 pontos sintéticos projetados de uma câmera conhecida, recupera a câmera (erro < 0,5 % na posição e < 0,5° no giro);
+  - escala pela medida;
+  - fio meia-cana/oval/faca com área de seção conferida à mão;
+  - fio torcido com volume ≈ seção × comprimento (± 2 %);
+  - folha: volume e espessura mínima;
+  - concordância: sólido único fechado, volume só um pouco maior e nenhum ponto abaixo do mínimo;
+  - .wjgd do J9a abre igual.
+- Modelo "Anel folhas com oval" refeito com folhas e fios novos: fechado, peça única, peso entre 2,5 e 3,5 g, sem avisos de mínimo, tempo de reconstrução registrado (tablet: prévia em < 2 s).
+- Playwright nos três perfis:
+  - carregar uma foto de teste gerada pelo próprio app (render do modelo num ângulo conhecido, sem imagem de terceiros no repositório), alinhar a câmera pelos pontos e conferir a sobreposição;
+  - escalar pela oval;
+  - decalcar um fio no esboço;
+  - pôr uma folha tocando na vista;
+  - ligar a concordância e exportar STL.
+  Capturas no PR.
+- pnpm check && pnpm teste && pnpm build; PR → CI verde → MERGE → publicado.
