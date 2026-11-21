@@ -13,6 +13,8 @@ import { MATERIAIS, type GemaPosta, type V3 } from "./regras";
 export interface EsculturaVista { id: string; pos: Float32Array; nor: Float32Array; tri: Uint32Array; matrizes: number[][] }
 /** Pincel: ponto e normal no espaço local da escultura; `d` = deslocamento local (arrastar). */
 export type EventoPincel = { fase: "inicio" | "meio" | "fim"; id: string; c: V3; n: V3; pressao: number; d?: V3 };
+/** Toque/clique curto na vista (caneta, dedo ou mouse): gema livre tocada e/ou ponto da superfície do metal. */
+export type ToqueVista = { livre?: string; ponto?: V3; tipo: string };
 
 export class VistaJoia {
   private renderer: THREE.WebGLRenderer;
@@ -32,6 +34,12 @@ export class VistaJoia {
   esculpir: { id: string; raio: number; dedo: boolean; aoPincel: (e: EventoPincel) => void } | null = null;
   private cursor: THREE.LineLoop;
   private traco: { id: string; plano: THREE.Plane; ultimo: THREE.Vector3; malha: THREE.Mesh; ponteiro: number } | null = null;
+  /** toque curto fora do esculpir: seleciona gema livre ou posiciona sobre a superfície */
+  aoTocar: ((t: ToqueVista) => void) | null = null;
+  private toques = new Map<number, { x: number; y: number; t: number }>();
+  private multiToque = false;
+  private destaque = new THREE.Group();
+  private idDestaque = "";
 
   constructor(private alvo: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false });
@@ -65,6 +73,23 @@ export class VistaJoia {
     cv.addEventListener("pointermove", (e) => this.moverTraco(e), { capture: true });
     for (const t of ["pointerup", "pointercancel"] as const) cv.addEventListener(t, (e) => this.fimTraco(e), { capture: true });
     cv.addEventListener("pointerleave", () => { this.cursor.visible = false; this.desenhar(); });
+    // toque curto (< 8 px, < 0,6 s, um ponteiro só): não briga com girar/aproximar
+    cv.addEventListener("pointerdown", (e) => {
+      if (this.esculpir) return;
+      this.toques.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
+      if (this.toques.size > 1) this.multiToque = true;
+    });
+    cv.addEventListener("pointerup", (e) => {
+      const t0 = this.toques.get(e.pointerId);
+      this.toques.delete(e.pointerId);
+      const multi = this.multiToque;
+      if (!this.toques.size) this.multiToque = false;
+      if (!t0 || multi || this.esculpir || (e.pointerType === "mouse" && e.button !== 0)) return;
+      if (Math.hypot(e.clientX - t0.x, e.clientY - t0.y) > 8 || performance.now() - t0.t > 600) return;
+      this.tocar(e);
+    });
+    cv.addEventListener("pointercancel", (e) => { this.toques.delete(e.pointerId); if (!this.toques.size) this.multiToque = false; });
+    this.cena.add(this.destaque);
     new ResizeObserver(() => this.redimensionar()).observe(alvo);
     this.redimensionar();
   }
@@ -131,6 +156,35 @@ export class VistaJoia {
     this.raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
     const alvos = this.esculturas.children.filter((m) => m.userData.id === this.esculpir?.id);
     return this.raycaster.intersectObjects(alvos, false)[0] ?? null;
+  }
+
+  private tocar(e: PointerEvent) {
+    if (!this.aoTocar) return;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    this.raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+    const g = this.raycaster.intersectObjects(this.gemas.children, false).find((h) => h.object.userData.livre);
+    const s = this.raycaster.intersectObjects([this.metal, ...this.esculturas.children], false)[0];
+    const t: ToqueVista = { tipo: e.pointerType };
+    if (g && (!s || g.distance <= s.distance + 0.05)) t.livre = g.object.userData.livre as string;
+    if (s) t.ponto = [s.point.x, s.point.y, s.point.z];
+    this.aoTocar(t);
+  }
+
+  /** Contorno azul nas cópias da gema livre selecionada ("" = nenhuma). */
+  destacar(id: string) {
+    this.idDestaque = id;
+    for (const c of this.destaque.children) (c as THREE.LineSegments).geometry.dispose();
+    this.destaque.clear();
+    if (id) for (const me of this.gemas.children as THREE.Mesh[]) {
+      if (me.userData.livre !== id) continue;
+      const l = new THREE.LineSegments(new THREE.EdgesGeometry(me.geometry, 25), new THREE.LineBasicMaterial({ color: 0x2f7fd0, depthTest: false }));
+      l.renderOrder = 9;
+      l.matrixAutoUpdate = false;
+      me.updateMatrix();
+      l.matrix.copy(me.matrix);
+      this.destaque.add(l);
+    }
+    this.desenhar();
   }
 
   private local(h: THREE.Intersection): { c: V3; n: V3; malha: THREE.Mesh } {
@@ -216,9 +270,10 @@ export class VistaJoia {
     this.desenhar();
   }
 
-  definirGemas(lista: GemaPosta[]) {
+  /** Gemas na vista; `livres[i]` = id da gema livre (para tocar e destacar). */
+  definirGemas(lista: GemaPosta[], livres: (string | undefined)[] = []) {
     this.gemas.clear();
-    for (const g of lista) {
+    for (const [i, g] of lista.entries()) {
       const x = g.gema;
       const kg = `${x.lapidacao}|${x.comprimento.toFixed(3)}|${x.largura.toFixed(3)}`;
       let geo = this.geoGemas.get(kg);
@@ -238,11 +293,16 @@ export class VistaJoia {
         this.matGemas.set(x.material, mat);
       }
       const me = new THREE.Mesh(geo, mat);
-      me.rotation.set(0, g.ref.ry, g.ref.rz, "ZYX");
+      if (g.ref.m) {
+        const M = g.ref.m;
+        me.quaternion.setFromRotationMatrix(new THREE.Matrix4().set(M[0], M[1], M[2], 0, M[3], M[4], M[5], 0, M[6], M[7], M[8], 0, 0, 0, 0, 1));
+      } else me.rotation.set(0, g.ref.ry, g.ref.rz, "ZYX");
       me.position.set(...g.ref.p);
+      if (livres[i]) me.userData.livre = livres[i];
       this.gemas.add(me);
     }
-    this.desenhar();
+    this.gemas.updateMatrixWorld(true);
+    this.destacar(this.idDestaque);
   }
 
   /** Ajusta o enquadramento ao tamanho da joia (raio aproximado em mm). */

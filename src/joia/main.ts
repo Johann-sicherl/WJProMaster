@@ -16,7 +16,9 @@ import {
 import { VistaJoia } from "./vista";
 import { esbocoNovoOrnamento, ornamentoVintage, type Ornamento } from "./ornamento";
 import { aplicarToque, codificar, dentroDoRaio, esculturaNova, malhaLocal, matrizLugar, normais, subdividir, vizinhanca, type Escultura, type FormaBase, type Malha, type Pincel, type Vizinhanca } from "./escultura";
-import type { EsculturaVista, EventoPincel } from "./vista";
+import type { EsculturaVista, EventoPincel, ToqueVista } from "./vista";
+import { gemaLivreNova, temPontas, type GemaLivre } from "./gemasLivres";
+import { anelFolhasOval } from "./modelos";
 import type { EditorOrnamento } from "./editorOrnamento";
 import type { PedidoJoia, RespostaJoia } from "./worker";
 
@@ -42,7 +44,7 @@ let texto: { grupos: GrupoTexto[]; largura: number } = { grupos: [], largura: 0 
 let resultado: { volume: number; area: number; avisos: string[]; ms: number; final: boolean } | null = null;
 let erroKernel = "";
 
-type Item = "aro" | "cabeca" | "pave" | "ornamentos" | "esculturas" | "gravacao" | "textura" | "fabricacao" | "preco";
+type Item = "aro" | "cabeca" | "pave" | "livres" | "ornamentos" | "esculturas" | "gravacao" | "textura" | "fabricacao" | "preco";
 let sel: Item = "aro";
 
 function alterar(muda: () => void, estrutura = false) {
@@ -91,6 +93,58 @@ function restaurar(d: DocJoia | null) {
 }
 const desfazer = () => restaurar(historico.desfazer());
 const refazer = () => restaurar(historico.refazer());
+
+// ---------------------------------------------------------------------------------------------
+// gemas livres: lista, seleção e posicionamento pelo toque na vista (caneta, dedo ou mouse)
+
+let livreSel = "";
+let posicionando = false;
+const livreAtual = (): GemaLivre | undefined => doc.gemasLivres.find((g) => g.id === livreSel) ?? doc.gemasLivres[0];
+const novoIdLivre = () => `l${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+
+function novaLivre(lap: Lapidacao = "navete") {
+  const g = gemaLivreNova(novoIdLivre(), doc.gemasLivres.length + 1, lap);
+  livreSel = g.id;
+  sel = "livres";
+  alterar(() => { doc.gemasLivresAtivo = true; doc.gemasLivres.push(g); }, true);
+  vista.destacar(g.id);
+}
+
+function duplicarLivre() {
+  const g = livreAtual();
+  if (!g) return;
+  const c: GemaLivre = { ...structuredClone(g), id: novoIdLivre(), nome: `${g.nome} (cópia)`.slice(0, 40), th: Math.max(-180, Math.min(180, g.th + 8)) };
+  livreSel = c.id;
+  alterar(() => doc.gemasLivres.splice(doc.gemasLivres.indexOf(g) + 1, 0, c), true);
+  vista.destacar(c.id);
+}
+
+function posicionar(v = !posicionando) {
+  posicionando = v;
+  casca.renderizar();
+  painel();
+  if (v) casca.definirStatus("Posicionar: toque (caneta, dedo ou mouse) na joia para levar a gema selecionada até lá; toque numa gema livre para selecioná-la. Arrastar continua girando a vista.");
+  else status();
+}
+
+function aoTocarVista(t: ToqueVista) {
+  if (editando || esculpindo) return;
+  if (t.livre) {
+    livreSel = t.livre;
+    vista.destacar(t.livre);
+    if (sel !== "livres") selecionar("livres");
+    else painel();
+    return;
+  }
+  const g = livreAtual();
+  if (!posicionando || !t.ponto || !g) return;
+  const [x, y, z] = t.ponto;
+  alterar(() => {
+    g.th = Math.round((Math.atan2(x, y) * 180) / Math.PI * 10) / 10;
+    g.z = Math.round(z * 100) / 100;
+  });
+  casca.avisar(`${g.nome}: θ ${fmt(g.th, 1)}°, lateral ${fmt(g.z)} mm.`);
+}
 
 // ---------------------------------------------------------------------------------------------
 // ornamentos: o esboço do WJCAD num modo de edição (carregado só quando aberto)
@@ -437,7 +491,10 @@ function simplificar(l: P2[], tol: number): P2[] {
 
 function atualizar() {
   m = montar(doc);
-  vista.definirGemas([...(m.cabeca ? [m.cabeca] : []), ...m.pave, ...m.gemasOrn.map((x) => x.gema)]);
+  const outras = [...(m.cabeca ? [m.cabeca] : []), ...m.pave, ...m.gemasOrn.map((x) => x.gema)];
+  vista.definirGemas([...outras, ...m.livres.map((x) => x.gema)], [...outras.map(() => undefined), ...m.livres.map((x) => x.id)]);
+  if (!doc.gemasLivres.some((g) => g.id === livreSel)) livreSel = doc.gemasLivres[0]?.id ?? "";
+  vista.destacar(sel === "livres" ? livreSel : "");
   vista.corMetal(LIGAS[doc.liga].cor);
   vistaEsculturas();
   if (resultado) resultado.final = false;
@@ -446,8 +503,8 @@ function atualizar() {
 }
 
 function status() {
-  const ct = (m.cabeca?.ct ?? 0) + m.pave.reduce((s, g) => s + g.ct, 0) + m.gemasOrn.reduce((s, g) => s + g.gema.ct, 0);
-  const pedras = (m.cabeca ? 1 : 0) + m.pave.length + m.gemasOrn.length;
+  const ct = (m.cabeca?.ct ?? 0) + m.pave.reduce((s, g) => s + g.ct, 0) + m.gemasOrn.reduce((s, g) => s + g.gema.ct, 0) + m.livres.reduce((s, g) => s + g.gema.ct, 0);
+  const pedras = (m.cabeca ? 1 : 0) + m.pave.length + m.gemasOrn.length + m.livres.length;
   const est = erroKernel ? `⚠ ${erroKernel}` : !kernelPronto ? "Carregando o kernel…" : resultado?.final ? `Pronto em ${resultado.ms < 1000 ? `${Math.round(resultado.ms)} ms` : `${fmt(resultado.ms / 1000, 1)} s`}` : "Calculando assentos e acabamentos…";
   casca.definirStatus(`Aro ${doc.aro.norma} ${fmt(doc.aro.tamanho, doc.aro.norma === "mm" ? 2 : 1)} · Ø ${fmt(2 * m.R)} mm · ${pedras} pedra(s) · ${fmt(ct, 3)} ct · ${est}`);
   casca.statusDireita.textContent = resultado ? `${fmt((resultado.volume / 1000) * LIGAS[doc.liga].densidade)} g · ${LIGAS[doc.liga].nome}` : "";
@@ -460,6 +517,7 @@ const ITENS: { id: Item; rotulo: string; icone: NomeIc; ativo?: () => boolean; a
   { id: "aro", rotulo: "Aro", icone: "anel" },
   { id: "cabeca", rotulo: "Cabeça", icone: "garras", ativo: () => doc.cabeca.ativo, alternar: (v) => (doc.cabeca.ativo = v) },
   { id: "pave", rotulo: "Pavé", icone: "pave", ativo: () => doc.pave.ativo, alternar: (v) => (doc.pave.ativo = v) },
+  { id: "livres", rotulo: "Gemas livres", icone: "gema", ativo: () => doc.gemasLivresAtivo, alternar: (v) => (doc.gemasLivresAtivo = v) },
   { id: "ornamentos", rotulo: "Ornamentos", icone: "filigrana" },
   { id: "esculturas", rotulo: "Escultura", icone: "esculpir" },
   { id: "gravacao", rotulo: "Gravação", icone: "gravar", ativo: () => doc.gravacao.ativo, alternar: (v) => (doc.gravacao.ativo = v) },
@@ -479,6 +537,8 @@ function arvore() {
 
 function selecionar(i: Item) {
   sel = i;
+  if (i !== "livres" && posicionando) posicionando = false;
+  vista.destacar(i === "livres" ? livreAtual()?.id ?? "" : "");
   arvore();
   painel();
 }
@@ -512,6 +572,7 @@ const CAMPOS: Record<Item, Campo[]> = {
     { k: "aro.torcao", r: "Torção (meias-voltas)", passo: 1 },
     { k: "aro.dividido", r: "Aro dividido: abertura no topo (0 = inteiro)", u: "mm", passo: 0.1 },
     { k: "aro.divisao", r: "Divisão até", u: "°", passo: 5, se: () => doc.aro.dividido > 0 },
+    { k: "aro.afastamento", r: "Afastamento dos ramos no topo (ao longo do dedo)", u: "mm", passo: 0.1, se: () => doc.aro.dividido > 0 },
   ],
   cabeca: [
     { k: "cabeca.tipo", r: "Cravação", t: "sel", ops: () => [["garras", "Garras"], ["inglesa", "Inglesa (aro fechado)"]], estrutura: true },
@@ -539,6 +600,7 @@ const CAMPOS: Record<Item, Campo[]> = {
     { k: "pave.fileiras", r: "Fileiras", passo: 1 },
     { k: "pave.diamGarra", r: "Ø da conta / parede", u: "mm", passo: 0.05 },
   ],
+  livres: [],
   ornamentos: [],
   esculturas: [],
   gravacao: [
@@ -618,6 +680,34 @@ function campoHtml(c: Campo): string {
   return `<label class="gd-campo"><span>${escapar(c.r)}</span>${ctrl}<em>${c.u ?? ""}</em></label>`;
 }
 
+function camposLivre(i: number): Campo[] {
+  const k = (c: string) => `gemasLivres.${i}.${c}`;
+  const g = doc.gemasLivres[i], red = () => g.gema.lapidacao === "redonda", garras = () => g.engaste === "garras";
+  return [
+    { k: k("nome"), r: "Nome", t: "txt" },
+    { k: k("gema.lapidacao"), r: "Lapidação", t: "sel", ops: opLap, estrutura: true },
+    { k: k("gema.material"), r: "Gema", t: "sel", ops: opMat },
+    { k: k("gema.largura"), r: "Diâmetro", u: "mm", passo: 0.05, se: red },
+    { k: k("gema.comprimento"), r: "Comprimento", u: "mm", passo: 0.05, se: () => !red() },
+    { k: k("gema.largura"), r: "Largura", u: "mm", passo: 0.05, se: () => !red() },
+    { k: k("th"), r: "Posição ao longo do aro (0° = topo)", u: "°", passo: 1 },
+    { k: k("z"), r: "Lateral (ao longo do dedo)", u: "mm", passo: 0.1 },
+    { k: k("refAltura"), r: "Altura medida", t: "sel", ops: () => [["aro", "Sobre a superfície do aro"], ["central", "Relativa à cintura da gema central"]] },
+    { k: k("altura"), r: "Altura da cintura", u: "mm", passo: 0.05 },
+    { k: k("giro"), r: "Giro no plano (0° = ao longo do aro, 90° = ao longo do dedo)", u: "°", passo: 5, se: () => !red() },
+    { k: k("inclinacao"), r: "Inclinação (positivo baixa a ponta)", u: "°", passo: 2 },
+    { k: k("seguir"), r: "Seguir a superfície do aro (eixo na normal)", t: "chk" },
+    { k: k("engaste"), r: "Engaste", t: "sel", ops: () => [["garras", "Garras"], ["inglesa", "Inglesa (aro fechado)"]], estrutura: true },
+    { k: k("pontasV"), r: "Garras em V protegendo as pontas", t: "chk", se: () => garras() && temPontas(g.gema.lapidacao), estrutura: true },
+    { k: k("laterais"), r: "Garras laterais (0, 2 ou 4)", passo: 2, se: () => garras() && g.pontasV && temPontas(g.gema.lapidacao) },
+    { k: k("garras"), r: "Nº de garras", passo: 1, se: () => garras() && !(g.pontasV && temPontas(g.gema.lapidacao)) },
+    { k: k("diamGarra"), r: "Diâmetro da garra", u: "mm", passo: 0.05, se: garras },
+    { k: k("pontaGarra"), r: "Ponta da garra", t: "sel", ops: () => [["bolinha", "Bolinha"], ["alongada", "Alongada (sobre a pedra)"], ["dupla", "Garra dupla"]], se: garras },
+    { k: k("parede"), r: "Parede da inglesa", u: "mm", passo: 0.05, se: () => !garras() },
+    { k: k("simetria"), r: "Simetria", t: "sel", ops: () => [["nenhuma", "Nenhuma"], ["x", "Esquerda ↔ direita"], ["y", "Frente ↔ trás"], ["xy", "Dois eixos"]] },
+  ];
+}
+
 function camposEscultura(i: number): Campo[] {
   const k = (c: string) => `esculturas.${i}.${c}`;
   return [
@@ -660,6 +750,16 @@ function painel() {
     extra = `<label class="gd-campo"><span>Peso da gema</span><input data-ct type="number" step="0.05" inputmode="decimal" value="${fmt(quilates(g), 3).replace(",", ".")}" /><em>ct</em></label>
       <p class="gd-nota">Proporção ${fmt(proporcoes(g).total / Math.min(g.comprimento, g.largura) * 100, 0)} % de profundidade. Mudar os quilates redimensiona a gema.</p>
       <div class="gd-botoes"><button data-acao="biblioteca">${IC.gema} Biblioteca de gemas</button></div>`;
+  } else if (sel === "livres") {
+    const g = livreAtual();
+    const i = g ? doc.gemasLivres.indexOf(g) : -1;
+    const copias = (id: string) => m.livres.filter((x) => x.id === id).length;
+    extra = `<p class="gd-nota">Qualquer lapidação num ponto livre, girada e inclinada, com garras próprias (as hastes descem até o aro, um ramo, um fio de ornamento ou uma garra da central) ou inglesa. Toque numa gema na vista para selecioná-la.</p>
+      <div class="gd-lista">${doc.gemasLivres.map((x) => `<label class="gd-check ${x.id === g?.id ? "gd-atual" : ""}"><input type="checkbox" data-livre-ativo="${x.id}" ${x.ativo ? "checked" : ""} /><button data-livre="${x.id}">${escapar(x.nome)}${copias(x.id) > 1 ? ` <small>×${copias(x.id)}</small>` : ""}</button></label>`).join("") || `<p class="gd-nota">Nenhuma gema livre.</p>`}</div>
+      <div class="gd-botoes"><label class="gd-campo gd-curto"><span>Nova</span><select data-livre-lap>${opLap().map(([k2, r]) => `<option value="${k2}" ${k2 === "navete" ? "selected" : ""}>${escapar(r)}</option>`).join("")}</select><em></em></label><button data-acao="livre-nova">${IC.novo} Nova gema</button></div>
+      ${g ? `<div class="gd-botoes"><button data-acao="livre-posicionar" class="${posicionando ? "destaque" : ""}" aria-pressed="${posicionando}">${IC.movimento} ${posicionando ? "Posicionando: toque na joia" : "Posicionar tocando na vista"}</button><button data-acao="livre-duplicar">${IC.duplicar} Duplicar</button><button data-acao="livre-excluir">${IC.apagar} Excluir</button></div>
+      <label class="gd-campo"><span>Peso da gema</span><input data-ct-livre type="number" step="0.005" inputmode="decimal" value="${(Math.round(quilates(g.gema) * 1000) / 1000).toString()}" /><em>ct</em></label>
+      ${camposLivre(i).map(campoHtml).join("")}` : ""}`;
   } else if (sel === "pave") {
     extra = `<p class="gd-nota">${m.pave.length} pedra(s), ${m.contas.length} conta(s). Gemas redondas; posições que não cabem ou colidem ficam de fora.</p>`;
   } else if (sel === "gravacao") {
@@ -727,6 +827,22 @@ props.addEventListener("change", (e) => {
     });
     return;
   }
+  if (x.dataset.ctLivre !== undefined) {
+    const g = livreAtual(), ct = Number(x.value.replace(",", "."));
+    if (!g || !(ct > 0)) return;
+    alterar(() => {
+      const k = Math.cbrt(ct / quilates(g.gema));
+      g.gema.comprimento = Math.round(g.gema.comprimento * k * 100) / 100;
+      g.gema.largura = Math.round(g.gema.largura * k * 100) / 100;
+    });
+    return;
+  }
+  if (x.dataset.livreAtivo) {
+    const alvo = doc.gemasLivres.find((q) => q.id === x.dataset.livreAtivo);
+    if (alvo) alterar(() => (alvo.ativo = (x as HTMLInputElement).checked));
+    return;
+  }
+  if (x.dataset.livreLap !== undefined) return;
   if (x.dataset.pincel) {
     const k = x.dataset.pincel as keyof typeof pincel;
     const inp = x as HTMLInputElement;
@@ -782,6 +898,15 @@ props.addEventListener("change", (e) => {
   if (typeof v === "number" && !Number.isFinite(v)) return;
   alterar(() => {
     gravar(k, v);
+    const lv = /^gemasLivres\.(\d+)\.gema\.lapidacao$/.exec(k);
+    if (lv) {
+      const g = doc.gemasLivres[Number(lv[1])], lap = LAPIDACOES[v as Lapidacao];
+      const w = Math.min(g.gema.comprimento, g.gema.largura);
+      g.gema.largura = w;
+      g.gema.comprimento = Math.round(w * lap.relacao * 100) / 100;
+      g.pontasV = temPontas(v as Lapidacao);
+      g.garras = lap.garras;
+    }
     if (k === "cabeca.gema.lapidacao") {
       const lap = LAPIDACOES[v as Lapidacao], g = doc.cabeca.gema;
       const w = Math.min(g.comprimento, g.largura);
@@ -797,6 +922,20 @@ props.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest("button");
   if (!b) return;
   if (b.dataset.ligar !== undefined || b.dataset.desligar !== undefined) return alterar(() => ITENS.find((i) => i.id === sel)!.alternar!(b.dataset.ligar !== undefined), true);
+  if (b.dataset.livre) {
+    livreSel = b.dataset.livre;
+    vista.destacar(livreSel);
+    painel();
+    return;
+  }
+  if (b.dataset.acao === "livre-nova") return novaLivre((props.querySelector<HTMLSelectElement>("[data-livre-lap]")?.value as Lapidacao) || "navete");
+  if (b.dataset.acao === "livre-duplicar") return duplicarLivre();
+  if (b.dataset.acao === "livre-posicionar") return posicionar();
+  if (b.dataset.acao === "livre-excluir") {
+    const g = livreAtual();
+    if (g && confirm(`Excluir a gema livre "${g.nome}"?`)) alterar(() => (doc.gemasLivres = doc.gemasLivres.filter((x) => x.id !== g.id)), true);
+    return;
+  }
   if (b.dataset.esc) {
     escSel = b.dataset.esc;
     if (esculpindo) esculpir();
@@ -934,6 +1073,7 @@ const MODELOS: { nome: string; criar: () => DocJoia }[] = [
       };
     },
   },
+  { nome: "Anel folhas com oval", criar: anelFolhasOval },
   { nome: "Aliança facetada", criar: () => ({ ...docNovo(), nome: "Aliança facetada", cabeca: { ...docNovo().cabeca, ativo: false }, aro: { ...docNovo().aro, perfil: "reto", largura: 3.5, espessura: 1.9, larguraBase: 3.5, espessuraBase: 1.9 }, textura: { tipo: "facetas", quantidade: 14, profundidade: 0.3 } }) },
 ];
 
@@ -965,6 +1105,7 @@ async function imagem() {
 // casca e início
 
 const vista = new VistaJoia($("#gd-vista"));
+vista.aoTocar = aoTocarVista;
 const casca: Casca = new Casca({
   app: "WJGoldDiamond",
   icone: "",
@@ -1002,6 +1143,7 @@ const casca: Casca = new Casca({
           { id: "garras", rotulo: "Garras", icone: "garras", dica: "Cabeça com garras", acao: () => alterar(() => { doc.cabeca.ativo = true; doc.cabeca.tipo = "garras"; sel = "cabeca"; }, true) },
           { id: "inglesa", rotulo: "Inglesa", icone: "inglesa", dica: "Cabeça com aro fechado em volta da gema", acao: () => alterar(() => { doc.cabeca.ativo = true; doc.cabeca.tipo = "inglesa"; sel = "cabeca"; }, true) },
           { id: "pave", rotulo: "Pavé", icone: "pave", dica: "Pedras ao longo do aro (tamanhos graduados, fileiras, eternidade)", acao: () => alterar(() => { doc.pave.ativo = true; sel = "pave"; }, true) },
+          { id: "livres", rotulo: "Gemas livres", icone: "gema", dica: "Gema de qualquer lapidação num ponto livre, com garras próprias ou inglesa", acao: () => (doc.gemasLivres.length ? selecionar("livres") : novaLivre()) },
         ],
         [
           { id: "grav", rotulo: "Gravação", icone: "gravar", dica: "Texto por dentro ou por fora do aro", acao: () => alterar(() => { doc.gravacao.ativo = true; sel = "gravacao"; }, true) },
@@ -1014,7 +1156,7 @@ const casca: Casca = new Casca({
     {
       id: "gemas", rotulo: "Gemas", grupos: [
         [{ id: "lib", rotulo: "Biblioteca de gemas", icone: "gema", dica: "Lapidações, medidas e quilates", acao: biblioteca }],
-        [{ id: "cab", rotulo: "Gema central", icone: "garras", acao: () => selecionar("cabeca") }, { id: "pv", rotulo: "Pedras do pavé", icone: "pave", acao: () => selecionar("pave") }],
+        [{ id: "cab", rotulo: "Gema central", icone: "garras", acao: () => selecionar("cabeca") }, { id: "pv", rotulo: "Pedras do pavé", icone: "pave", acao: () => selecionar("pave") }, { id: "lv", rotulo: "Gemas livres", icone: "gema", acao: () => selecionar("livres") }],
       ],
     },
     {
