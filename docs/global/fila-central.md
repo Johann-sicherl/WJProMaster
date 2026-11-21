@@ -11,7 +11,8 @@ S1 — PRONTO PR #131 (Opus, ≈ US$ 17)
 C4 — PRONTO PR #132 (Opus, ≈ US$ 13,9)
 S2 — PRONTO PR #133 (Sonnet, ≈ US$ 4,3)
 S3 — PRONTO PR #134 (Sonnet, ≈ US$ 8,4)
-**Fila retomada (Johann, 21/11).** C1 em andamento (Sonnet, sessão session_01MWdNyi9Jh9BAbaJvgZDmF6) → C2 (Sonnet) → C3 (Opus).
+C1 — PRONTO PR #137 (21/11, Sonnet, ≈ US$ 1,2)
+**Fila retomada (Johann, 21/11).** C2 em andamento (Sonnet, sessão session_01MWdNyg6BrumjdbRppxjcYw) → C3 (Opus).
 **Fora da fila, em paralelo (Johann, 21/11): J9a (Opus) → J9b (Opus), em sequência** (só WJGoldDiamond, src/joia/; não cruza com C1/C2/C3). J9b só depois de "PRONTO" do J9a; parte do main com o J9a.
 J9a — em andamento (Opus, sessão session_01MWdNyfhFyRPmcDQCE25BD9)
 J9b — aguardando o J9a
