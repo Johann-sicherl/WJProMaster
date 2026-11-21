@@ -22,7 +22,9 @@ Reaproveita o que já existe, sem duplicar:
 | Arquivo | Papel |
 |---|---|
 | `src/joia/regras.ts` | motor puro: tamanhos de aro, ligas, lapidações (contorno, proporções, quilates), perfil, posição de gemas/garras/contas/trilhos, zonas livres, facetas, verificações, ficha e preço |
-| `src/joia/geometria.ts` | sólido no OpenCascade: aro, cabeça, assentos, gravação, texturas, ocar, fabricação |
+| `src/joia/geometria.ts` | sólido no OpenCascade: aro (inteiro, dividido, ramos afastados), cabeça, cápsulas das garras livres, assentos, gravação, texturas, ocar, fabricação |
+| `src/joia/gemasLivres.ts` | gemas livres (J9a): lugar e orientação, garras (bolinha/alongada/dupla, V nas pontas), apoio mais próximo, simetria, colisões |
+| `src/joia/modelos.ts` | modelos prontos montados só com construtores ("Anel folhas com oval") |
 | `src/joia/malhaGema.ts` | malha facetada das gemas para a vista (sem kernel) |
 | `src/joia/vista.ts` | Three.js: metal com reflexos do ambiente, gemas com refração e dispersão, ortográfica |
 | `src/joia/main.ts` | interface: construtores, painel, janelas (biblioteca, ficha, modelos) |
@@ -55,10 +57,26 @@ círculo do aro, como no WJCAD com Y para cima).
 | **J6** | **Torção** (meias-voltas; perfis assimétricos só em voltas inteiras), **afunilado**, **gravação externa** (envolve o aro), texturas **facetado** e **frisos** fora das zonas ocupadas; vistas, girar (apresentação) e imagem PNG | ✅ |
 | **J7** | **Modelagem livre**: ornamentos desenhados com o **esboço do WJCAD** (linha, arco, spline, círculo, elipse, ponto, espelhar, offset, cotas e relações) na vista de cima do aro, com **prévia espelhada**; cada entidade vira **fio** de perfil redondo (Ø inicial/final e altura inicial/final por fio: o fio sobe da moldura até o aro), simetria nos dois eixos, envolvido no aro ou num plano sobre o topo, bolinha nas pontas soltas; cada **ponto** vira bolinha de metal ou **pedrinha em inglesa** (entra na ficha e no peso em ct). **Ponta da garra**: bolinha, alongada (sobre a pedra) ou garra dupla. **Aro dividido** (abertura no topo e até que ângulo). Exemplo pronto: "Anel vintage com filigrana" (moldura em pipa, volutas, pontas norte–sul, pedrinhas laterais). Correção: o furo de luz da gema central parava no aro e cortava o aro inteiro com gemas largas; agora para no topo do aro e há aviso quando a culaça entra no aro | ✅ 08/11/2026 |
 | **J8** | **Escultura livre em malha**: corpos esculpidos postos na joia (posição ao longo do aro, lateral, altura, tamanho, giros, cópia espelhada do outro lado), partindo de esfera, gota, folha ou cápsula; pincéis **Puxar, Inflar, Suavizar, Achatar, Vinco e Arrastar** com raio, força, **pressão da caneta**, inverter e simetria; subdividir até 40 962 vértices; desfazer por traço. **Caneta ou mouse esquerdo esculpe; dedo (ou botão do meio) gira**, dois dedos aproximam ("Dedo esculpe" para quem não tem caneta). Peso, área e **STL numa peça só** pela união de malhas (`manifold-3d`); STEP leva só a parte paramétrica | ✅ 08/11/2026 |
-| J9 | Remalha dinâmica (densidade automática sob o pincel), esculpir a joia inteira convertida em malha, relevo por imagem, texturas martelado/acetinado, gemas inclinadas pela normal em perfis curvos, pavé em superfície livre, halo, outras peças (brinco, pingente), perfil do fio (meia-cana, quadrado), vídeo giratório pelo WJVideoMaker, preço/itens no WJERP | próximo |
+| **J9a** | **Gemas livres**: qualquer lapidação num ponto livre (θ ao longo do aro, lateral, altura da cintura sobre o aro ou relativa à cintura da central), giro no plano, inclinação e "seguir a superfície"; engaste próprio (garras com ponta bolinha/alongada/dupla, **garras em V nas pontas** da navete/gota/coração + laterais opcionais, ou inglesa); hastes até o **apoio mais próximo** (aro, ramo do aro dividido, fio de ornamento, garra da central; > 1,5 mm = aviso); simetria por gema (cópias na ficha); duplicar; **posicionar tocando na vista** (caneta, dedo ou mouse) e tocar numa gema para selecioná-la; assentos no mesmo corte em lote; avisos de colisão (gema × gema, gema × garra da central), gema fora do metal/enterrada e garra abaixo do mínimo. **Aro dividido com afastamento dos ramos** (abrem ao longo do dedo até a cabeça). Modelo **"Anel folhas com oval"** (ANEL AMOR) | ✅ 21/11/2026 |
+| J9b | Referência por foto, fios avançados, folhas paramétricas e concordância (troca as folhinhas do J9a) | próximo |
+| J10 | Remalha dinâmica (densidade automática sob o pincel), esculpir a joia inteira convertida em malha, relevo por imagem, texturas martelado/acetinado, gemas inclinadas pela normal em perfis curvos, pavé em superfície livre, halo, outras peças (brinco, pingente), perfil do fio (meia-cana, quadrado), vídeo giratório pelo WJVideoMaker, preço/itens no WJERP | próximo |
 
 Modelos prontos (aba Joia → Modelos): solitário, solitário com pavé, aliança com gravação,
-meia-aliança, eternidade, inglesa oval, anel torcido, **anel vintage com filigrana**, aliança facetada.
+meia-aliança, eternidade, inglesa oval, anel torcido, **anel vintage com filigrana**, **anel folhas com oval**, aliança facetada.
+
+### Modelo "Anel folhas com oval" (J9a, a partir da descrição da foto do ANEL AMOR)
+- Aro BR 10 (circunferência 50 mm, Ø 15,92 mm), perfil reto 1,80 × 1,45 mm, ouro 750 amarelo; dividido (vão 0,6 mm,
+  até 32°) com **ramos afastados 1,7 mm** no topo: a culaça da oval (cintura 1,35 mm acima do aro) passa entre os ramos.
+- Central: oval 8 × 6 rubi, eixo longo ao longo do dedo (girar 90°), 4 garras Ø 0,92, galeria.
+- Ao longo do dedo: redonda 2,4 numa ponta e 2,0 na outra (folga 0,3 mm da oval), 4 garras Ø 0,6 cada.
+- Leques: **a navete 2,5 × 1,25 fica no meio de cada leque (0°, transversal)**; as 2,0 × 1,0 a ±50° (uma gema
+  livre com simetria nos dois eixos = 4 navetes); cintura 0,4 mm abaixo da central, inclinadas 10–12°, garras em V.
+- Ornamento "Ramos e gavinhas" (simetria nos dois eixos): moldura sob as gemas, ramo que sobe do ombro e gavinha onde
+  o aro se divide (fios Ø 0,6–0,9). Folhinhas: escultura "folha" engrossada (≥ 0,5 mm no centro) entre as navetes e
+  nos ombros, com cópia do outro lado (o J9b troca por folhas paramétricas).
+- Resultado (Node): 9 gemas, 1,397 ct; metal paramétrico 189,5 mm³, com as folhinhas 191,7 mm³ = **2,97 g** em ouro
+  750 (v1 em Python: 182 mm³ ≈ 2,8 g); peça única, nenhum aviso; reconstrução 22,5 s (navegador do teste ~26 s; a
+  prévia aparece na hora). Capturas: `docs/global/capturas/j9a/`.
 
 ### Ornamentos (J7) — como desenhar
 - Joia → **Ornamento** (ou Construtores → Ornamentos → Desenhar) abre o esboço do WJCAD no lugar da vista 3D
@@ -79,9 +97,21 @@ meia-aliança, eternidade, inglesa oval, anel torcido, **anel vintage com filigr
   outras gemas × densidade/3,52. 1 ct redonda ≈ 6,5 mm.
 - **Ligas** (g/cm³, confirmar com o fornecedor): ouro 750 amarelo 15,5 / branco 15,9 / rosé 15,1, ouro 585 13,1,
   ouro 999 19,3, prata 925 10,36, platina 950 20,7, paládio 950 12,0; resina calcinável 1,15.
+- **Gemas livres**: posição "sobre o aro" = R + superfície(θ, lateral) + altura (radial); "relativa à central" = no raio do
+  ângulo θ, na altura Y = cintura da central + altura (até ±75°). Orientação = base (tangente/normal do aro, ou de pé) ·
+  giro em Y · inclinação em torno do eixo curto. Cópia espelhada = S·M·(lateral invertida), que continua rotação (as
+  lapidações são simétricas no eixo lateral). Garra: topo no contorno + Ø/4 na altura cintura + 0,55·coroa; joelho a
+  0,3·pavilhão; haste do joelho até o apoio mais próximo (aro 0,25 mm para dentro, centro do fio, eixo da garra da central).
+  Aviso: folga > 1,5 mm (sem apoio), > 4,5 mm (fora do metal). Ramo do aro dividido: centro = (vão + meia largura)/2 +
+  afastamento·(1 + cos(πθ/divisão))/2.
 - **Mínimos** por liga (aviso): garra 0,6 mm (ouro, platina) / 0,8 mm (prata, ouro 24k 0,9); aro 1,0 / 1,2 / 1,4 mm.
 
 ## 4. Interface
+
+- **Gemas livres** (árvore, Joia → Gemas livres ou Gemas → Gemas livres): lista com liga/desliga por gema, Nova (escolhe
+  a lapidação), Duplicar, Excluir, Peso (ct) que redimensiona e os campos de posição, orientação, engaste e simetria.
+  **Posicionar tocando na vista**: com o botão ligado, um toque curto (caneta, dedo ou clique) na joia leva a gema até
+  lá (θ e lateral; a altura fica); arrastar continua girando. Tocar numa gema livre a seleciona (contorno azul).
 
 - Esquerda: **construtores** (Aro, Cabeça, Pavé, Gravação, Textura, Fabricação, Preço) com liga/desliga.
   Celular: a lista some e cada construtor abre pela faixa; o painel tem "Desligar".
@@ -114,10 +144,11 @@ exportação STL (contração aplicada na malha final; canais pelo OpenCascade a
 (540 kB, carregado só com escultura); as dependências do editor CAD do pacote foram cortadas com `overrides`
 no `pnpm-workspace.yaml` (o lockfile ganha só ele).
 
-## 6. Estado (07/11/2026)
+## 6. Estado (21/11/2026)
 
 J0–J6 entregues. Tempos medidos em Node (o tablet tende a ser 1,5–2× mais lento; a prévia aparece antes):
 aliança 30 ms, afunilado 0,1 s, solitário ~1 s, lapidações curvas 2–4 s, solitário com pavé ~6 s,
 eternidade com 35 pedras ~8 s, anel vintage com filigrana (16 fios, 3 gemas) ~13–17 s (no navegador do teste,
-sem GPU, ~20 s; a prévia completa aparece antes). Limites conhecidos: gemas do pavé ficam radiais (não inclinam nas
+sem GPU, ~20 s; a prévia completa aparece antes), **anel folhas com oval (9 gemas, 64 garras-cápsula, 12 fios,
+8 folhinhas) 22,5 s em Node / ~26 s no navegador do teste**; gema livre isolada ~2,5 s. Limites conhecidos: gemas do pavé ficam radiais (não inclinam nas
 fileiras laterais de perfis curvos); a torção usa loft (mais lenta com pavé); texturas só no aro.

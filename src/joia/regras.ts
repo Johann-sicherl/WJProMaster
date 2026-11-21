@@ -5,6 +5,7 @@
 
 import { ornamentar, type Ornamentacao, type Ornamento, type Simetria } from "./ornamento";
 import type { Escultura, FormaBase } from "./escultura";
+import { posicionarLivres, validarLivre, zonasLivres, type GemaLivre, type LivrePosta } from "./gemasLivres";
 
 export type P2 = [number, number];
 export type V3 = [number, number, number];
@@ -24,8 +25,11 @@ export interface DocJoia {
   versao: 1;
   nome: string;
   liga: string;
-  /** dividido: abertura (mm) da divisão do aro no topo, 0 = inteiro; divisao: até que ângulo (°) a divisão vai */
-  aro: { norma: Norma; tamanho: number; perfil: Perfil; largura: number; espessura: number; larguraBase: number; espessuraBase: number; torcao: number; dividido: number; divisao: number };
+  /**
+   * dividido: abertura (mm) da divisão do aro no topo, 0 = inteiro; divisao: até que ângulo (°) a divisão vai;
+   * afastamento: quanto cada ramo se abre ao longo do dedo no topo (mm, 0 = ramos dentro da largura do aro)
+   */
+  aro: { norma: Norma; tamanho: number; perfil: Perfil; largura: number; espessura: number; larguraBase: number; espessuraBase: number; torcao: number; dividido: number; divisao: number; afastamento: number };
   cabeca: { ativo: boolean; tipo: "garras" | "inglesa"; gema: Gema; garras: number; diamGarra: number; elevacao: number; galeria: boolean; parede: number; girar: number; pontaGarra: "bolinha" | "alongada" | "dupla" };
   pave: { ativo: boolean; tipo: "garras" | "trilho"; material: string; dInicial: number; dFinal: number; espaco: number; fileiras: number; arco: number; diamGarra: number; eternidade: boolean };
   gravacao: { ativo: boolean; texto: string; altura: number; profundidade: number; lado: "interno" | "externo"; posicao: number; negrito: boolean };
@@ -36,6 +40,9 @@ export interface DocJoia {
   ornamentos: Ornamento[];
   /** esculturas livres em malha (unidas à joia no peso e no STL) */
   esculturas: Escultura[];
+  /** gemas livres (qualquer lapidação, posição e orientação, engaste próprio) e o liga/desliga do construtor */
+  gemasLivres: GemaLivre[];
+  gemasLivresAtivo: boolean;
 }
 
 const RAD = Math.PI / 180;
@@ -312,6 +319,31 @@ export function pontosPerfil(p: Perfil, w: number, t: number, n = 24): P2[] {
   return pts;
 }
 
+/**
+ * Ramo do aro dividido em θ (rad), lado +Z: centro e meia largura (já afastado), afastamento s e meia abertura do
+ * vão hw no referencial do aro inteiro. null fora da divisão.
+ */
+export function ramo(a: DocJoia["aro"], th: number): { centro: number; meia: number; s: number; hw: number } | null {
+  const div = a.divisao * RAD;
+  if (!(a.dividido > 0) || Math.abs(th) >= div) return null;
+  const c = (1 + Math.cos((Math.PI * th) / div)) / 2;
+  const hw = Math.max(0.02, (a.dividido / 2) * c), h = secao(a, th).w / 2, s = a.afastamento * c;
+  return { centro: (hw + h) / 2 + s, meia: (h - hw) / 2, s, hw };
+}
+
+/** Ponto dentro do metal do aro (considera o vão e o afastamento dos ramos do aro dividido). */
+export function dentroDoAro(a: DocJoia["aro"], R: number, q: V3): boolean {
+  const th = Math.atan2(q[0], q[1]), r = Math.hypot(q[0], q[1]);
+  const rm = ramo(a, th);
+  let v = q[2];
+  if (rm) {
+    const dz = Math.abs(q[2]) - rm.centro;
+    if (Math.abs(dz) > rm.meia) return false;
+    v = Math.sign(q[2]) * ((rm.hw + secao(a, th).w / 2) / 2 + dz);
+  } else if (Math.abs(v) > secao(a, th).w / 2) return false;
+  return r >= R + superficieInterna(a, th, v) && r <= R + superficie(a, th, v);
+}
+
 /** Torção efetiva em meias-voltas: perfis sem simetria de 180° só aceitam voltas inteiras. */
 export function torcaoEfetiva(a: DocJoia["aro"]): number {
   const n = Math.round(a.torcao);
@@ -322,7 +354,7 @@ export function torcaoEfetiva(a: DocJoia["aro"]): number {
 // posição das gemas: referencial {p, rz, ry}: gira em Y (ry), depois em Z (rz), depois translada p.
 // Local da gema: cintura de y = 0 a y = cintura, coroa para +y, pavilhão para −y; comprimento em x.
 
-export interface Referencial { p: V3; rz: number; ry: number }
+export interface Referencial { p: V3; rz: number; ry: number; /** rotação completa (3×3 por linhas); quando há, vale no lugar de ry/rz */ m?: number[] }
 export interface GemaPosta { gema: Gema; ref: Referencial; passagem: "coroa" | "reta"; ct: number }
 export interface Haste { base: V3; topo: V3; r: number }
 export interface Galeria { y: number; escalaFora: number; escalaDentro: number; altura: number }
@@ -336,6 +368,8 @@ export interface Montagem {
   pave: GemaPosta[];
   /** pedrinhas em inglesa dos ornamentos (com o tubo de cada uma) */
   gemasOrn: { gema: GemaPosta; yBase: number; yTopo: number }[];
+  /** gemas livres postas (com as cópias da simetria), garras e apoios */
+  livres: LivrePosta[];
   /** pontas alongadas das garras (cápsulas: esfera nas duas pontas) */
   capsulas: Haste[];
   orn: Ornamentacao;
@@ -354,7 +388,7 @@ export function montar(d: DocJoia): Montagem {
   const a = d.aro;
   const R = diametroInterno(a.norma, a.tamanho) / 2;
   const s0 = secao(a, 0);
-  const m: Montagem = { R, garras: [], pave: [], gemasOrn: [], capsulas: [], orn: { fios: [], pontos: [], avisos: [] }, contas: [], trilhos: [], zonaCabeca: 0, zonaPave: 0, descartadas: 0, avisos: [] };
+  const m: Montagem = { R, garras: [], pave: [], gemasOrn: [], livres: [], capsulas: [], orn: { fios: [], pontos: [], avisos: [] }, contas: [], trilhos: [], zonaCabeca: 0, zonaPave: 0, descartadas: 0, avisos: [] };
   let meiaCabeca = 0; // meia extensão tangencial da cabeça (mm, na superfície do topo)
 
   if (d.cabeca.ativo) {
@@ -369,10 +403,12 @@ export function montar(d: DocJoia): Montagem {
     if (c.tipo === "garras") {
       const dg = c.diamGarra, n = Math.max(2, Math.round(c.garras));
       let rb = Math.max(0.2, Math.min(0.45 * Math.min(g.comprimento, g.largura) / 2, s0.w / 2 - dg / 2 - 0.05));
-      // aro dividido: as garras descem sobre os dois ramos, não no vão
-      if (a.dividido > 0) {
+      const r0 = ramo(a, 0);
+      // aro dividido: as garras descem sobre os dois ramos, não no vão (ramos afastados: a base vai para o ramo)
+      if (a.dividido > 0 && !(a.afastamento > 0)) {
         rb = Math.max(rb, (a.dividido / 2 + dg / 2) / Math.SQRT1_2);
-        if (rb * Math.SQRT1_2 + dg / 2 > s0.w / 2) m.avisos.push("Aro dividido mais aberto que a largura do aro sob a cabeça: as garras ficam fora dos ramos.");
+        // aviso só quando o centro da garra cai fora do ramo (a garra que passa um pouco da borda continua apoiada)
+        if (rb * Math.SQRT1_2 > s0.w / 2) m.avisos.push("Aro dividido mais aberto que a largura do aro sob a cabeça: as garras ficam fora dos ramos.");
       }
       const yTopo = yg + pr.cintura + pr.coroa * 0.55;
       let soma = 0;
@@ -388,7 +424,12 @@ export function montar(d: DocJoia): Montagem {
         for (const dl of lados) {
           const ox = -wz * dl, oz = wx * dl;
           const topo: V3 = [wx * rc + ox, yTopo, wz * rc + oz];
-          m.garras.push({ base: [wx * rb + ox, yb, wz * rb + oz], topo, r: dg / 2 });
+          let base: V3 = [wx * rb + ox, yb, wz * rb + oz];
+          if (r0 && a.afastamento > 0) {
+            const rm = ramo(a, Math.atan2(base[0], yb)) ?? r0;
+            base = [base[0], yb, (topo[2] < 0 ? -1 : 1) * rm.centro];
+          }
+          m.garras.push({ base, topo, r: dg / 2 });
           // ponta alongada: cápsula radial por cima da garra, avançando sobre a pedra
           if (c.pontaGarra === "alongada")
             m.capsulas.push({ base: [topo[0] + wx * dg * 0.3, yTopo + dg * 0.1, topo[2] + wz * dg * 0.3], topo: [topo[0] - wx * dg * 0.7, yTopo + dg * 0.1, topo[2] - wz * dg * 0.7], r: dg * 0.48 });
@@ -408,7 +449,8 @@ export function montar(d: DocJoia): Montagem {
       m.inglesa = { yBase: yb, yTopo: yg + pr.cintura + pr.coroa * 0.4, escala: 1 + c.parede / rMed, escalaFuro: 0.8 };
       meiaCabeca = extX + c.parede;
     }
-    if (extZ * 2 > s0.w * 3) m.avisos.push("A gema central é muito mais larga que o aro: confira a cesta.");
+    const r0 = ramo(a, 0), larguraApoio = r0 && a.afastamento > 0 ? 2 * (r0.centro + r0.meia) : s0.w;
+    if (extZ * 2 > larguraApoio * 3) m.avisos.push("A gema central é muito mais larga que o aro: confira a cesta.");
     m.zonaCabeca = (meiaCabeca / (R + s0.t)) / RAD + 4;
   }
 
@@ -428,10 +470,20 @@ export function montar(d: DocJoia): Montagem {
       m.gemasOrn.push({ gema: { gema: g, ref: { p, rz: -q.th, ry: 0 }, passagem: "reta", ct: quilates(g) }, yBase: Math.min(-pr.pavilhao - 0.2, q.base - rg - 0.3), yTopo: pr.cintura + pr.coroa * 0.4 });
     }
   }
-  if (m.cabeca) {
+  const r0 = ramo(a, 0);
+  if (m.cabeca && r0 && a.afastamento > 0) {
+    // ramos afastados: a culaça passa entre os ramos; confere a largura do pavilhão na altura do topo do aro
+    const g = m.cabeca.gema, pr = proporcoes(g), yg = m.cabeca.ref.p[1], ry = m.cabeca.ref.ry;
+    const extZ = Math.abs(Math.sin(ry)) * g.comprimento / 2 + Math.abs(Math.cos(ry)) * g.largura / 2;
+    const k = Math.max(0, 1 - (yg - (R + s0.t)) / pr.pavilhao), vao = r0.centro - r0.meia;
+    if (extZ * k > vao + 0.05) m.avisos.push(`O pavilhão da gema central encosta nos ramos do aro dividido: afaste os ramos mais ${(extZ * k - vao).toFixed(2)} mm ou suba a cintura.`);
+    if (yg - pr.pavilhao < R) m.avisos.push("A culaça da gema central passa do Ø interno (encosta no dedo): suba a cintura.");
+  } else if (m.cabeca) {
     const pr = proporcoes(m.cabeca.gema), folga = m.cabeca.ref.p[1] - pr.pavilhao - (R + s0.t);
     if (folga < 0) m.avisos.push(`A culaça da gema central entra ${(-folga).toFixed(2)} mm no aro: altura da cintura mínima sugerida ${(d.cabeca.elevacao - folga + 0.2).toFixed(1)} mm.`);
   }
+  // gemas livres por último: as garras descem até o aro, os fios dos ornamentos ou as garras da central
+  posicionarLivres(d, m);
   return m;
 }
 
@@ -608,6 +660,7 @@ export function zonasOcupadas(d: DocJoia, m: Montagem, comprimentoTexto: number,
   const z: [number, number][] = [];
   if (m.zonaCabeca) z.push([0, m.zonaCabeca + 6]);
   if (m.zonaPave) z.push([0, m.zonaPave + 4]);
+  z.push(...zonasLivres(m));
   if (d.gravacao.ativo && comprimentoTexto > 0 && (incluirInterna ? d.gravacao.lado === "interno" : d.gravacao.lado === "externo")) {
     const r = d.gravacao.lado === "interno" ? m.R : m.R + secao(d.aro, d.gravacao.posicao * RAD).t;
     z.push([d.gravacao.posicao, (comprimentoTexto / 2 / r) / RAD + 4]);
@@ -715,6 +768,11 @@ export function verificar(d: DocJoia, m: Montagem, comprimentoTexto: number): st
   if (wMin < 1.5) av.push(`Largura mínima do aro ${wMin.toFixed(2)} mm: abaixo de 1,5 mm o aro deforma.`);
   if (d.cabeca.ativo && d.cabeca.tipo === "garras" && d.cabeca.diamGarra < liga.garraMin) av.push(`Garras de ${d.cabeca.diamGarra} mm: mínimo recomendado ${liga.garraMin} mm em ${liga.nome}.`);
   if (d.cabeca.ativo && d.cabeca.tipo === "inglesa" && d.cabeca.parede < 0.4) av.push("Parede da inglesa abaixo de 0,4 mm: risco de falha na fundição.");
+  for (const g of d.gemasLivresAtivo ? d.gemasLivres : []) {
+    if (!g.ativo) continue;
+    if (g.engaste === "garras" && g.diamGarra < liga.garraMin) av.push(`${g.nome}: garras de ${g.diamGarra} mm, mínimo recomendado ${liga.garraMin} mm em ${liga.nome}.`);
+    if (g.engaste === "inglesa" && g.parede < 0.4) av.push(`${g.nome}: parede da inglesa abaixo de 0,4 mm (risco de falha na fundição).`);
+  }
   if (d.pave.ativo && d.pave.tipo === "garras" && d.pave.diamGarra < 0.35) av.push("Contas do pavé abaixo de 0,35 mm: difíceis de imprimir e fundir.");
   if (d.pave.ativo && d.pave.dInicial < 0.8) av.push("Pedras abaixo de 0,8 mm: micropavé exige impressora de alta resolução.");
   if (a.torcao && torcaoEfetiva(a) !== Math.round(a.torcao)) av.push(`Perfil ${a.perfil}: torção arredondada para ${torcaoEfetiva(a) / 2} volta(s) inteira(s).`);
@@ -744,7 +802,7 @@ export interface Ficha {
 
 export function ficha(d: DocJoia, m: Montagem, volume: number): Ficha {
   const liga = LIGAS[d.liga] ?? LIGAS.au750a;
-  const todas = [...(m.cabeca ? [m.cabeca] : []), ...m.pave, ...m.gemasOrn.map((x) => x.gema)];
+  const todas = [...(m.cabeca ? [m.cabeca] : []), ...m.pave, ...m.gemasOrn.map((x) => x.gema), ...m.livres.map((x) => x.gema)];
   const mapa = new Map<string, { descricao: string; quantidade: number; ctUnit: number; ctTotal: number }>();
   for (const g of todas) {
     const x = g.gema;
@@ -774,7 +832,7 @@ export function ficha(d: DocJoia, m: Montagem, volume: number): Ficha {
 export function docNovo(): DocJoia {
   return {
     versao: 1, nome: "Joia sem nome", liga: "au750a",
-    aro: { norma: "BR", tamanho: 16, perfil: "conforto", largura: 2.4, espessura: 1.7, larguraBase: 2.4, espessuraBase: 1.7, torcao: 0, dividido: 0, divisao: 35 },
+    aro: { norma: "BR", tamanho: 16, perfil: "conforto", largura: 2.4, espessura: 1.7, larguraBase: 2.4, espessuraBase: 1.7, torcao: 0, dividido: 0, divisao: 35, afastamento: 0 },
     cabeca: { ativo: true, tipo: "garras", gema: { lapidacao: "redonda", material: "diamante", comprimento: 5.2, largura: 5.2 }, garras: 4, diamGarra: 0.8, elevacao: 1.8, galeria: true, parede: 0.6, girar: 0, pontaGarra: "bolinha" },
     pave: { ativo: false, tipo: "garras", material: "diamante", dInicial: 1.5, dFinal: 1.1, espaco: 0.15, fileiras: 1, arco: 120, diamGarra: 0.45, eternidade: false },
     gravacao: { ativo: false, texto: "Para sempre", altura: 1.2, profundidade: 0.2, lado: "interno", posicao: 180, negrito: false },
@@ -783,6 +841,8 @@ export function docNovo(): DocJoia {
     preco: { cotacao: 0, precoQuilate: 0, maoDeObra: 0, margem: 0 },
     ornamentos: [],
     esculturas: [],
+    gemasLivres: [],
+    gemasLivresAtivo: true,
   };
 }
 
@@ -808,7 +868,7 @@ export function validarDoc(x: unknown): DocJoia {
       tamanho: num(a.tamanho, n.aro.tamanho, 0, 80), perfil: umDe(a.perfil, ["meia-cana", "reto", "conforto", "faca"] as const, n.aro.perfil),
       largura: num(a.largura, n.aro.largura, 0.8, 25), espessura: num(a.espessura, n.aro.espessura, 0.5, 8),
       larguraBase: num(a.larguraBase, num(a.largura, n.aro.larguraBase, 0.8, 25), 0.8, 25), espessuraBase: num(a.espessuraBase, num(a.espessura, n.aro.espessuraBase, 0.5, 8), 0.5, 8),
-      torcao: Math.round(num(a.torcao, 0, 0, 8)), dividido: num(a.dividido, 0, 0, 10), divisao: num(a.divisao, 35, 5, 90),
+      torcao: Math.round(num(a.torcao, 0, 0, 8)), dividido: num(a.dividido, 0, 0, 10), divisao: num(a.divisao, 35, 5, 90), afastamento: num(a.afastamento, 0, 0, 8),
     },
     cabeca: {
       ativo: !!(c.ativo ?? n.cabeca.ativo), tipo: umDe(c.tipo, ["garras", "inglesa"] as const, n.cabeca.tipo), gema: g(c.gema, n.cabeca.gema),
@@ -850,6 +910,9 @@ export function validarDoc(x: unknown): DocJoia {
         espelhar: !!x?.espelhar,
       };
     }),
+    // .wjgd antigo sem o campo: lista vazia
+    gemasLivres: (Array.isArray(o.gemasLivres) ? o.gemasLivres : []).slice(0, 60).map((x: any, i: number) => validarLivre(x, i, g)),
+    gemasLivresAtivo: o.gemasLivresAtivo !== false,
   };
   if (doc.cabeca.gema.lapidacao === "redonda") doc.cabeca.gema.comprimento = doc.cabeca.gema.largura;
   return doc;
