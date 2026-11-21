@@ -311,6 +311,10 @@
   tela…). Aparelho conhecido (tablet do Johann: **TCL TAB A1 Plus 9445X, 12,2", 2400×1600**) calibra sozinho pela ficha da tela; senão, calibração uma vez por aparelho pelas **medidas da área acesa da tela** (tela cheia com bordas marcadas, toque longo abre o pop-up dos lados A/B ou diagonal; proporção conferida) ou com régua; no esboço a vista fica de frente para o plano, travada
   em tamanho real (sem zoom nem rotação; dedo/meio arrastam). Traço da caneta = medida real. Detalhes em
   `docs/funcional/sketch.md` §7.
+- **Escala real 1:1 na vista 3D** (21/11/2026): botão na barra de vistas (atalho **1**), mesma calibração do
+  esboço (sem calibração, pede antes). Zoom travado com aviso na roda/pinça; giro e pan livres; **F centraliza o
+  ponto tocado sem mudar a escala**; desligar volta ao zoom anterior; estado lembrado por janela.
+  `docs/funcional/sketch.md` §7.1.
 - **Montagem** (04/11/2026): fora de comando, **mouse (esquerdo) ou caneta arrastam o componente
   flutuante**; clique sem arrastar seleciona; caneta parada abre o menu; **o dedo gira a vista** (mover com
   o dedo = comando Mover componente). Componente fixo não se move por arraste. Componentes de malha (STL)

@@ -397,3 +397,10 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
   pausar no roteiro. Guardar `FileSystemDirectoryHandle` do OPFS no IndexedDB derruba o Chromium de
   testes (no tablet funciona). Carregar a `mediabunny` de dois caminhos na mesma página dá aviso de
   "carregada duas vezes": nos testes, gerar/conferir mídia numa aba à parte.
+
+## Escala real 1:1 na vista 3D (21/11/2026)
+- Câmera ortográfica com frustum em pixels: `camera.zoom` = px CSS por mm; escala real = `zoom = lerPxPorMm()`.
+  `Viewport.travarEscala(px, plano, giroLivre)`: no esboço `giroLivre=false` (sem giro); na vista 3D `true` (só zoom travado).
+  Guarda `zoomAntesEscala` e volta a ele ao soltar. `aplicarEscalaReal()` (main.ts) decide esboço × vista 3D; `sairEsboco`
+  chama de novo. Estado 3D em `sessionStorage` (por janela), declarado logo após `new Viewport` (evita TDZ).
+- `enquadrar()` travado na vista 3D só recentra (último ponto tocado via raycast no `pointerup` curto, senão centro da peça).

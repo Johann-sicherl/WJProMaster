@@ -247,6 +247,18 @@ let avaliacao: FerramentaAvaliar | null = null;
 let aguardando: { para: "esboco" | "furo"; ferramenta?: Ferramenta } | null = null;
 
 const viewport = new Viewport($("viewport"));
+
+// ---------- escala real 1:1 na vista 3D (estado por janela) ----------
+const CHAVE_ESCALA_3D = "wjcad:escala3d";
+let escala3D = (() => {
+  try {
+    return sessionStorage.getItem(CHAVE_ESCALA_3D) === "1";
+  } catch {
+    return false;
+  }
+})();
+viewport.aoTentarZoom = () => avisar("Escala real ligada: o zoom está travado. Desligue o botão 1:1 (tecla 1) para aproximar.", 3500);
+
 const kernel = new ClienteKernel(aoRegenerar);
 
 viewport.definirEstilo(prefs.estilo);
@@ -3687,19 +3699,50 @@ async function calibrarTela() {
   avisar(prefs.escalaReal ? "Calibração salva: a escala real 1:1 já usa o valor novo." : "Calibração salva. Ligue Escala real 1:1 para desenhar em tamanho real.");
 }
 
-/** Aplica a escala real ao esboço aberto (ou solta a vista quando não há esboço/está desligada). */
+/** Aplica a escala real: no esboço aberto (de frente, sem giro) ou na vista 3D (giro livre, zoom travado). */
 function aplicarEscalaReal() {
-  const px = prefs.escalaReal && editor ? lerPxPorMm() : null;
-  if (px && editor) viewport.olharPlano(editor.referencial);
-  viewport.travarEscala(px, editor?.referencial ?? null);
+  const px = lerPxPorMm();
+  if (editor && prefs.escalaReal && px) {
+    viewport.olharPlano(editor.referencial);
+    viewport.travarEscala(px, editor.referencial);
+  } else if (!editor && escala3D && px) viewport.travarEscala(px, null, true);
+  else viewport.travarEscala(null);
+}
+
+/**
+ * Liga/desliga a escala real 1:1 na vista 3D: 1 mm da peça = 1 mm medido na tela (calibração da
+ * tela, a mesma do esboço). Zoom travado; girar e arrastar seguem livres. Desligar volta ao zoom anterior.
+ */
+async function alternarEscala3D(ligar = !escala3D) {
+  if (editor) return avisar("No esboço use Escala 1:1 da aba Sketch.");
+  let fonte = "";
+  if (ligar && lerPxPorMm() === null) {
+    const auto = await pxPorMmAutomatico();
+    if (auto) fonte = auto.fonte;
+    else {
+      avisar("Antes, calibre a escala da tela (uma vez por aparelho).", 6000);
+      if ((await abrirCalibracao()) === null) return;
+    }
+  }
+  escala3D = ligar;
+  try {
+    if (ligar) sessionStorage.setItem(CHAVE_ESCALA_3D, "1");
+    else sessionStorage.removeItem(CHAVE_ESCALA_3D);
+  } catch {
+    /* sem armazenamento: vale só agora */
+  }
+  aplicarEscalaReal();
+  renderizarBarraVistas();
+  avisar(!ligar ? "Escala real desligada: zoom livre, de volta ao zoom anterior."
+    : `${fonte ? `Escala calibrada pela ficha do ${fonte}. ` : ""}Escala real 1:1: 50 mm na peça = 50 mm na tela. Zoom travado; gire e arraste à vontade; F centraliza o ponto tocado.`, 6000);
 }
 
 function sairEsboco() {
   if (!editor) return;
-  viewport.travarEscala(null);
   const id = editor.esb.id;
   editor.fechar();
   editor = null;
+  aplicarEscalaReal(); // volta à escala real da vista 3D, se estiver ligada nesta janela
   snapshotEsboco = null;
   instalarToqueCurto();
   definirSel({ tipo: "feature", id });
@@ -4395,7 +4438,8 @@ function renderizarBarraVistas() {
     return b;
   };
 
-  botao("enquadrar", "Ampliar para caber (F)", () => viewport.enquadrar());
+  botao("enquadrar", escala3D ? "Centralizar o ponto tocado (F) — escala real ligada, o zoom não muda" : "Ampliar para caber (F)", () => viewport.enquadrar());
+  botao("escalaReal", "Escala real 1:1 (1): a peça no tamanho real da tela; zoom travado, gira e arrasta livre", () => void alternarEscala3D(), escala3D);
   botao("vistaAnterior", "Vista anterior (volta o último giro, zoom ou troca de vista)", () => (viewport.temVistaAnterior ? viewport.vistaAnterior() : avisar("Não há vista anterior.")));
   botao("zoomArea", "Zoom por área: arraste um retângulo", () => iniciarZoomArea(), zoomAreaAtivo);
   botao("vistaSecao", "Vista de seção", () => comandoAvaliar("vista-secao"), avaliacao?.tipo === "secao");
@@ -5184,6 +5228,7 @@ document.addEventListener("keydown", (e) => {
     /* atalhos do esboço */
   } else if (e.key === " ") abrirSeletorVistas($("barra-vistas"));
   else if (k === "f" && !ctrl) viewport.enquadrar();
+  else if (e.key === "1" && !ctrl && !e.altKey && !e.shiftKey) void alternarEscala3D();
   else if (e.key === "F5") {
     // liga/desliga o filtro guardando a última escolha
     e.preventDefault();
@@ -5536,6 +5581,7 @@ if (emContexto) {
 mostrarPainel("arvore");
 renderizarAbas();
 renderizarTudo();
+if (escala3D) aplicarEscalaReal(); // esta janela já estava com a escala real ligada
 // painel do cofre na lateral direita: GO-OUT / GO-IN e arquivos em GO-OUT
 instalarPainelCofre("cad", salvarPeca);
 // sincronia global do cofre a cada abertura, depois que o kernel carregou (não disputa a rede)

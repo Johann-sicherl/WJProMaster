@@ -495,6 +495,21 @@ caneta vira uma linha de 50 mm no esboço; splines, arcos e qualquer ferramenta 
   calibração, controles só de pan), `alternarEscalaReal`/`aplicarEscalaReal` em `src/main.ts`.
 - Encaixes e relações automáticas continuam valendo (ex.: horizontal); as medidas seguem o traço.
 
+### 7.1 Escala real 1:1 na vista 3D (Peça, Montagem) — ✅ (21/11/2026)
+
+- Barra de vistas → **Escala real 1:1** (atalho **1**): a vista 3D (ortográfica) mostra a peça no tamanho
+  real da tela, **50 mm na peça = 50 mm medidos na tela**, com a mesma calibração do esboço (⚙
+  Configurações › Esboço; TCL TAB A1 Plus já vem da ficha da tela). Sem calibração (aparelho fora da lista),
+  abre a tela de calibração antes de ligar.
+- Ligada: **zoom travado** (roda e pinça avisam "Escala real ligada"); **girar e arrastar (pan) livres** para
+  ver qualquer detalhe de peça maior que a tela; **F** (e o botão Enquadrar) centraliza o **último ponto
+  tocado** da peça (ou o centro da peça) **sem mudar a escala**.
+- Desligar volta ao **zoom de antes**. O estado é lembrado **por janela** (`sessionStorage["wjcad:escala3d"]`).
+  Dentro de um esboço vale a Escala 1:1 do esboço (§7); ao sair do esboço a da vista 3D volta se estava ligada.
+- Código: `Viewport.travarEscala(px, null, giroLivre=true)`, `aoTentarZoom`, `enquadrar` · `alternarEscala3D`
+  em `src/main.ts`. Testes: `scripts/teste-escala3d.ts` (px/mm × zoom da câmera) e `scripts/roteiro-escala3d.cjs`
+  (tablet 1280×800: cubo de 50 mm em px, giro e pan com toque, pinça, F, recarregar, desligar).
+
 ## 8. Contorno que cruza a si mesmo — ✅ (07/11/2026)
 
 - Um contorno fechado que cruza a si mesmo (ex.: spline que volta quase em cima de uma linha e passa
