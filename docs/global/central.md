@@ -108,6 +108,9 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
 
 ## 6. Limite de uso (10/11/2026)
 
+- **Teto de 70 % do limite semanal (Johann, 24/11):** regra em `regras.md` §1. Antes de abrir ou retomar
+  qualquer conversa, perguntar ao Johann o % atual; ≥ 70 % (ou tarefa que possa passar disso) = não abrir.
+
 - Plano fixo de **US$ 20/mês com limite semanal**; renova **sexta às 23h (horário de Brasília)**.
 - Os "US$" do painel das sessões são **preço de tabela equivalente, não cobrança**. Com o Johann, falar
   sempre em **"% do limite"**.
