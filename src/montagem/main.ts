@@ -1517,7 +1517,14 @@ function furoSob(x: number, y: number): Furo | null {
   if (!ent) return null;
   const l = localDaEntidade(cena.mapa, "face", ent.indice);
   if (!l) return null;
-  return furosDaCena().find((f) => f.comp === l.comp && f.indice === l.indice) ?? null;
+  const furos = furosDaCena();
+  const direto = furos.find((f) => f.comp === l.comp && f.indice === l.indice);
+  if (direto) return direto;
+  // tocou num fixador já encaixado (cabeça, arruela, porca): vale o furo em que ele está (empilhar mais itens)
+  const m = doc?.posicionamentos.find((x) => x.tipo === "concentrico" && !x.suprimido && x.a?.comp === l.comp && x.b?.comp && x.b.ref.tipo === "face");
+  if (!m || m.b?.ref.tipo !== "face") return null;
+  const alvo = m.b.ref.ass;
+  return furos.find((f) => f.comp === m.b!.comp && f.face.area === alvo.area && f.face.nome === alvo.nome && f.face.centro.every((v, i) => Math.abs(v - alvo.centro[i]) < 1e-6)) ?? null;
 }
 
 /** Altura de apoio de um componente que empilha (arruela/porca da biblioteca); null = não empilha. */

@@ -57,7 +57,7 @@ const conferir = (ok, texto) => {
   await p.keyboard.press("Control+7").catch(() => {});
   await p.waitForTimeout(500);
 
-  const comTempo = (pr, rotulo, ms = 20000) => Promise.race([pr, new Promise((r) => setTimeout(() => { console.log("TEMPO ESGOTADO:", rotulo); r("tempo"); }, ms))]);
+  const comTempo = (pr, rotulo, ms = 20000) => { let t; return Promise.race([pr, new Promise((r) => { t = setTimeout(() => { console.log("TEMPO ESGOTADO:", rotulo); r("tempo"); }, ms); })]).finally(() => clearTimeout(t)); };
   // 700 ms entre toques no mesmo ponto: dois toques em até 380 ms contam como duplo toque (enquadra) e não chegam ao comando
   const tocar = async (x, y) => { await p.waitForTimeout(700); return comTempo(p.touchscreen.tap(x, y), `touchscreen.tap(${x},${y})`); };
   const esperarPergunta = async () => {
@@ -108,33 +108,7 @@ const conferir = (ok, texto) => {
   const optC = await p.locator("label:has-text('Comprimento') select option").first().textContent();
   conferir(/Sugerido pela espessura \(\d+/.test(optC ?? ""), `comprimento sugerido: ${optC}`);
 
-  // 4) arma e encaixa, repetindo nos furos iguais
-  console.log("armando…");
-  await comTempo(p.locator(".bib-arrastar").tap(), "tap em .bib-arrastar");
-  console.log("armado; aviso:", await comTempo(p.evaluate(() => document.querySelector("#aviso")?.textContent), "ler aviso", 8000));
-  p.on("console", (m) => console.log("console:", m.text().slice(0, 200)));
-  console.log("tocando no furo…");
-  await tocar(pt.x, pt.y);
-  console.log("tocou; aviso:", await comTempo(p.evaluate(() => document.querySelector("#aviso")?.textContent), "ler aviso 2", 8000));
-  await esperarPergunta();
-  const pergunta = await p.locator(".wjc-pergunta").textContent();
-  conferir(/Repetir em todos os furos iguais/.test(pergunta) && /1 furo/.test(pergunta), `pergunta de repetição: ${pergunta.slice(0, 120)}`);
-  await p.locator(".wjc-pergunta button", { hasText: "Em todos" }).tap();
-  await p.waitForFunction(() => /Parafuso ISO 4762 M6x\d+<2>/.test(document.querySelector("#arvore")?.textContent ?? ""), null, { timeout: 30000 });
-  const arvore = await p.locator("#arvore").textContent();
-  conferir(/Parafuso ISO 4762 M6x\d+<1>/.test(arvore) && /<2>/.test(arvore), `2 parafusos na árvore: ${(arvore.match(/Parafuso ISO 4762 M6x\d+<\d>/g) ?? []).join(", ")}`);
-  const lista = await p.evaluate(async () => {
-    const { Armazem } = await import("/src/comum/armazem.ts");
-    const db = await Armazem.abrir();
-    const pastas = await db.todos("pastas");
-    const arq = await db.todos("arquivos");
-    const bib = pastas.find((x) => x.nome === "Biblioteca");
-    return { pasta: !!bib, arquivos: arq.filter((a) => a.pasta === bib?.id).map((a) => a.nome), cartao: arq.find((a) => a.pasta === bib?.id)?.cartao };
-  });
-  conferir(lista.pasta && lista.arquivos.length === 1 && /^Parafuso ISO 4762 M6x\d+\.wjcad$/.test(lista.arquivos[0]), `peça salva uma vez em CAD › Biblioteca: ${lista.arquivos.join(", ")}`);
-  conferir(/allen/i.test(lista.cartao?.descricao ?? "") && /Aço/.test(lista.cartao?.material ?? ""), `cartão do cofre: ${JSON.stringify(lista.cartao)}`);
-
-  // 5) arruela lisa por ARRASTO até o furo (mouse), só neste furo
+  // 4) arruela lisa por ARRASTO (mouse) até o furo, repetindo em todos os furos iguais
   await p.locator(".campo-busca").fill("arruela lisa");
   await p.locator(".bib-familia").first().tap();
   await p.locator("label:has-text('Tamanho') select").selectOption("M6");
@@ -146,20 +120,48 @@ const conferir = (ok, texto) => {
   await p.mouse.move(pt.x, pt.y, { steps: 6 });
   await p.mouse.up();
   await esperarPergunta();
-  await p.locator(".wjc-pergunta button", { hasText: "Só neste furo" }).tap();
-  await p.waitForFunction(() => /Arruela lisa ISO 7089 M6<1>/.test(document.querySelector("#arvore")?.textContent ?? ""), null, { timeout: 30000 });
-  conferir(true, "arruela lisa ISO 7089 M6 encaixada por arrasto");
+  const pergunta = await p.locator(".wjc-pergunta").textContent();
+  conferir(/Repetir em todos os furos iguais/.test(pergunta) && /1 furo/.test(pergunta), `pergunta de repetição (arrasto): ${pergunta.slice(0, 120)}`);
+  await p.locator(".wjc-pergunta button", { hasText: "Em todos" }).tap();
+  await p.waitForFunction(() => /Arruela lisa ISO 7089 M6<2>/.test(document.querySelector("#arvore")?.textContent ?? ""), null, { timeout: 40000 });
+  conferir(true, "2 arruelas lisas ISO 7089 M6 encaixadas por arrasto");
 
-  // 6) porca pelo lado oposto
+  // 5) parafuso Allen M6: toque no fixador já no furo vale o furo; arma e encaixa sobre a arruela (comprimento sugerido considera a arruela)
+  await p.locator(".campo-busca").fill("allen");
+  await p.locator(".bib-familia", { hasText: "ISO 4762" }).first().tap();
+  await p.locator("label:has-text('Tamanho') select").selectOption("M6");
+  console.log("armando o Allen…");
+  await comTempo(p.locator(".bib-arrastar").tap(), "tap em .bib-arrastar");
+  await tocar(pt.x, pt.y);
+  await esperarPergunta();
+  conferir(/Repetir em todos os furos iguais/.test(await p.locator(".wjc-pergunta").textContent()), "pergunta de repetição do parafuso");
+  await p.locator(".wjc-pergunta button", { hasText: "Em todos" }).tap();
+  await p.waitForFunction(() => /Parafuso ISO 4762 M6x\d+<2>/.test(document.querySelector("#arvore")?.textContent ?? ""), null, { timeout: 40000 });
+  const arvore = await p.locator("#arvore").textContent();
+  const nomes = [...new Set(arvore.match(/Parafuso ISO 4762 M6x\d+/g) ?? [])];
+  conferir(nomes.length === 1 && /M6x22$/.test(nomes[0]), `2 parafusos iguais, comprimento sugerido 22 (10 + arruela 1,6 + porca 5,2 + arruela 1,6 + 2 passos): ${nomes.join(", ")}`);
+  const lista = await p.evaluate(async () => {
+    const { Armazem } = await import("/src/comum/armazem.ts");
+    const db = await Armazem.abrir();
+    const pastas = await db.todos("pastas");
+    const arq = await db.todos("arquivos");
+    const bib = pastas.find((x) => x.nome === "Biblioteca");
+    const meus = arq.filter((a) => a.pasta === bib?.id);
+    return { pasta: !!bib, arquivos: meus.map((a) => a.nome), cartao: meus.find((a) => /4762/.test(a.nome))?.cartao };
+  });
+  conferir(lista.pasta && lista.arquivos.some((n) => /^Parafuso ISO 4762 M6x22\.wjcad$/.test(n)) && lista.arquivos.filter((n) => /4762/.test(n)).length === 1, `peça salva uma vez em CAD › Biblioteca: ${lista.arquivos.join(", ")}`);
+  conferir(/allen/i.test(lista.cartao?.descricao ?? "") && /Aço/.test(lista.cartao?.material ?? ""), `cartão do cofre: ${JSON.stringify(lista.cartao)}`);
+
+  // 6) porca pelo lado oposto (toque no parafuso vale o furo), só neste furo
   await p.locator(".campo-busca").fill("ISO 4032");
   await p.locator(".bib-familia").first().tap();
   await p.locator("label:has-text('Tamanho') select").selectOption("M6");
   await p.locator("label:has-text('lado oposto') input").check();
-  await p.locator(".bib-arrastar").tap();
+  await comTempo(p.locator(".bib-arrastar").tap(), "tap em .bib-arrastar (porca)");
   await tocar(pt.x, pt.y);
   await esperarPergunta();
   await p.locator(".wjc-pergunta button", { hasText: "Só neste furo" }).tap();
-  await p.waitForFunction(() => /Porca ISO 4032 M6<1>/.test(document.querySelector("#arvore")?.textContent ?? ""), null, { timeout: 30000 });
+  await p.waitForFunction(() => /Porca ISO 4032 M6<1>/.test(document.querySelector("#arvore")?.textContent ?? ""), null, { timeout: 40000 });
   conferir(true, "porca ISO 4032 M6 encaixada pelo lado oposto");
 
   // 7) posicionamentos criados e sem erro
