@@ -390,7 +390,8 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
     });
   } else passesDeAcompanhar = 0;
   estadoKernel = "pronto";
-  viewport.mostrarMalha(r.malha, r.topologia);
+  // resultado reaproveitado (✓ logo depois da prévia): a mesma malha já está na tela
+  if (r.malha !== ultimaMalha || !r.malha) viewport.mostrarMalha(r.malha, r.topologia);
   ultimaMalha = r.malha;
   corpos = r.corpos ?? [];
   coresDoArquivo = r.coresFaces;
@@ -4886,6 +4887,7 @@ function fecharDocumento() {
   dadosImportados.clear();
   atualizarAreaDeTrabalho();
   viewport.mostrarMalha(null);
+  ultimaMalha = null;
   limparEsbocos();
   $("st-volume").textContent = "";
   $("st-tempo").textContent = "";
