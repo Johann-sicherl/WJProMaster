@@ -7,7 +7,7 @@ import { makeCompound, measureArea, measureShapeVolumeProperties, setOC, type Sh
 import type { Feature, Referencia, Vec3 } from "../model";
 import { posicionar, projetar, type Corte } from "./projecao";
 import type { Camera, Orientacao } from "../desenho/modelo";
-import { definirSolverEsboco, ehFatal, esquecerSolidosImportados, exportar, exportarDxf, malhasAtuais, pecaAtual, regenerar, regenerarComRecuperacao, temDadosDe } from "./regenerar";
+import { calcularPreviaAdiada, definirSolverEsboco, descartarPreviaAdiada, ehFatal, esquecerSolidosImportados, exportar, exportarDxf, malhasAtuais, pecaAtual, regenerar, regenerarComRecuperacao, temDadosDe, temPreviaAdiada, type MalhaSimples } from "./regenerar";
 import wasmPlaneGcs from "@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url";
 import { SolverEsboco } from "../esboco/solver";
 
@@ -44,6 +44,8 @@ export type RespostaKernel =
   | { tipo: "pronto" }
   | { tipo: "falha-inicial"; mensagem: string }
   | { tipo: "regenerado"; seq: number; resultado: ReturnType<typeof regenerar>; ms: number }
+  /** Material removido da prévia, mandado depois da peça (null: nada removido ou prévia descartada). */
+  | { tipo: "previa"; seq: number; malha: MalhaSimples | null; ms: number }
   | { tipo: "resposta"; seq: number; dados: unknown }
   | { tipo: "erro"; seq: number; mensagem: string };
 
@@ -109,7 +111,11 @@ inicializado
   .then(() => enviar({ tipo: "pronto" }))
   .catch((e) => enviar({ tipo: "falha-inicial", mensagem: String(e) }));
 
+/** seq da reconstrução mais nova que chegou (a prévia de uma antiga não é calculada). */
+let ultimaRegeneracao = 0;
+
 self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
+  if (ev.data.tipo === "regenerar") ultimaRegeneracao = ev.data.seq;
   await inicializado;
   const p = ev.data;
   // conteúdo importado mandado só pela assinatura e que o kernel não tem mais: pede de novo
@@ -121,16 +127,24 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
     switch (p.tipo) {
       case "regenerar": {
         const t0 = performance.now();
-        const resultado = await regenerarComRecuperacao(p.features, 0.05, { planificar: p.planificar, previa: p.previa }, carregarKernel);
+        // a peça vai primeiro; o material removido da prévia (uma booleana a mais, metade do tempo de um
+        // filete) sai numa segunda mensagem — e nem é calculado se outro toque já chegou
+        const resultado = await regenerarComRecuperacao(p.features, 0.05, { planificar: p.planificar, previa: p.previa, previaDepois: !!p.previa }, carregarKernel);
         const ms = performance.now() - t0;
-        const m = resultado.malha, pr = resultado.previaRemovido;
+        const m = resultado.malha;
         enviar(
           { tipo: "regenerado", seq: p.seq, resultado, ms },
-          [
-            ...(m ? [m.vertices.buffer, m.normais.buffer, m.triangulos.buffer, m.arestas.buffer, m.faces.buffer, m.gruposArestas.buffer] : []),
-            ...(pr ? [pr.vertices.buffer, pr.normais.buffer, pr.triangulos.buffer, pr.arestas.buffer] : []),
-          ],
+          m ? [m.vertices.buffer, m.normais.buffer, m.triangulos.buffer, m.arestas.buffer, m.faces.buffer, m.gruposArestas.buffer] : [],
         );
+        if (!temPreviaAdiada()) break;
+        await new Promise((ok) => setTimeout(ok, 0)); // deixa entrar um pedido novo que já esteja na fila
+        if (p.seq !== ultimaRegeneracao) {
+          descartarPreviaAdiada();
+          break;
+        }
+        const t1 = performance.now();
+        const pr = calcularPreviaAdiada();
+        enviar({ tipo: "previa", seq: p.seq, malha: pr, ms: performance.now() - t1 }, pr ? [pr.vertices.buffer, pr.normais.buffer, pr.triangulos.buffer, pr.arestas.buffer] : []);
         break;
       }
       case "exportar":

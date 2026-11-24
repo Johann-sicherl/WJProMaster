@@ -135,6 +135,8 @@ export interface ResultadoRegeneracao {
    * depois), para ver cortes, furos, filetes etc. antes de confirmar.
    */
   previaRemovido?: MalhaSimples | null;
+  /** Tempo (ms) de cada etapa da reconstrução: recursos, prévia, malha, topologia (medição de desempenho). */
+  etapas?: { recursos: number; previa: number; malha: number; topologia: number };
   /** esboços em face cujo plano mudou porque a face andou (a interface grava no documento) */
   suportes?: Record<string, SuporteEsboco>;
   /** Dividir em edição (prévia): as regiões resultantes, na ordem da lista do painel */
@@ -2172,7 +2174,32 @@ function chanfroDeVertice(peca: Shape3D, f: Extract<Feature, { tipo: "chanfro" }
   return res;
 }
 
-export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { planificar?: boolean; previa?: string } = {}): ResultadoRegeneracao {
+/**
+ * Opções da reconstrução. `previaDepois`: o material removido pela prévia não é calculado junto — fica
+ * guardado e sai por `calcularPreviaAdiada` (o worker manda a peça primeiro e a prévia vermelha depois).
+ */
+type OpcoesRegenerar = { planificar?: boolean; previa?: string; previaDepois?: boolean };
+
+/** Peça antes e depois do recurso em edição, para o material removido calculado depois da peça. */
+let previaAdiada: { antes: Shape3D | null; depois: Shape3D | null; tolerancia: number } | null = null;
+
+/** Há material removido esperando cálculo (da última reconstrução com `previaDepois`). */
+export function temPreviaAdiada(): boolean {
+  return !!previaAdiada;
+}
+
+/** Material removido da última reconstrução com `previaDepois` (e esquece). */
+export function calcularPreviaAdiada(): MalhaSimples | null {
+  const p = previaAdiada;
+  previaAdiada = null;
+  return p ? materialRemovido(p.antes, p.depois, p.tolerancia) : null;
+}
+
+export function descartarPreviaAdiada() {
+  previaAdiada = null;
+}
+
+export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: OpcoesRegenerar = {}): ResultadoRegeneracao {
   try {
     return regenerarBruto(features, tolerancia, opcoes);
   } catch (e) {
@@ -2188,7 +2215,7 @@ export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { plan
  * ao gerar a malha), testa o recurso em edição e depois os últimos da árvore.
  */
 export async function regenerarComRecuperacao(
-  features: Feature[], tolerancia: number, opcoes: { planificar?: boolean; previa?: string }, reiniciar: () => Promise<void>,
+  features: Feature[], tolerancia: number, opcoes: OpcoesRegenerar, reiniciar: () => Promise<void>,
 ): Promise<ResultadoRegeneracao> {
   let feats = features;
   const extras: ErroFeature[] = [];
@@ -2237,7 +2264,8 @@ function juntarMalhas(solido: MalhaPeca | null, malhas: MalhaStl[]): MalhaPeca {
   };
 }
 
-function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { planificar?: boolean; previa?: string }): ResultadoRegeneracao {
+function regenerarBruto(features: Feature[], tolerancia: number, opcoes: OpcoesRegenerar): ResultadoRegeneracao {
+  previaAdiada = null;
   const erros: ErroFeature[] = [];
   const avisos: ErroFeature[] = [];
   const tempos: { id: string; ms: number }[] = [];
@@ -2246,6 +2274,8 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
   const reg = novoRegistro(features);
   const rastreador = new RastreadorFaces();
   let previaRemovido: MalhaSimples | null | undefined;
+  const etapas = { recursos: 0, previa: 0, malha: 0, topologia: 0 };
+  const tIni = performance.now();
 
   for (const f of features) {
     if (f.suprimida) continue;
@@ -2263,7 +2293,12 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
       if (nAntes && ctx.peca && ctx.peca !== antes && listarSolidos(ctx.peca).length > nAntes) {
         avisos.push({ id: f.id, mensagem: avisoCorpoSeparado(ctx.peca, nAntes) });
       }
-      if (opcoes.previa === f.id) previaRemovido = materialRemovido(antes, ctx.peca, tolerancia);
+      if (opcoes.previa === f.id && opcoes.previaDepois) previaAdiada = { antes, depois: ctx.peca, tolerancia };
+      else if (opcoes.previa === f.id) {
+        const tp = performance.now();
+        previaRemovido = materialRemovido(antes, ctx.peca, tolerancia);
+        etapas.previa = performance.now() - tp;
+      }
     } catch (e) {
       // memória do kernel possivelmente corrompida: não dá para continuar nesta instância
       if (ehFatal(e)) throw new KernelQuebrado(f.id, (e as Error).message);
@@ -2274,6 +2309,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     tempos.push({ id: f.id, ms: performance.now() - t0 });
   }
 
+  etapas.recursos = performance.now() - tIni - etapas.previa;
   if (ctx.avisos) avisos.push(...ctx.avisos);
   reg.marcar(ctx.peca);
   const atualizacoes = atualizacoesDoDocumento(features, reg);
@@ -2293,6 +2329,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
       erros.push({ id: "__planificado", mensagem: `Planificado: ${traduzirErro(e)}` });
     }
   }
+  if (planificada) previaAdiada = null; // vista planificada não mostra o material removido
 
   // referências para a interface desenhar
   const tam = (caixa(ctx)?.diag ?? 100) * 0.6;
@@ -2312,6 +2349,7 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     return { malha, erros, avisos, volume, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {}, suportes: ctx.suportes, corpos: corposDaMalha(ctx, 0), regioes: ctx.regioes, atualizacoes, externasNoKernel };
   }
 
+  const tMalha = performance.now();
   const m = peca.mesh({ tolerance: tolerancia, angularTolerance: 15 });
   const a = peca.meshEdges({ tolerance: tolerancia, angularTolerance: 15 });
   let volume: number | null = null;
@@ -2328,9 +2366,13 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     faces: Uint32Array.from(m.faceGroups.flatMap((g) => [g.start, g.count, g.faceId >>> 0])),
     gruposArestas: Uint32Array.from(a.edgeGroups.flatMap((g) => [g.start, g.count])),
   };
+  const tTopo = performance.now();
+  etapas.malha = tTopo - tMalha;
   const facesPorRecurso = planificada ? {} : rastreador.atribuir(peca);
   const topo = topologia(peca).topo;
   if (!planificada) reg.nomearTopologia(topo);
+  const corposInfo = [...corposSolidos(peca, facesPorRecurso, features), ...corposDaMalha(ctx, malhaSolido.triangulos.length)];
+  etapas.topologia = performance.now() - tTopo;
   return {
     malha: ctx.malhas.length ? juntarMalhas(malhaSolido, ctx.malhas) : malhaSolido,
     erros,
@@ -2340,9 +2382,10 @@ function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { plani
     coresFaces: ctx.coresArquivo.length ? Array.from(casarFaces(topo.faces, ctx.coresArquivo)) : undefined,
     referencias: ctx.refsSaida,
     tempos,
-    corpos: [...corposSolidos(peca, facesPorRecurso, features), ...corposDaMalha(ctx, malhaSolido.triangulos.length)],
+    corpos: corposInfo,
     facesPorRecurso,
     previaRemovido: planificada ? null : previaRemovido,
+    etapas,
     suportes: ctx.suportes,
     regioes: ctx.regioes,
     atualizacoes,

@@ -15,6 +15,7 @@ import { ABAS, type Comando, type IdAba } from "./comandos";
 import { ICONES, type NomeIcone } from "./icones";
 import { iconeFeature } from "./ui/iconeRecurso";
 import { ClienteKernel } from "./kernel/cliente";
+import { marcar } from "./comum/medicao";
 import type { AtualizacaoRef, InfoCorpo, InfoReferencia, RegiaoDividirInfo, ResultadoRegeneracao } from "./kernel/regenerar";
 import type { PropriedadesMassa } from "./kernel/avaliar";
 import {
@@ -190,6 +191,7 @@ let aberto = false;
 let doc: Documento = documentoVazio();
 /** Tempo (ms) da última reconstrução, para a janela de diagnóstico. */
 let ultimaReconstrucao: number | null = null;
+let ultimasEtapas: ResultadoRegeneracao["etapas"];
 /** Malha triangulada da peça na última reconstrução (vai para o WJFlow). */
 let ultimaMalha: ResultadoRegeneracao["malha"] = null;
 let selecao: Selecao = null;
@@ -260,6 +262,12 @@ let escala3D = (() => {
 viewport.aoTentarZoom = () => avisar("Escala real ligada: o zoom está travado. Desligue o botão 1:1 (tecla 1) para aproximar.", 3500);
 
 const kernel = new ClienteKernel(aoRegenerar);
+// material removido da prévia (vermelho): chega logo depois da peça da mesma reconstrução
+kernel.aoPrevia = (m) => {
+  if (!previaAtiva()) return;
+  viewport.mostrarPrevia(m);
+  requestAnimationFrame(() => marcar("previa:tela"));
+};
 
 viewport.definirEstilo(prefs.estilo);
 aplicarVisibilidadeRefs();
@@ -424,6 +432,7 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
     r.volume !== null ? `Volume: ${(r.volume / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} cm³` : "";
   $("st-tempo").textContent = `Reconstrução: ${ms.toFixed(0)} ms`;
   ultimaReconstrucao = ms;
+  ultimasEtapas = r.etapas;
   atualizarStatus();
   renderizarArvore();
   if (!editor) desenharEsbocos();
@@ -443,6 +452,7 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   }
   if (avaliacao?.tipo === "analise") mostrarLegendaAnalise();
   // cotas abertas sobre o modelo: refeitas na peça nova (posições mudam com os valores)
+  requestAnimationFrame(() => marcar("peca:tela"));
   if (recursoComCotas === TODAS_AS_COTAS) mostrarTodasAsCotas();
   else if (recursoComCotas === COTAS_DO_CORPO && cotasDoCorpo) {
     const ids = new Set(cotasDoCorpo.ids);
@@ -1193,6 +1203,7 @@ function esquemaComando(c: { f: Feature; modo?: "chapa" }): Esquema<Feature> {
  * fábrica (sem pré-seleção); sem caixa vazia, a primeira delas fica ativa (o toque troca o padrão).
  */
 function abrirComando(f: Feature, novo: boolean, modo?: "chapa", comPadrao: string[] = []) {
+  marcar("cmd:abrir");
   if (editor) sairEsboco();
   fecharCotasNoModelo();
   fecharAvaliacao();
@@ -1227,7 +1238,7 @@ function renderizarComando() {
     aviso: avisosPorFeature.get(c.f.id),
     aoMudar: (final) => {
       salvarAutosave();
-      regenerarPrevia(final ? 80 : 300);
+      regenerarPrevia(final ? 0 : 300);
       if (final) renderizarComando();
       renderizarArvore();
     },
@@ -1352,6 +1363,7 @@ function arrastarCaixaFlutuante(cab: HTMLElement) {
 
 function confirmarComando() {
   if (!comando) return;
+  marcar("cmd:ok");
   esconderBarraContexto(); // a seleção rápida do Filete/Chanfro não sobra depois do comando
   const f = comando.f;
   // como nos CADs profissionais, o OK só vale com a seleção obrigatória feita
@@ -1960,6 +1972,7 @@ function instalarToqueCurto() {
     mostrarCotasNoModelo(f);
   };
   viewport.aoToqueCurto = (e) => {
+    marcar("toque");
     const tol = e.pointerType === "touch" ? 22 : 9;
     esconderBarraContexto();
     if (!comando) fecharCotasNoModelo();
@@ -2168,7 +2181,7 @@ function alterouComando() {
   salvarAutosave();
   renderizarComando();
   renderizarArvore();
-  regenerarPrevia(80);
+  regenerarPrevia(0);
 }
 
 function adicionarAoCampo(r: Referencia) {
@@ -2187,7 +2200,8 @@ function adicionarAoCampo(r: Referencia) {
     comando.campo = proximoCampo(camposDeSelecao(esquemaComando(comando), comando.f, comando.aba), comando.f, cam);
   }
   renderizarComando();
-  regenerarPrevia(80);
+  // sem espera: o cliente do kernel já deixa só a mais nova na fila quando os toques vêm seguidos
+  regenerarPrevia(0);
 }
 
 /** Durante um comando: "Mostrar pré-visualização" desligado adia a reconstrução até o OK. */
@@ -5288,6 +5302,7 @@ function barraDeAtalhos() {
 // ---------- persistência local ----------
 function salvarAutosave() {
   if (!aberto) return;
+  marcar("salvar:ini");
   capturarAtiva(doc);
   // cada janela tem o seu salvamento automático (várias peças abertas ao mesmo tempo)
   try {
@@ -5295,6 +5310,7 @@ function salvarAutosave() {
   } catch {
     gravarJSON(CHAVE_AUTOSAVE, doc); // sem espaço: o caminho antigo avisa e limpa
   }
+  marcar("salvar:fim");
 }
 
 /** `comum`: o documento que outro app deixou para esta janela abrir (#abrir-autosave). */
@@ -5342,7 +5358,9 @@ let avisouAutosave = false;
 
 // ---------- testes automatizados (só em desenvolvimento) ----------
 if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>).__cad = { viewport, doc: () => doc, editor: () => editor, abrirExemplo: () => abrirDocumento(documentoExemplo()), abrir: (d: Documento) => abrirDocumento(validarDocumento(d)) };
+  (window as unknown as Record<string, unknown>).__cad = { viewport, doc: () => doc, editor: () => editor, abrirExemplo: () => abrirDocumento(documentoExemplo()), abrir: (d: Documento) => abrirDocumento(validarDocumento(d)),
+    // roteiro de desempenho: tempo e etapas da última reconstrução e quantas foram ao worker
+    kernel: () => ({ ms: ultimaReconstrucao, etapas: ultimasEtapas, contagem: { ...kernel.contagem }, ocupado: estadoKernel === "regenerando" }) };
 }
 
 // ---------- início ----------

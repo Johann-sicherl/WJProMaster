@@ -4,6 +4,7 @@
 // novo). O mesmo estado nunca é reconstruído duas vezes: o ✓ de um comando reaproveita a prévia.
 
 import type { LeituraMontagem } from "./importar";
+import { marcar } from "../comum/medicao";
 import { assinaturaDados, LIMITE_DADOS_UMA_VEZ, PREFIXO_ENVIADO, type Feature, type Referencia } from "../model";
 import type { PedidoKernel, RespostaKernel } from "./worker";
 import type { InfoReferencia, ResultadoRegeneracao } from "./regenerar";
@@ -44,6 +45,9 @@ export class ClienteKernel {
 
   readonly pronto: Promise<void>;
 
+  /** Material removido da prévia, que chega depois da peça (`aoRegenerar`) da mesma reconstrução. */
+  aoPrevia: (m: ResultadoRegeneracao["previaRemovido"], ms: number) => void = () => {};
+
   constructor(private aoRegenerar: (r: ResultadoRegeneracao, ms: number) => void = () => {}) {
     this.pronto = new Promise((ok, falha) => {
       this.worker.onmessage = (ev: MessageEvent<RespostaKernel>) => {
@@ -61,11 +65,17 @@ export class ClienteKernel {
               this.emVoo = null;
             }
             if (r.seq === this.ultimaRegeneracao) {
-              performance.mark("kernel:volta");
+              marcar("kernel:volta");
               this.aoRegenerar(r.seq === this.semPreviaNoSeq ? semPrevia(r.resultado) : r.resultado, r.ms);
-              performance.mark("kernel:aplicado");
+              marcar("kernel:aplicado");
             } else this.contagem.descartadas++;
             this.esvaziarFila();
+            break;
+          case "previa":
+            if (r.seq === this.ultimaRegeneracao && r.seq !== this.semPreviaNoSeq) {
+              this.aoPrevia(r.malha, r.ms);
+              marcar("previa:aplicada");
+            }
             break;
           case "resposta":
             this.pendentes.get(r.seq)?.ok(r.dados);
@@ -116,7 +126,7 @@ export class ClienteKernel {
         queueMicrotask(() => {
           if (this.ultimaRegeneracao !== seq) return;
           this.aoRegenerar(semPrevia(u.r), u.ms);
-          performance.mark("kernel:aplicado");
+          marcar("kernel:aplicado");
         });
         return;
       }
@@ -138,7 +148,7 @@ export class ClienteKernel {
       if (pedido.tipo === "regenerar") {
         this.emVoo = { seq: pedido.seq, chave: chave!, pedido };
         this.contagem.enviadas++;
-        performance.mark("kernel:envio");
+        marcar("kernel:envio");
       }
       this.postarMsg(pedido, msg);
     }
