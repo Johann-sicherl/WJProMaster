@@ -72,13 +72,11 @@
   **pergunta ao Johann o % atual** (Configurações › Uso) antes de abrir ou retomar cada conversa e anota em
   `central.md` §6. Aviso de limite numa conversa (`allowed_warning`) = parar de abrir conversas e avisar o Johann.
   No máximo 2 conversas em paralelo.
-  O teto de 70 % vale também para (Johann, 24/11):
-  - **a sessão atual** (a janela de 5 horas, "Sessão atual" em Configurações › Uso): com 70 % dela gasta, nenhuma conversa nova é aberta ou retomada até
-    a janela renovar. O Claude só recebe o aviso de limite próximo (`allowed_warning`), não o %: a central pergunta
-    o % ao Johann e, na dúvida, trata o aviso como 70 % atingido;
-  - **a janela de contexto de cada conversa** (central e de código): com 70 % do contexto ocupado (≈ 700 mil de
-    1 milhão de tokens, lido pela central no `get_session`), a conversa termina a etapa atual, faz commit/push e
-    passa o trabalho para uma conversa nova (a central abre com o estado e o ramo), em vez de seguir acumulando.
+  O teto de 70 % vale também para **a sessão atual** (a janela de 5 horas, "Sessão atual" em Configurações › Uso;
+  Johann, 24/11): com 70 % dela gasta, nenhuma conversa nova é aberta ou retomada até a janela renovar. O Claude só
+  recebe o aviso de limite próximo (`allowed_warning`), não o %: a central pergunta o % ao Johann e, na dúvida, trata
+  o aviso como 70 % atingido. O contexto das conversas continua pequeno pela regra que já existe (central troca de
+  conversa acima de ~200 mil tokens, `central.md`; conversas de código: uma por assunto).
 
 ## 2. Inspiração sem cópia (vale para todas as faces)
 
