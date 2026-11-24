@@ -110,6 +110,8 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
 
 - **Teto de 70 % do limite semanal (Johann, 24/11):** regra em `regras.md` §1. Antes de abrir ou retomar
   qualquer conversa, perguntar ao Johann o % atual; ≥ 70 % (ou tarefa que possa passar disso) = não abrir.
+  Vale também para a janela de 5 h (aviso de limite = parar) e para o contexto de cada conversa (≥ 70 % de
+  1 M tokens no get_session = encerrar a etapa, push e continuar em conversa nova; a própria central troca de conversa ao chegar lá).
 
 - Plano fixo de **US$ 20/mês com limite semanal**; renova **sexta às 23h (horário de Brasília)**.
 - Os "US$" do painel das sessões são **preço de tabela equivalente, não cobrança**. Com o Johann, falar
