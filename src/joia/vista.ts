@@ -8,13 +8,14 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { malhaGema } from "./malhaGema";
 import { MATERIAIS, type GemaPosta, type V3 } from "./regras";
+import { campoVisao, cantosNoMundo, type Camera as CameraFoto, type RefFoto } from "./referencia";
 
 /** Escultura para a vista: geometria (arrays vivos durante o esculpir) e matrizes no mundo. */
 export interface EsculturaVista { id: string; pos: Float32Array; nor: Float32Array; tri: Uint32Array; matrizes: number[][] }
 /** Pincel: ponto e normal no espaço local da escultura; `d` = deslocamento local (arrastar). */
 export type EventoPincel = { fase: "inicio" | "meio" | "fim"; id: string; c: V3; n: V3; pressao: number; d?: V3 };
 /** Toque/clique curto na vista (caneta, dedo ou mouse): gema livre tocada e/ou ponto da superfície do metal. */
-export type ToqueVista = { livre?: string; ponto?: V3; tipo: string };
+export type ToqueVista = { livre?: string; ponto?: V3; tipo: string; /** px no canvas */ tela?: [number, number] };
 
 export class VistaJoia {
   private renderer: THREE.WebGLRenderer;
@@ -40,6 +41,17 @@ export class VistaJoia {
   private multiToque = false;
   private destaque = new THREE.Group();
   private idDestaque = "";
+  // imagem de referência: plano na vista (modo vista) ou fundo/frente com a câmera da foto (modo câmera)
+  private fotoPlano: THREE.Mesh | null = null;
+  private fotoTextura: THREE.Texture | null = null;
+  private fotoChave = "";
+  private fotoCena = new THREE.Scene();
+  private fotoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1);
+  private fotoQuad: THREE.Mesh;
+  private camFoto: THREE.PerspectiveCamera | null = null;
+  private refFoto: RefFoto | null = null;
+  /** mistura do "comparar" (0 = só modelo, 1 = só foto); null = sem comparar */
+  private mistura: number | null = null;
 
   constructor(private alvo: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false });
@@ -90,6 +102,8 @@ export class VistaJoia {
     });
     cv.addEventListener("pointercancel", (e) => { this.toques.delete(e.pointerId); if (!this.toques.size) this.multiToque = false; });
     this.cena.add(this.destaque);
+    this.fotoQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
+    this.fotoCena.add(this.fotoQuad);
     new ResizeObserver(() => this.redimensionar()).observe(alvo);
     this.redimensionar();
   }
@@ -161,12 +175,15 @@ export class VistaJoia {
   private tocar(e: PointerEvent) {
     if (!this.aoTocar) return;
     const r = this.renderer.domElement.getBoundingClientRect();
-    this.raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+    const ret = this.camFoto && this.refFoto ? this.retanguloFoto()! : { x: 0, y: 0, w: r.width, h: r.height };
+    const x = e.clientX - r.left - ret.x, y = e.clientY - r.top - ret.y;
+    this.raycaster.setFromCamera(new THREE.Vector2((x / ret.w) * 2 - 1, -(y / ret.h) * 2 + 1), this.camFoto && this.refFoto ? this.camFoto : this.camera);
     const g = this.raycaster.intersectObjects(this.gemas.children, false).find((h) => h.object.userData.livre);
     const s = this.raycaster.intersectObjects([this.metal, ...this.esculturas.children], false)[0];
     const t: ToqueVista = { tipo: e.pointerType };
     if (g && (!s || g.distance <= s.distance + 0.05)) t.livre = g.object.userData.livre as string;
     if (s) t.ponto = [s.point.x, s.point.y, s.point.z];
+    t.tela = [e.clientX - r.left, e.clientY - r.top];
     this.aoTocar(t);
   }
 
@@ -330,7 +347,7 @@ export class VistaJoia {
     const passo = () => {
       if (!this.girando) return;
       this.controles.update();
-      this.renderer.render(this.cena, this.camera);
+      this.render();
       requestAnimationFrame(passo);
     };
     if (sim) requestAnimationFrame(passo);
@@ -344,8 +361,143 @@ export class VistaJoia {
     if (this.quadro || this.girando) return;
     this.quadro = requestAnimationFrame(() => {
       this.quadro = 0;
-      this.renderer.render(this.cena, this.camera);
+      this.render();
     });
+  }
+
+  /** Retângulo (px do canvas) onde a foto aparece inteira (modo câmera). */
+  retanguloFoto(): { x: number; y: number; w: number; h: number } | null {
+    const r = this.refFoto;
+    if (!r) return null;
+    const W = this.renderer.domElement.clientWidth, H = this.renderer.domElement.clientHeight;
+    const k = Math.min(W / r.largura, H / r.altura);
+    return { x: (W - r.largura * k) / 2, y: (H - r.altura * k) / 2, w: r.largura * k, h: r.altura * k };
+  }
+
+  private render() {
+    const r = this.refFoto, ren = this.renderer;
+    const cam = this.camFoto && r ? this.camFoto : this.camera;
+    const misturar = this.mistura !== null;
+    // modo câmera: a vista fica do tamanho e proporção da foto (faixas nas bordas)
+    const ret = this.camFoto && r ? this.retanguloFoto() : null;
+    const W = ren.domElement.clientWidth, H = ren.domElement.clientHeight;
+    ren.autoClear = false;
+    ren.setScissorTest(false);
+    ren.setViewport(0, 0, W, H);
+    ren.clear();
+    if (ret) {
+      ren.setViewport(ret.x, H - ret.y - ret.h, ret.w, ret.h);
+      ren.setScissor(ret.x, H - ret.y - ret.h, ret.w, ret.h);
+      ren.setScissorTest(true);
+    }
+    const quad = this.fotoQuad.material as THREE.MeshBasicMaterial;
+    const fundo = !!ret && !!this.fotoTextura && r!.ativo && !r!.frente && !misturar;
+    const frente = !!ret && !!this.fotoTextura && r!.ativo && (r!.frente || misturar);
+    if (fundo) { quad.opacity = 1; ren.render(this.fotoCena, this.fotoCam); ren.clearDepth(); }
+    if (!(misturar && this.mistura! >= 0.999)) ren.render(this.cena, cam);
+    if (frente) { quad.opacity = misturar ? this.mistura! : r!.opacidade; ren.render(this.fotoCena, this.fotoCam); }
+    ren.setScissorTest(false);
+  }
+
+  /**
+   * Imagem de referência: no modo vista, plano texturizado no plano da vista que passa por `ponto` (por trás:
+   * 40 mm atrás; por cima: semitransparente sobre o modelo). No modo câmera com `usarCamera`, a vista passa a
+   * ser a câmera em perspectiva da foto (só nesse modo) e a foto vai de fundo ou por cima.
+   */
+  definirFoto(r: RefFoto | null, ponto: V3, usarCamera: boolean) {
+    this.refFoto = r && r.ativo ? r : null;
+    if (this.fotoPlano) { this.cena.remove(this.fotoPlano); this.fotoPlano.geometry.dispose(); (this.fotoPlano.material as THREE.Material).dispose(); this.fotoPlano = null; }
+    if (!r) {
+      this.fotoTextura?.dispose();
+      this.fotoTextura = null;
+      this.fotoChave = "";
+      this.usarCameraFoto(null);
+      return this.desenhar();
+    }
+    const chave = r.imagem.slice(-64) + r.imagem.length;
+    if (chave !== this.fotoChave) {
+      this.fotoTextura?.dispose();
+      this.fotoChave = chave;
+      const img = new Image();
+      const tex = new THREE.Texture(img);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      img.onload = () => { tex.needsUpdate = true; this.desenhar(); };
+      img.src = r.imagem;
+      this.fotoTextura = tex;
+    }
+    (this.fotoQuad.material as THREE.MeshBasicMaterial).map = this.fotoTextura;
+    (this.fotoQuad.material as THREE.MeshBasicMaterial).needsUpdate = true;
+    if (r.ativo && r.modo === "vista") {
+      const c = cantosNoMundo(r, ponto, r.frente ? -2 : 40);
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array([...c[3], ...c[2], ...c[1], ...c[0]]), 3));
+      g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
+      g.setIndex([0, 1, 2, 0, 2, 3]);
+      const mat = new THREE.MeshBasicMaterial({ map: this.fotoTextura, transparent: true, opacity: r.frente ? r.opacidade : 1, side: THREE.DoubleSide, depthTest: !r.frente, depthWrite: false, toneMapped: false });
+      this.fotoPlano = new THREE.Mesh(g, mat);
+      this.fotoPlano.renderOrder = r.frente ? 20 : -1;
+      this.cena.add(this.fotoPlano);
+    }
+    this.usarCameraFoto(r.ativo && r.modo === "camera" && usarCamera && r.camera ? r.camera : null);
+    this.desenhar();
+  }
+
+  /** Câmera da foto (perspectiva) ou volta à vista ortográfica de sempre. Os controles param enquanto ela vale. */
+  private usarCameraFoto(c: CameraFoto | null) {
+    if (!c || !this.refFoto) {
+      if (this.camFoto) { this.camFoto = null; this.controles.enabled = true; }
+      return;
+    }
+    const r = this.refFoto;
+    const cam = (this.camFoto ??= new THREE.PerspectiveCamera(30, 1, 0.1, 2000));
+    cam.fov = campoVisao(c, r.altura);
+    cam.aspect = r.largura / r.altura;
+    cam.position.set(...c.pos);
+    const R = c.rot;
+    // linhas de rot = eixos da câmera (direita, cima, trás) no mundo = colunas da rotação câmera → mundo
+    cam.quaternion.setFromRotationMatrix(new THREE.Matrix4().set(R[0], R[3], R[6], 0, R[1], R[4], R[7], 0, R[2], R[5], R[8], 0, 0, 0, 0, 1));
+    cam.updateProjectionMatrix();
+    cam.updateMatrixWorld(true);
+    this.controles.enabled = false;
+  }
+
+  get cameraDaFoto(): boolean {
+    return !!this.camFoto;
+  }
+
+  /** Comparar modelo × foto: mistura 0 (só modelo) a 1 (só foto); null desliga. */
+  comparar(m: number | null) {
+    this.mistura = m;
+    if (this.fotoPlano) {
+      const mat = this.fotoPlano.material as THREE.MeshBasicMaterial;
+      if (m !== null) { mat.opacity = m; mat.depthTest = false; this.fotoPlano.renderOrder = 20; this.metal.visible = this.gemas.visible = m < 0.999; }
+      else if (this.refFoto) { mat.opacity = this.refFoto.frente ? this.refFoto.opacidade : 1; mat.depthTest = !this.refFoto.frente; this.fotoPlano.renderOrder = this.refFoto.frente ? 20 : -1; this.metal.visible = this.gemas.visible = true; }
+      mat.needsUpdate = true;
+    } else this.metal.visible = this.gemas.visible = true;
+    this.desenhar();
+  }
+
+  /** Câmera atual da vista no formato da foto (para partir dela ao alinhar com 2 pares). */
+  cameraAtual(H: number): CameraFoto {
+    const c = this.camera, e = c.matrixWorld.elements, t = this.controles.target;
+    // ortográfica → perspectiva equivalente: 200 mm atrás, foco que dá o mesmo tamanho aparente no alvo
+    const tras: V3 = [e[8], e[9], e[10]], dist = 200;
+    const D = (c.position.x - t.x) * tras[0] + (c.position.y - t.y) * tras[1] + (c.position.z - t.z) * tras[2] + dist;
+    const altura = (c.top - c.bottom) / c.zoom;
+    return { pos: [c.position.x + tras[0] * dist, c.position.y + tras[1] * dist, c.position.z + tras[2] * dist], rot: [e[0], e[1], e[2], e[4], e[5], e[6], e[8], e[9], e[10]], f: (H * D) / altura };
+  }
+
+  /** Ponto do mundo → pixel do canvas (para os testes e a marcação). */
+  naTela(p: V3): [number, number] {
+    const cam = this.camFoto && this.refFoto ? this.camFoto : this.camera;
+    const v = new THREE.Vector3(...p).project(cam);
+    const ret = this.camFoto && this.refFoto ? this.retanguloFoto()! : { x: 0, y: 0, w: this.renderer.domElement.clientWidth, h: this.renderer.domElement.clientHeight };
+    return [ret.x + ((v.x + 1) / 2) * ret.w, ret.y + ((1 - v.y) / 2) * ret.h];
+  }
+
+  /** Esculturas visíveis (a joia final já as traz unidas). */
+  mostrarEsculturas(v: boolean) {
+    if (this.esculturas.visible !== v) { this.esculturas.visible = v; this.desenhar(); }
   }
 
   /** Imagem PNG da vista atual (o dobro da resolução da tela). */
@@ -353,7 +505,7 @@ export class VistaJoia {
     const px = this.renderer.getPixelRatio();
     this.renderer.setPixelRatio(Math.min(4, px * 2));
     this.redimensionar();
-    this.renderer.render(this.cena, this.camera);
+    this.render();
     return new Promise((ok) => this.renderer.domElement.toBlob((b) => {
       this.renderer.setPixelRatio(px);
       this.redimensionar();

@@ -19,6 +19,12 @@ import { aplicarToque, codificar, dentroDoRaio, esculturaNova, malhaLocal, matri
 import type { EsculturaVista, EventoPincel, ToqueVista } from "./vista";
 import { gemaLivreNova, temPontas, type GemaLivre } from "./gemasLivres";
 import { anelFolhasOval } from "./modelos";
+import { CONTORNOS, folhaNova, perfilDeCurva, type ContornoFolha, type Folha } from "./folhas";
+import { ALTURA_PERFIL, controlesFio, type FioCfg } from "./ornamento";
+import { PERFIS_FIO } from "./fios";
+import { alinharCamera, escalaPorMedida, LADO_MAX, referenciaNova, type P2 as PFoto } from "./referencia";
+import { noMundo } from "./gemasLivres";
+import { amostrar, mapaPontos } from "../esboco/geometria";
 import type { EditorOrnamento } from "./editorOrnamento";
 import type { PedidoJoia, RespostaJoia } from "./worker";
 
@@ -41,10 +47,10 @@ const historico = new Historico<DocJoia>();
 historico.limpar(doc);
 let m: Montagem = montar(doc);
 let texto: { grupos: GrupoTexto[]; largura: number } = { grupos: [], largura: 0 };
-let resultado: { volume: number; area: number; avisos: string[]; ms: number; final: boolean } | null = null;
+let resultado: { volume: number; area: number; avisos: string[]; ms: number; final: boolean; concordancia?: { suavizados: number; conferidos: number; finas: number } } | null = null;
 let erroKernel = "";
 
-type Item = "aro" | "cabeca" | "pave" | "livres" | "ornamentos" | "esculturas" | "gravacao" | "textura" | "fabricacao" | "preco";
+type Item = "aro" | "cabeca" | "pave" | "livres" | "folhas" | "ornamentos" | "esculturas" | "foto" | "gravacao" | "textura" | "fabricacao" | "preco";
 let sel: Item = "aro";
 
 function alterar(muda: () => void, estrutura = false) {
@@ -123,12 +129,25 @@ function posicionar(v = !posicionando) {
   posicionando = v;
   casca.renderizar();
   painel();
-  if (v) casca.definirStatus("Posicionar: toque (caneta, dedo ou mouse) na joia para levar a gema selecionada até lá; toque numa gema livre para selecioná-la. Arrastar continua girando a vista.");
+  if (v) casca.definirStatus(sel === "folhas" ? "Posicionar: toque (caneta, dedo ou mouse) na joia para levar a base da folha selecionada até lá. Arrastar continua girando a vista." : "Posicionar: toque (caneta, dedo ou mouse) na joia para levar a gema selecionada até lá; toque numa gema livre para selecioná-la. Arrastar continua girando a vista.");
   else status();
 }
 
 function aoTocarVista(t: ToqueVista) {
   if (editando || esculpindo) return;
+  if (marcando?.etapa === "modelo") return marcarModelo(t);
+  if (sel === "folhas") {
+    const f = folhaAtual();
+    if (!posicionando || !t.ponto || !f) return;
+    const [x, y, z] = t.ponto;
+    alterar(() => {
+      f.th = Math.round((Math.atan2(x, y) * 180) / Math.PI * 10) / 10;
+      f.z = Math.round(z * 100) / 100;
+      if (f.pedra) delete f.pedra;
+    });
+    casca.avisar(`${f.nome}: θ ${fmt(f.th, 1)}°, lateral ${fmt(f.z)} mm.`);
+    return;
+  }
   if (t.livre) {
     livreSel = t.livre;
     vista.destacar(t.livre);
@@ -144,6 +163,224 @@ function aoTocarVista(t: ToqueVista) {
     g.z = Math.round(z * 100) / 100;
   });
   casca.avisar(`${g.nome}: θ ${fmt(g.th, 1)}°, lateral ${fmt(g.z)} mm.`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// folhas paramétricas (J9b)
+
+let folhaSel = "";
+const folhaAtual = (): Folha | undefined => doc.folhas.find((f) => f.id === folhaSel) ?? doc.folhas[0];
+const novoIdFolha = () => `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+
+function novaFolha(contorno: ContornoFolha = "lanceolada", extra: Partial<Folha> = {}) {
+  const f: Folha = { ...folhaNova(novoIdFolha(), doc.folhas.length + 1, contorno), ...extra };
+  folhaSel = f.id;
+  sel = "folhas";
+  alterar(() => { doc.folhasAtivo = true; doc.folhas.push(f); }, true);
+}
+
+function duplicarFolha() {
+  const f = folhaAtual();
+  if (!f) return;
+  const c: Folha = { ...structuredClone(f), id: novoIdFolha(), nome: `${f.nome} (cópia)`.slice(0, 40), th: Math.max(-180, Math.min(180, f.th + 8)) };
+  delete c.pedra;
+  folhaSel = c.id;
+  alterar(() => doc.folhas.splice(doc.folhas.indexOf(f) + 1, 0, c), true);
+}
+
+/** Folha com o contorno da curva selecionada no esboço do ornamento (a curva vira guia de construção). */
+function folhaDoContorno() {
+  const o = ornAtual(), ids = edOrn?.selecao() ?? [];
+  if (!o) return;
+  const g = o.esboco.geos.find((x) => ids.includes(x.id) && x.tipo !== "ponto" && x.tipo !== "texto");
+  if (!g) return casca.avisar("Selecione a curva da folha (spline fechada) no esboço.");
+  const pts = amostrar(g, mapaPontos(o.esboco), Math.PI / 48);
+  const r = perfilDeCurva(pts);
+  if (!r) return casca.avisar("A curva é pequena ou aberta demais para virar contorno de folha.");
+  // base na ponta da curva mais perto do centro do desenho; θ e lateral pela posição no esboço
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const Rref = m.R + superficie(doc.aro, 0, 0) + o.altura;
+  g.construcao = true;
+  edOrn?.reatar(o.esboco);
+  novaFolha("personalizada", { perfil: r.perfil, comprimento: r.comprimento, largura: r.largura, th: Math.round(((cx - r.comprimento / 2) / Rref) * (180 / Math.PI) * 10) / 10, z: Math.round(cy * 100) / 100, nome: `Folha (contorno do esboço)` });
+  sel = "ornamentos";
+  painel();
+  casca.avisar("Folha criada com o contorno (a curva virou guia de construção). Ajuste no construtor Folhas.", 6000);
+}
+
+// ---------------------------------------------------------------------------------------------
+// imagem de referência (foto da joia): carregar, medir, alinhar a câmera e comparar. A foto fica só no
+// arquivo (.wjgd), reduzida a 1600 px no lado maior; nada é enviado para fora do aparelho.
+
+/** marcação em curso: medir (dois toques na foto) ou par (um toque na foto e depois no modelo) */
+let marcando: { tipo: "medir" | "par"; etapa: "foto" | "modelo"; pts: PFoto[] } | null = null;
+/** ver a joia pela câmera alinhada à foto (perspectiva só aqui) */
+let verPelaFoto = false;
+let comparando: number | null = null;
+let erroAlinhar: number | null = null;
+
+async function carregarFoto(camera = false) {
+  const inp = document.createElement("input");
+  inp.type = "file";
+  inp.accept = "image/*";
+  if (camera) inp.setAttribute("capture", "environment");
+  inp.onchange = async () => {
+    const f = inp.files?.[0];
+    if (!f) return;
+    try {
+      const url = await new Promise<string>((ok, erro) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => erro(r.error); r.readAsDataURL(f); });
+      const img = new Image();
+      await new Promise((ok, erro) => { img.onload = ok; img.onerror = () => erro(new Error("Imagem inválida.")); img.src = url; });
+      const k = Math.min(1, LADO_MAX / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.naturalWidth * k);
+      cv.height = Math.round(img.naturalHeight * k);
+      cv.getContext("2d")!.drawImage(img, 0, 0, cv.width, cv.height);
+      const dados = cv.toDataURL("image/jpeg", 0.85);
+      const r = referenciaNova(dados, cv.width, cv.height);
+      // tamanho inicial: a foto cobre ~1,3 vez o diâmetro da joia
+      r.escala = Math.round(((2.6 * raioJoia()) / cv.width) * 1e5) / 1e5;
+      sel = "foto";
+      verPelaFoto = false;
+      alterar(() => (doc.referencia = r), true);
+      vista.vista("cima");
+      casca.avisar("Foto carregada (fica só neste arquivo). Meça algo conhecido na foto para acertar a escala.", 6000);
+    } catch (e) {
+      casca.avisar((e as Error).message || "Não foi possível ler a imagem.", 6000);
+    }
+  };
+  inp.click();
+}
+
+/** Ponto de referência da foto fixa: cintura da gema central ou topo do aro. */
+const pontoFoto = (): [number, number, number] => (m.cabeca ? m.cabeca.ref.p : [0, m.R + superficie(doc.aro, 0, 0), 0]);
+
+function atualizarFoto() {
+  vista.definirFoto(doc.referencia, pontoFoto(), verPelaFoto);
+  vista.comparar(comparando);
+  edOrn?.definirFoto(doc.referencia);
+  quadroFoto();
+}
+
+/** Quadro sobre a vista com a foto inteira para tocar nos pontos (medir ou marcar pares). */
+function quadroFoto() {
+  const q = $("#gd-foto-quadro");
+  const r = doc.referencia;
+  if (!marcando || marcando.etapa !== "foto" || !r) { q.hidden = true; return; }
+  q.hidden = false;
+  const img = $<HTMLImageElement>("img", q);
+  if (img.src !== r.imagem) img.src = r.imagem;
+  const W = q.clientWidth, H = q.clientHeight, k = Math.min(W / r.largura, H / r.altura), ox = (W - r.largura * k) / 2, oy = (H - r.altura * k) / 2;
+  Object.assign(img.style, { left: `${ox}px`, top: `${oy}px`, width: `${r.largura * k}px`, height: `${r.altura * k}px` });
+  const pts = [...marcando.pts, ...(marcando.tipo === "par" ? r.pares.map((p) => p.foto) : [])];
+  $("svg", q).innerHTML = pts.map(([u, v], i) => `<g transform="translate(${(ox + u * k).toFixed(1)} ${(oy + v * k).toFixed(1)})"><circle r="9"/><path d="M-14 0H14M0-14V14"/>${marcando!.tipo === "par" && i >= marcando!.pts.length ? `<text x="11" y="-9">${i - marcando!.pts.length + 1}</text>` : ""}</g>`).join("");
+  $(".gd-foto-dica", q).textContent = marcando.tipo === "medir"
+    ? (marcando.pts.length ? "Toque na outra ponta da medida." : "Toque numa ponta de algo com medida conhecida (ex.: a oval de 8 mm).")
+    : `Par ${r.pares.length + 1}: toque no ponto na foto (ex.: ponta da oval, centro de uma redonda).`;
+}
+
+function iniciarMarcacao(tipo: "medir" | "par") {
+  if (!doc.referencia) return;
+  marcando = { tipo, etapa: "foto", pts: [] };
+  comparando = null;
+  verPelaFoto = false;
+  atualizarFoto();
+  painel();
+}
+
+function pararMarcacao() {
+  marcando = null;
+  atualizarFoto();
+  painel();
+  status();
+}
+
+function tocarNaFoto(ev: PointerEvent) {
+  const r = doc.referencia, mc = marcando;
+  if (!r || !mc || mc.etapa !== "foto") return;
+  const img = $<HTMLImageElement>("#gd-foto-quadro img").getBoundingClientRect();
+  const u = ((ev.clientX - img.left) / img.width) * r.largura, v = ((ev.clientY - img.top) / img.height) * r.altura;
+  if (u < 0 || v < 0 || u > r.largura || v > r.altura) return;
+  mc.pts.push([Math.round(u * 10) / 10, Math.round(v * 10) / 10]);
+  if (mc.tipo === "medir" && mc.pts.length === 2) {
+    quadroFoto();
+    const t = prompt("Medida real entre os dois pontos (mm):", "8");
+    const mm = Number(String(t ?? "").replace(",", "."));
+    const [a, b] = mc.pts;
+    marcando = null;
+    if (mm > 0) {
+      try {
+        const e = escalaPorMedida(a, b, mm);
+        alterar(() => {
+          const ref = doc.referencia!;
+          ref.escala = Math.round(e * 1e6) / 1e6;
+          // o meio da medida vai para o ponto de referência (centro da gema central ou topo do aro)
+          ref.cx = (a[0] + b[0]) / 2;
+          ref.cy = (a[1] + b[1]) / 2;
+          ref.dx = ref.dy = 0;
+        });
+        casca.avisar(`Escala: ${fmt(mm, 2)} mm em ${fmt(Math.hypot(b[0] - a[0], b[1] - a[1]), 0)} px = ${fmt(e * 1000, 2)} µm por px.`);
+      } catch (x) {
+        casca.avisar((x as Error).message, 5000);
+      }
+    }
+    atualizarFoto();
+    painel();
+    return;
+  }
+  if (mc.tipo === "par") {
+    mc.etapa = "modelo";
+    casca.definirStatus("Agora toque no ponto correspondente na joia (encaixa no centro ou na ponta da gema mais próxima). Arrastar gira a vista.");
+  }
+  quadroFoto();
+}
+
+/** Pontos notáveis do modelo para o par: centro (cintura) e pontas das gemas, topo das garras. */
+function pontosNotaveis(): [number, number, number][] {
+  const out: [number, number, number][] = [];
+  const gemas = [...(m.cabeca ? [m.cabeca] : []), ...m.livres.map((l) => l.gema), ...m.pave, ...m.gemasOrn.map((x) => x.gema)];
+  for (const g of gemas) {
+    const pr = proporcoes(g.gema), y = pr.cintura;
+    out.push(noMundo(g.ref, [0, y, 0]), noMundo(g.ref, [g.gema.comprimento / 2, y, 0]), noMundo(g.ref, [-g.gema.comprimento / 2, y, 0]));
+    if (g.gema.largura !== g.gema.comprimento) out.push(noMundo(g.ref, [0, y, g.gema.largura / 2]), noMundo(g.ref, [0, y, -g.gema.largura / 2]));
+  }
+  for (const h of m.garras) out.push(h.topo);
+  return out;
+}
+
+function marcarModelo(t: ToqueVista) {
+  const r = doc.referencia, mc = marcando;
+  if (!r || !mc || !t.tela) return;
+  // encaixe no ponto notável mais perto do toque na tela (até 28 px); senão, o ponto da superfície
+  let melhor: [number, number, number] | null = null, dm = 28;
+  for (const p of pontosNotaveis()) {
+    const [x, y] = vista.naTela(p), d = Math.hypot(x - t.tela[0], y - t.tela[1]);
+    if (d < dm) { dm = d; melhor = p; }
+  }
+  const p = melhor ?? t.ponto;
+  if (!p) return casca.avisar("Toque sobre a joia (ou perto de uma gema).");
+  const foto = mc.pts[0];
+  marcando = null;
+  alterar(() => doc.referencia!.pares.push({ foto, modelo: [Math.round(p[0] * 1e4) / 1e4, Math.round(p[1] * 1e4) / 1e4, Math.round(p[2] * 1e4) / 1e4] }));
+  casca.avisar(`Par ${doc.referencia!.pares.length} marcado${melhor ? " (encaixado na gema)" : ""}.${doc.referencia!.pares.length >= 2 ? " Toque em Alinhar câmera." : ""}`);
+  atualizarFoto();
+  painel();
+}
+
+function alinhar() {
+  const r = doc.referencia;
+  if (!r) return;
+  try {
+    const t0 = performance.now();
+    const { camera, erro } = alinharCamera(r.pares, r.largura, r.altura, vista.cameraAtual(r.altura));
+    erroAlinhar = erro;
+    verPelaFoto = true;
+    alterar(() => { r.camera = camera; r.modo = "camera"; });
+    casca.avisar(`Câmera alinhada à foto: erro médio ${fmt(erro, 1)} px (${r.pares.length} pares, ${Math.round(performance.now() - t0)} ms).`, 5000);
+  } catch (e) {
+    casca.avisar((e as Error).message, 5000);
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -204,6 +441,7 @@ async function editarOrnamento() {
   }
   if (!editando) return;
   edOrn.abrir(ornAtual()!.esboco);
+  edOrn.definirFoto(doc.referencia);
   casca.renderizar();
   painel();
   casca.definirStatus("Desenhe na vista de cima do aro: horizontal = ao longo do aro (0 = topo), vertical = largura. Linhas tracejadas = guias.");
@@ -321,6 +559,7 @@ function esculpir() {
   esculpindo = true;
   sel = "esculturas";
   vista.girar(false);
+  vista.mostrarEsculturas(true);
   abrirSessao(e);
   casca.renderizar();
   arvore();
@@ -370,7 +609,9 @@ worker.onmessage = (ev: MessageEvent<RespostaJoia>) => {
   } else if (r.tipo === "malha") {
     if (r.seq !== ultimaGeracao) return;
     vista.definirMetal(r.pos, r.nor, r.idx, LIGAS[doc.liga].cor);
-    resultado = r.final || !resultado ? { volume: r.final ? r.volume : 0, area: r.final ? r.area : 0, avisos: r.avisos, ms: r.ms, final: r.final } : { ...resultado, final: false };
+    // a joia final já traz as esculturas unidas (a malha delas só aparece na prévia e ao esculpir)
+    vista.mostrarEsculturas(!r.final || !r.comEsculturas || esculpindo);
+    resultado = r.final || !resultado ? { volume: r.final ? r.volume : 0, area: r.final ? r.area : 0, avisos: r.avisos, ms: r.ms, final: r.final, concordancia: r.concordancia } : { ...resultado, final: false };
     erroKernel = "";
     status();
     painelResultados();
@@ -497,6 +738,7 @@ function atualizar() {
   vista.destacar(sel === "livres" ? livreSel : "");
   vista.corMetal(LIGAS[doc.liga].cor);
   vistaEsculturas();
+  atualizarFoto();
   if (resultado) resultado.final = false;
   gerar();
   status();
@@ -518,8 +760,10 @@ const ITENS: { id: Item; rotulo: string; icone: NomeIc; ativo?: () => boolean; a
   { id: "cabeca", rotulo: "Cabeça", icone: "garras", ativo: () => doc.cabeca.ativo, alternar: (v) => (doc.cabeca.ativo = v) },
   { id: "pave", rotulo: "Pavé", icone: "pave", ativo: () => doc.pave.ativo, alternar: (v) => (doc.pave.ativo = v) },
   { id: "livres", rotulo: "Gemas livres", icone: "gema", ativo: () => doc.gemasLivresAtivo, alternar: (v) => (doc.gemasLivresAtivo = v) },
+  { id: "folhas", rotulo: "Folhas", icone: "esculpir", ativo: () => doc.folhasAtivo, alternar: (v) => (doc.folhasAtivo = v) },
   { id: "ornamentos", rotulo: "Ornamentos", icone: "filigrana" },
   { id: "esculturas", rotulo: "Escultura", icone: "esculpir" },
+  { id: "foto", rotulo: "Foto de referência", icone: "imagem", ativo: () => !!doc.referencia?.ativo, alternar: (v) => { if (doc.referencia) doc.referencia.ativo = v; } },
   { id: "gravacao", rotulo: "Gravação", icone: "gravar", ativo: () => doc.gravacao.ativo, alternar: (v) => (doc.gravacao.ativo = v) },
   { id: "textura", rotulo: "Textura", icone: "textura", ativo: () => doc.textura.tipo !== "nenhuma", alternar: (v) => (doc.textura.tipo = v ? "facetas" : "nenhuma") },
   { id: "fabricacao", rotulo: "Fabricação", icone: "fundir" },
@@ -536,8 +780,9 @@ function arvore() {
 }
 
 function selecionar(i: Item) {
+  if (i !== sel && posicionando) posicionando = false;
   sel = i;
-  if (i !== "livres" && posicionando) posicionando = false;
+  if (i !== "foto" && marcando) { marcando = null; atualizarFoto(); }
   vista.destacar(i === "livres" ? livreAtual()?.id ?? "" : "");
   arvore();
   painel();
@@ -601,8 +846,10 @@ const CAMPOS: Record<Item, Campo[]> = {
     { k: "pave.diamGarra", r: "Ø da conta / parede", u: "mm", passo: 0.05 },
   ],
   livres: [],
+  folhas: [],
   ornamentos: [],
   esculturas: [],
+  foto: [],
   gravacao: [
     { k: "gravacao.texto", r: "Texto", t: "txt" },
     { k: "gravacao.lado", r: "Lado", t: "sel", ops: () => [["interno", "Por dentro"], ["externo", "Por fora"]] },
@@ -624,6 +871,8 @@ const CAMPOS: Record<Item, Campo[]> = {
     { k: "fabricacao.diamCanal", r: "Ø do canal", u: "mm", passo: 0.1 },
     { k: "fabricacao.compCanal", r: "Comprimento do canal", u: "mm", passo: 0.5 },
     { k: "fabricacao.perda", r: "Perda de metal", u: "%", passo: 0.5 },
+    { k: "concordancia.ativo", r: "Concordância (transição suave entre aro, fios, folhas, garras e cabeça)", t: "chk" },
+    { k: "concordancia.raio", r: "Raio de concordância", u: "mm", passo: 0.05, se: () => doc.concordancia.ativo },
   ],
   preco: [
     { k: "preco.cotacao", r: "Metal (liga)", u: "R$/g", passo: 1 },
@@ -653,10 +902,25 @@ function selecaoOrnamento(o: Ornamento): string {
   if (!geos.length && !pts.length) return `<p class="gd-nota">Toque num fio ou ponto para ajustar Ø, altura e tipo. Ponto (ferramenta Ponto) = bolinha ou pedrinha.</p>`;
   let h = "";
   if (geos.length) {
-    const c = o.fios[geos[0].id] ?? {};
-    const f = (nome: string, rot: string, v: number | undefined, u: string) => `<label class="gd-campo"><span>${rot}</span><input type="number" step="0.05" inputmode="decimal" data-fio="${nome}" value="${v ?? ""}" placeholder="padrão" /><em>${u}</em></label>`;
-    h += `<h4>${geos.length} fio(s) selecionado(s)</h4>${f("d0", "Ø no início", c.d0, "mm")}${f("d1", "Ø no fim", c.d1, "mm")}${f("a0", "Altura no início", c.a0, "mm")}${f("a1", "Altura no fim", c.a1, "mm")}
-      <p class="gd-nota">Vazio = valor padrão do ornamento. Alturas diferentes fazem o fio subir ou descer (ex.: da moldura até o aro).</p>`;
+    const c: FioCfg = o.fios[geos[0].id] ?? {};
+    const f = (nome: string, rot: string, v: number | undefined, u: string, passo = 0.05) => `<label class="gd-campo"><span>${rot}</span><input type="number" step="${passo}" inputmode="decimal" data-fio="${nome}" value="${v ?? ""}" placeholder="padrão" /><em>${u}</em></label>`;
+    const perfil = c.perfil ?? "redondo";
+    const d0 = c.d0 ?? o.diametro, ctrl = c.controles?.length ? controlesFio(c, d0, c.d1 ?? d0, c.a0 ?? o.altura, c.a1 ?? c.a0 ?? o.altura) : null;
+    h += `<h4>${geos.length} fio(s) selecionado(s)</h4>
+      <label class="gd-campo"><span>Perfil</span><select data-fio="perfil">${PERFIS_FIO.map(([k2, r]) => `<option value="${k2}" ${k2 === perfil ? "selected" : ""}>${r}</option>`).join("")}</select><em></em></label>
+      ${ctrl ? "" : `${f("d0", perfil === "redondo" ? "Ø no início" : "Largura no início", c.d0, "mm")}${f("d1", perfil === "redondo" ? "Ø no fim" : "Largura no fim", c.d1, "mm")}
+      ${perfil !== "redondo" ? `${f("h0", "Altura da seção no início", c.h0, "mm")}${f("h1", "Altura da seção no fim", c.h1, "mm")}` : ""}
+      ${f("a0", "Altura sobre o aro no início", c.a0, "mm")}${f("a1", "Altura sobre o aro no fim", c.a1, "mm")}
+      ${perfil !== "redondo" ? `${f("i0", "Inclinação no início", c.i0, "°", 5)}${f("i1", "Inclinação no fim", c.i1, "°", 5)}` : ""}`}
+      ${ctrl ? `<table class="gd-tabela gd-ctrl"><thead><tr><th>Ponto (%)</th><th>${perfil === "redondo" ? "Ø" : "Larg."}</th>${perfil !== "redondo" ? "<th>Alt. seção</th>" : ""}<th>Altura</th>${perfil !== "redondo" ? "<th>Incl. °</th>" : ""}<th></th></tr></thead><tbody>
+        ${ctrl.map((x, i) => `<tr><td><input type="number" step="5" inputmode="decimal" data-ctrl="${i}:u" value="${Math.round(x.u * 100)}" /></td><td><input type="number" step="0.05" inputmode="decimal" data-ctrl="${i}:d" value="${x.d}" /></td>${perfil !== "redondo" ? `<td><input type="number" step="0.05" inputmode="decimal" data-ctrl="${i}:h" value="${x.h ?? ""}" /></td>` : ""}<td><input type="number" step="0.05" inputmode="decimal" data-ctrl="${i}:a" value="${x.a}" /></td>${perfil !== "redondo" ? `<td><input type="number" step="5" inputmode="decimal" data-ctrl="${i}:i" value="${x.i ?? 0}" /></td>` : ""}<td>${ctrl.length > 2 ? `<button data-ctrl-del="${i}" title="Tirar o ponto">${IC.apagar}</button>` : ""}</td></tr>`).join("")}</tbody></table>` : ""}
+      <div class="gd-botoes"><button data-acao="ctrl-novo">${IC.novo} Ponto de controle</button>${ctrl ? `<button data-acao="ctrl-limpar">${IC.apagar} Só início e fim</button>` : ""}</div>
+      ${f("torcao", perfil === "redondo" && !c.trancado ? "Torção (voltas; vale para perfis não redondos e trançado)" : "Torção (voltas ao longo do fio)", c.torcao, "", 0.25)}
+      <label class="gd-check"><input type="checkbox" data-fio="trancado" ${c.trancado ? "checked" : ""}/> Trançado (dois fios torcidos um no outro, Ø = largura)</label>
+      <label class="gd-campo"><span>Subir livre até um apoio</span><select data-fio="subir">${([["nenhum", "Não (apoiado na superfície)"], ["inicio", "Início"], ["fim", "Fim"], ["ambos", "Início e fim"]] as [string, string][]).map(([k2, r]) => `<option value="${k2}" ${(c.subir ?? "nenhum") === k2 ? "selected" : ""}>${r}</option>`).join("")}</select><em></em></label>
+      ${f("concordancia", "Raio de concordância do fio (vazio = o global)", c.concordancia, "mm")}
+      <p class="gd-nota">Vazio = valor padrão do ornamento. A ponta que sobe vai até a garra, gema ou folha mais próxima (até 4 mm) e encaixa nela.</p>
+      <div class="gd-botoes"><button data-acao="folha-contorno">${IC.esculpir} Folha com este contorno</button></div>`;
   }
   if (pts.length) {
     const c = o.pontos[pts[0]] ?? { tipo: "conta", d: Math.round(o.diametro * 160) / 100, material: "diamante" };
@@ -676,7 +940,7 @@ function campoHtml(c: Campo): string {
     ? `<select data-k="${c.k}" ${c.estrutura ? "data-e" : ""}>${c.ops!().map(([k, r]) => `<option value="${k}" ${String(v) === k ? "selected" : ""}>${escapar(r)}</option>`).join("")}</select>`
     : c.t === "txt"
       ? `<input data-k="${c.k}" data-t="txt" maxlength="60" value="${escapar(String(v))}" />`
-      : `<input data-k="${c.k}" type="number" inputmode="decimal" step="${c.passo ?? 0.1}" value="${Number(v)}" />`;
+      : `<input data-k="${c.k}" type="number" inputmode="decimal" step="${c.passo ?? 0.1}" value="${v === undefined ? "" : Number(v)}" ${v === undefined ? 'placeholder="padrão"' : ""} />`;
   return `<label class="gd-campo"><span>${escapar(c.r)}</span>${ctrl}<em>${c.u ?? ""}</em></label>`;
 }
 
@@ -705,6 +969,48 @@ function camposLivre(i: number): Campo[] {
     { k: k("pontaGarra"), r: "Ponta da garra", t: "sel", ops: () => [["bolinha", "Bolinha"], ["alongada", "Alongada (sobre a pedra)"], ["dupla", "Garra dupla"]], se: garras },
     { k: k("parede"), r: "Parede da inglesa", u: "mm", passo: 0.05, se: () => !garras() },
     { k: k("simetria"), r: "Simetria", t: "sel", ops: () => [["nenhuma", "Nenhuma"], ["x", "Esquerda ↔ direita"], ["y", "Frente ↔ trás"], ["xy", "Dois eixos"]] },
+  ];
+}
+
+function camposFolha(i: number): Campo[] {
+  const k = (c: string) => `folhas.${i}.${c}`;
+  const f = doc.folhas[i], livre = () => !f.pedra;
+  return [
+    { k: k("nome"), r: "Nome", t: "txt" },
+    { k: k("contorno"), r: "Contorno", t: "sel", ops: () => CONTORNOS.filter(([c]) => c !== "personalizada" || f.contorno === "personalizada" || !!f.perfil) },
+    { k: k("comprimento"), r: "Comprimento", u: "mm", passo: 0.1 },
+    { k: k("largura"), r: "Largura", u: "mm", passo: 0.05 },
+    { k: k("ponta"), r: "Ponta", t: "sel", ops: () => [["aguda", "Aguda"], ["arredondada", "Arredondada"]] },
+    { k: k("nervura"), r: "Nervura central", t: "sel", ops: () => [["vinco", "Vinco"], ["saliente", "Saliente"], ["nenhuma", "Nenhuma"]] },
+    { k: k("profNervura"), r: "Profundidade/altura da nervura", u: "mm", passo: 0.02, se: () => f.nervura !== "nenhuma" },
+    { k: k("dobra"), r: "Dobra ao longo da nervura (+ levanta as bordas)", u: "°", passo: 5 },
+    { k: k("curvatura"), r: "Curvatura no comprimento (ponta + sobe, − desce)", u: "mm", passo: 0.05 },
+    { k: k("espessura"), r: "Espessura", u: "mm", passo: 0.05 },
+    { k: k("borda"), r: "Borda", t: "sel", ops: () => [["arredondada", "Arredondada"], ["viva", "Viva"]] },
+    { k: k("pedra"), r: "Folha com pedra (a gema assenta na folha)", t: "sel", ops: () => [["", "Nenhuma"], ...doc.gemasLivres.map((g) => [g.id, g.nome] as [string, string])], estrutura: true },
+    { k: k("th"), r: "Posição ao longo do aro (0° = topo)", u: "°", passo: 1, se: livre },
+    { k: k("z"), r: "Lateral (ao longo do dedo)", u: "mm", passo: 0.1, se: livre },
+    { k: k("refAltura"), r: "Altura medida", t: "sel", ops: () => [["aro", "Sobre a superfície do aro"], ["central", "Relativa à cintura da gema central"]], se: livre },
+    { k: k("altura"), r: f.pedra ? "Altura sob a cintura da pedra" : "Altura da base", u: "mm", passo: 0.05 },
+    { k: k("giro"), r: "Giro no plano (0° = ao longo do aro)", u: "°", passo: 5, se: livre },
+    { k: k("inclinacao"), r: "Inclinação (positivo baixa a ponta)", u: "°", passo: 2, se: livre },
+    { k: k("seguir"), r: "Seguir a superfície do aro", t: "chk", se: livre },
+    { k: k("simetria"), r: "Simetria", t: "sel", ops: () => [["nenhuma", "Nenhuma"], ["x", "Esquerda ↔ direita"], ["y", "Frente ↔ trás"], ["xy", "Dois eixos"]], se: livre },
+    { k: k("concordancia"), r: "Raio de concordância desta folha (vazio = o global)", u: "mm", passo: 0.05 },
+  ];
+}
+
+function camposFoto(): Campo[] {
+  const r = doc.referencia!;
+  return [
+    { k: "referencia.opacidade", r: "Opacidade", passo: 0.05 },
+    { k: "referencia.frente", r: "Por cima do modelo (semitransparente); desligado = por trás", t: "chk" },
+    { k: "referencia.modo", r: "Modo", t: "sel", ops: () => [["vista", "Fixa numa vista"], ...(r.camera ? [["camera", "Câmera alinhada à foto"] as [string, string]] : [])] },
+    { k: "referencia.vista", r: "Vista", t: "sel", ops: () => [["cima", "Cima"], ["frente", "Frente"], ["lado", "Lado"]], se: () => r.modo === "vista" },
+    { k: "referencia.escala", r: "Escala (mm por px)", passo: 0.0005, se: () => r.modo === "vista" },
+    { k: "referencia.giro", r: "Girar a foto", u: "°", passo: 1, se: () => r.modo === "vista" },
+    { k: "referencia.dx", r: "Deslocar na horizontal", u: "mm", passo: 0.1, se: () => r.modo === "vista" },
+    { k: "referencia.dy", r: "Deslocar na vertical", u: "mm", passo: 0.1, se: () => r.modo === "vista" },
   ];
 }
 
@@ -760,6 +1066,33 @@ function painel() {
       ${g ? `<div class="gd-botoes"><button data-acao="livre-posicionar" class="${posicionando ? "destaque" : ""}" aria-pressed="${posicionando}">${IC.movimento} ${posicionando ? "Posicionando: toque na joia" : "Posicionar tocando na vista"}</button><button data-acao="livre-duplicar">${IC.duplicar} Duplicar</button><button data-acao="livre-excluir">${IC.apagar} Excluir</button></div>
       <label class="gd-campo"><span>Peso da gema</span><input data-ct-livre type="number" step="0.005" inputmode="decimal" value="${(Math.round(quilates(g.gema) * 1000) / 1000).toString()}" /><em>ct</em></label>
       ${camposLivre(i).map(campoHtml).join("")}` : ""}`;
+  } else if (sel === "folhas") {
+    const f = folhaAtual();
+    const i = f ? doc.folhas.indexOf(f) : -1;
+    const copias = (id: string) => m.folhas.filter((x) => x.id === id).length;
+    extra = `<p class="gd-nota">Folha paramétrica de fundição: contorno, nervura, dobra, curvatura e espessura constante (≥ mínimo da liga: ${fmt(LIGAS[doc.liga].garraMin, 2)} mm). "Folha com pedra": a gema livre assenta na folha e as garras se apoiam nela.</p>
+      <div class="gd-lista">${doc.folhas.map((x) => `<label class="gd-check ${x.id === f?.id ? "gd-atual" : ""}"><input type="checkbox" data-folha-ativo="${x.id}" ${x.ativo ? "checked" : ""} /><button data-folha="${x.id}">${escapar(x.nome)}${copias(x.id) > 1 ? ` <small>×${copias(x.id)}</small>` : ""}</button></label>`).join("") || `<p class="gd-nota">Nenhuma folha.</p>`}</div>
+      <div class="gd-botoes"><label class="gd-campo gd-curto"><span>Nova</span><select data-folha-contorno>${CONTORNOS.filter(([c]) => c !== "personalizada").map(([k2, r]) => `<option value="${k2}">${escapar(r)}</option>`).join("")}</select><em></em></label><button data-acao="folha-nova">${IC.novo} Nova folha</button></div>
+      ${f ? `<div class="gd-botoes"><button data-acao="folha-posicionar" class="${posicionando ? "destaque" : ""}" aria-pressed="${posicionando}">${IC.movimento} ${posicionando ? "Posicionando: toque na joia" : "Posicionar tocando na vista"}</button><button data-acao="folha-duplicar">${IC.duplicar} Duplicar</button><button data-acao="folha-excluir">${IC.apagar} Excluir</button></div>
+      ${f.espessura < LIGAS[doc.liga].garraMin - 1e-9 ? `<p class="gd-aviso">Espessura abaixo do mínimo da liga (${fmt(LIGAS[doc.liga].garraMin, 2)} mm).</p>` : ""}
+      ${camposFolha(i).map(campoHtml).join("")}` : ""}
+      <p class="gd-nota">Contorno personalizado: no esboço do ornamento, desenhe a folha com uma spline fechada, selecione e toque em "Folha com este contorno".</p>`;
+  } else if (sel === "foto") {
+    const r = doc.referencia;
+    extra = !r
+      ? `<p class="gd-nota">Ponha a foto da joia como referência: ela fica só neste arquivo, nunca é enviada para fora do aparelho.</p>
+        <div class="gd-botoes"><button data-acao="foto-galeria" class="destaque">${IC.imagem} Galeria ou arquivo</button><button data-acao="foto-camera">${IC.imagem} Câmera</button></div>`
+      : `<p class="gd-nota">Foto ${r.largura} × ${r.altura} px (fica só neste arquivo). ${r.modo === "vista" ? "Fixa na vista: meça algo conhecido para acertar a escala." : "Câmera alinhada: a vista usa a perspectiva da foto."}</p>
+        <div class="gd-botoes"><button data-acao="foto-medir" class="${marcando?.tipo === "medir" ? "destaque" : ""}">${IC.cota} Medir na foto (escala)</button><button data-acao="foto-galeria">${IC.imagem} Trocar foto</button><button data-acao="foto-remover">${IC.apagar} Remover</button></div>
+        ${camposFoto().map(campoHtml).join("")}
+        <h4>Alinhar a câmera à foto</h4>
+        <p class="gd-nota">Marque 2 a 4 pares: um ponto na foto e o mesmo ponto na joia (pontas da oval, centro das redondas). Com 4 pares a câmera acerta também o campo de visão.</p>
+        <div class="gd-botoes"><button data-acao="foto-par" class="${marcando?.tipo === "par" ? "destaque" : ""}">${IC.novo} Marcar par (${r.pares.length})</button>${r.pares.length ? `<button data-acao="foto-limpar">${IC.apagar} Limpar pares</button>` : ""}${r.pares.length >= 2 ? `<button data-acao="foto-alinhar" class="destaque">${IC.enquadrar} Alinhar câmera</button>` : ""}</div>
+        ${r.camera ? `<label class="gd-check"><input type="checkbox" data-foto-camera ${verPelaFoto ? "checked" : ""}/> Ver pela câmera da foto (perspectiva)</label>${erroAlinhar !== null ? `<p class="gd-nota">Erro médio do alinhamento: ${fmt(erroAlinhar, 1)} px.</p>` : ""}` : ""}
+        ${marcando ? `<div class="gd-botoes"><button data-acao="foto-parar">${IC.fechar} Parar de marcar</button></div>` : ""}
+        <h4>Comparar</h4>
+        <label class="gd-campo"><span>Modelo ↔ foto</span><input type="range" data-comparar min="0" max="1" step="0.05" value="${comparando ?? 0.5}" /><em>${comparando === null ? "" : `${Math.round(comparando * 100)} %`}</em></label>
+        <div class="gd-botoes"><button data-acao="foto-alternar">${IC.girar} Alternar modelo × foto</button>${comparando !== null ? `<button data-acao="foto-comparar-fim">${IC.fechar} Parar de comparar</button>` : ""}</div>`;
   } else if (sel === "pave") {
     extra = `<p class="gd-nota">${m.pave.length} pedra(s), ${m.contas.length} conta(s). Gemas redondas; posições que não cabem ou colidem ficam de fora.</p>`;
   } else if (sel === "gravacao") {
@@ -807,6 +1140,7 @@ function painelResultados() {
       <dt>Área (polimento)</dt><dd>${fmt(resultado?.area ?? 0, 0)} mm²</dd>
       <dt>Peso com perda</dt><dd>${fmt(f.pesoComPerda)} g</dd>
       <dt>Modelo em resina</dt><dd>${fmt(f.pesoResina, 3)} g</dd>
+      ${doc.concordancia.ativo ? `<dt>Concordância</dt><dd>${resultado?.final && resultado.concordancia ? `R ${fmt(doc.concordancia.raio)} mm · ${resultado.concordancia.finas ? "⚠ conferir" : "conferida ✓"}` : `R ${fmt(doc.concordancia.raio)} mm · ${resultado?.final ? "—" : "na versão final"}`}</dd>` : ""}
       ${doc.preco.cotacao || doc.preco.precoQuilate || doc.preco.maoDeObra ? `<dt>Custo</dt><dd>${real(f.custo)}</dd><dt>Preço de venda</dt><dd><b>${real(f.venda)}</b></dd>` : ""}
     </dl>
     ${erroKernel ? `<p class="gd-aviso">${escapar(erroKernel)}</p>` : ""}
@@ -863,14 +1197,49 @@ props.addEventListener("change", (e) => {
     if (alvo) alterar(() => (alvo.ativo = (x as HTMLInputElement).checked));
     return;
   }
+  if (x.dataset.folhaAtivo) {
+    const alvo = doc.folhas.find((q) => q.id === x.dataset.folhaAtivo);
+    if (alvo) alterar(() => (alvo.ativo = (x as HTMLInputElement).checked));
+    return;
+  }
+  if (x.dataset.folhaContorno !== undefined) return;
+  if (x.dataset.fotoCamera !== undefined) {
+    verPelaFoto = (x as HTMLInputElement).checked;
+    if (verPelaFoto && doc.referencia) doc.referencia.modo = "camera";
+    atualizarFoto();
+    painel();
+    return;
+  }
+  if (x.dataset.comparar !== undefined) return;
+  if (o && x.dataset.ctrl) {
+    // ponto de controle do fio: "i:campo"
+    const [i, campo] = x.dataset.ctrl.split(":");
+    const ids = edOrn?.selecao() ?? [];
+    const v = Number(x.value.replace(",", "."));
+    if (!Number.isFinite(v)) return;
+    for (const g of o.esboco.geos) {
+      if (!ids.includes(g.id) || g.tipo === "ponto") continue;
+      const c = o.fios[g.id];
+      const ct = c?.controles?.[Number(i)];
+      if (!ct) continue;
+      (ct as unknown as Record<string, number>)[campo] = campo === "u" ? Math.min(1, Math.max(0, v / 100)) : v;
+    }
+    historico.registrar(doc);
+    autosave.guardar(CHAVE, doc);
+    painel();
+    return;
+  }
   if (o && (x.dataset.fio || x.dataset.pt)) {
     const ids = edOrn?.selecao() ?? [];
-    const valor = x.value.trim() === "" ? undefined : x.dataset.pt === "tipo" || x.dataset.pt === "material" ? x.value : Number(x.value.replace(",", "."));
-    if (typeof valor === "number" && !(valor >= 0)) return;
+    const texto = x.dataset.pt === "tipo" || x.dataset.pt === "material" || x.dataset.fio === "perfil" || x.dataset.fio === "subir";
+    const valor = x.dataset.fio === "trancado" ? (x as HTMLInputElement).checked || undefined : x.value.trim() === "" ? undefined : texto ? x.value : Number(x.value.replace(",", "."));
+    if (typeof valor === "number" && !Number.isFinite(valor)) return;
+    if (typeof valor === "number" && !(valor >= 0) && !["a0", "a1", "i0", "i1", "torcao"].includes(x.dataset.fio ?? "")) return;
     for (const g of o.esboco.geos) {
       if (x.dataset.fio && ids.includes(g.id) && g.tipo !== "ponto") {
         const c = (o.fios[g.id] ??= {});
-        (c as Record<string, number | undefined>)[x.dataset.fio] = valor as number | undefined;
+        (c as Record<string, unknown>)[x.dataset.fio] = valor;
+        if (valor === undefined || (x.dataset.fio === "perfil" && valor === "redondo") || (x.dataset.fio === "subir" && valor === "nenhum")) delete (c as Record<string, unknown>)[x.dataset.fio];
       }
       if (x.dataset.pt && g.tipo === "ponto" && ids.includes(g.p)) {
         const c = (o.pontos[g.p] ??= { tipo: "conta", d: Math.round(o.diametro * 160) / 100, material: "diamante" });
@@ -894,8 +1263,15 @@ props.addEventListener("change", (e) => {
     painel();
     return;
   }
+  // opcionais: raio de concordância por peça (vazio = o global) e a pedra da folha ("" = nenhuma)
+  if ((/\.concordancia$/.test(k) && x.value.trim() === "") || (/^folhas\.\d+\.pedra$/.test(k) && !x.value)) {
+    alterar(() => { const ps = k.split("."); const alvo = ps.slice(0, -1).reduce<any>((q, c) => q[c], doc); delete alvo[ps[ps.length - 1]]; }, true);
+    return;
+  }
   const v = x instanceof HTMLInputElement && x.type === "checkbox" ? x.checked : x instanceof HTMLInputElement && x.type === "number" ? Number(x.value.replace(",", ".")) : x.value;
   if (typeof v === "number" && !Number.isFinite(v)) return;
+  if (k === "referencia.modo" && v === "camera") verPelaFoto = true;
+  if (k === "referencia.modo" && v === "vista") verPelaFoto = false;
   alterar(() => {
     gravar(k, v);
     const lv = /^gemasLivres\.(\d+)\.gema\.lapidacao$/.exec(k);
@@ -916,7 +1292,16 @@ props.addEventListener("change", (e) => {
     }
     if (k === "aro.largura" && doc.aro.larguraBase > (v as number)) doc.aro.larguraBase = v as number;
     if (k === "aro.espessura" && doc.aro.espessuraBase > (v as number)) doc.aro.espessuraBase = v as number;
-  }, k === "textura.tipo");
+  }, k === "textura.tipo" || k === "referencia.modo");
+});
+// comparar: a mistura muda ao arrastar (sem histórico)
+props.addEventListener("input", (e) => {
+  const x = e.target as HTMLInputElement;
+  if (x.dataset.comparar === undefined) return;
+  comparando = Number(x.value);
+  vista.comparar(comparando);
+  const em = x.parentElement?.querySelector("em");
+  if (em) em.textContent = `${Math.round(comparando * 100)} %`;
 });
 props.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest("button");
@@ -927,6 +1312,68 @@ props.addEventListener("click", (e) => {
     vista.destacar(livreSel);
     painel();
     return;
+  }
+  if (b.dataset.folha) {
+    folhaSel = b.dataset.folha;
+    painel();
+    return;
+  }
+  if (b.dataset.ctrlDel) {
+    const o = ornAtual(), ids = edOrn?.selecao() ?? [];
+    if (o) for (const g of o.esboco.geos) if (ids.includes(g.id)) o.fios[g.id]?.controles?.splice(Number(b.dataset.ctrlDel), 1);
+    historico.registrar(doc);
+    autosave.guardar(CHAVE, doc);
+    return painel();
+  }
+  switch (b.dataset.acao) {
+    case "folha-nova": return novaFolha((props.querySelector<HTMLSelectElement>("[data-folha-contorno]")?.value as ContornoFolha) || "lanceolada");
+    case "folha-duplicar": return duplicarFolha();
+    case "folha-posicionar": return posicionar();
+    case "folha-excluir": {
+      const f = folhaAtual();
+      if (f && confirm(`Excluir a folha "${f.nome}"?`)) alterar(() => (doc.folhas = doc.folhas.filter((x) => x.id !== f.id)), true);
+      return;
+    }
+    case "folha-contorno": return folhaDoContorno();
+    case "ctrl-novo":
+    case "ctrl-limpar": {
+      const o = ornAtual(), ids = edOrn?.selecao() ?? [];
+      if (!o) return;
+      for (const g of o.esboco.geos) {
+        if (!ids.includes(g.id) || g.tipo === "ponto" || g.construcao) continue;
+        const c = (o.fios[g.id] ??= {});
+        if (b.dataset.acao === "ctrl-limpar") { delete c.controles; continue; }
+        const d0 = c.d0 ?? o.diametro, a0 = c.a0 ?? o.altura;
+        const lista = controlesFio(c, d0, c.d1 ?? d0, a0, c.a1 ?? a0);
+        // ponto novo no meio do maior trecho, com os valores interpolados
+        let k = 0;
+        for (let i = 0; i + 1 < lista.length; i++) if (lista[i + 1].u - lista[i].u > lista[k + 1].u - lista[k].u) k = i;
+        const A = lista[k], B = lista[k + 1], med = (p: number, q: number) => Math.round(((p + q) / 2) * 100) / 100;
+        lista.splice(k + 1, 0, { u: med(A.u, B.u), d: med(A.d, B.d), h: med(A.h ?? A.d * ALTURA_PERFIL[c.perfil ?? "redondo"], B.h ?? B.d * ALTURA_PERFIL[c.perfil ?? "redondo"]), a: med(A.a, B.a), i: med(A.i ?? 0, B.i ?? 0) });
+        c.controles = lista;
+      }
+      historico.registrar(doc);
+      autosave.guardar(CHAVE, doc);
+      return painel();
+    }
+    case "foto-galeria": return void carregarFoto(false);
+    case "foto-camera": return void carregarFoto(true);
+    case "foto-remover":
+      if (confirm("Remover a foto de referência deste arquivo?")) { marcando = null; comparando = null; verPelaFoto = false; alterar(() => (doc.referencia = null), true); }
+      return;
+    case "foto-medir": return iniciarMarcacao("medir");
+    case "foto-par": return iniciarMarcacao("par");
+    case "foto-parar": return pararMarcacao();
+    case "foto-limpar": erroAlinhar = null; return alterar(() => { doc.referencia!.pares = []; });
+    case "foto-alinhar": return alinhar();
+    case "foto-alternar":
+      comparando = comparando === null || comparando < 0.5 ? 1 : 0;
+      vista.comparar(comparando);
+      return painel();
+    case "foto-comparar-fim":
+      comparando = null;
+      vista.comparar(null);
+      return painel();
   }
   if (b.dataset.acao === "livre-nova") return novaLivre((props.querySelector<HTMLSelectElement>("[data-livre-lap]")?.value as Lapidacao) || "navete");
   if (b.dataset.acao === "livre-duplicar") return duplicarLivre();
@@ -1096,6 +1543,12 @@ function modelos() {
   });
 }
 
+/** Vista padrão: sai da câmera da foto (volta à ortográfica). */
+function mudarVista(v: "iso" | "frente" | "lado" | "cima") {
+  if (verPelaFoto) { verPelaFoto = false; atualizarFoto(); if (sel === "foto") painel(); }
+  vista.vista(v);
+}
+
 async function imagem() {
   const b = await vista.imagem();
   if (b) baixar(b, doc.nome, "png", "image/png");
@@ -1144,6 +1597,7 @@ const casca: Casca = new Casca({
           { id: "inglesa", rotulo: "Inglesa", icone: "inglesa", dica: "Cabeça com aro fechado em volta da gema", acao: () => alterar(() => { doc.cabeca.ativo = true; doc.cabeca.tipo = "inglesa"; sel = "cabeca"; }, true) },
           { id: "pave", rotulo: "Pavé", icone: "pave", dica: "Pedras ao longo do aro (tamanhos graduados, fileiras, eternidade)", acao: () => alterar(() => { doc.pave.ativo = true; sel = "pave"; }, true) },
           { id: "livres", rotulo: "Gemas livres", icone: "gema", dica: "Gema de qualquer lapidação num ponto livre, com garras próprias ou inglesa", acao: () => (doc.gemasLivres.length ? selecionar("livres") : novaLivre()) },
+          { id: "folhas", rotulo: "Folhas", icone: "esculpir", dica: "Folha paramétrica de fundição (contorno, nervura, dobra, curvatura, espessura), também sob uma pedra", acao: () => (doc.folhas.length ? selecionar("folhas") : novaFolha()) },
         ],
         [
           { id: "grav", rotulo: "Gravação", icone: "gravar", dica: "Texto por dentro ou por fora do aro", acao: () => alterar(() => { doc.gravacao.ativo = true; sel = "gravacao"; }, true) },
@@ -1173,15 +1627,19 @@ const casca: Casca = new Casca({
     {
       id: "vista", rotulo: "Vista", grupos: [
         [
-          { id: "iso", rotulo: "Isométrica", icone: "enquadrar", acao: () => vista.vista("iso") },
-          { id: "fr", rotulo: "Frente", icone: "anel", acao: () => vista.vista("frente") },
-          { id: "ld", rotulo: "Lado", icone: "anel", acao: () => vista.vista("lado") },
-          { id: "ci", rotulo: "Cima", icone: "anel", acao: () => vista.vista("cima") },
+          { id: "iso", rotulo: "Isométrica", icone: "enquadrar", acao: () => mudarVista("iso") },
+          { id: "fr", rotulo: "Frente", icone: "anel", acao: () => mudarVista("frente") },
+          { id: "ld", rotulo: "Lado", icone: "anel", acao: () => mudarVista("lado") },
+          { id: "ci", rotulo: "Cima", icone: "anel", acao: () => mudarVista("cima") },
         ],
         [
           { id: "enq", rotulo: "Enquadrar", icone: "enquadrar", dica: "Enquadrar (F)", acao: () => vista.enquadrar(raioJoia()) },
           { id: "gir", rotulo: "Girar", icone: "girar", dica: "Girar sem parar (apresentação)", ativo: () => vista.estaGirando, acao: () => { vista.girar(!vista.estaGirando); casca.renderizar(); } },
           { id: "img", rotulo: "Imagem", icone: "imagem", dica: "Salvar a vista como imagem PNG", acao: () => void imagem() },
+        ],
+        [
+          { id: "foto", rotulo: "Foto", icone: "imagem", dica: "Foto de referência da joia (fica só no arquivo)", acao: () => (doc.referencia ? selecionar("foto") : void carregarFoto(false)) },
+          { id: "cmp", rotulo: "Comparar", icone: "girar", dica: "Alternar modelo × foto no mesmo ângulo", acao: () => { if (!doc.referencia) return casca.avisar("Carregue uma foto de referência primeiro."); comparando = comparando === null || comparando < 0.5 ? 1 : 0; vista.comparar(comparando); selecionar("foto"); } },
         ],
       ],
     },
@@ -1239,6 +1697,10 @@ function faixaEscultura(faixa: HTMLElement) {
   botao(gs, "Subdividir", IC.grade, "Mais vértices para detalhes finos (até 40 962)", false, subdividirEscultura);
   botao(gs, "Enquadrar", IC.enquadrar, "Enquadrar (F)", false, () => vista.enquadrar(raioJoia()));
 }
+$("#gd-foto-quadro").addEventListener("pointerup", (e) => tocarNaFoto(e));
+new ResizeObserver(() => quadroFoto()).observe($("#gd-vista"));
+// testes de interface (só no servidor de desenvolvimento): projeção de pontos e estado
+if (import.meta.env.DEV) (window as any).__wjgd = { vista, doc: () => doc, montagem: () => m, notaveis: pontosNotaveis };
 registrarOffline();
 arvore();
 painel();

@@ -389,7 +389,7 @@ export interface ResultadoJoia {
 }
 
 /** Peça para unir à joia: sólido do OpenCascade e o grupo (para a concordância e os avisos). */
-export interface Peca { s: Shape3D; grupo: "cabeca" | "garras" | "fios" | "contas" | "trilhos" | "livres" | "pedrinhas"; id?: string }
+export interface Peca { s: Shape3D; grupo: "ramos" | "cabeca" | "garras" | "fios" | "contas" | "trilhos" | "livres" | "pedrinhas"; id?: string }
 export interface Pecas { aro: Shape3D; partes: Peca[]; cortes: Shape3D[]; montagem: Montagem; avisos: string[] }
 
 /**
@@ -403,10 +403,13 @@ export function pecas(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 0, r
   const tMax = Math.max(a.espessura, a.espessuraBase) + 20;
   let metal = fazerAro(d, R);
   if (!(vol(metal) > 1)) throw new Error("O aro não pôde ser gerado com essas medidas (perfil, largura e espessura).");
+  // ramos afastados do aro dividido: peças separadas (a união vai junto com as outras; com textura, aqui mesmo)
+  let ramos: Shape3D[] = [];
   if (a.dividido > 0 && a.afastamento > 0) {
     const r = ramosAfastados(d, R);
     metal = segura("cortar", metal, [r.corte], avisos, "Aro dividido");
-    metal = segura("unir", metal, r.ramos, avisos, "Ramos do aro dividido");
+    if (d.textura.tipo !== "nenhuma" && !rapida) metal = segura("unir", metal, r.ramos, avisos, "Ramos do aro dividido");
+    else ramos = r.ramos;
   } else if (a.dividido > 0) metal = segura("cortar", metal, [divisao(d, R)], avisos, "Aro dividido");
 
   // texturas (só no aro, fora das zonas ocupadas)
@@ -431,6 +434,7 @@ export function pecas(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 0, r
   // cabeça, contas e trilhos
   const partes: Peca[] = [];
   const por = (grupo: Peca["grupo"], ss: Shape3D[], id?: string) => { for (const s of ss) partes.push({ s, grupo, id }); };
+  por("ramos", ramos);
   if (m.cabeca) {
     const g = m.cabeca;
     if (d.cabeca.tipo === "garras") {

@@ -203,16 +203,19 @@ export function concordar(m: Malha, origemTri: Int32Array, origens: Origem[], op
     ativos.forEach((v, i) => {
       const w = peso[v];
       if (!(w > 0)) { novo[3 * i] = pos[3 * v]; novo[3 * i + 1] = pos[3 * v + 1]; novo[3 * i + 2] = pos[3 * v + 2]; return; }
-      let mx = 0, my = 0, mz = 0;
-      for (const u of viz[v]) { mx += pos[3 * u]; my += pos[3 * u + 1]; mz += pos[3 * u + 2]; }
+      let mx = 0, my = 0, mz = 0, emin = Infinity;
+      for (const u of viz[v]) {
+        mx += pos[3 * u]; my += pos[3 * u + 1]; mz += pos[3 * u + 2];
+        emin = Math.min(emin, Math.hypot(pos[3 * u] - pos[3 * v], pos[3 * u + 1] - pos[3 * v + 1], pos[3 * u + 2] - pos[3 * v + 2]));
+      }
       const k = viz[v].length || 1;
-      let dx = (mx / k - pos[3 * v]) * 0.5 * w, dy = (my / k - pos[3 * v + 1]) * 0.5 * w, dz = (mz / k - pos[3 * v + 2]) * 0.5 * w;
       const nx = normal[3 * v], ny = normal[3 * v + 1], nz = normal[3 * v + 2];
-      const dn = dx * nx + dy * ny + dz * nz;
-      // só para fora (enche o canto côncavo); onde a superfície é convexa o vértice fica (deslizar na
-      // superfície convexa cortaria metal pela corda)
+      // só na direção da normal e só para fora (enche o canto côncavo; onde é convexo o vértice fica):
+      // sem deslize tangencial, os triângulos não dobram
+      let dn = ((mx / k - pos[3 * v]) * nx + (my / k - pos[3 * v + 1]) * ny + (mz / k - pos[3 * v + 2]) * nz) * 0.5 * w;
       if (dn <= 0) { novo[3 * i] = pos[3 * v]; novo[3 * i + 1] = pos[3 * v + 1]; novo[3 * i + 2] = pos[3 * v + 2]; return; }
-      let x = pos[3 * v] + dx, y = pos[3 * v + 1] + dy, z = pos[3 * v + 2] + dz;
+      dn = Math.min(dn, 0.25 * emin);
+      let x = pos[3 * v] + dn * nx, y = pos[3 * v + 1] + dn * ny, z = pos[3 * v + 2] + dn * nz;
       // deslocamento total limitado (0,6·raio e o espaço livre) e nunca para dentro do plano tangente original
       const ox = original[3 * v], oy = original[3 * v + 1], oz = original[3 * v + 2];
       let ex = x - ox, ey = y - oy, ez = z - oz;
@@ -225,7 +228,27 @@ export function concordar(m: Malha, origemTri: Int32Array, origens: Origem[], op
     });
     ativos.forEach((v, i) => { pos[3 * v] = novo[3 * i]; pos[3 * v + 1] = novo[3 * i + 1]; pos[3 * v + 2] = novo[3 * i + 2]; });
   }
-  dep("suavização");
+  // triângulos que viraram (dobra da malha): os vértices deles voltam ao lugar original
+  const triOrig = (t: number, P: ArrayLike<number>) => {
+    const a = 3 * tri[t], b = 3 * tri[t + 1], c = 3 * tri[t + 2];
+    const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+    return [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+  };
+  let voltaram = 0;
+  for (let rep = 0; rep < 4; rep++) {
+    let n = 0;
+    for (let t = 0; t < tri.length; t += 3) {
+      const [a, b, c] = [tri[t], tri[t + 1], tri[t + 2]];
+      if (!(peso[a] > 0 || peso[b] > 0 || peso[c] > 0)) continue;
+      const n1 = triOrig(t, pos), n2 = triOrig(t, original);
+      const L1 = Math.hypot(n1[0], n1[1], n1[2]), L2 = Math.hypot(n2[0], n2[1], n2[2]);
+      if (n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2] >= -0.05 * L1 * L2) continue;
+      for (const v of [a, b, c]) if (peso[v] > 0) { pos[3 * v] = original[3 * v]; pos[3 * v + 1] = original[3 * v + 1]; pos[3 * v + 2] = original[3 * v + 2]; peso[v] = 0; n++; }
+    }
+    voltaram += n;
+    if (!n) break;
+  }
+  dep(`suavização (${voltaram} vértices voltaram por dobra)`);
   // conferência: o metal só ganha material (nenhum ponto fica mais fino). Para uma amostra dos vértices que
   // se moveram, o ponto original tem de continuar dentro do sólido novo: o primeiro triângulo acertado saindo
   // pela normal original é uma face de saída (normal no mesmo sentido do raio).
@@ -255,7 +278,7 @@ export function concordar(m: Malha, origemTri: Int32Array, origens: Origem[], op
       if (r === true) sim++;
       else if (r === false) nao++;
     }
-    if (!sim && nao) finas++;
+    if (!sim && nao) { finas++; if ((globalThis as any).DEPURAR_JOIA) { const dd = raiosDepois.lancar([o[0] - n0[3 * v] * 1e-4, o[1] - n0[3 * v + 1] * 1e-4, o[2] - n0[3 * v + 2] * 1e-4], [n0[3 * v], n0[3 * v + 1], n0[3 * v + 2]], 2); console.log('     perdeu', v, dd.toFixed(4), 'desloc', Math.hypot(pos[3 * v] - o[0], pos[3 * v + 1] - o[1], pos[3 * v + 2] - o[2]).toFixed(4), 'lim', lim[v].toFixed(3), 'peso', peso[v].toFixed(2), o.map((x) => x.toFixed(2)).join(',')); } }
   }
   const menorDepois = 0;
   dep(`conferência (${conferidos} vértices, ${finas} perderam metal)`);
