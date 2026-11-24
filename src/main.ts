@@ -421,6 +421,8 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
     viewport.enquadrar(false);
     primeiraRegeneracao = false;
   }
+  // shaders dos destaques e da prévia compilados antes do 1º toque de seleção (no tablet, ≈ 1 s)
+  if (r.malha) requestAnimationFrame(() => viewport.aquecerShaders());
   errosPorFeature = new Map(r.erros.map((e) => [e.id, e.mensagem]));
   avisosPorFeature = new Map((r.avisos ?? []).map((e) => [e.id, e.mensagem]));
   tempos = r.tempos;

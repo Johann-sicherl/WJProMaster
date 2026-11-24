@@ -246,6 +246,8 @@ const tabela = [];
     ok("furo: volume menor que a caixa", (await volume()) < VOL_CAIXA - 0.01, `${await volume()}`);
   }
 
+  const shaders = tabela.reduce((s, l) => s + l.programas, 0);
+  ok("nenhum shader compilado nos toques e no ✓ (destaques e prévia compilados antes)", shaders === 0, `${shaders}`);
   ok("sem erro de JavaScript", !errosJs.length, errosJs.join(" | "));
   console.log(`\nTabela (ms; CPU ${LENTO}×, limites ×${FOLGA})`);
   console.log("| Ação | total | vermelho | envio | volta | kernel (recursos/prévia/malha/topologia) | salvar | ao worker | reaproveitada | descartada | shaders |");
