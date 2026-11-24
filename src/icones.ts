@@ -178,6 +178,7 @@ export const ICONES = {
   // ---------- Montagem ----------
   montagem: svg(`<path d="M3 9l5-2.5 5 2.5v6l-5 2.5L3 15z"/><path d="M3 9l5 2.5L13 9M8 11.5v6"/><path d="M11 6l5-2.5L21 6v6l-5 2.5" stroke="${C}"/><path d="M16 8.5V14.5M11 6l5 2.5L21 6" stroke="${C}"/>`),
   componente: svg(`<path d="M12 4l7 4v8l-7 4-7-4V8z"/><path d="M5 8l7 4 7-4M12 12v8"/><circle cx="12" cy="12" r="1.6" fill="${C}" stroke="${C}"/>`),
+  biblioteca: svg(`<path d="M8 3h8v3H8z"/><path d="M9 6v1.5M15 6v1.5M9 9l-.4 11.3h6.8L15 9" stroke-linejoin="round"/><path d="M9 12.5h6M9 15.5h6M9 18.5h6" stroke="${C}"/><path d="M5 3v18M19 3v18" stroke-opacity=".35"/>`),
   inserirComponente: svg(`<path d="M10 6l6 3.4v7L10 20l-6-3.6v-7z"/><path d="M4 9.4 10 13l6-3.6M10 13v7"/><path d="M18 3v6M15 6h6" stroke="${C}"/>`),
   posicionar: svg(`<rect x="3" y="13" width="9" height="7" rx="1"/><rect x="12" y="4" width="9" height="7" rx="1"/><path d="M7.5 13V9.5h4.5M16.5 11v3.5H12" stroke="${C}"/><circle cx="12" cy="12" r="1.3" fill="${C}" stroke="${C}"/>`),
   moverComponente: svg(`<path d="M9 9l4-2 4 2v4l-4 2-4-2z"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="${C}"/><path d="M10.5 3.5 12 2l1.5 1.5M10.5 20.5 12 22l1.5-1.5M3.5 10.5 2 12l1.5 1.5M20.5 10.5 22 12l-1.5 1.5" stroke="${C}"/>`),

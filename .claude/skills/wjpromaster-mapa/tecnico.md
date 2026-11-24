@@ -404,3 +404,20 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
   Guarda `zoomAntesEscala` e volta a ele ao soltar. `aplicarEscalaReal()` (main.ts) decide esboço × vista 3D; `sairEsboco`
   chama de novo. Estado 3D em `sessionStorage` (por janela), declarado logo após `new Viewport` (evita TDZ).
 - `enquadrar()` travado na vista 3D só recentra (último ponto tocado via raycast no `pointerup` curto, senão centro da peça).
+
+
+## Biblioteca de componentes de fixação (21/11/2026, pedido C2)
+
+- Código em `src/biblioteca/` (puro, sem DOM exceto `painel.ts`): `dados.ts` (tabelas; `conferencia` "norma" ou "aproximada"),
+  `gerar.ts` (Documento WJCAD por forma; `Construtor` de extrusões no plano XZ e revoluções no XY em torno do eixo Y),
+  `encaixe.ts` (furos, entrada, pose, mates, furos iguais, comprimento sugerido), `busca.ts`, `painel.ts`, `cofre.ts`.
+  Ligação na Montagem: `abrirBiblioteca`, `tocarFuroBiblioteca`, `encaixarNoFuro` em `src/montagem/main.ts`.
+- Convenção: **eixo Y**, apoio em y = 0 (cabeça/porca/arruela em +Y, haste em −Y). Os mates usam o eixo `Y` e o plano `XZ` de
+  referência da peça (`{tipo:"eixo",id:"Y"}`, `{tipo:"plano",id:"XZ"}`): "alinhado" na coincidência (o +Y do fixador = normal da face de apoio).
+- **Armadilhas**: (1) o índice de uma face na malha é a **posição da trinca** em `malha.faces` (início, quantidade, id) — não o terceiro
+  valor; (2) "furo" = cilindro com a normal da malha apontando para o eixo (a assinatura da face não diz se é côncava); (3) o primeiro
+  componente da montagem entra **fixo** — o solver move o fixador; (4) rosca real vem do recurso `rosca` com a face descrita pela
+  geometria (cilindro Ø d), sem regenerar antes; (5) `gravarArquivoFixo` aceita `cartao` para o cartão do cofre já nascer preenchido;
+  (6) só arruelas e porcas empilham (`propriedades.grupo`): a cabeça do parafuso não.
+- Roteiro de tablet: `scripts/roteiro-biblioteca.cjs` — a montagem de teste precisa de **GO-OUT** gravado no arquivo, senão o app abre a
+  pergunta "GO-OUT ou consulta" e o roteiro espera para sempre.

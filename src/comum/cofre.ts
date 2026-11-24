@@ -854,7 +854,7 @@ export async function exportarComo(app: ChaveApp, nomeBase: string, tipos: { ext
 }
 
 /** Grava a exportação no cofre: arquivo novo publicado, ou versão seguinte do que tem o mesmo nome. */
-async function gravarExportacao(db: Armazem, app: ChaveApp, pasta: string, nome: string, dados: Blob, semVersoes = false): Promise<string> {
+async function gravarExportacao(db: Armazem, app: ChaveApp, pasta: string, nome: string, dados: Blob, semVersoes = false, cartao: Record<string, string> = {}): Promise<string> {
   const usuario = await usuarioDo(db);
   const t = agora();
   const existente = (await db.todos<Arquivo>("arquivos")).find((x) => x.pasta === pasta && x.nome.toLowerCase() === nome.toLowerCase() && !x.lixeira);
@@ -884,7 +884,7 @@ async function gravarExportacao(db: Armazem, app: ChaveApp, pasta: string, nome:
     a.mod = t;
   } else {
     a = {
-      id: uid(), nome, pasta, revisao: "", estado: fluxoAtual().inicial, cartao: { descricao: nome.replace(/\.[^.]+$/, ""), projetista: usuario }, mod: t,
+      id: uid(), nome, pasta, revisao: "", estado: fluxoAtual().inicial, cartao: { descricao: nome.replace(/\.[^.]+$/, ""), projetista: usuario, ...cartao }, mod: t,
       versoes: [{ n: 1, blob, tamanho: dados.size, autor: usuario, data: t, comentario: `Exportado do ${NOME_APP[app]}`, revisao: "", estado: fluxoAtual().inicial }],
       historico: [{ data: t, usuario, texto: `Exportado do ${NOME_APP[app]}: versão 1 publicada` }],
     };
@@ -934,10 +934,10 @@ export async function lerArquivoFixo(app: ChaveApp, nome: string, sub: string[] 
  * Grava o arquivo de nome fixo na pasta da face, publicado e sem GO-OUT (como uma exportação): nome repetido substitui
  * (`semVersoes`) ou vira a versão seguinte. Vai para todas as cópias do cofre. Devolve o id e a mensagem de onde chegou.
  */
-export async function gravarArquivoFixo(app: ChaveApp, nome: string, dados: Blob, o: { sub?: string[]; semVersoes?: boolean } = {}): Promise<{ id: string; mensagem: string }> {
+export async function gravarArquivoFixo(app: ChaveApp, nome: string, dados: Blob, o: { sub?: string[]; semVersoes?: boolean; cartao?: Record<string, string> } = {}): Promise<{ id: string; mensagem: string }> {
   const db = await abrirCofre();
   const pasta = await pastaDaFaceComSub(db, app, o.sub ?? []);
-  const mensagem = await gravarExportacao(db, app, pasta, nome, dados, !!o.semVersoes);
+  const mensagem = await gravarExportacao(db, app, pasta, nome, dados, !!o.semVersoes, o.cartao);
   const a = (await db.todos<Arquivo>("arquivos")).find((x) => x.pasta === pasta && x.nome.toLowerCase() === nome.toLowerCase() && !x.lixeira);
   return { id: a?.id ?? "", mensagem };
 }

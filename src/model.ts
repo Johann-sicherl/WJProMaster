@@ -903,6 +903,11 @@ export interface Documento {
   aparencias?: Aparencia[];
   /** true = ignora as cores que vieram do arquivo importado (STEP AP214) */
   semCoresArquivo?: boolean;
+  /**
+   * Propriedades personalizadas da peça (texto): a biblioteca de fixação grava norma, descrição, tamanho,
+   * comprimento, passo e rosca; a lista de materiais da montagem lê daqui (docs/funcional/biblioteca.md).
+   */
+  propriedades?: Record<string, string>;
 }
 
 /** Cor 0xRRGGBB aplicada a um corpo ou a uma face (por assinatura, como as referências). */
