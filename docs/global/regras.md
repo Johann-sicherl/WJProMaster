@@ -66,6 +66,13 @@
     - O `teste-mapa` barra página fora do Vite/`sw.js` e teste fora do `pnpm teste` (entrada apagada ao
       juntar trabalhos).
 
+- **Teto de uso: 70 % do limite semanal do Claude Code** (Johann, 24/11/2026). Nenhuma conversa (central ou de
+  código) é aberta nem retomada se o uso semanal estiver em 70 % ou mais, ou se a nova tarefa puder passar
+  disso (estimativa: tarefa pequena ≈ 1–2 %, grande em Opus ≈ 3–5 %). O Claude não consegue ler esse % sozinho: a central
+  **pergunta ao Johann o % atual** (Configurações › Uso) antes de abrir ou retomar cada conversa e anota em
+  `central.md` §6. Aviso de limite numa conversa (`allowed_warning`) = parar de abrir conversas e avisar o Johann.
+  No máximo 2 conversas em paralelo.
+
 ## 2. Inspiração sem cópia (vale para todas as faces)
 
 - O fluxo e o comportamento do CAD seguem **o mais perto possível do SOLIDWORKS** (referência profissional
