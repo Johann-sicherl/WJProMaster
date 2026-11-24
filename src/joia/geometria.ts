@@ -138,7 +138,7 @@ function contornoGema(g: GemaPosta["gema"], k: number, lados = 0): Drawing {
   return drawPointsInterpolation([...pts, pts[0]], { tolerance: 1e-3 * k * g.largura, degMax: 3 }, { closeShape: true });
 }
 
-const noLugar = (s: Shape3D, g: GemaPosta) => {
+export const noLugar = (s: Shape3D, g: GemaPosta) => {
   let r = s;
   if (g.ref.m) {
     const { eixo, graus } = eixoAngulo(g.ref.m);
@@ -251,7 +251,7 @@ export function capsulaRev(h: Haste): Shape3D {
 }
 
 /** Cápsula (cilindro com esfera nas duas pontas): ponta alongada da garra. */
-function capsula(h: Haste): Shape3D {
+export function capsula(h: Haste): Shape3D {
   return booleana("unir", haste(h), [makeSphere(h.r).translate(h.base)]);
 }
 
@@ -388,9 +388,16 @@ export interface ResultadoJoia {
   avisos: string[];
 }
 
-/** `rapida`: só aro e cabeça (prévia enquanto o resto é calculado). */
-export function construir(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 0, rapida = false): ResultadoJoia {
-  const m = montar(d);
+/** Peça para unir à joia: sólido do OpenCascade e o grupo (para a concordância e os avisos). */
+export interface Peca { s: Shape3D; grupo: "cabeca" | "garras" | "fios" | "contas" | "trilhos" | "livres" | "pedrinhas"; id?: string }
+export interface Pecas { aro: Shape3D; partes: Peca[]; cortes: Shape3D[]; montagem: Montagem; avisos: string[] }
+
+/**
+ * Peças da joia sem as booleanas entre elas: o aro (já dividido, com ramos e textura), as peças a unir
+ * (garras, galeria, fios, contas, trilhos, hastes das gemas livres) e os cortes (assentos e gravação).
+ * `construir` junta tudo no OpenCascade; `construirMalha` (final.ts) junta na malha (mais rápido).
+ */
+export function pecas(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 0, rapida = false, m = montar(d)): Pecas {
   const R = m.R, a = d.aro;
   const avisos: string[] = [];
   const tMax = Math.max(a.espessura, a.espessuraBase) + 20;
@@ -421,44 +428,42 @@ export function construir(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 
     if (!livres.length) avisos.push("Textura sem espaço livre no aro (cabeça, pavé e gravação ocupam a volta toda).");
   }
 
-  // cabeça, contas e trilhos (uma união só)
-  const partes: Shape3D[] = [];
+  // cabeça, contas e trilhos
+  const partes: Peca[] = [];
+  const por = (grupo: Peca["grupo"], ss: Shape3D[], id?: string) => { for (const s of ss) partes.push({ s, grupo, id }); };
   if (m.cabeca) {
     const g = m.cabeca;
     if (d.cabeca.tipo === "garras") {
-      partes.push(...m.garras.map(haste));
-      if (m.galeria) partes.push(faixa(g.gema, m.galeria.escalaFora, m.galeria.escalaDentro, m.galeria.y - m.galeria.altura / 2, m.galeria.altura, g.ref.ry));
+      por("garras", m.garras.map(haste));
+      if (m.galeria) por("cabeca", [faixa(g.gema, m.galeria.escalaFora, m.galeria.escalaDentro, m.galeria.y - m.galeria.altura / 2, m.galeria.altura, g.ref.ry)]);
     } else if (m.inglesa) {
       const ing = m.inglesa;
-      partes.push(faixa(g.gema, ing.escala, ing.escalaFuro, ing.yBase, ing.yTopo - ing.yBase, g.ref.ry));
+      por("cabeca", [faixa(g.gema, ing.escala, ing.escalaFuro, ing.yBase, ing.yTopo - ing.yBase, g.ref.ry)]);
     }
   }
-  partes.push(...m.capsulas.map(capsula));
+  por("garras", m.capsulas.map(capsula));
   const esferas: [V3, number][] = [];
   for (const f of m.orn.fios) {
+    if (f.malha) continue; // fios avançados (perfil, torção, trança, subida livre): malha própria (fios.ts)
     const r = fioSolido(f);
-    partes.push(...r.tubos);
+    por("fios", r.tubos);
     for (const [p, raio] of r.esferas) {
       const o = esferas.find(([q]) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) < 1e-4);
       if (o) o[1] = Math.max(o[1], raio);
       else esferas.push([p, raio]);
     }
   }
-  partes.push(...esferas.map(([p, raio]) => makeSphere(raio).translate(p)));
-  for (const q of m.orn.pontos) if (q.tipo === "conta") partes.push(makeSphere(q.d / 2).translate(q.p));
-  for (const x of m.gemasOrn) partes.push(noLugar(naPlano(drawCircle(x.gema.gema.largura / 2 + 0.4).cut(drawCircle(x.gema.gema.largura * 0.4)), [0, x.yBase, 0], [1, 0, 0], [0, 1, 0]).extrude(x.yTopo - x.yBase), x.gema));
+  por("fios", esferas.map(([p, raio]) => makeSphere(raio).translate(p)));
+  for (const q of m.orn.pontos) if (q.tipo === "conta") por("contas", [makeSphere(q.d / 2).translate(q.p)]);
+  for (const x of m.gemasOrn) por("pedrinhas", [noLugar(naPlano(drawCircle(x.gema.gema.largura / 2 + 0.4).cut(drawCircle(x.gema.gema.largura * 0.4)), [0, x.yBase, 0], [1, 0, 0], [0, 1, 0]).extrude(x.yTopo - x.yBase), x.gema)]);
+  por("contas", m.contas.map((c) => makeSphere(c.r).translate(c.topo)));
+  por("trilhos", m.trilhos.map((t) => faixaAngular(t.a0, t.a1, t.rBase, t.rTopo, t.v - t.espessura / 2, t.v + t.espessura / 2)));
   // gemas livres: cada haste é uma cápsula (um sólido só); tubo da inglesa
-  const pecasLivres: Shape3D[] = [];
   for (const l of m.livres) {
-    pecasLivres.push(...l.hastes.map(capsulaRev));
-    if (l.tubo) pecasLivres.push(noLugar(naPlano(contornoGema(l.gema.gema, l.tubo.escala, LADOS_LIVRE).cut(contornoGema(l.gema.gema, l.tubo.escalaFuro, LADOS_LIVRE)), [0, l.tubo.yBase, 0], [1, 0, 0], [0, 1, 0]).extrude(l.tubo.yTopo - l.tubo.yBase), l.gema));
+    por("livres", l.hastes.map(capsulaRev), l.id);
+    if (l.tubo) por("livres", [noLugar(naPlano(contornoGema(l.gema.gema, l.tubo.escala, LADOS_LIVRE).cut(contornoGema(l.gema.gema, l.tubo.escalaFuro, LADOS_LIVRE)), [0, l.tubo.yBase, 0], [1, 0, 0], [0, 1, 0]).extrude(l.tubo.yTopo - l.tubo.yBase), l.gema)], l.id);
   }
-  partes.push(...m.contas.map((c) => makeSphere(c.r).translate(c.topo)));
-  partes.push(...m.trilhos.map((t) => faixaAngular(t.a0, t.a1, t.rBase, t.rTopo, t.v - t.espessura / 2, t.v + t.espessura / 2)));
-  // prévia: tudo junto sem booleanas (aparece na hora; a união e os cortes vêm na versão final)
-  partes.push(...pecasLivres);
-  if (rapida) return { forma: makeCompound([metal, ...partes]) as Shape3D, montagem: m, avisos };
-  metal = segura("unir", metal, partes, avisos, "Cabeça, contas, trilhos e garras");
+  if (rapida) return { aro: metal, partes, cortes: [], montagem: m, avisos };
 
   // assentos das gemas e gravação (um corte só)
   const cortes: Shape3D[] = [];
@@ -469,23 +474,35 @@ export function construir(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 
   for (const l of m.livres) cortes.push(cortador(l.gema, 0, LADOS_LIVRE));
   for (const g of m.pave) cortes.push(cortador(g, Math.hypot(g.ref.p[0], g.ref.p[1]) - proporcoes(g.gema).pavilhao - R + 0.5));
   if (d.gravacao.ativo && grupos.length) cortes.push(...gravacao(d, m, grupos));
-  metal = semLascas(segura("cortar", metal, cortes, avisos, "Assentos e gravação"), avisos);
+  return { aro: metal, partes, cortes, montagem: m, avisos };
+}
 
-  // ocar: canal interno nas zonas livres
-  if (d.fabricacao.ocar) {
-    const par = d.fabricacao.parede;
-    const canais: Shape3D[] = [];
-    for (const [g0, g1] of intervalosLivres(zonasOcupadas(d, m, larguraTexto, true), 15)) {
-      const a0 = (g0 + 3) * RAD, a1 = (g1 - 3) * RAD;
-      let tMin = Infinity, wMin = Infinity;
-      for (let i = 0; i <= 12; i++) { const s = secao(a, a0 + ((a1 - a0) * i) / 12); tMin = Math.min(tMin, s.t); wMin = Math.min(wMin, s.w); }
-      const prof = tMin - par, wc = wMin - 2 * par;
-      if (prof < 0.3 || wc < 0.5) { avisos.push("Ocar: o aro é fino demais para o canal interno com essa parede."); continue; }
-      canais.push(faixaAngular(a0, a1, R - 1, R + prof, -wc / 2, wc / 2));
-    }
-    if (canais.length) metal = segura("cortar", metal, canais, avisos, "Ocar");
-    else if (!avisos.some((x) => x.startsWith("Ocar"))) avisos.push("Ocar: sem espaço livre no aro.");
+/** Canal interno (ocar) nas zonas livres do aro. */
+export function canaisOcar(d: DocJoia, m: Montagem, larguraTexto: number, avisos: string[]): Shape3D[] {
+  if (!d.fabricacao.ocar) return [];
+  const a = d.aro, R = m.R, par = d.fabricacao.parede;
+  const canais: Shape3D[] = [];
+  for (const [g0, g1] of intervalosLivres(zonasOcupadas(d, m, larguraTexto, true), 15)) {
+    const a0 = (g0 + 3) * RAD, a1 = (g1 - 3) * RAD;
+    let tMin = Infinity, wMin = Infinity;
+    for (let i = 0; i <= 12; i++) { const s = secao(a, a0 + ((a1 - a0) * i) / 12); tMin = Math.min(tMin, s.t); wMin = Math.min(wMin, s.w); }
+    const prof = tMin - par, wc = wMin - 2 * par;
+    if (prof < 0.3 || wc < 0.5) { avisos.push("Ocar: o aro é fino demais para o canal interno com essa parede."); continue; }
+    canais.push(faixaAngular(a0, a1, R - 1, R + prof, -wc / 2, wc / 2));
   }
+  if (!canais.length && !avisos.some((x) => x.startsWith("Ocar"))) avisos.push("Ocar: sem espaço livre no aro.");
+  return canais;
+}
+
+/** Joia no OpenCascade (STEP e testes). `rapida`: tudo junto sem booleanas (prévia). */
+export function construir(d: DocJoia, grupos: GrupoTexto[] = [], larguraTexto = 0, rapida = false): ResultadoJoia {
+  const p = pecas(d, grupos, larguraTexto, rapida);
+  const m = p.montagem, avisos = p.avisos;
+  if (rapida) return { forma: makeCompound([p.aro, ...p.partes.map((x) => x.s)]) as Shape3D, montagem: m, avisos };
+  let metal = segura("unir", p.aro, p.partes.map((x) => x.s), avisos, "Cabeça, contas, trilhos e garras");
+  metal = semLascas(segura("cortar", metal, p.cortes, avisos, "Assentos e gravação"), avisos);
+  const canais = canaisOcar(d, m, larguraTexto, avisos);
+  if (canais.length) metal = segura("cortar", metal, canais, avisos, "Ocar");
   return { forma: metal, montagem: m, avisos };
 }
 
