@@ -47,7 +47,7 @@ const historico = new Historico<DocJoia>();
 historico.limpar(doc);
 let m: Montagem = montar(doc);
 let texto: { grupos: GrupoTexto[]; largura: number } = { grupos: [], largura: 0 };
-let resultado: { volume: number; area: number; avisos: string[]; ms: number; final: boolean; concordancia?: { suavizados: number; conferidos: number; finas: number } } | null = null;
+let resultado: { volume: number; area: number; avisos: string[]; ms: number; final: boolean; concordancia?: { acrescimo: number; grupos: number; voxels: number } } | null = null;
 let erroKernel = "";
 
 type Item = "aro" | "cabeca" | "pave" | "livres" | "folhas" | "ornamentos" | "esculturas" | "foto" | "gravacao" | "textura" | "fabricacao" | "preco";
@@ -1140,7 +1140,7 @@ function painelResultados() {
       <dt>Área (polimento)</dt><dd>${fmt(resultado?.area ?? 0, 0)} mm²</dd>
       <dt>Peso com perda</dt><dd>${fmt(f.pesoComPerda)} g</dd>
       <dt>Modelo em resina</dt><dd>${fmt(f.pesoResina, 3)} g</dd>
-      ${doc.concordancia.ativo ? `<dt>Concordância</dt><dd>${resultado?.final && resultado.concordancia ? `R ${fmt(doc.concordancia.raio)} mm · ${resultado.concordancia.finas ? "⚠ conferir" : "conferida ✓"}` : `R ${fmt(doc.concordancia.raio)} mm · ${resultado?.final ? "—" : "na versão final"}`}</dd>` : ""}
+      ${doc.concordancia.ativo ? `<dt>Concordância</dt><dd>${resultado?.final && resultado.concordancia ? `R ${fmt(doc.concordancia.raio)} mm · +${fmt(resultado.concordancia.acrescimo, 2)} mm³ ✓` : `R ${fmt(doc.concordancia.raio)} mm · ${resultado?.final ? "—" : "na versão final"}`}</dd>` : ""}
       ${doc.preco.cotacao || doc.preco.precoQuilate || doc.preco.maoDeObra ? `<dt>Custo</dt><dd>${real(f.custo)}</dd><dt>Preço de venda</dt><dd><b>${real(f.venda)}</b></dd>` : ""}
     </dl>
     ${erroKernel ? `<p class="gd-aviso">${escapar(erroKernel)}</p>` : ""}

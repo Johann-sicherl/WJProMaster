@@ -3,7 +3,7 @@
 // cabeça; oval 8 × 6 (rubi) ao longo do dedo; uma redonda em cada ponta da oval; de cada lado um
 // leque de três navetes saindo da oval como folhas (a de 2,5 × 1,25 no meio do leque, na direção
 // transversal; as de 2,0 × 1,0 a ±50°); ramos achatados e torcidos que sobem e descem, moldura em meia-cana
-// e gavinhas (fios avançados do J9b) e folhas paramétricas de fundição (J9b, no lugar das folhinhas
+// e gavinha que afina (fios avançados do J9b) e folhas paramétricas de fundição (J9b, no lugar das folhinhas
 // esculpidas do J9a). Concordância de 0,2 mm ligada. Tudo editável.
 
 import { folhaNova, type Folha } from "./folhas";
@@ -38,8 +38,10 @@ function ornamentoRamos(id: string, larguraAro: number): Ornamento {
     perfil: "oval", torcao: 0.5,
     controles: [{ u: 0, d: 0.95, h: 0.6, a: -0.3 }, { u: 0.35, d: 0.9, h: 0.6, a: 0.15 }, { u: 0.65, d: 0.85, h: 0.6, a: 0.05 }, { u: 1, d: 0.85, h: 0.6, a: 0.85 }],
   });
-  // gavinha (voluta) onde o aro se divide: fio trançado (dois fios Ø 0,45 torcidos um no outro, 2 voltas)
-  spline([[6.4, 1.0], [7.3, 1.8], [8.3, 1.75], [8.6, 1.15], [8.1, 0.95]], { trancado: true, torcao: 2, d0: 0.45, d1: 0.4, a0: 0.0, a1: -0.15 });
+  // gavinha (voluta) onde o aro se divide: redonda, afinando por pontos de controle até a ponta enrolada
+  spline([[6.4, 1.0], [7.3, 1.8], [8.3, 1.75], [8.6, 1.15], [8.1, 0.95]], {
+    controles: [{ u: 0, d: 0.75, a: 0.05 }, { u: 0.5, d: 0.66, a: 0.1 }, { u: 1, d: 0.6, a: -0.12 }],
+  });
   return { id, nome: "Ramos e gavinhas", ativo: true, esboco: esb, altura: 0, diametro: 0.8, simetria: "xy", envolver: true, pontas: true, fios, pontos: {} };
 }
 

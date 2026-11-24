@@ -22,7 +22,7 @@ export type PedidoJoia =
 export type RespostaJoia =
   | { tipo: "pronto" }
   | { tipo: "falha-inicial"; mensagem: string }
-  | { tipo: "malha"; seq: number; final: boolean; pos: Float32Array; nor: Float32Array; idx: Uint32Array; volume: number; area: number; avisos: string[]; ms: number; comEsculturas: boolean; concordancia?: { suavizados: number; conferidos: number; finas: number } }
+  | { tipo: "malha"; seq: number; final: boolean; pos: Float32Array; nor: Float32Array; idx: Uint32Array; volume: number; area: number; avisos: string[]; ms: number; comEsculturas: boolean; concordancia?: { acrescimo: number; grupos: number; voxels: number } }
   | { tipo: "arquivo"; seq: number; bytes: ArrayBuffer }
   | { tipo: "erro"; seq: number; mensagem: string };
 
@@ -39,7 +39,7 @@ function traduzir(e: unknown): string {
 }
 
 /** Normais com quebra nas arestas vivas e envio (transferindo os buffers). */
-function mandar(seq: number, final: boolean, m: Malha, volume: number, area: number, avisos: string[], t0: number, comEsculturas: boolean, conc?: { suavizados: number; conferidos: number; finas: number }) {
+function mandar(seq: number, final: boolean, m: Malha, volume: number, area: number, avisos: string[], t0: number, comEsculturas: boolean, conc?: { acrescimo: number; grupos: number; voxels: number }) {
   const v = malhaVista(m);
   enviar({ tipo: "malha", seq, final, pos: v.pos, nor: v.nor, idx: v.idx, volume, area, avisos, ms: performance.now() - t0, comEsculturas, concordancia: conc }, [v.pos.buffer, v.nor.buffer, v.idx.buffer]);
 }
@@ -67,8 +67,7 @@ function processar() {
       if (pendente) return;
       const r = construirMalha(w, p.doc, p.grupos, p.larguraTexto, { concordancia: p.doc.concordancia.ativo });
       atual = { doc: p.doc, grupos: p.grupos, larguraTexto: p.larguraTexto, malha: r.malha };
-      const { antes: _a, ...conc } = r.concordancia ?? { antes: undefined, suavizados: 0, conferidos: 0, finas: 0 };
-      mandar(p.seq, true, r.malha, r.volume, r.area, r.avisos, t0, p.doc.esculturas.some((e) => e.ativo), r.concordancia ? conc : undefined);
+      mandar(p.seq, true, r.malha, r.volume, r.area, r.avisos, t0, p.doc.esculturas.some((e) => e.ativo), r.concordancia);
     } catch (e) {
       enviar({ tipo: "erro", seq: p.seq, mensagem: traduzir(e) });
     }

@@ -1,289 +1,251 @@
 // WJGoldDiamond: concordância (transição suave) entre aro, fios, folhas, garras e cabeça (J9b), na malha
-// unida pelo manifold-3d. Só perto das junções (arestas onde peças diferentes se encontram): refina os
-// triângulos até ~0,4·raio e suaviza deixando os vértices só irem para fora (como um filete: enche os
-// cantos côncavos, nunca afina o metal). Assentos das gemas e cortes ficam vivos (vértices presos). Depois
-// confere a espessura (raios para dentro). Também: normais para a vista com quebra nas arestas vivas.
-// Puro: worker e testes em Node.
+// unida pelo manifold-3d. A superfície da joia não é mexida: perto de cada junção (onde peças diferentes se
+// encontram) calcula-se o FECHAMENTO pelo raio R (dilatar R e erodir R: é o que a bola de raio R rolando por
+// fora enche nos cantos côncavos) num campo de distâncias em voxels, e esse enchimento é unido à joia (só
+// acrescenta metal: nada fica mais fino). Os assentos e cortes são tirados do enchimento (continuam vivos).
+// Também: espessura por raios (testes) e normais para a vista com quebra nas arestas vivas.
+// Puro + manifold-3d: worker e testes em Node.
 
 import type { Malha } from "./escultura";
+import type { V3 } from "./regras";
 
 /** Origem de cada triângulo: peça unida (com o raio de concordância) ou corte (assento, gravação, ocar). */
 export interface Origem { corte: boolean; raio: number }
 
-export interface ResultadoConcordancia { malha: Malha; origem: Int32Array; suavizados: number; refinados: number; deslocMax: number; /** vértices suavizados */ ativos: number[]; /** mesma malha refinada antes de suavizar (para comparar) */ antes?: Malha; /** conferência: vértices conferidos, quantos afinaram abaixo do mínimo e a menor espessura medida */ conferidos: number; finas: number; menorDepois: number }
+/** Alcance do enchimento em volta da junção (em raios) e voxels por raio. */
+const ALCANCE = 2.5;
+const VOXELS_POR_RAIO = 3.5;
+const MAX_VOXELS = 2_000_000;
 
-const chaveAresta = (a: number, b: number) => (a < b ? a * 4294967296 + b : b * 4294967296 + a);
-
-/** Grade uniforme de pontos (com alcance) para "existe ponto da junção a menos do alcance?". */
-class GradePontos {
-  private cel = new Map<number, number[]>();
-  private pts: number[] = [];
-  constructor(pts: number[], private tam: number) {
-    // pontos muito juntos (menos de 1/4 do alcance) contam como um só: a consulta fica leve
-    const vistos = new Set<number>();
-    for (let i = 0; i < pts.length; i += 4) {
-      const q = this.tam / 4, kk = this.chave(Math.floor(pts[i] / q), Math.floor(pts[i + 1] / q), Math.floor(pts[i + 2] / q));
-      if (vistos.has(kk)) continue;
-      vistos.add(kk);
-      const o = this.pts.length;
-      this.pts.push(pts[i], pts[i + 1], pts[i + 2], pts[i + 3]);
-      // o ponto entra nas 27 células em volta: a consulta olha uma célula só
-      const cx = Math.floor(pts[i] / tam), cy = Math.floor(pts[i + 1] / tam), cz = Math.floor(pts[i + 2] / tam);
-      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
-        const k = this.chave(cx + a, cy + b, cz + c);
-        let l = this.cel.get(k);
-        if (!l) this.cel.set(k, (l = []));
-        l.push(o);
-      }
-    }
+/** Transformada de distância exata (quadrada) em 1D (Felzenszwalb–Huttenlocher), no lugar. */
+function edt1(f: Float64Array, n: number, d: Float64Array, v: Int32Array, z: Float64Array) {
+  let k = 0;
+  v[0] = 0; z[0] = -Infinity; z[1] = Infinity;
+  for (let q = 1; q < n; q++) {
+    if (f[q] === Infinity) continue;
+    if (f[v[k]] === Infinity) { v[k] = q; continue; }
+    let s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+    while (k > 0 && s <= z[k]) { k--; s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); }
+    if (k === 0 && f[v[0]] !== Infinity && s <= z[0]) { v[0] = q; z[1] = Infinity; continue; }
+    k++; v[k] = q; z[k] = s; z[k + 1] = Infinity;
   }
-  private chave(x: number, y: number, z: number) { return ((x + 4096) * 8192 + (y + 4096)) * 8192 + (z + 4096); }
-  /** Menor (distância / alcance do ponto), < 1 dentro de algum alcance; o alcance vem junto. */
-  perto(x: number, y: number, z: number): { t: number; raio: number } {
-    let melhor = Infinity, raio = 0;
-    const l = this.cel.get(this.chave(Math.floor(x / this.tam), Math.floor(y / this.tam), Math.floor(z / this.tam)));
-    if (l)
-      for (const o of l) {
-        const r = this.pts[o + 3], t = Math.hypot(x - this.pts[o], y - this.pts[o + 1], z - this.pts[o + 2]) / r;
-        if (t < melhor) { melhor = t; raio = r; }
-      }
-    return { t: melhor, raio };
+  if (f[v[0]] === Infinity) { for (let q = 0; q < n; q++) d[q] = Infinity; return; }
+  k = 0;
+  for (let q = 0; q < n; q++) {
+    while (z[k + 1] < q) k++;
+    d[q] = (q - v[k]) * (q - v[k]) + f[v[k]];
   }
 }
 
-/** Alcance da região suavizada em volta da junção e tamanho das arestas nela, em raios de concordância. */
-const ALCANCE = 2;
-const ALVO = 0.5;
-/** Perda de metal tolerada na conferência (mm): abaixo da resolução da impressão de resina (~25 µm). */
-const TOL_PERDA = 0.01;
+/** Distância (em voxels) de cada voxel até a semente mais próxima (semente = 1). */
+function edt3(sem: Uint8Array, nx: number, ny: number, nz: number): Float32Array {
+  const N = nx * ny * nz, g = new Float64Array(N);
+  for (let i = 0; i < N; i++) g[i] = sem[i] ? 0 : Infinity;
+  const m = Math.max(nx, ny, nz), f = new Float64Array(m), d = new Float64Array(m), v = new Int32Array(m), z = new Float64Array(m + 1);
+  // eixo x
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) {
+    const o = (k * ny + j) * nx;
+    for (let i = 0; i < nx; i++) f[i] = g[o + i];
+    edt1(f, nx, d, v, z);
+    for (let i = 0; i < nx; i++) g[o + i] = d[i];
+  }
+  // eixo y
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < ny; j++) f[j] = g[(k * ny + j) * nx + i];
+    edt1(f, ny, d, v, z);
+    for (let j = 0; j < ny; j++) g[(k * ny + j) * nx + i] = d[j];
+  }
+  // eixo z
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    for (let k = 0; k < nz; k++) f[k] = g[(k * ny + j) * nx + i];
+    edt1(f, nz, d, v, z);
+    for (let k = 0; k < nz; k++) g[(k * ny + j) * nx + i] = d[k];
+  }
+  const out = new Float32Array(N);
+  for (let i = 0; i < N; i++) out[i] = Math.sqrt(g[i]);
+  return out;
+}
+
+/** Triângulos por coluna (y, z) para achar onde uma reta paralela a x cruza a malha. */
+class Colunas {
+  private cel = new Map<number, number[]>();
+  constructor(private m: Malha, private tam: number) {
+    const p = m.pos;
+    for (let t = 0; t < m.tri.length; t += 3) {
+      let y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (let c = 0; c < 3; c++) { const v = 3 * m.tri[t + c]; y0 = Math.min(y0, p[v + 1]); y1 = Math.max(y1, p[v + 1]); z0 = Math.min(z0, p[v + 2]); z1 = Math.max(z1, p[v + 2]); }
+      for (let a = Math.floor(y0 / tam); a <= Math.floor(y1 / tam); a++) for (let b = Math.floor(z0 / tam); b <= Math.floor(z1 / tam); b++) {
+        const k = (a + 100000) * 200000 + (b + 100000);
+        let l = this.cel.get(k);
+        if (!l) this.cel.set(k, (l = []));
+        l.push(t);
+      }
+    }
+  }
+  /** x onde a reta (y, z) cruza a malha, em ordem. */
+  cruzamentos(y: number, z: number): number[] {
+    const l = this.cel.get((Math.floor(y / this.tam) + 100000) * 200000 + (Math.floor(z / this.tam) + 100000));
+    if (!l) return [];
+    const p = this.m.pos, T = this.m.tri, xs: number[] = [];
+    for (const t of l) {
+      const a = 3 * T[t], b = 3 * T[t + 1], c = 3 * T[t + 2];
+      const ay = p[a + 1], az = p[a + 2], by = p[b + 1], bz = p[b + 2], cy = p[c + 1], cz = p[c + 2];
+      const det = (by - ay) * (cz - az) - (cy - ay) * (bz - az);
+      if (Math.abs(det) < 1e-14) continue;
+      const u = ((y - ay) * (cz - az) - (cy - ay) * (z - az)) / det, v = ((by - ay) * (z - az) - (y - ay) * (bz - az)) / det;
+      if (u < 0 || v < 0 || u + v > 1) continue;
+      xs.push(p[a] + u * (p[b] - p[a]) + v * (p[c] - p[a]));
+    }
+    return xs.sort((x, y2) => x - y2);
+  }
+}
+
+export interface ResultadoEnchimento {
+  /** enchimento (manifold) para unir à joia; null = nada a encher */
+  enchimento: any | null;
+  pontos: number;
+  grupos: number;
+  voxels: number;
+}
 
 /**
- * Concordância nas junções. `origem[t]` = índice em `origens` de cada triângulo. Vértices tocados por
- * triângulos de cortes ficam presos; vértices de junção = tocados por duas peças diferentes.
+ * Enchimento da concordância. `m` = malha unida (sem a concordância) com a origem de cada triângulo. Pontos da
+ * junção = vértices tocados por duas peças diferentes (nunca ao lado de um corte), mais amostras nas arestas
+ * entre eles. Em cada grupo de pontos, numa grade de voxels: dentro da joia (raios em x), distância até a joia
+ * (dilatar R), distância até fora da dilatação (erodir R) e distância até a junção (máscara). O campo
+ * min(fechamento − R − ε, alcance − distância à junção) vira malha pelo levelSet do manifold.
  */
-export function concordar(m: Malha, origemTri: Int32Array, origens: Origem[], opcoes: { maxTriangulos?: number; minimo?: number; amostra?: number } = {}): ResultadoConcordancia {
-  let pos = Array.from(m.pos), tri = Array.from(m.tri), org = Array.from(origemTri);
-  const maxTri = opcoes.maxTriangulos ?? 1_200_000;
-  const juncoes = () => {
-    const nv = pos.length / 3;
-    const fonte = new Int32Array(nv).fill(-1), multi = new Uint8Array(nv), preso = new Uint8Array(nv), raio = new Float32Array(nv);
-    for (let t = 0; t < tri.length / 3; t++) {
-      const o = origens[org[t]];
-      for (let c = 0; c < 3; c++) {
-        const v = tri[3 * t + c];
-        if (o.corte) { preso[v] = 1; continue; }
-        if (fonte[v] === -1) fonte[v] = org[t];
-        else if (fonte[v] !== org[t]) multi[v] = 1;
-        raio[v] = Math.max(raio[v], o.raio);
-      }
-    }
-    const pts: number[] = [];
-    for (let v = 0; v < nv; v++) if (multi[v] && !preso[v] && raio[v] > 0) pts.push(pos[3 * v], pos[3 * v + 1], pos[3 * v + 2], raio[v] * ALCANCE);
-    return { pts, preso, raio };
-  };
-  const dep = (globalThis as any).DEPURAR_JOIA ? (t: string) => console.log(`   concordância: ${t} ${(performance.now() - T0).toFixed(0)} ms`) : () => {};
-  const T0 = performance.now();
-  let J = juncoes();
-  if (!J.pts.length) return { malha: m, origem: origemTri, suavizados: 0, refinados: 0, deslocMax: 0, ativos: [], conferidos: 0, finas: 0, menorDepois: Infinity };
-  const rMax = Math.max(...J.pts.filter((_, i) => i % 4 === 3)) / ALCANCE;
-  let grade = new GradePontos(J.pts, rMax * ALCANCE);
-  const nTri0 = tri.length / 3;
-
-  const longe = new Set<number>();
-  // refino: arestas que passam perto da junção maiores que 0,5·raio são divididas (vermelho-verde, malha conforme)
-  for (let passe = 0; passe < 7 && tri.length / 3 < maxTri; passe++) {
-    const meio = new Map<number, number>();
-    const marcar = (a: number, b: number) => {
-      const k = chaveAresta(a, b);
-      if (meio.has(k) || longe.has(k)) return;
-      const ax = pos[3 * a], ay = pos[3 * a + 1], az = pos[3 * a + 2], bx = pos[3 * b], by = pos[3 * b + 1], bz = pos[3 * b + 2];
-      const L = Math.hypot(bx - ax, by - ay, bz - az);
-      // a aresta passa pela região? (amostras ao longo dela a cada ~meio alcance)
-      const n = Math.max(1, Math.ceil(L / (0.5 * rMax * ALCANCE)));
-      let raio = 0;
-      for (let i = 0; i <= n && !raio; i++) {
-        const t = i / n, q = grade.perto(ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t);
-        if (q.t < 1) raio = q.raio / ALCANCE;
-      }
-      if (!raio || L <= ALVO * raio) { longe.add(k); return; }
-      meio.set(k, -1);
-    };
-    for (let t = 0; t < tri.length; t += 3) { marcar(tri[t], tri[t + 1]); marcar(tri[t + 1], tri[t + 2]); marcar(tri[t + 2], tri[t]); }
-    if (!meio.size) break;
-    for (const k of meio.keys()) {
-      const a = Math.floor(k / 4294967296), b = k % 4294967296;
-      meio.set(k, pos.length / 3);
-      pos.push((pos[3 * a] + pos[3 * b]) / 2, (pos[3 * a + 1] + pos[3 * b + 1]) / 2, (pos[3 * a + 2] + pos[3 * b + 2]) / 2);
-    }
-    const nt: number[] = [], no: number[] = [];
-    for (let t = 0; t < tri.length / 3; t++) {
-      const v = [tri[3 * t], tri[3 * t + 1], tri[3 * t + 2]], o = org[t];
-      const mids = [meio.get(chaveAresta(v[0], v[1])), meio.get(chaveAresta(v[1], v[2])), meio.get(chaveAresta(v[2], v[0]))];
-      const n = mids.filter((x) => x !== undefined).length;
-      const add = (a: number, b: number, c: number) => { nt.push(a, b, c); no.push(o); };
-      if (n === 0) add(v[0], v[1], v[2]);
-      else if (n === 3) {
-        const [ab, bc, ca] = mids as number[];
-        add(v[0], ab, ca); add(ab, v[1], bc); add(ca, bc, v[2]); add(ab, bc, ca);
-      } else if (n === 1) {
-        const i = mids.findIndex((x) => x !== undefined), mid = mids[i]!;
-        const a = v[i], b = v[(i + 1) % 3], c = v[(i + 2) % 3];
-        add(a, mid, c); add(mid, b, c);
-      } else {
-        // duas arestas: a que falta fica inteira
-        const i = mids.findIndex((x) => x === undefined);
-        const a = v[(i + 2) % 3], b = v[i], c = v[(i + 1) % 3]; // aresta sem divisão: b–c
-        const m_ab = meio.get(chaveAresta(a, b))!, m_ca = meio.get(chaveAresta(c, a))!;
-        add(a, m_ab, m_ca); add(m_ab, b, c); add(m_ab, c, m_ca);
-      }
-    }
-    tri = nt;
-    org = no;
-    dep(`passe ${passe}: ${meio.size} arestas, ${tri.length / 3} triângulos`);
-  }
-  const refinados = tri.length / 3 - nTri0;
-  dep(`refino +${refinados} triângulos`);
-  J = juncoes();
-  grade = new GradePontos(J.pts, rMax * ALCANCE);
-
-  // vizinhos e região (peso cai de 1 na junção até 0 no alcance)
-  const nv = pos.length / 3;
-  const viz: number[][] = Array.from({ length: nv }, () => []);
-  for (let t = 0; t < tri.length; t += 3)
+export function enchimento(w: { Manifold: any }, m: Malha, origemTri: Int32Array, origens: Origem[]): ResultadoEnchimento {
+  const p = m.pos, T = m.tri, nv = p.length / 3;
+  const fonte = new Int32Array(nv).fill(-1), multi = new Uint8Array(nv), preso = new Uint8Array(nv), raio = new Float32Array(nv);
+  for (let t = 0; t < T.length / 3; t++) {
+    const o = origens[origemTri[t]];
     for (let c = 0; c < 3; c++) {
-      const a = tri[t + c], b = tri[t + ((c + 1) % 3)];
-      if (!viz[a].includes(b)) viz[a].push(b);
-      if (!viz[b].includes(a)) viz[b].push(a);
+      const v = T[3 * t + c];
+      if (o.corte) { preso[v] = 1; continue; }
+      if (fonte[v] === -1) fonte[v] = origemTri[t];
+      else if (fonte[v] !== origemTri[t]) multi[v] = 1;
+      raio[v] = Math.max(raio[v], o.raio);
     }
-  const peso = new Float32Array(nv), lim = new Float32Array(nv);
-  const ativos: number[] = [];
-  for (let v = 0; v < nv; v++) {
-    if (J.preso[v]) continue;
-    const p = grade.perto(pos[3 * v], pos[3 * v + 1], pos[3 * v + 2]);
-    if (p.t >= 1) continue;
-    const r = p.raio / ALCANCE;
-    peso[v] = 0.5 * (1 + Math.cos(Math.PI * p.t));
-    lim[v] = 0.6 * r;
-    ativos.push(v);
   }
-  dep(`região ${ativos.length} vértices`);
-  // vértice preso ao lado de corte: os vizinhos imediatos também (a borda do assento fica viva)
-  for (const v of ativos) if (viz[v].some((u) => J.preso[u])) peso[v] = 0;
-  const original = Float32Array.from(pos);
-  const normal = new Float32Array(3 * nv);
-  const calcNormais = () => {
-    normal.fill(0);
-    for (let t = 0; t < tri.length; t += 3) {
-      const a = 3 * tri[t], b = 3 * tri[t + 1], c = 3 * tri[t + 2];
-      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
-      const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
-      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-      for (const k of [a, b, c]) { normal[k] += nx; normal[k + 1] += ny; normal[k + 2] += nz; }
+  const ehJ = (v: number) => multi[v] && !preso[v] && raio[v] > 0;
+  // pontos da junção (x, y, z, R), com amostras nas arestas entre dois vértices da junção
+  const pts: number[] = [];
+  let rMax = 0;
+  for (let v = 0; v < nv; v++) if (ehJ(v)) { pts.push(p[3 * v], p[3 * v + 1], p[3 * v + 2], raio[v]); rMax = Math.max(rMax, raio[v]); }
+  if (!pts.length) return { enchimento: null, pontos: 0, grupos: 0, voxels: 0 };
+  const passo = rMax / VOXELS_POR_RAIO / 2;
+  const vistas = new Set<number>();
+  for (let t = 0; t < T.length; t += 3)
+    for (let c = 0; c < 3; c++) {
+      const a = T[t + c], b = T[t + ((c + 1) % 3)];
+      if (!ehJ(a) || !ehJ(b)) continue;
+      const k = a < b ? a * 4294967296 + b : b * 4294967296 + a;
+      if (vistas.has(k)) continue;
+      vistas.add(k);
+      const L = Math.hypot(p[3 * b] - p[3 * a], p[3 * b + 1] - p[3 * a + 1], p[3 * b + 2] - p[3 * a + 2]);
+      if (L > 1.5) continue;
+      const n = Math.floor(L / passo);
+      for (let i = 1; i < n; i++) { const s = i / n; pts.push(p[3 * a] + (p[3 * b] - p[3 * a]) * s, p[3 * a + 1] + (p[3 * b + 1] - p[3 * a + 1]) * s, p[3 * a + 2] + (p[3 * b + 2] - p[3 * a + 2]) * s, Math.max(raio[a], raio[b])); }
     }
-    for (let i = 0; i < normal.length; i += 3) { const L = Math.hypot(normal[i], normal[i + 1], normal[i + 2]) || 1; normal[i] /= L; normal[i + 1] /= L; normal[i + 2] /= L; }
-  };
-  // espaço livre para fora de cada vértice (raio pela normal): duas superfícies frente a frente andam no
-  // máximo 40 % do vão cada uma e nunca se cruzam
-  calcNormais();
-  const n0 = Float32Array.from(normal);
-  const raiosAntes = new Raios({ pos: original, tri: new Uint32Array(tri) });
-  for (const v of ativos) {
-    if (!(peso[v] > 0)) continue;
-    const o: [number, number, number] = [pos[3 * v], pos[3 * v + 1], pos[3 * v + 2]], d: [number, number, number] = [n0[3 * v], n0[3 * v + 1], n0[3 * v + 2]];
-    const livre = raiosAntes.lancar([o[0] + d[0] * 1e-4, o[1] + d[1] * 1e-4, o[2] + d[2] * 1e-4], d, 3 * lim[v]);
-    if (Number.isFinite(livre)) lim[v] = Math.min(lim[v], 0.4 * livre);
+  // grupos: pontos ligados a menos de 2 alcances viram uma grade só (caixas que se tocam se juntam)
+  const tamC = 2 * ALCANCE * rMax, celulas = new Map<string, number[]>();
+  for (let i = 0; i < pts.length; i += 4) {
+    const k = `${Math.floor(pts[i] / tamC)},${Math.floor(pts[i + 1] / tamC)},${Math.floor(pts[i + 2] / tamC)}`;
+    let l = celulas.get(k);
+    if (!l) celulas.set(k, (l = []));
+    l.push(i);
   }
-  dep("espaço livre");
-  // passos: o bastante para a difusão alcançar ~1 raio com arestas de ~0,5 raio
-  const iter = 18;
-  let deslocMax = 0;
-  for (let it = 0; it < iter; it++) {
-    calcNormais();
-    const novo = new Float32Array(ativos.length * 3);
-    ativos.forEach((v, i) => {
-      const w = peso[v];
-      if (!(w > 0)) { novo[3 * i] = pos[3 * v]; novo[3 * i + 1] = pos[3 * v + 1]; novo[3 * i + 2] = pos[3 * v + 2]; return; }
-      let mx = 0, my = 0, mz = 0, emin = Infinity;
-      for (const u of viz[v]) {
-        mx += pos[3 * u]; my += pos[3 * u + 1]; mz += pos[3 * u + 2];
-        emin = Math.min(emin, Math.hypot(pos[3 * u] - pos[3 * v], pos[3 * u + 1] - pos[3 * v + 1], pos[3 * u + 2] - pos[3 * v + 2]));
+  const grupoDe = new Map<string, number>();
+  const caixas: { min: V3; max: V3; pts: number[] }[] = [];
+  for (const k of celulas.keys()) {
+    if (grupoDe.has(k)) continue;
+    const g = caixas.length, fila = [k], cx: { min: V3; max: V3; pts: number[] } = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity], pts: [] };
+    grupoDe.set(k, g);
+    while (fila.length) {
+      const c = fila.pop()!;
+      for (const i of celulas.get(c)!) { cx.pts.push(i); for (let e = 0; e < 3; e++) { cx.min[e] = Math.min(cx.min[e], pts[i + e]); cx.max[e] = Math.max(cx.max[e], pts[i + e]); } }
+      const [a, b, d] = c.split(",").map(Number);
+      for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
+        const nk = `${a + x},${b + y},${d + z}`;
+        if (celulas.has(nk) && !grupoDe.has(nk)) { grupoDe.set(nk, g); fila.push(nk); }
       }
-      const k = viz[v].length || 1;
-      const nx = normal[3 * v], ny = normal[3 * v + 1], nz = normal[3 * v + 2];
-      // só na direção da normal e só para fora (enche o canto côncavo; onde é convexo o vértice fica):
-      // sem deslize tangencial, os triângulos não dobram
-      let dn = ((mx / k - pos[3 * v]) * nx + (my / k - pos[3 * v + 1]) * ny + (mz / k - pos[3 * v + 2]) * nz) * 0.5 * w;
-      if (dn <= 0) { novo[3 * i] = pos[3 * v]; novo[3 * i + 1] = pos[3 * v + 1]; novo[3 * i + 2] = pos[3 * v + 2]; return; }
-      dn = Math.min(dn, 0.25 * emin);
-      let x = pos[3 * v] + dn * nx, y = pos[3 * v + 1] + dn * ny, z = pos[3 * v + 2] + dn * nz;
-      // deslocamento total limitado (0,6·raio e o espaço livre) e nunca para dentro do plano tangente original
-      const ox = original[3 * v], oy = original[3 * v + 1], oz = original[3 * v + 2];
-      let ex = x - ox, ey = y - oy, ez = z - oz;
-      const en = ex * n0[3 * v] + ey * n0[3 * v + 1] + ez * n0[3 * v + 2];
-      if (en < 0) { ex -= en * n0[3 * v]; ey -= en * n0[3 * v + 1]; ez -= en * n0[3 * v + 2]; }
-      const L = Math.hypot(ex, ey, ez);
-      if (L > lim[v]) { ex *= lim[v] / L; ey *= lim[v] / L; ez *= lim[v] / L; }
-      x = ox + ex; y = oy + ey; z = oz + ez;
-      novo[3 * i] = x; novo[3 * i + 1] = y; novo[3 * i + 2] = z;
-    });
-    ativos.forEach((v, i) => { pos[3 * v] = novo[3 * i]; pos[3 * v + 1] = novo[3 * i + 1]; pos[3 * v + 2] = novo[3 * i + 2]; });
-  }
-  // triângulos que viraram (dobra da malha): os vértices deles voltam ao lugar original
-  const triOrig = (t: number, P: ArrayLike<number>) => {
-    const a = 3 * tri[t], b = 3 * tri[t + 1], c = 3 * tri[t + 2];
-    const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
-    return [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
-  };
-  let voltaram = 0;
-  for (let rep = 0; rep < 4; rep++) {
-    let n = 0;
-    for (let t = 0; t < tri.length; t += 3) {
-      const [a, b, c] = [tri[t], tri[t + 1], tri[t + 2]];
-      if (!(peso[a] > 0 || peso[b] > 0 || peso[c] > 0)) continue;
-      const n1 = triOrig(t, pos), n2 = triOrig(t, original);
-      const L1 = Math.hypot(n1[0], n1[1], n1[2]), L2 = Math.hypot(n2[0], n2[1], n2[2]);
-      if (n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2] >= -0.05 * L1 * L2) continue;
-      for (const v of [a, b, c]) if (peso[v] > 0) { pos[3 * v] = original[3 * v]; pos[3 * v + 1] = original[3 * v + 1]; pos[3 * v + 2] = original[3 * v + 2]; peso[v] = 0; n++; }
     }
-    voltaram += n;
-    if (!n) break;
+    caixas.push(cx);
   }
-  dep(`suavização (${voltaram} vértices voltaram por dobra)`);
-  // conferência: o metal só ganha material (nenhum ponto fica mais fino). Para uma amostra dos vértices que
-  // se moveram, o ponto original tem de continuar dentro do sólido novo: o primeiro triângulo acertado saindo
-  // pela normal original é uma face de saída (normal no mesmo sentido do raio).
-  const movidos = ativos.filter((v) => Math.hypot(pos[3 * v] - original[3 * v], pos[3 * v + 1] - original[3 * v + 1], pos[3 * v + 2] - original[3 * v + 2]) > 1e-4);
-  const passo = Math.max(1, Math.ceil(movidos.length / (opcoes.amostra ?? 3000)));
-  const novaPos = Float32Array.from(pos);
-  const raiosDepois = new Raios({ pos: novaPos, tri: new Uint32Array(tri) });
-  let finas = 0, conferidos = 0;
-  /** o ponto o está dentro do sólido novo? (raio na direção d: primeiro acerto é face de saída) */
-  const dentro = (o: [number, number, number], d: [number, number, number]): boolean | null => {
-    const dist = raiosDepois.lancar([o[0] - d[0] * 1e-4, o[1] - d[1] * 1e-4, o[2] - d[2] * 1e-4], d, 2);
-    if (!Number.isFinite(dist)) return null;
-    const t = raiosDepois.tri, a = 3 * tri[t], b = 3 * tri[t + 1], c = 3 * tri[t + 2];
-    const ux = novaPos[b] - novaPos[a], uy = novaPos[b + 1] - novaPos[a + 1], uz = novaPos[b + 2] - novaPos[a + 2];
-    const vx = novaPos[c] - novaPos[a], vy = novaPos[c + 1] - novaPos[a + 1], vz = novaPos[c + 2] - novaPos[a + 2];
-    const saida = (uy * vz - uz * vy) * d[0] + (uz * vx - ux * vz) * d[1] + (ux * vy - uy * vx) * d[2];
-    return saida > 0 || dist <= TOL_PERDA;
-  };
-  for (let i = 0; i < movidos.length; i += passo) {
-    const v = movidos[i], o: [number, number, number] = [original[3 * v], original[3 * v + 1], original[3 * v + 2]];
-    conferidos++;
-    // três direções perto da normal original (um raio pode passar exatamente numa aresta)
-    let sim = 0, nao = 0;
-    for (const [jx, jy, jz] of [[0, 0, 0], [0.13, 0.07, -0.05], [-0.06, 0.11, 0.12]]) {
-      const d0: [number, number, number] = [n0[3 * v] + jx, n0[3 * v + 1] + jy, n0[3 * v + 2] + jz], L = Math.hypot(...d0);
-      const r = dentro(o, [d0[0] / L, d0[1] / L, d0[2] / L]);
-      if (r === true) sim++;
-      else if (r === false) nao++;
+  const colunas = new Colunas(m, 0.25);
+  const pecas: any[] = [];
+  let voxels = 0;
+  for (const cx of caixas) {
+    const rG = Math.max(...cx.pts.map((i) => pts[i + 3]));
+    let h = rG / VOXELS_POR_RAIO;
+    const marg = ALCANCE * rG + 3 * h;
+    const o: V3 = [cx.min[0] - marg, cx.min[1] - marg, cx.min[2] - marg];
+    const tam: V3 = [cx.max[0] - cx.min[0] + 2 * marg, cx.max[1] - cx.min[1] + 2 * marg, cx.max[2] - cx.min[2] + 2 * marg];
+    while (Math.ceil(tam[0] / h) * Math.ceil(tam[1] / h) * Math.ceil(tam[2] / h) > MAX_VOXELS) h *= 1.15;
+    const nx = Math.ceil(tam[0] / h), ny = Math.ceil(tam[1] / h), nz = Math.ceil(tam[2] / h), N = nx * ny * nz;
+    voxels += N;
+    // dentro da joia: paridade dos cruzamentos de cada linha em x (pequeno desvio evita passar por arestas)
+    const dentro = new Uint8Array(N);
+    for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) {
+      const y = o[1] + (j + 0.5) * h + 1.3e-7, z = o[2] + (k + 0.5) * h + 0.7e-7;
+      const xs = colunas.cruzamentos(y, z);
+      for (let q = 0; q + 1 < xs.length; q += 2) {
+        const i0 = Math.max(0, Math.ceil((xs[q] - o[0]) / h - 0.5)), i1 = Math.min(nx - 1, Math.floor((xs[q + 1] - o[0]) / h - 0.5));
+        for (let i = i0; i <= i1; i++) dentro[(k * ny + j) * nx + i] = 1;
+      }
     }
-    if (!sim && nao) { finas++; if ((globalThis as any).DEPURAR_JOIA) { const dd = raiosDepois.lancar([o[0] - n0[3 * v] * 1e-4, o[1] - n0[3 * v + 1] * 1e-4, o[2] - n0[3 * v + 2] * 1e-4], [n0[3 * v], n0[3 * v + 1], n0[3 * v + 2]], 2); console.log('     perdeu', v, dd.toFixed(4), 'desloc', Math.hypot(pos[3 * v] - o[0], pos[3 * v + 1] - o[1], pos[3 * v + 2] - o[2]).toFixed(4), 'lim', lim[v].toFixed(3), 'peso', peso[v].toFixed(2), o.map((x) => x.toFixed(2)).join(',')); } }
+    // dilatar R (distância até a joia) e erodir R (distância até fora da dilatação)
+    const dOut = edt3(dentro, nx, ny, nz);
+    const fora = new Uint8Array(N);
+    for (let i = 0; i < N; i++) fora[i] = dOut[i] * h > rG ? 1 : 0;
+    const e = edt3(fora, nx, ny, nz);
+    // máscara: perto da junção
+    const sem = new Uint8Array(N);
+    for (const i of cx.pts) {
+      const a = Math.floor((pts[i] - o[0]) / h), b = Math.floor((pts[i + 1] - o[1]) / h), c = Math.floor((pts[i + 2] - o[2]) / h);
+      if (a >= 0 && b >= 0 && c >= 0 && a < nx && b < ny && c < nz) sem[(c * ny + b) * nx + a] = 1;
+    }
+    const dj = edt3(sem, nx, ny, nz);
+    // campo (mm, positivo dentro do enchimento): fechamento um voxel para dentro (a superfície da joia fica
+    // intacta fora dos cantos) e só dentro do alcance da junção; suavizado 3×3×3 (sem degraus de voxel)
+    const eps = h;
+    const F0 = new Float32Array(N);
+    for (let i = 0; i < N; i++) F0[i] = Math.min(e[i] * h - (rG + eps), ALCANCE * rG - dj[i] * h);
+    const F = new Float32Array(N);
+    for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      let s = 0, c = 0;
+      for (let dk = -1; dk <= 1; dk++) for (let dj2 = -1; dj2 <= 1; dj2++) for (let di = -1; di <= 1; di++) {
+        const a = i + di, b = j + dj2, d = k + dk;
+        if (a < 0 || b < 0 || d < 0 || a >= nx || b >= ny || d >= nz) continue;
+        s += F0[(d * ny + b) * nx + a]; c++;
+      }
+      F[(k * ny + j) * nx + i] = s / c;
+    }
+    // sem nada a encher (cantos sem concavidade): pula
+    let tem = false;
+    for (let i = 0; i < N && !tem; i++) if (F[i] > 0) tem = true;
+    if (!tem) continue;
+    const campo = (q: V3) => {
+      const x = (q[0] - o[0]) / h - 0.5, y = (q[1] - o[1]) / h - 0.5, z = (q[2] - o[2]) / h - 0.5;
+      const i = Math.floor(x), j = Math.floor(y), k = Math.floor(z);
+      if (i < 0 || j < 0 || k < 0 || i >= nx - 1 || j >= ny - 1 || k >= nz - 1) return -1;
+      const fx = x - i, fy = y - j, fz = z - k, I = (a: number, b: number, c: number) => F[((k + c) * ny + (j + b)) * nx + (i + a)];
+      const c00 = I(0, 0, 0) * (1 - fx) + I(1, 0, 0) * fx, c10 = I(0, 1, 0) * (1 - fx) + I(1, 1, 0) * fx, c01 = I(0, 0, 1) * (1 - fx) + I(1, 0, 1) * fx, c11 = I(0, 1, 1) * (1 - fx) + I(1, 1, 1) * fx;
+      return (c00 * (1 - fy) + c10 * fy) * (1 - fz) + (c01 * (1 - fy) + c11 * fy) * fz;
+    };
+    try {
+      const pc = w.Manifold.levelSet(campo, { min: [o[0] + h, o[1] + h, o[2] + h], max: [o[0] + (nx - 1) * h, o[1] + (ny - 1) * h, o[2] + (nz - 1) * h] }, h);
+      if (pc.volume() > 1e-6) pecas.push(pc);
+      else pc.delete();
+    } catch {
+      /* grupo sem enchimento */
+    }
   }
-  const menorDepois = 0;
-  dep(`conferência (${conferidos} vértices, ${finas} perderam metal)`);
-  for (const v of ativos) deslocMax = Math.max(deslocMax, Math.hypot(pos[3 * v] - original[3 * v], pos[3 * v + 1] - original[3 * v + 1], pos[3 * v + 2] - original[3 * v + 2]));
-  return { malha: { pos: new Float32Array(pos), tri: new Uint32Array(tri) }, origem: Int32Array.from(org), suavizados: ativos.length, refinados, deslocMax, ativos: ativos.filter((v) => peso[v] > 0), antes: { pos: original, tri: new Uint32Array(tri) }, conferidos, finas, menorDepois };
+  if (!pecas.length) return { enchimento: null, pontos: pts.length / 4, grupos: caixas.length, voxels };
+  const u = pecas.length === 1 ? pecas[0] : w.Manifold.union(pecas);
+  if (pecas.length > 1) for (const x of pecas) x.delete();
+  return { enchimento: u, pontos: pts.length / 4, grupos: caixas.length, voxels };
 }
 
 // ---------------------------------------------------------------------------------------------

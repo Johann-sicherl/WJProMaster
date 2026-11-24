@@ -10,8 +10,8 @@ import { canaisOcar, pecas, segura } from "./geometria";
 import { icosfera, malhasNoMundo, type Malha } from "./escultura";
 import { malhasFio } from "./fios";
 import { malhaFolha, malhaNoMundo } from "./folhas";
-import { concordar, type Origem } from "./concordancia";
-import { LIGAS, montar, secao, superficie, type DocJoia, type GrupoTexto, type Montagem, type V3 } from "./regras";
+import { enchimento, type Origem } from "./concordancia";
+import { montar, secao, superficie, type DocJoia, type GrupoTexto, type Montagem, type V3 } from "./regras";
 
 type Wasm = { Manifold: any; Mesh: any };
 
@@ -24,7 +24,7 @@ export interface ResultadoFinal {
   /** tempos (ms) por etapa, para conferir o desempenho */
   tempos: Record<string, number>;
   /** concordância: vértices suavizados e menor espessura conferida (mm) */
-  concordancia?: { suavizados: number; conferidos: number; finas: number; /** malha refinada antes de suavizar (testes: o sólido novo contém o antigo) */ antes?: Malha };
+  concordancia?: { acrescimo: number; grupos: number; voxels: number };
 }
 
 /** Malha de um sólido do OpenCascade (tolerância da vista). */
@@ -185,24 +185,34 @@ export function construirMalha(w: Wasm, d: DocJoia, grupos: GrupoTexto[] = [], l
         const k = idOrigem.get(ids[r]) ?? semOrigem;
         for (let tt = runs[r] / 3; tt < runs[r + 1] / 3; tt++) origem[tt] = k;
       }
-      const c = concordar(malha, origem, origens, { minimo: LIGAS[d.liga].garraMin * 0.95 });
-      marca("concordância");
-      // confere: malha fechada, volume só um pouco maior e nada de metal perdido (o sólido novo contém o antigo:
-      // nenhum ponto fica mais fino do que era)
-      try {
-        const mf = paraManifold(c.malha);
-        const v2 = mf.volume();
-        if (v2 >= volume - 1e-6 && v2 <= volume * 1.08 && true) {
-          malha = c.malha;
+      const en = enchimento(w, malha, origem, origens);
+      marca("concordância (enchimento)");
+      if (en.enchimento) {
+        lixo.push(en.enchimento);
+        // os assentos e cortes continuam vivos: saem do enchimento
+        let ench = en.enchimento;
+        if (cortes.length) { ench = ench.subtract(w.Manifold.union(cortes)); lixo.push(ench); }
+        let novo = res.add(ench);
+        lixo.push(novo);
+        // migalhas do enchimento soltas da joia (< 0,5 mm³) saem
+        const pc = novo.decompose() as any[];
+        lixo.push(...pc);
+        if (pc.length > 1) {
+          const vs = pc.map((x) => x.volume()), maior = vs.indexOf(Math.max(...vs));
+          novo = pc[maior];
+          if (vs.some((v, i) => i !== maior && v >= 0.5)) avisos.push("Concordância: sobrou uma peça solta maior que 0,5 mm³ (confira as junções).");
+        }
+        const v2 = novo.volume();
+        // confere: peça única fechada e volume só um pouco maior (o enchimento só acrescenta: nada afina)
+        if (v2 >= volume - 1e-6 && v2 <= volume * 1.08 && novo.decompose().length === 1) {
+          const o2 = novo.getMesh();
+          malha = { pos: o2.numProp === 3 ? Float32Array.from(o2.vertProperties) : Float32Array.from({ length: o2.numVert * 3 }, (_, i) => o2.vertProperties[Math.floor(i / 3) * o2.numProp + (i % 3)]), tri: Uint32Array.from(o2.triVerts) };
+          conc = { acrescimo: v2 - volume, grupos: en.grupos, voxels: en.voxels };
           volume = v2;
-          area = mf.surfaceArea();
-        } else avisos.push(`Concordância deixada de fora: o volume mudou demais (${volume.toFixed(1)} → ${v2.toFixed(1)} mm³).`);
-      } catch {
-        avisos.push("Concordância: a malha suavizada não fechou e foi deixada de fora.");
-      }
-      conc = { suavizados: c.suavizados, conferidos: c.conferidos, finas: c.finas, antes: c.antes };
-      if (c.finas) avisos.push(`Concordância: ${c.finas} ponto(s) ficaram abaixo da espessura mínima da liga perto das junções; diminua o raio.`);
-      marca("conferência de espessura");
+          area = novo.surfaceArea();
+        } else avisos.push(`Concordância deixada de fora: o resultado não conferiu (volume ${volume.toFixed(1)} → ${v2.toFixed(1)} mm³).`);
+      } else conc = { acrescimo: 0, grupos: en.grupos, voxels: en.voxels };
+      marca("concordância (união)");
     }
     return { malha, volume, area, avisos: [...new Set(avisos)], montagem: m, tempos, concordancia: conc };
   } finally {
