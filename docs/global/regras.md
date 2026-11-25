@@ -99,7 +99,7 @@
 
 ## 4. Interface comum
 
-- **Tema claro**. Vista sempre **ortográfica** (sem perspectiva). Y para cima no CAD.
+- **Tema claro**. Vista sempre **ortográfica** (sem perspectiva; única exceção: "Ver pela câmera da foto" do WJGoldDiamond, J9b). Y para cima no CAD.
 - Layout: barra superior → faixa de ícones da aba → abas; árvore à esquerda; barra de vistas flutuante;
   tríade no canto inferior esquerdo; barra de status embaixo.
 - **Árvore ajustável** em Peça, Montagem e Desenho: arrastar a borda alarga; botão recolhe/expande
@@ -372,6 +372,10 @@
   21/11/2026 (J9a, pedido do Johann: modelar a partir de uma foto o anel "ANEL AMOR"): **gemas livres** (qualquer
   lapidação num ponto livre, girada/inclinada, garras próprias com V nas pontas da navete ou inglesa, simetria por
   gema, posicionar tocando na vista) e o modelo **"Anel folhas com oval"** (BR 10, 9 gemas, ~3 g em ouro 750).
+  25/11/2026 (J9b, mesmo pedido: anel igual ao da foto, pronto para resina e fundição, tudo em parâmetros): **foto de
+  referência guardada só no `.wjgd`** (nunca sai do aparelho), vista fixa com escala pela medida ou **câmera alinhada**
+  por pares de pontos; a **perspectiva só existe no modo "Ver pela câmera da foto"** (fora dele a vista continua
+  ortográfica); **fios avançados**, **folhas paramétricas** e **concordância** que só acrescenta metal nas junções.
 - **WJSlicer3D** (08/11/2026): face para **orçar impressão 3D de STL**: tempo de impressão e material
   (g, m, custo), **sem G-code e sem envio para a impressora**. **15/11/2026 (Johann): só duas impressoras,
   Bambu Lab P1S e Anycubic Kobra 3** (bico 0,4, perfis de fábrica de camada, velocidades, acelerações e fluxo
