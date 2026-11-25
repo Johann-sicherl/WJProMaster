@@ -106,7 +106,16 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
   `docs/funcional/sketch.md`).
 - Conversa antiga "Software CAD": mantida só para consulta; não usar para pedidos novos.
 
+- **Conferir no tablet real (lista única; o Johann testa tudo de uma vez e a central risca):**
+  - #149 P1: filete/chanfro/extrusão rápidos na Caixa 60×60 (toque e ✓; antes demorava).
+  - #150 J9b: foto de referência com câmera alinhada, folhas, fios avançados, "Anel folhas com oval".
+  - #151 C3: gerador de engrenagens (par na Montagem).
+  - #142 C2: conferir as famílias "≈ aproximada" em src/biblioteca/dados.ts.
+  - #120: dividir → mover → extrudar com o STL real.
+
 ## 6. Limite de uso (10/11/2026)
+
+- **Medição 25/11:** J9b + P1 + C3 (Opus) em paralelo: sessão 24 % → 96 % em ~45 min (≈ 1,5 ponto/min); semana 22 % → 28 %. Teto da sessão foi 85 % só neste dia (Johann). Custos de tabela: P1 ≈ US$ 15,9; J9b ≈ 28,7 + 2,6 (troca de conversa); C3 a medir.
 
 - **Teto de 70 % do limite semanal (Johann, 24/11):** regra em `regras.md` §1. Antes de abrir ou retomar
   qualquer conversa, perguntar ao Johann o % atual; ≥ 70 % (ou tarefa que possa passar disso) = não abrir.
