@@ -1278,6 +1278,12 @@ body.disp-celular .cfg-conteudo { padding: 8px 14px 16px; }
 .bib-grupo { text-align: left; min-height: 44px; padding: 0 10px; border: 1px solid var(--linha); border-radius: 8px; background: #f3f6f9; font-weight: 600; }
 .bib-familia { margin-left: 10px; }
 .bib-familia[aria-pressed="true"] { border-color: var(--acento); background: #eaf3fc; }
+.eng-valores { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; margin: 0; font-size: 13px; }
+.eng-valores dt { color: #4d5a66; }
+.eng-valores dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.eng-aviso { margin: 6px 0 0; padding: 6px 8px; border-radius: 8px; background: #fff6e0; color: #6a4b00; font-size: 13px; }
+.eng-erro { margin: 6px 0 0; padding: 6px 8px; border-radius: 8px; background: #fdecec; color: #8a1c1c; font-size: 13px; }
+.bib-abas { margin: 0 0 8px; }
 .bib-nome { margin: 8px 0 2px; padding: 6px 8px; border-radius: 8px; background: #f3f6f9; font-weight: 600; word-break: break-word; }
 .bib-arrastar { min-height: 48px; padding: 0 14px; touch-action: none; cursor: grab; user-select: none; }
 .bib-fantasma { position: fixed; z-index: 9999; pointer-events: none; padding: 6px 10px; border-radius: 8px; background: var(--acento); color: #fff; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,.3); }

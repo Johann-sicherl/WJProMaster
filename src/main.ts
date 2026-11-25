@@ -668,7 +668,7 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco" | "impo
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
   plano: "planoRef", eixo: "eixoRef", "ponto-ref": "pontoRef", "sistema-coord": "sistemaCoord",
   "mover-corpo": "moverCorpo", escala: "escala", domo: "domo", combinar: "combinar", dividir: "dividir", "excluir-corpo": "excluirCorpo",
-  rosca: "rosca", "linha-particao": "linhaParticao", "inserir-peca": "inserirPeca", varredura: "varredura", "corte-varredura": "varredura",
+  rosca: "rosca", engrenagem: "engrenagem", "linha-particao": "linhaParticao", "inserir-peca": "inserirPeca", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
   "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco", junta: "junta", "meia-esquadria": "meiaEsquadria",
   "fechar-canto": "fecharCanto", "alivio-canto": "alivioCanto", "quebrar-canto": "quebrarCanto",

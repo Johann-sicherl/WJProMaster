@@ -23,6 +23,8 @@ export interface EstadoBib {
   comPorca: boolean;
   /** entrar pelo lado oposto ao que olha para a câmera */
   oposto: boolean;
+  /** aba aberta: fixação (padrão) ou engrenagens */
+  aba?: "fixacao" | "engrenagens";
 }
 
 export const estadoInicialBib = (): EstadoBib => ({ busca: "", abertos: ["Parafusos"], comprimento: "auto", roscaReal: false, comPorca: true, oposto: false });

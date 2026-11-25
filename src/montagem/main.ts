@@ -27,8 +27,8 @@ import { capturarAtiva, limparConfiguracoes } from "../configuracoes";
 import { Viewport, type Entidade, type EstiloExibicao, type TipoEntidade, type Vista } from "../viewport";
 import { documentoImportado, fotografiaLeve, revelarFotografia, MATERIAIS, validarDocumento, type Documento, type Referencia, type Vec3 } from "../model";
 import {
-  aplicarPadroes, embutirPeca, excluirComponentes, excluirPadrao, explosaoAutomatica, girarEmTorno, massaDaMontagem, posesExplodidas, IDENTIDADE, inserirComponente, marcaDe, montagemVazia, novoIdM, quantidades, quatDeEuler,
-  quatEixoAngulo, rotuloComponente, validarMontagem, type ComponenteMontagem, type DocumentoMontagem, type PecaEmbutida, type Posicionamento,
+  aplicarPadroes, compor, embutirPeca, excluirComponentes, excluirPadrao, explosaoAutomatica, girarEmTorno, massaDaMontagem, posesExplodidas, IDENTIDADE, inserirComponente, marcaDe, montagemVazia, novoIdM, quantidades, quatDeEuler,
+  inverter as inverterT, quatEixoAngulo, rotuloComponente, validarMontagem, type ComponenteMontagem, type DocumentoMontagem, type PecaEmbutida, type Posicionamento,
   type PadraoComponentes, type RefMontagem, type TipoPosicionamento, type Transformacao,
 } from "./modelo";
 import { centroDaCaixa, centroDoComponente, componenteDoTriangulo, facesDoComponente, globalDaEntidade, indiceLocal, juntar, localDaEntidade, type Cena } from "./cena";
@@ -41,7 +41,10 @@ import {
 import { renderizarPainelBiblioteca, estadoInicialBib, itemEscolhido, type EstadoBib } from "../biblioteca/painel";
 import { LISTA_COMPRIMENTOS, diametroNominal, familiaPorId } from "../biblioteca/dados";
 import { comprimentosDoPadrao, nomePadrao, passoGrosso } from "../biblioteca/gerar";
-import { pecaDaBiblioteca } from "../biblioteca/cofre";
+import { pecaDaBiblioteca, pecaDeEngrenagem } from "../biblioteca/cofre";
+import { calcularPar, engrenagemDaPeca, nomeEngrenagem, paramDe, parceiraSugerida, poseDoPar, ROTULO_TIPO as TIPO_ENGRENAGEM } from "../biblioteca/engrenagens";
+import { abasBiblioteca, caixasEngrenagem } from "../biblioteca/painelEngrenagens";
+import { PARAM_ENGRENAGEM_PADRAO, type ParamEngrenagem } from "../model";
 import {
   compatibilidadeDoFuro, comprimentoMinimo, empilhadoNoLado, entradaDoFuro, furosDoComponente, furosIguais, ladoParaCamera, planasDoComponente, poseDoFixador,
   posicionamentosDoEncaixe, proximoDaLista, type Furo,
@@ -1158,6 +1161,7 @@ viewport.aoToqueCurto = (e) => {
     return;
   }
   if (comando?.tipo === "inserir") return colocarInserido(e.clientX, e.clientY);
+  if (comando?.tipo === "biblioteca" && estadoBib.aba === "engrenagens") return tocarEngrenagem(e.clientX, e.clientY, tol);
   if (comando?.tipo === "biblioteca") return void tocarFuroBiblioteca(e.clientX, e.clientY, comando.armado);
   if (comando?.tipo === "medir") {
     const ent = picarNoToque(e);
@@ -1470,6 +1474,7 @@ function abrirBiblioteca() {
 function renderizarBiblioteca() {
   if (comando?.tipo !== "biblioteca") return;
   guardarEstadoBib();
+  if (estadoBib.aba === "engrenagens") return renderizarEngrenagens();
   renderizarPainelBiblioteca({
     painelBase: (t) => painelBase(t),
     caixa,
@@ -1492,6 +1497,233 @@ function renderizarBiblioteca() {
     sugerido: () => furoBib?.sugerido,
     areaDoModelo: () => $("viewport").getBoundingClientRect(),
   }, estadoBib);
+  colocarAbasBiblioteca();
+}
+
+/** Abas Fixação | Engrenagens logo abaixo do cabeçalho do painel. */
+function colocarAbasBiblioteca() {
+  const cab = $("painel-comando").querySelector(".pc-cabecalho");
+  cab?.after(abasBiblioteca(estadoBib.aba ?? "fixacao", (a) => {
+    estadoBib.aba = a;
+    if (comando?.tipo === "biblioteca") comando.armado = false;
+    renderizarBiblioteca();
+    atualizarStatus();
+  }));
+}
+
+// ---------- Biblioteca de componentes: engrenagens ----------
+// Contas e posição do par em src/biblioteca/engrenagens.ts (testadas em scripts/teste-engrenagens.ts).
+
+type EstadoEng = ParamEngrenagem & { parDentes: number; parDeslocamento: number };
+let estadoEng: EstadoEng = { ...PARAM_ENGRENAGEM_PADRAO, parDentes: 40, parDeslocamento: 0 };
+try {
+  const g = JSON.parse(localStorage.getItem("wjcad:engrenagens") ?? "null");
+  if (g && typeof g === "object") estadoEng = { ...estadoEng, ...g };
+} catch {
+  // sem armazenamento: valores de fábrica
+}
+const recolhidasEng = new Set<string>(["Cônica", "Sem-fim e coroa", "Cremalheira", "Aro"]);
+
+/** A 2ª engrenagem do par, a partir da 1ª e dos campos do par. */
+function parceiraEng(): ParamEngrenagem {
+  const p = paramDe(estadoEng);
+  const q = parceiraSugerida(p, Math.round(estadoEng.parDentes));
+  if (q.tipoEngrenagem === "reta" || q.tipoEngrenagem === "helicoidal") q.deslocamento = estadoEng.parDeslocamento;
+  return q;
+}
+
+function renderizarEngrenagens() {
+  try {
+    localStorage.setItem("wjcad:engrenagens", JSON.stringify(estadoEng));
+  } catch {
+    // sem armazenamento: só não lembra
+  }
+  const t = estadoEng.tipoEngrenagem;
+  const rotPar = t === "cremalheira" ? "Dentes do pinhão" : t === "semFim" ? "Dentes da coroa" : t === "interna" ? "Dentes do pinhão" : "Dentes da 2ª engrenagem";
+  const esq: Esquema<EstadoEng> = {
+    titulo: "Biblioteca de componentes",
+    caixas: [
+      ...caixasEngrenagem<EstadoEng>(),
+      { titulo: "Inserir", campos: [
+        { t: "elemento", criar: (f) => Object.assign(document.createElement("p"), { className: "bib-nome", textContent: nomeSeguro(f) }) },
+        { t: "botao", rot: "Inserir engrenagem", destaque: true, acao: () => void inserirEngrenagem() },
+        { t: "info", texto: () => "A peça é criada no kernel e guardada no cofre (CAD › Biblioteca › Engrenagens); se já existir com os mesmos valores, é reaproveitada. Depois, abra a peça e edite o recurso Engrenagem." },
+      ] },
+      { titulo: "Par", campos: [
+        { t: "num", rot: rotPar, cam: "parDentes", min: 4, max: 400, passo: 1, vis: (f) => f.tipoEngrenagem !== "conica" && f.tipoEngrenagem !== "coroa" },
+        { t: "num", rot: "Deslocamento x da 2ª", cam: "parDeslocamento", min: -1.5, max: 1.5, passo: 0.05, vis: (f) => f.tipoEngrenagem !== "conica" && f.tipoEngrenagem !== "coroa" && f.tipoEngrenagem !== "semFim" },
+        { t: "elemento", criar: () => tabelaDoPar() },
+        { t: "botao", rot: "Inserir o par engrenado", destaque: true, acao: () => void inserirParEngrenado() },
+        { t: "botao", rot: `Engrenar as 2 selecionadas (${selComps.length})`, acao: () => engrenarSelecionadas() },
+        { t: "info", texto: () => "Toque duas engrenagens no modelo (ou na árvore) e use “Engrenar”: a 2ª vai para a distância entre centros com o dente no vão da 1ª, e as duas ficam travadas entre si (posicionamento Travar)." },
+      ] },
+    ],
+  };
+  const ctx: ContextoFormulario = {
+    aoMudar: () => renderizarEngrenagens(),
+    ok: confirmarComando,
+    cancelar: cancelarComando,
+    campoAtivo: null,
+    ativarCampo: () => {},
+    rotuloRef: () => "",
+    realcarRef: () => {},
+    equacao: () => undefined,
+    definirEquacao: () => {},
+    avaliar: (x) => Number(x.replace(",", ".").replace(/^=/, "")),
+    recolhidas: recolhidasEng,
+  };
+  renderizarFormulario($("painel-comando"), estadoEng, esq, ctx);
+  colocarAbasBiblioteca();
+}
+
+function nomeSeguro(p: ParamEngrenagem): string {
+  try {
+    return nomeEngrenagem(paramDe(p));
+  } catch {
+    return "—";
+  }
+}
+
+/** Valores do par (distância entre centros, razão…) ou por que não forma par. */
+function tabelaDoPar(): HTMLElement {
+  const d = document.createElement("div");
+  try {
+    const q = parceiraEng();
+    const par = calcularPar(paramDe(estadoEng), q);
+    const f = (v: number, c = 3) => v.toLocaleString("pt-BR", { maximumFractionDigits: c });
+    const linhas = [
+      { rotulo: "2ª engrenagem", valor: `${TIPO_ENGRENAGEM[q.tipoEngrenagem]}, ${nomeEngrenagem(q).replace(/^\S+ (\S+ )?/, "")}` },
+      ...(estadoEng.tipoEngrenagem === "conica" ? [] : [{ rotulo: estadoEng.tipoEngrenagem === "cremalheira" ? "Eixo do pinhão à linha primitiva" : "Distância entre centros", valor: `${f(par.distancia)} mm` }]),
+      estadoEng.tipoEngrenagem === "cremalheira" ? { rotulo: "Avanço por volta do pinhão", valor: `${f(par.razao)} mm` } : { rotulo: "Razão i = n1/n2", valor: f(par.razao, 4) },
+      ...(par.alfaW !== undefined ? [{ rotulo: "Ângulo de pressão de funcionamento", valor: `${f((par.alfaW * 180) / Math.PI)}°` }] : []),
+      ...(par.recobrimento !== undefined ? [{ rotulo: "Grau de recobrimento εα", valor: f(par.recobrimento) }] : []),
+    ];
+    const dl = document.createElement("dl");
+    dl.className = "eng-valores";
+    for (const l of linhas) dl.append(Object.assign(document.createElement("dt"), { textContent: l.rotulo }), Object.assign(document.createElement("dd"), { textContent: l.valor }));
+    d.append(dl, Object.assign(document.createElement("p"), { className: "dica", textContent: par.descricao }));
+    for (const a of par.avisos) d.append(Object.assign(document.createElement("p"), { className: "eng-aviso", textContent: `⚠ ${a}` }));
+  } catch (e) {
+    d.append(Object.assign(document.createElement("p"), { className: "eng-erro", textContent: (e as Error).message }));
+  }
+  return d;
+}
+
+/** Toque no modelo com a aba Engrenagens: marca/desmarca o componente (até 2, para engrenar). */
+function tocarEngrenagem(x: number, y: number, tol: number) {
+  const alvo = componenteSob(x, y, tol);
+  if (!alvo) return;
+  selComps = selComps.includes(alvo.comp) ? selComps.filter((c) => c !== alvo.comp) : [...selComps, alvo.comp].slice(-2);
+  montarCena();
+  renderizarArvore();
+  renderizarEngrenagens();
+}
+
+async function gerarEngrenagem(p: ParamEngrenagem) {
+  const peca = await pecaDeEngrenagem(p);
+  if (!doc) throw new Error("Sem montagem aberta.");
+  return { peca, id: embutirPeca(doc, peca.doc, { arquivo: peca.arquivo || undefined, versao: peca.arquivo ? peca.versao : undefined, nome: peca.nome }) };
+}
+
+/** Posição livre ao lado do que já existe. */
+function poseAoLado(): Transformacao {
+  let x = 0;
+  if (cena?.topo.vertices.length) {
+    let mx = -Infinity;
+    for (const v of cena.topo.vertices) mx = Math.max(mx, v[0]);
+    x = mx + escalaDaCena() * 0.4;
+  }
+  return { pos: [x, 0, 0], rot: [0, 0, 0, 1] };
+}
+
+/** Posicionamento Travar entre as duas engrenagens (guarda o engrenamento). */
+function travarPar(a: ComponenteMontagem, b: ComponenteMontagem): Posicionamento {
+  const n = doc!.posicionamentos.filter((m) => m.nome.startsWith("Engrenamento")).length + 1;
+  return {
+    id: novoIdM(), nome: `Engrenamento${n}`, tipo: "travar", alinhamento: "alinhado",
+    a: { comp: a.id, ref: { tipo: "eixo", id: "Y" } }, b: { comp: b.id, ref: { tipo: "eixo", id: "Y" } }, rel: compRel(a.t, b.t),
+  };
+}
+
+async function inserirEngrenagem() {
+  if (!doc) return;
+  if (estadoKernel !== "pronto") return avisar("O kernel ainda está carregando. Tente em instantes.");
+  const p = paramDe(estadoEng);
+  avisar(`Preparando ${nomeSeguro(p)}…`);
+  try {
+    const peca = await pecaDeEngrenagem(p);
+    await inserirDoc(peca.doc, { arquivo: peca.arquivo || undefined, versao: peca.arquivo ? peca.versao : undefined, nome: peca.nome });
+    pendenteColocar = null;
+    renderizarBiblioteca();
+    avisar(`${peca.nome} inserida ao lado do modelo${peca.reaproveitada ? " · reaproveitada do cofre" : " · criada e guardada no cofre"} (CAD › Biblioteca › Engrenagens).`, 6000);
+  } catch (e) {
+    avisar(`Não foi possível criar a engrenagem: ${(e as Error).message}`);
+  }
+}
+
+async function inserirParEngrenado() {
+  if (!doc) return;
+  if (estadoKernel !== "pronto") return avisar("O kernel ainda está carregando. Tente em instantes.");
+  const p1 = paramDe(estadoEng);
+  let p2: ParamEngrenagem, rel: Transformacao;
+  try {
+    p2 = parceiraEng();
+    rel = poseDoPar(p1, p2);
+  } catch (e) {
+    return avisar((e as Error).message);
+  }
+  avisar(`Preparando o par ${nomeSeguro(p1)} + ${nomeSeguro(p2)}…`);
+  try {
+    const g1 = await gerarEngrenagem(p1);
+    const g2 = await gerarEngrenagem(p2);
+    const c1 = inserirComponente(doc, g1.id, poseAoLado());
+    const c2 = inserirComponente(doc, g2.id, compor(c1.t, rel));
+    doc.posicionamentos.push(travarPar(c1, c2));
+    selComps = [c1.id, c2.id];
+    await atualizarCena();
+    resolver({ preferido: c2.id });
+    montarCena();
+    registrarPasso();
+    salvarAutosave();
+    renderizarArvore();
+    renderizarBiblioteca();
+    avisar(`Par engrenado: ${rotuloComponente(doc, c1)} + ${rotuloComponente(doc, c2)} (peças no cofre, CAD › Biblioteca › Engrenagens).`, 7000);
+  } catch (e) {
+    avisar(`Não foi possível criar o par: ${(e as Error).message}`);
+  }
+}
+
+/** As duas engrenagens selecionadas vão para a posição de engrenamento (move a 2ª; se fixa, a 1ª). */
+function engrenarSelecionadas() {
+  if (!doc) return;
+  const cs = selComps.map(compDe).filter((c): c is ComponenteMontagem => !!c);
+  if (cs.length !== 2) return avisar("Toque exatamente duas engrenagens no modelo (ou na árvore).");
+  const ps = cs.map((c) => {
+    const pe = doc!.pecas.find((x) => x.id === c.peca);
+    return pe ? engrenagemDaPeca(pe.doc) : null;
+  });
+  if (!ps[0] || !ps[1]) return avisar("As duas precisam ser engrenagens feitas pelo gerador (com o recurso Engrenagem).");
+  let rel: Transformacao;
+  try {
+    rel = poseDoPar(ps[0], ps[1]);
+  } catch (e) {
+    return avisar((e as Error).message);
+  }
+  const [a, b] = cs;
+  if (a.fixo && b.fixo) return avisar("As duas estão fixas: flutue uma delas para engrenar.");
+  if (!b.fixo) b.t = compor(a.t, rel);
+  else a.t = compor(b.t, inverterT(rel));
+  // o engrenamento novo substitui o travamento antigo entre as duas
+  doc.posicionamentos = doc.posicionamentos.filter((m) => !(m.tipo === "travar" && [m.a?.comp, m.b?.comp].sort().join() === [a.id, b.id].sort().join()));
+  doc.posicionamentos.push(travarPar(a, b));
+  resolver({ preferido: b.fixo ? a.id : b.id });
+  montarCena();
+  registrarPasso();
+  salvarAutosave();
+  renderizarArvore();
+  renderizarBiblioteca();
+  const par = calcularPar(ps[0], ps[1]);
+  avisar(`Engrenadas: ${rotuloComponente(doc, a)} e ${rotuloComponente(doc, b)}${par.distancia ? ` · distância ${par.distancia.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} mm` : ""}.`, 6000);
 }
 
 /** Furos (faces cilíndricas côncavas) de todos os componentes visíveis, na pose atual. */
