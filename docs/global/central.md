@@ -73,7 +73,7 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
 
 ## 5. Pendências e conversas em andamento
 
-- **Nada em andamento** (10/11, depois do #120). Conversas a arquivar: as do #114, #115, #116, #118, #119 e #120.
+- Conversas das entregas já executadas: arquivadas pelo Johann (25/11).
 - **#120 falta testar com o STL real do Johann** (dividir → mover → extrudar → 1 corpo foi testado com
   peça de teste; mover e extrusão só em Node).
 - **TAMPA_JANELA (ação do Johann):** a peça continua com 3 corpos de propósito (folga real de 0,0328 mm

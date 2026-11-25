@@ -746,9 +746,15 @@ export class Viewport {
     return this.renderer.domElement;
   }
 
+  /**
+   * Tamanho da vista em px. Vem do renderizador (o ResizeObserver o mantém igual ao da câmera): ler
+   * `clientWidth` no meio de um toque forçava o navegador a refazer o layout do painel recém-desenhado.
+   */
   tamanho(): { w: number; h: number } {
-    return { w: this.container.clientWidth, h: this.container.clientHeight };
+    const v = this.renderer.getSize(this.vetorTamanho);
+    return v.x && v.y ? { w: v.x, h: v.y } : { w: this.container.clientWidth, h: this.container.clientHeight };
   }
+  private vetorTamanho = new THREE.Vector2();
 
   pedirRender() {
     this.precisaRender = true;
@@ -1308,47 +1314,112 @@ export class Viewport {
   /** Realça entidades selecionadas (azul forte) e a que está sob o cursor (azul claro). */
   /** Prévia do material que o recurso em edição tira (sólido translúcido vermelho). */
   mostrarPrevia(m: MalhaSimples | null | undefined) {
-    for (const o of [...this.grupoPrevia.children]) {
-      this.grupoPrevia.remove(o);
-      (o as THREE.Mesh).geometry?.dispose();
-      ((o as THREE.Mesh).material as THREE.Material)?.dispose();
-    }
+    this.limparGrupo(this.grupoPrevia);
     if (m) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(m.vertices, 3));
       geo.setAttribute("normal", new THREE.BufferAttribute(m.normais, 3));
       geo.setIndex(new THREE.BufferAttribute(m.triangulos, 1));
-      const corpo = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-        color: COR_REMOVIDO, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide,
-        clippingPlanes: this.secao ? [this.secao] : [],
-      }));
+      const corpo = new THREE.Mesh(geo, this.matPrevia());
       const geoA = new THREE.BufferGeometry();
       geoA.setAttribute("position", new THREE.BufferAttribute(m.arestas, 3));
-      const arestas = new THREE.LineSegments(geoA, new THREE.LineBasicMaterial({ color: COR_REMOVIDO, transparent: true, opacity: 0.9, depthTest: false }));
+      const arestas = new THREE.LineSegments(geoA, this.matPreviaArestas());
       this.grupoPrevia.add(corpo, arestas);
     }
     this.precisaRender = true;
   }
 
+  /**
+   * Materiais dos destaques, da prévia e das regiões: criados uma vez e reaproveitados. Descartar e
+   * recriar a cada toque apagava o programa de shader e a GPU compilava de novo no quadro seguinte
+   * (no tablet, 50–300 ms por programa a cada toque da seleção). O plano da seção vai junto em cada uso.
+   */
+  private materiaisFixos = new Map<string, THREE.Material>();
+  private materialFixo<M extends THREE.Material>(chave: string, criar: () => M): M {
+    let m = this.materiaisFixos.get(chave) as M | undefined;
+    if (!m) {
+      m = criar();
+      m.userData.fixo = true;
+      this.materiaisFixos.set(chave, m);
+    }
+    const planos = this.secao ? [this.secao] : [];
+    if ((m.clippingPlanes?.length ?? 0) !== planos.length || m.clippingPlanes?.[0] !== planos[0]) m.clippingPlanes = planos;
+    return m;
+  }
+
+  private matPrevia = () => this.materialFixo("previa", () => new THREE.MeshBasicMaterial({
+    color: COR_REMOVIDO, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide,
+  }));
+  private matPreviaArestas = () => this.materialFixo("previaArestas", () => new THREE.LineBasicMaterial({ color: COR_REMOVIDO, transparent: true, opacity: 0.9, depthTest: false }));
+  private matRegiao = () => this.materialFixo("regiao", () => new THREE.MeshBasicMaterial({
+    color: COR_SELECAO, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    side: THREE.DoubleSide,
+  }));
+  private matRegiaoArestas = () => this.materialFixo("regiaoArestas", () => new THREE.LineBasicMaterial({ color: COR_SELECAO, depthTest: false }));
+  private matFace = (cor: number) => this.materialFixo(`face${cor}`, () => new THREE.MeshBasicMaterial({
+    color: cor, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  }));
+  private matAresta = (cor: number) => this.materialFixo(`aresta${cor}`, () => new LineMaterial({ color: cor, linewidth: 4, depthTest: false, transparent: true }));
+  private matVertice = (cor: number) => this.materialFixo(`vertice${cor}`, () => new THREE.PointsMaterial({ color: cor, size: 12, sizeAttenuation: false, depthTest: false }));
+
+  private aquecido = false;
+  /**
+   * Compila de antemão (em segundo plano, quando o navegador permite) os shaders dos destaques, da
+   * prévia e das regiões: sem isso o 1º toque de seleção da sessão compilava 8 programas de uma vez
+   * (≈ 1 s numa GPU de tablet). Chamado quando a primeira peça aparece.
+   */
+  aquecerShaders() {
+    if (this.aquecido) return;
+    this.aquecido = true;
+    const tri = new THREE.BufferGeometry();
+    tri.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+    tri.setAttribute("normal", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3));
+    tri.setIndex([0, 1, 2]);
+    const lin = new THREE.BufferGeometry();
+    lin.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0], 3));
+    const lin2 = new LineSegmentsGeometry();
+    lin2.setPositions([0, 0, 0, 1, 0, 0]);
+    const pt = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3()]);
+    const g = new THREE.Group();
+    const { w, h } = this.tamanho();
+    for (const cor of [COR_PREVIA, COR_RECURSO, COR_SELECAO, COR_REALCE]) {
+      const ma = this.matAresta(cor);
+      ma.resolution.set(w, h);
+      g.add(new THREE.Mesh(tri, this.matFace(cor)), new LineSegments2(lin2, ma), new THREE.Points(pt, this.matVertice(cor)));
+    }
+    g.add(new THREE.Mesh(tri, this.matPrevia()), new THREE.LineSegments(lin, this.matPreviaArestas()), new THREE.Mesh(tri, this.matRegiao()), new THREE.LineSegments(lin, this.matRegiaoArestas()));
+    const fim = () => {
+      for (const x of [tri, lin, lin2, pt]) x.dispose();
+    };
+    try {
+      this.renderer.compileAsync(g, this.camera, this.cena).then(fim, fim);
+    } catch {
+      fim();
+    }
+  }
+
+  /** Tira os objetos do grupo e libera as geometrias; os materiais fixos ficam para o próximo uso. */
+  private limparGrupo(g: THREE.Group) {
+    for (const o of [...g.children]) {
+      g.remove(o);
+      (o as THREE.Mesh).geometry?.dispose();
+      const mat = (o as THREE.Mesh).material as THREE.Material | undefined;
+      if (mat && !mat.userData.fixo) mat.dispose();
+    }
+  }
+
   /** Destaque de uma região (sólido azul translúcido por cima da peça), ex.: lista do Dividir. */
   mostrarRegiao(m: MalhaSimples | null) {
-    for (const o of [...this.grupoRegiao.children]) {
-      this.grupoRegiao.remove(o);
-      (o as THREE.Mesh).geometry?.dispose();
-      ((o as THREE.Mesh).material as THREE.Material)?.dispose();
-    }
+    this.limparGrupo(this.grupoRegiao);
     if (m) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(m.vertices, 3));
       geo.setAttribute("normal", new THREE.BufferAttribute(m.normais, 3));
       geo.setIndex(new THREE.BufferAttribute(m.triangulos, 1));
-      const corpo = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-        color: COR_SELECAO, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-        side: THREE.DoubleSide, clippingPlanes: this.secao ? [this.secao] : [],
-      }));
+      const corpo = new THREE.Mesh(geo, this.matRegiao());
       const geoA = new THREE.BufferGeometry();
       geoA.setAttribute("position", new THREE.BufferAttribute(m.arestas, 3));
-      const arestas = new THREE.LineSegments(geoA, new THREE.LineBasicMaterial({ color: COR_SELECAO, depthTest: false }));
+      const arestas = new THREE.LineSegments(geoA, this.matRegiaoArestas());
       arestas.renderOrder = 6;
       this.grupoRegiao.add(corpo, arestas);
     }
@@ -1356,11 +1427,7 @@ export class Viewport {
   }
 
   destacarEntidades(sel: Entidade[], realce: Entidade | Entidade[] | null = null, doRecurso: Entidade[] = [], previa: Entidade[] = []) {
-    for (const o of [...this.grupoDestaque.children]) {
-      this.grupoDestaque.remove(o);
-      (o as THREE.Mesh).geometry?.dispose();
-      ((o as THREE.Mesh).material as THREE.Material)?.dispose();
-    }
+    this.limparGrupo(this.grupoDestaque);
     const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
     const itens = [
       ...previa.map((e) => ({ e, cor: COR_PREVIA })),
@@ -1377,16 +1444,13 @@ export class Viewport {
         geo.setAttribute("position", src.getAttribute("position"));
         geo.setAttribute("normal", src.getAttribute("normal"));
         geo.setIndex(Array.from((src.getIndex()!.array as Uint32Array).subarray(ini, ini + qtd)));
-        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-          color: cor, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-          clippingPlanes: this.secao ? [this.secao] : [],
-        }));
+        const m = new THREE.Mesh(geo, this.matFace(cor));
         this.grupoDestaque.add(m);
       } else if (e.tipo === "aresta") {
         const ini = this.gruposArestas[e.indice * 2], qtd = this.gruposArestas[e.indice * 2 + 1];
         const geo = new LineSegmentsGeometry();
         geo.setPositions(Array.from(this.posArestas.subarray(ini * 3, (ini + qtd) * 3)));
-        const mat = new LineMaterial({ color: cor, linewidth: 4, depthTest: false, transparent: true });
+        const mat = this.matAresta(cor);
         mat.resolution.set(w, h);
         const l = new LineSegments2(geo, mat);
         l.renderOrder = 6;
@@ -1394,7 +1458,7 @@ export class Viewport {
       } else if (e.tipo === "vertice" && this.topologia) {
         const p = this.topologia.vertices[e.indice];
         const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...p)]);
-        const pt = new THREE.Points(geo, new THREE.PointsMaterial({ color: cor, size: 12, sizeAttenuation: false, depthTest: false }));
+        const pt = new THREE.Points(geo, this.matVertice(cor));
         pt.renderOrder = 7;
         this.grupoDestaque.add(pt);
       }
