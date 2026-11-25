@@ -71,7 +71,8 @@
   disso (estimativa: tarefa pequena ≈ 1–2 %, grande em Opus ≈ 3–5 %). O Claude não consegue ler esse % sozinho: a central
   **pergunta ao Johann o % atual** (Configurações › Uso) antes de abrir ou retomar cada conversa e anota em
   `central.md` §6. Aviso de limite numa conversa (`allowed_warning`) = parar de abrir conversas e avisar o Johann.
-  No máximo 2 conversas em paralelo.
+  Conversas em paralelo: sem limite de quantidade (Johann, 25/11; antes 2); passou do teto = parar as conversas
+  (push imediato) até renovar.
   O teto de 70 % vale também para **a sessão atual** (a janela de 5 horas, "Sessão atual" em Configurações › Uso;
   Johann, 24/11): com 70 % dela gasta, nenhuma conversa nova é aberta ou retomada até a janela renovar. O Claude só
   recebe o aviso de limite próximo (`allowed_warning`), não o %: a central pergunta o % ao Johann e, na dúvida, trata
