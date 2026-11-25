@@ -3306,7 +3306,7 @@ void sincronizarAoAbrir(kernel.pronto)?.catch(() => {});
 
 }
 
-if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__asm = { doc: () => doc, viewport, cena: () => cena, abrir: (d: unknown) => abrirMontagem(validarMontagem(d)), solucao: () => solucao };
+if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__asm = { doc: () => doc, viewport, cena: () => cena, abrir: (d: unknown) => abrirMontagem(validarMontagem(d)), solucao: () => solucao, selecionar: (ids: string[]) => { selComps = ids; montarCena(); renderizarArvore(); renderizarBiblioteca(); } };
 
 registrarComAtualizacao();
 instalarCalculadoras();

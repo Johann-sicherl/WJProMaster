@@ -1956,7 +1956,8 @@ function instalarToqueCurto() {
     limparSelPeca();
     definirSel({ tipo: "feature", id: f.id });
     renderizarTudo();
-    mostrarCotasNoModelo(f);
+    // engrenagem: os valores ficam no painel do recurso (não há esboço com cotas)
+    if (!mostrarCotasNoModelo(f, false, f.tipo === "engrenagem") && f.tipo === "engrenagem") abrirComando(f, false);
   };
   viewport.aoToqueCurto = (e) => {
     const tol = e.pointerType === "touch" ? 22 : 9;

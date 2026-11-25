@@ -166,18 +166,26 @@ function espessuraMedida(s: Shape3D, r: number, z: number, y0: number, h: number
     const p = P({ tipoEngrenagem: "conica", modulo: 2, dentes: 20, dentesPar: 40 });
     const g = geometria(p);
     const tr = contornoTransversal(g, 400);
-    const pitch = poligonoDoContorno(tr, 1e-4).filter(([x, z]) => Math.abs(Math.hypot(x, z) - g.r) < 0.02 && Math.abs(Math.atan2(z, x)) < 0.3);
-    const angs = pitch.map(([x, z]) => Math.atan2(z, x));
-    confere("cônica (Tredgold): espessura no primitivo da ponta maior = π·m/2", g.r * (Math.max(...angs) - Math.min(...angs)), Math.PI, 2e-3);
+    const poli = poligonoDoContorno(tr, 1e-4);
+    // espessura do dente 0 no raio ρ: cruzamentos exatos (interpolados) do contorno com o círculo, |θ| < π/z
+    const espessuraEm = (rho: number, esc = 1) => {
+      const angs: number[] = [];
+      for (let i = 0; i < poli.length; i++) {
+        const [x1, z1] = poli[i].map((v) => v * esc), [x2, z2] = poli[(i + 1) % poli.length].map((v) => v * esc);
+        const r1 = Math.hypot(x1, z1), r2 = Math.hypot(x2, z2);
+        if ((r1 - rho) * (r2 - rho) > 0 || r1 === r2) continue;
+        const t = (rho - r1) / (r2 - r1), x = x1 + t * (x2 - x1), z = z1 + t * (z2 - z1);
+        if (Math.abs(Math.atan2(z, x)) < Math.PI / g.z) angs.push(Math.atan2(z, x));
+      }
+      return rho * (Math.max(...angs) - Math.min(...angs));
+    };
+    confere("cônica (Tredgold): espessura no primitivo da ponta maior = π·m/2", espessuraEm(g.r), Math.PI, 1e-4);
     const k = (g.Re! - p.largura) / g.Re!, h = p.largura * Math.cos(g.delta!);
     let media = 0;
     const N = 40;
     for (let i = 0; i < N; i++) {
       const y = (i + 0.5) / N, s = 1 - ((1 - k) * y) / h;
-      // perfil escalado s em torno do eixo: espessura no raio r = s · espessura(r/s)
-      const pts = poligonoDoContorno(tr, 1e-4).map(([x, z]) => [x * s, z * s] as [number, number]).filter(([x, z]) => Math.abs(Math.hypot(x, z) - g.r) < 0.02 && Math.abs(Math.atan2(z, x)) < 0.3);
-      const a = pts.map(([x, z]) => Math.atan2(z, x));
-      media += (g.r * (Math.max(...a) - Math.min(...a))) / N;
+      media += espessuraEm(g.r, s) / N; // perfil escalado s em torno do eixo, medido no mesmo raio
     }
     confere("cônica: espessura no Ø primitivo medida no sólido (y de 0 a 1 mm)", espessuraMedida(solidoEngrenagem(p), g.r, g.z, 0, 1, 0.05), media, 5e-3);
   }

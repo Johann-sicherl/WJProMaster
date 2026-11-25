@@ -621,11 +621,11 @@ export function documentoEngrenagem(p0: Partial<ParamEngrenagem>): Documento {
   const p = paramDe(p0);
   geometria(p); // valida antes de criar
   const nome = nomeEngrenagem(p);
-  const f: FeatureEngrenagem = { id: novoId(), nome: ROTULO_TIPO[p.tipoEngrenagem].replace(/ \(.*\)/, ""), suprimida: false, tipo: "engrenagem", ...p };
-  const doc: Documento = { ...documentoVazio(), nome, features: [f], material: "aco" };
+  const f: FeatureEngrenagem = { id: novoId(), nome: nome.split(/ m\d/)[0], suprimida: false, tipo: "engrenagem", ...p };
+  const doc: Documento = { ...documentoVazio(), nome, features: [f], material: "aco-1045" };
   const { valores } = valoresCalculados(p);
   doc.propriedades = {
-    descricao: nome, material: "aco", grupo: "Engrenagens", biblioteca: `engrenagem-${p.tipoEngrenagem}`,
+    descricao: nome, material: "aco-1045", grupo: "Engrenagens", biblioteca: `engrenagem-${p.tipoEngrenagem}`,
     ...Object.fromEntries(valores.slice(0, 4).map((v) => [v.rotulo, v.valor])),
   };
   return doc;

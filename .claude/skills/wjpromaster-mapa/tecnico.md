@@ -421,3 +421,20 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
   (6) só arruelas e porcas empilham (`propriedades.grupo`): a cabeça do parafuso não.
 - Roteiro de tablet: `scripts/roteiro-biblioteca.cjs` — a montagem de teste precisa de **GO-OUT** gravado no arquivo, senão o app abre a
   pergunta "GO-OUT ou consulta" e o roteiro espera para sempre.
+
+## Gerador de engrenagens (25/11/2026, pedido C3)
+
+- Motor puro `src/biblioteca/engrenagens.ts` (geometria, contornos como `Trecho[]` = curva por pontos exatos / linha / arco, pares,
+  `poseDoPar` com `quatDeBase`), sólido `src/kernel/engrenagem.ts` (`solidoEngrenagem`), painel `painelEngrenagens.ts` (caixas do
+  `formulario.ts`, usadas no recurso da Peça e na aba da Montagem), cofre `pecaDeEngrenagem`. Recurso `engrenagem` em `model.ts`
+  (`ParamEngrenagem` achatado no recurso; `PARAM_ENGRENAGEM_PADRAO`).
+- **Armadilhas**: (1) `makeBSplineApproximation` com grau até 6 desvia ~5 µm entre os pontos; **grau 3** com 24 pontos dá nanômetros;
+  (2) arestas retas/arcos são ligadas às **pontas reais** das B-splines (senão `assembleWire` dá "disconnected wire");
+  (3) `twistExtrude` do replicad não aceita sentido: torção própria com `makeHelix(..., lefthand)` como espinha auxiliar
+  (hélice à direita = θ diminui ao subir em +Y); (4) booleanas com centenas de faces helicoidais custam 5–10 s: interna = face com furo
+  (`addHolesInFace`) ou cascas + `makeSolid`; sem-fim = seção em espiral de Arquimedes torcida; (5) varredura com lei de escala
+  (`complexExtrude`) aproxima as superfícies (espessura 1 % menor): cônica por **loft regrado**; (6) no Tredgold o ângulo desenvolvido
+  vai de −passo até 2π·cos δ: desenrolar o `atan2` pelo ponto anterior; (7) medir espessura por casca fina ∩ sólido precisa de altura ≥ 1 mm
+  (fatia de 0,02 mm erra 1 %); (8) `shape.rotate/translate/intersect` do replicad apagam o original: `clone()` antes de reusar.
+- Montagem: com a aba Engrenagens aberta, o toque no modelo marca/desmarca componentes (até 2); o par fica preso por **Travar** (refs
+  `{tipo:"eixo",id:"Y"}` das duas peças, `rel` = pose relativa). `window.__asm.selecionar(ids)` (só em DEV) para o roteiro.
