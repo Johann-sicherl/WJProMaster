@@ -195,16 +195,16 @@ export function construirMalha(w: Wasm, d: DocJoia, grupos: GrupoTexto[] = [], l
         let novo = res.add(ench);
         lixo.push(novo);
         // migalhas do enchimento soltas da joia (< 0,5 mm³) saem
+        // (as peças soltas que a joia já tinha continuam; só migalhas novas < 0,5 mm³ saem)
         const pc = novo.decompose() as any[];
         lixo.push(...pc);
         if (pc.length > 1) {
-          const vs = pc.map((x) => x.volume()), maior = vs.indexOf(Math.max(...vs));
-          novo = pc[maior];
-          if (vs.some((v, i) => i !== maior && v >= 0.5)) avisos.push("Concordância: sobrou uma peça solta maior que 0,5 mm³ (confira as junções).");
+          const vs = pc.map((x) => x.volume()), ficam = pc.filter((_, i) => vs[i] >= 0.5);
+          if (ficam.length < pc.length) { novo = ficam.length === 1 ? ficam[0] : w.Manifold.union(ficam); lixo.push(novo); }
         }
         const v2 = novo.volume();
         // confere: peça única fechada e volume só um pouco maior (o enchimento só acrescenta: nada afina)
-        if (v2 >= volume - 1e-6 && v2 <= volume * 1.08 && novo.decompose().length === 1) {
+        if (v2 >= volume - 1e-6 && v2 <= volume * 1.08) {
           const o2 = novo.getMesh();
           malha = { pos: o2.numProp === 3 ? Float32Array.from(o2.vertProperties) : Float32Array.from({ length: o2.numVert * 3 }, (_, i) => o2.vertProperties[Math.floor(i / 3) * o2.numProp + (i % 3)]), tri: Uint32Array.from(o2.triVerts) };
           conc = { acrescimo: v2 - volume, grupos: en.grupos, voxels: en.voxels };

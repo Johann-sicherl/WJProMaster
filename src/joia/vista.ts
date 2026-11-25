@@ -495,6 +495,28 @@ export class VistaJoia {
     return [ret.x + ((v.x + 1) / 2) * ret.w, ret.y + ((1 - v.y) / 2) * ret.h];
   }
 
+  /** Render em perspectiva por uma câmera dada (foto de teste gerada pelo próprio app; roteiros de interface). */
+  fotoDeTeste(c: CameraFoto, W: number, H: number): string {
+    const cam = new THREE.PerspectiveCamera(campoVisao(c, H), W / H, 0.1, 2000);
+    cam.position.set(...c.pos);
+    const R = c.rot;
+    cam.quaternion.setFromRotationMatrix(new THREE.Matrix4().set(R[0], R[3], R[6], 0, R[1], R[4], R[7], 0, R[2], R[5], R[8], 0, 0, 0, 0, 1));
+    cam.updateMatrixWorld(true);
+    const px = this.renderer.getPixelRatio(), alvo = new THREE.Vector2();
+    this.renderer.getSize(alvo);
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(W, H, false);
+    this.renderer.setViewport(0, 0, W, H);
+    this.renderer.setScissorTest(false);
+    this.renderer.clear();
+    this.renderer.render(this.cena, cam);
+    const url = this.renderer.domElement.toDataURL("image/jpeg", 0.92);
+    this.renderer.setPixelRatio(px);
+    this.renderer.setSize(alvo.x, alvo.y);
+    this.redimensionar();
+    return url;
+  }
+
   /** Esculturas visíveis (a joia final já as traz unidas). */
   mostrarEsculturas(v: boolean) {
     if (this.esculturas.visible !== v) { this.esculturas.visible = v; this.desenhar(); }

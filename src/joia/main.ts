@@ -1120,7 +1120,7 @@ function painel() {
       <p class="gd-nota">Contração e canais só entram no "STL para impressão e fundição".</p>`;
   }
   p.innerHTML = `<section><h3>${IC[it.icone]} ${it.rotulo}</h3>
-    ${it.alternar && !it.ativo!() ? `<p class="gd-nota">Desligado. <button data-ligar>Ligar</button></p>` : CAMPOS[sel].map(campoHtml).join("") + extra + (it.alternar ? `<div class="gd-botoes"><button data-desligar>Desligar ${it.rotulo.toLowerCase()}</button></div>` : "")}</section>
+    ${it.alternar && !it.ativo!() && !(sel === "foto" && !doc.referencia) ? `<p class="gd-nota">Desligado. <button data-ligar>Ligar</button></p>` : CAMPOS[sel].map(campoHtml).join("") + extra + (it.alternar && !(sel === "foto" && !doc.referencia) ? `<div class="gd-botoes"><button data-desligar>Desligar ${it.rotulo.toLowerCase()}</button></div>` : "")}</section>
     <section id="gd-resultados"></section>`;
   painelResultados();
 }
@@ -1700,7 +1700,7 @@ function faixaEscultura(faixa: HTMLElement) {
 $("#gd-foto-quadro").addEventListener("pointerup", (e) => tocarNaFoto(e));
 new ResizeObserver(() => quadroFoto()).observe($("#gd-vista"));
 // testes de interface (só no servidor de desenvolvimento): projeção de pontos e estado
-if (import.meta.env.DEV) (window as any).__wjgd = { vista, doc: () => doc, montagem: () => m, notaveis: pontosNotaveis };
+if (import.meta.env.DEV) void import("./referencia").then((r) => ((window as any).__wjgd = { vista, doc: () => doc, montagem: () => m, notaveis: pontosNotaveis, projetar: r.projetar, olharPara: r.olharPara }));
 registrarOffline();
 arvore();
 painel();
