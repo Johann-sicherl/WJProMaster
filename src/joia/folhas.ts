@@ -129,9 +129,12 @@ export function perfilDeCurva(pts: { x: number; y: number }[]): { perfil: number
 
 /** Superfície média: altura (y) em (x ao longo, z na largura). */
 function meio(f: Folha, s: number, z: number, W: number): number {
-  let y = f.curvatura * s * s + Math.abs(z) * Math.tan((f.dobra * RAD) / 2);
+  // dobra arredondada (raio ≥ espessura) e nervura larga o bastante: a face de baixo, deslocada pela normal,
+  // nunca dobra sobre si mesma (curvatura da superfície média sempre menor que 1/espessura)
+  const c = Math.max(f.espessura, 0.15 * f.largura);
+  let y = f.curvatura * s * s + (Math.sqrt(z * z + c * c) - c) * Math.tan((f.dobra * RAD) / 2);
   if (f.nervura !== "nenhuma") {
-    const larg = Math.max(0.08, 0.14 * f.largura), fade = Math.min(1, 4 * s, 4 * (1 - s));
+    const larg = Math.max(0.08, 0.14 * f.largura, 1.2 * Math.sqrt(2 * f.profNervura * f.espessura)), fade = Math.min(1, 4 * s, 4 * (1 - s));
     y += (f.nervura === "vinco" ? -1 : 1) * f.profNervura * Math.exp(-((z / larg) ** 2)) * fade;
   }
   void W;
@@ -257,8 +260,8 @@ export function posicionarFolhas(d: DocJoia, m: Montagem) {
       const S = diag(sx, 1, sz);
       const M2 = sx * sz < 0 ? mm(mm(S, Mf), diag(1, 1, -1)) : mm(S, Mf);
       const apoios: V3[] = [];
-      for (const s of [0.1, 0.3, 0.5, 0.7, 0.9])
-        for (const t of [-0.5, 0, 0.5]) {
+      for (const s of [0.08, 0.22, 0.36, 0.5, 0.64, 0.78, 0.92])
+        for (const t of [-0.6, -0.3, 0, 0.3, 0.6]) {
           const W = (f.largura / 2) * larguraRelativa(f, s);
           const l: V3 = [s * f.comprimento, meio(f, s, t * W, 0), t * W];
           const w = aplicar(M2, l);

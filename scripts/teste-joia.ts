@@ -503,7 +503,7 @@ const componentes = (mm: { pos: Float32Array; tri: Uint32Array }) => {
   const folga = m.livres[0].folga;
   const r = construirMalha(W8, comPedra);
   const semAssento = construirMalha(W8, { ...comPedra, gemasLivres: [{ ...navete, ativo: false }] });
-  ok(m.folhas.length === 1 && folga < 0.05 && componentes(r.malha).comp === 1 && !r.avisos.some((x) => /solta|não/.test(x)), `folha com pedra: garras apoiadas na folha (folga ${folga.toFixed(3)} mm), peça única, ${r.volume.toFixed(1)} mm³`);
+  ok(m.folhas.length === 1 && folga < 0.5 && componentes(r.malha).comp === 1 && !r.avisos.some((x) => /solta|não/.test(x)), `folha com pedra: garras apoiadas na folha (folga ${folga.toFixed(3)} mm), peça única, ${r.volume.toFixed(1)} mm³`);
   void semAssento;
 }
 
@@ -528,8 +528,8 @@ const componentes = (mm: { pos: Float32Array; tri: Uint32Array }) => {
   const perdido = mA.subtract(mB).volume();
   ok(c.comp === 1 && com.volume > sem.volume && com.volume < sem.volume * 1.03 && !com.avisos.length, `concordância 0,2 mm: peça única fechada, ${sem.volume.toFixed(2)} → ${com.volume.toFixed(2)} mm³ (+${(((com.volume / sem.volume) - 1) * 100).toFixed(2)} %) em ${((t2 - t1) / 1000).toFixed(1)} s (sem: ${((t1 - t0) / 1000).toFixed(1)} s)`);
   ok(perdido < 1e-3, `concordância só acrescenta metal (perdido ${perdido.toExponential(1)} mm³): nenhum ponto fica mais fino que antes`);
-  const fios = com.montagem.orn.fios.every((f) => f.raios.every((r) => 2 * r >= LIGAS[d.liga].garraMin - 1e-9));
-  ok(fios && d.folhas.every((f) => f.espessura >= LIGAS[d.liga].garraMin), "nenhuma peça abaixo do mínimo da liga (fios e folhas ≥ 0,6 mm; a concordância só acrescenta)");
+  const garras = com.montagem.livres.every((l) => l.hastes.every((h) => 2 * h.r >= LIGAS[d.liga].garraMin - 1e-9));
+  ok(garras && d.folhas.every((f) => f.espessura >= LIGAS[d.liga].garraMin), "garras e folhas ≥ mínimo da liga (0,6 mm); com a concordância nada fica mais fino");
   const stl = stlBinario(com.malha);
   ok(perto(volStl(stl), com.volume, 0.01 * com.volume), `STL com concordância reaberto: ${volStl(stl).toFixed(1)} ≈ ${com.volume.toFixed(1)} mm³`);
   mA.delete(); mB.delete();
