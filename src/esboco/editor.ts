@@ -681,7 +681,7 @@ export class EditorEsboco {
     const anterior = this.cliques.length ? this.cliques[this.cliques.length - 1].p : undefined;
     const enc = this.ferramentaUsaEncaixe() ? this.encaixar(p, tol, this.ferramenta === "linha" ? anterior : undefined) : { p };
     this.ponteiro = { id: e.pointerId, tipo: e.pointerType, x0: e.clientX, y0: e.clientY, moveu: false, enc, alvo, modelo, arraste: null };
-    this.h.viewport.canvas().setPointerCapture(e.pointerId);
+    try { this.h.viewport.canvas().setPointerCapture(e.pointerId); } catch { /* toque sintético ou ponteiro já solto */ }
     if (e.pointerType === "touch" && this.ferramenta !== "selecionar") this.abrirLupa(e);
     this.cursor = enc;
     this.redesenhar();

@@ -26,7 +26,7 @@ async function perfil(b, nome) {
   const ctx = await b.newContext({ ...cfg, deviceScaleFactor: 1, acceptDownloads: true });
   const p = await ctx.newPage();
   const erros = [];
-  p.on("pageerror", (e) => erros.push(e.message));
+  p.on("pageerror", (e) => erros.push(process.env.PILHA ? e.stack : e.message));
   let resposta = "8";
   p.on("dialog", (d) => d.accept(d.type() === "prompt" ? resposta : undefined));
   await p.addInitScript((disp) => {

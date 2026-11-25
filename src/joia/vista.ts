@@ -235,7 +235,8 @@ export class VistaJoia {
     if (!h) return;
     e.stopImmediatePropagation();
     e.preventDefault();
-    this.renderer.domElement.setPointerCapture(e.pointerId);
+    // Toque sintético (ou ponteiro já solto) não tem captura ativa: segue sem capturar.
+    try { this.renderer.domElement.setPointerCapture(e.pointerId); } catch { /* sem ponteiro ativo */ }
     this.controles.enabled = false;
     const { c, n, malha } = this.local(h);
     const normalTela = this.camera.getWorldDirection(new THREE.Vector3()).negate();
