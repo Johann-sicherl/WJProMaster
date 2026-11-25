@@ -11,13 +11,13 @@ S1 — PRONTO PR #131 (Opus, ≈ US$ 17)
 C4 — PRONTO PR #132 (Opus, ≈ US$ 13,9)
 S2 — PRONTO PR #133 (Sonnet, ≈ US$ 4,3)
 S3 — PRONTO PR #134 (Sonnet, ≈ US$ 8,4)
-P1 — em andamento (Opus, sessão session_01MWdNyhborw7w7J1eE9tsh8, aberta em 24/11) → depois C3 (Opus)
+P1 — PAUSADO (Opus, sessão session_01MWdNyhborw7w7J1eE9tsh8; ≈ US$ 8,5 até a pausa) → depois C3 (Opus)
 C2 — PRONTO PR #142 (24/11, Sonnet, ≈ US$ 11,3; pendência: conferir as famílias "≈ aproximada" em src/biblioteca/dados.ts)
 C1 — PRONTO PR #137 (21/11, Sonnet, ≈ US$ 1,2)
-**Fila retomada (Johann, 21/11).** Ordem: P1 → C3.
+**FILA PAUSADA (Johann, 24/11): só retomar com "retomar a fila" e com o uso semanal abaixo de 70 % (regras.md §1).** Ordem ao retomar: J9b e P1 (os dois pararam no limite de 5 h às 18:46 UTC de 24/11; trabalho salvo nos ramos claude/joia-j9b e claude/p1-filete-lento; retomar com send_message nas mesmas conversas) → C3.
 **Fora da fila, em paralelo (Johann, 21/11): J9a (Opus) → J9b (Opus), em sequência** (só WJGoldDiamond, src/joia/; não cruza com C1/C2/C3). J9b só depois de "PRONTO" do J9a; parte do main com o J9a.
 J9a — PRONTO PR #139 (21/11, Opus, ≈ US$ 15,8; 2,97 g, 9 gemas, reconstrução ~22 s)
-J9b — em andamento (Opus, sessão session_01MWdNyhFZCWjbWJb91ALqhi, aberta em 24/11)
+J9b — PAUSADO (Opus, sessão session_01MWdNyhFZCWjbWJb91ALqhi; ≈ US$ 16,8 até a pausa)
 Objetivo do J9: modelar no WJGoldDiamond, a partir de UMA foto, um anel igual ao da foto (ANEL AMOR, descrito no J9a), pronto para resina e fundição; tudo em parâmetros para o Johann ajustar olhando a foto no app (J9b). Inspiração só de FUNÇÃO nos CADs de joalheria; nenhum nome, ícone ou texto de terceiros na interface.
 Custos Opus: 1 ≈ 10,1 · 2 ≈ 9,5 · 3 ≈ 9,6 (US$ de tabela). Modelo: Sonnet em S2, S3, C1, C2; Opus no C3; Sonnet falhou/travou → refazer em Opus.
 LIÇÃO 21/11: três conversas em paralelo (C1, C2, J9a) bateram no limite de 5 h; pedir push cedo e a cada etapa. Máx. 2 em paralelo.
