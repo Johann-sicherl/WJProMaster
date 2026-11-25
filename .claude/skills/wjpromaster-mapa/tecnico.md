@@ -415,3 +415,47 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
   Guarda `zoomAntesEscala` e volta a ele ao soltar. `aplicarEscalaReal()` (main.ts) decide esboço × vista 3D; `sairEsboco`
   chama de novo. Estado 3D em `sessionStorage` (por janela), declarado logo após `new Viewport` (evita TDZ).
 - `enquadrar()` travado na vista 3D só recentra (último ponto tocado via raycast no `pointerup` curto, senão centro da peça).
+
+
+## Biblioteca de componentes de fixação (21/11/2026, pedido C2)
+
+- Código em `src/biblioteca/` (puro, sem DOM exceto `painel.ts`): `dados.ts` (tabelas; `conferencia` "norma" ou "aproximada"),
+  `gerar.ts` (Documento WJCAD por forma; `Construtor` de extrusões no plano XZ e revoluções no XY em torno do eixo Y),
+  `encaixe.ts` (furos, entrada, pose, mates, furos iguais, comprimento sugerido), `busca.ts`, `painel.ts`, `cofre.ts`.
+  Ligação na Montagem: `abrirBiblioteca`, `tocarFuroBiblioteca`, `encaixarNoFuro` em `src/montagem/main.ts`.
+- Convenção: **eixo Y**, apoio em y = 0 (cabeça/porca/arruela em +Y, haste em −Y). Os mates usam o eixo `Y` e o plano `XZ` de
+  referência da peça (`{tipo:"eixo",id:"Y"}`, `{tipo:"plano",id:"XZ"}`): "alinhado" na coincidência (o +Y do fixador = normal da face de apoio).
+- **Armadilhas**: (1) o índice de uma face na malha é a **posição da trinca** em `malha.faces` (início, quantidade, id) — não o terceiro
+  valor; (2) "furo" = cilindro com a normal da malha apontando para o eixo (a assinatura da face não diz se é côncava); (3) o primeiro
+  componente da montagem entra **fixo** — o solver move o fixador; (4) rosca real vem do recurso `rosca` com a face descrita pela
+  geometria (cilindro Ø d), sem regenerar antes; (5) `gravarArquivoFixo` aceita `cartao` para o cartão do cofre já nascer preenchido;
+  (6) só arruelas e porcas empilham (`propriedades.grupo`): a cabeça do parafuso não.
+- Roteiro de tablet: `scripts/roteiro-biblioteca.cjs` — a montagem de teste precisa de **GO-OUT** gravado no arquivo, senão o app abre a
+  pergunta "GO-OUT ou consulta" e o roteiro espera para sempre.
+
+## Desempenho da reconstrução (24/11/2026, P1 "filete lento na 2ª feature")
+
+- Medido: o kernel **não** era o gargalo (Caixa 60×60 + filete R6 = 40–120 ms no Node). As causas estavam no caminho
+  interface ↔ worker:
+  1. **Armadilha**: `destacarEntidades`, `mostrarPrevia` e `mostrarRegiao` faziam `material.dispose()` a cada toque. No
+     three.js isso apaga o **programa de shader** quando ninguém mais o usa, e o quadro seguinte **compila de novo** (1–2
+     programas por toque; 8 no 1º toque da sessão). Numa GPU de tablet cada um custa 50–300 ms. Agora os materiais são
+     **fixos** (`materialFixo` em `src/viewport.ts`, chave por cor/uso; `limparGrupo` só libera geometria) e
+     `aquecerShaders` os compila em segundo plano (`compileAsync`) quando a primeira peça aparece. **Nunca** descartar
+     material de destaque ou de prévia; material novo por objeto só se ele for raro.
+  2. O ✓ reconstruía de novo o mesmo estado da prévia (e, com a prévia ainda no worker, esperava ela, desenhava e
+     depois mandava outra). `ClienteKernel` (`src/kernel/cliente.ts`) agora compara a **chave do estado** (`features` +
+     planificado, conteúdo grande pela assinatura) e entrega o resultado pronto (ou marca a reconstrução em voo como a
+     final, sem o vermelho). A prévia nunca muda a geometria (o Dividir só acrescenta as regiões), então é seguro.
+  3. **Fila do worker**: só uma reconstrução em voo; a que espera é substituída pela mais nova (prévia cancelada a cada
+     toque); `medir`/`exportar`… esperam atrás dela, na ordem. Os pedidos são copiados (JSON) ao entrar na fila. O toque
+     não espera mais 80 ms (`regenerarPrevia(0)`): a fila já agrupa.
+  4. O material removido (vermelho) é uma booleana a mais (metade do tempo de um filete): `previaDepois` no
+     `regenerar` guarda antes/depois, o worker manda a peça (`regenerado`) e depois `previa` — e nem calcula se outro
+     pedido de reconstrução chegou nesse meio (`setTimeout(0)` para deixá-lo entrar).
+  5. `viewport.tamanho()` lia `clientWidth` (layout forçado no meio do toque): agora vem do renderizador (o
+     `ResizeObserver` o mantém igual ao da câmera).
+- Medição: `marcar()` (`src/comum/medicao.ts`) põe marcas `toque`, `cmd:abrir`, `cmd:ok`, `kernel:envio/volta/aplicado`,
+  `peca:tela`, `previa:aplicada/tela`, `salvar:ini/fim` no painel Desempenho do navegador; o kernel devolve `etapas`
+  (recursos, prévia, malha, topologia). `scripts/roteiro-desempenho.cjs` (tablet; `FOLGA`, `LENTO`) monta a tabela;
+  `scripts/teste-desempenho.ts` (no `pnpm teste`) guarda o kernel e a lógica da fila.

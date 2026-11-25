@@ -311,6 +311,7 @@ Abas do painel: **Manual** · **Assistente** (sugere/organiza filetes — ⏸)
   Mouse/caneta sobre a opção destaca as arestas antes; tocar soma à lista (sem repetir) e refaz a **prévia**; a
   barra passa a oferecer **Desfazer** (volta a lista de antes). Nada é confirmado antes do ✓. Arestas das faces do
   próprio filete em edição ficam de fora (só existem na prévia). Do loop: pendente.
+- **Desempenho** ✅ (24/11/2026): toque → prévia sem espera, o ✓ reaproveita a prévia (§17 "Prévia e ✓ rápidos").
 - **Parâmetros**: Simétrico · Assimétrico (distância 1 e 2) · Raio / Comprimento de corda ·
   **Filete de múltiplos raios** (raio por aresta, editável no rótulo)
 - **Perfil**: Circular · Cônico Rho · Cônico Raio · Curvatura contínua
@@ -546,6 +547,7 @@ excluir face genérica (precisa do defeaturing), filete variável.
 | **Equações e variáveis globais** | nome = valor/expressão; usar em cotas; funções (if, sin, sqrt) | ✅ |
 | **Configurações** | variações da peça no mesmo arquivo. Na árvore, "Configuração: <nome>" → trocar, **Nova configuração** (copia a ativa), **Tabela de configurações**: colunas = configurações (ativar, renomear, excluir), linhas = parâmetros que variam (cotas dos esboços `Dn@Esboço` e valores dos recursos `D1@Extrusão`, R, espessura, instâncias…; aceita expressões) e "Suprimido em" por recurso. Valores ao vivo = configuração ativa; trocar guarda e aplica. Parâmetro que não varia vale para todas | ✅ |
 | Tabela de projeto (planilha externa) | importar/exportar a tabela como CSV | ⏸ |
+| **Prévia e ✓ rápidos** | (24/11/2026, relato do Johann: filete lento na Caixa 60×60) cada toque refaz a prévia **sem espera** e cancela a anterior (só a mais nova vai ao kernel); a peça com o recurso aparece primeiro e o material removido (vermelho) logo depois; **o ✓ reaproveita a prévia** (nada é reconstruído de novo) em todos os comandos; destaques e prévia sem recompilar shaders a cada toque (compilados ao abrir a peça). Medido no tablet simulado: ✓ → peça na tela 20–60 ms, toque → prévia 50–170 ms; roteiro `scripts/roteiro-desempenho.cjs` | ✅ |
 | **Material** | biblioteca (aço, alumínio, inox…), densidade → massa | ✅ |
 | Aparência | ✅ (04/11/2026) painel **Aparência** (barra de contexto da face, menu do corpo, Material ▸ "Aparência (cor) da peça…"): Aplicar em **Face / Corpo / Peça**, paleta, cor do sistema, **RGB ou HSV** (barras e números), código hexadecimal, **Remover aparência**, prévia no modelo antes do OK, desfazer. A face vence o corpo, que vence a peça, que vence o material. Faces/corpos guardados por assinatura (acompanham recursos). **STEP AP214/AP242 abre com as cores do arquivo** (sólido e face; lidas do texto do STEP em `src/kernel/coresStep.ts`, ligadas às faces pela caixa dos vértices); "Usar as cores do arquivo importado" desliga. Estados de exibição ⏸ | ✅ |
 | Propriedades personalizadas | código, descrição, material, massa | ⏸ |

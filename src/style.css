@@ -1272,3 +1272,12 @@ body.disp-celular .cfg-conteudo { padding: 8px 14px 16px; }
   .cfg-secoes { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--linha); overflow-x: auto; }
   .cfg-secoes button { flex: none; }
 }
+
+/* Biblioteca de componentes de fixação (Montagem) */
+.bib-arvore { display: grid; gap: 4px; max-height: 320px; overflow-y: auto; margin-bottom: 6px; }
+.bib-grupo { text-align: left; min-height: 44px; padding: 0 10px; border: 1px solid var(--linha); border-radius: 8px; background: #f3f6f9; font-weight: 600; }
+.bib-familia { margin-left: 10px; }
+.bib-familia[aria-pressed="true"] { border-color: var(--acento); background: #eaf3fc; }
+.bib-nome { margin: 8px 0 2px; padding: 6px 8px; border-radius: 8px; background: #f3f6f9; font-weight: 600; word-break: break-word; }
+.bib-arrastar { min-height: 48px; padding: 0 14px; touch-action: none; cursor: grab; user-select: none; }
+.bib-fantasma { position: fixed; z-index: 9999; pointer-events: none; padding: 6px 10px; border-radius: 8px; background: var(--acento); color: #fff; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,.3); }

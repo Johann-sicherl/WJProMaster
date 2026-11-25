@@ -73,7 +73,7 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
 
 ## 5. Pendências e conversas em andamento
 
-- **Nada em andamento** (10/11, depois do #120). Conversas a arquivar: as do #114, #115, #116, #118, #119 e #120.
+- Conversas das entregas já executadas: arquivadas pelo Johann (25/11).
 - **#120 falta testar com o STL real do Johann** (dividir → mover → extrudar → 1 corpo foi testado com
   peça de teste; mover e extrusão só em Node).
 - **TAMPA_JANELA (ação do Johann):** a peça continua com 3 corpos de propósito (folga real de 0,0328 mm
@@ -107,6 +107,10 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
 - Conversa antiga "Software CAD": mantida só para consulta; não usar para pedidos novos.
 
 ## 6. Limite de uso (10/11/2026)
+
+- **Teto de 70 % do limite semanal (Johann, 24/11):** regra em `regras.md` §1. Antes de abrir ou retomar
+  qualquer conversa, perguntar ao Johann o % atual; ≥ 70 % (ou tarefa que possa passar disso) = não abrir.
+  Vale também para a sessão atual (janela de 5 h; aviso de limite = parar). O contexto segue a regra de ~200 mil tokens.
 
 - Plano fixo de **US$ 20/mês com limite semanal**; renova **sexta às 23h (horário de Brasília)**.
 - Os "US$" do painel das sessões são **preço de tabela equivalente, não cobrança**. Com o Johann, falar

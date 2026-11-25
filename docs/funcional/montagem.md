@@ -220,6 +220,12 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
   - Não aceitam outro componente (por enquanto): filete/chanfro, casca, faces/arestas de chapa e
     a pré-seleção no modelo — esses recursos precisam da geometria da própria peça.
 
+### 2.17 Biblioteca de componentes (fixação) — ✅ (21/11/2026)
+- Comando **Biblioteca de componentes** (ao lado de Inserir componentes): parafusos, porcas, arruelas, rebites e pinos ISO/DIN geradas
+  no kernel, guardadas em CAD › Biblioteca e encaixadas em furos (concêntrico + coincidente), com repetição em furos iguais e
+  comprimento sugerido. Especificação completa em `docs/funcional/biblioteca.md`.
+- **Lista de materiais** ganhou as colunas **NORMA** e **MASSA (g)** (propriedades da peça).
+
 ### 2.13 Importar montagem STEP — ✅ (01/11/2026)
 - **Abrir arquivo do aparelho** na Montagem aceita `.step/.stp` de qualquer CAD (do CAD comercial:
   exportar STEP AP214). Abrir um STEP de montagem na **Peça** pergunta se vai para a Montagem

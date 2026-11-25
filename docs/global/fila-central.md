@@ -11,13 +11,17 @@ S1 — PRONTO PR #131 (Opus, ≈ US$ 17)
 C4 — PRONTO PR #132 (Opus, ≈ US$ 13,9)
 S2 — PRONTO PR #133 (Sonnet, ≈ US$ 4,3)
 S3 — PRONTO PR #134 (Sonnet, ≈ US$ 8,4)
+P1 — RETOMADO 25/11 sem os dados do Johann (reproduzir pelo app; Opus, sessão session_01MWdNyhborw7w7J1eE9tsh8; ≈ US$ 8,5 até a pausa)
+C3 — EM ANDAMENTO desde 25/11 (Opus, sessão session_01MWdNyhMm1KtVNbtPZUvvar, ramo claude/c3-engrenagens)
+C2 — PRONTO PR #142 (24/11, Sonnet, ≈ US$ 11,3; pendência: conferir as famílias "≈ aproximada" em src/biblioteca/dados.ts)
 C1 — PRONTO PR #137 (21/11, Sonnet, ≈ US$ 1,2)
-**Fila retomada (Johann, 21/11).** C2 em andamento (Sonnet, sessão session_01MWdNyg6BrumjdbRppxjcYw) → C3 (Opus).
+**FILA RETOMADA (Johann, 25/11; semana 22 %, sessão 24 % ao retomar):** J9b, P1 e C3 em paralelo. Passou de 70 % (semana ou sessão) ou aviso de limite = parar todas (push imediato).
 **Fora da fila, em paralelo (Johann, 21/11): J9a (Opus) → J9b (Opus), em sequência** (só WJGoldDiamond, src/joia/; não cruza com C1/C2/C3). J9b só depois de "PRONTO" do J9a; parte do main com o J9a.
-J9a — em andamento (Opus, sessão session_01MWdNyfhFyRPmcDQCE25BD9)
-J9b — aguardando o J9a
+J9a — PRONTO PR #139 (21/11, Opus, ≈ US$ 15,8; 2,97 g, 9 gemas, reconstrução ~22 s)
+J9b — RETOMADO 25/11 (Opus, contexto ~51 %, sessão session_01MWdNyhFZCWjbWJb91ALqhi; ≈ US$ 16,8 até a pausa)
 Objetivo do J9: modelar no WJGoldDiamond, a partir de UMA foto, um anel igual ao da foto (ANEL AMOR, descrito no J9a), pronto para resina e fundição; tudo em parâmetros para o Johann ajustar olhando a foto no app (J9b). Inspiração só de FUNÇÃO nos CADs de joalheria; nenhum nome, ícone ou texto de terceiros na interface.
 Custos Opus: 1 ≈ 10,1 · 2 ≈ 9,5 · 3 ≈ 9,6 (US$ de tabela). Modelo: Sonnet em S2, S3, C1, C2; Opus no C3; Sonnet falhou/travou → refazer em Opus.
+LIÇÃO 21/11: três conversas em paralelo (C1, C2, J9a) bateram no limite de 5 h; pedir push cedo e a cada etapa. Desde 25/11 (Johann): sem limite de paralelo; excedeu = parar.
 NOTA: conferir só com get_session (post_turn_summary) e lista de PRs; list_events é caro. A central tem de ser aberta pelo Johann (conversa criada por outra conversa não tem create_session/get_session). WJFlow e agente: só futuro.
 
 ## 2. WJCAD referências persistentes
@@ -272,3 +276,16 @@ Testes:
   - ligar a concordância e exportar STL.
   Capturas no PR.
 - pnpm check && pnpm teste && pnpm build; PR → CI verde → MERGE → publicado.
+
+## P1. WJCAD: filete lento na 2ª feature (relato do Johann, 24/11, Opus)
+Face/lugar: WJCAD › Peça › reconstrução depois do Filete.
+
+Hoje (relato do Johann ao modelar a "Caixa 60x60" de um desenho em PDF: caixa 60×60, cantos R6, altura 12,5 mm, parede de 2,5 mm): logo na 2ª feature, um filete simples, a reconstrução demorou muito.
+Medição da central (Node, main a35241f): esboço 60×60 → extrusão de 12,5 → filete R6 nas 4 arestas verticais = ~0,1 s em `regenerar()` (tolerância 0,05 e 0,01). **O kernel não é o gargalo**: a demora está no caminho do app (worker ↔ interface): prévia do comando (item 3 do #129, "prévia antes de confirmar"), seleção rápida de arestas (#129), nomes persistentes / topologia (#128), rótulos de cotas no duplo clique (#132), salvamento no cofre, regenerarComRecuperacao repetindo, malha/arestas em tolerância fina ou reconstrução disparada mais de uma vez.
+
+Quero:
+1. Reproduzir no navegador (perfil Tablet 1280×800, toque) o caso do Johann: esboço do retângulo 60×60 → extrusão de 12,5 → Filete R6 nas 4 arestas verticais (escolhidas pelo toque) → confirmar. Medir com marcas de tempo (performance.mark) cada etapa: abrir o comando, cada toque de seleção, prévia, confirmar, mensagem ao worker, regenerar, malha, topologia, volta à interface, desenho, salvamento. Registrar a tabela no PR.
+2. Corrigir a causa (ou causas) medida(s), sem perder função: meta ≤ 0,5 s do confirmar à peça na tela nesse caso, e prévia do filete ≤ 0,3 s por toque. Nada de trabalho pesado na thread da interface; prévia cancelada quando chega um toque novo; não reconstruir duas vezes o mesmo estado.
+3. Conferir o mesmo caminho em Chanfro, Extrusão, Corte e Furo (mesmo padrão de lentidão?).
+4. Guardar a medição como teste de desempenho (Node para o kernel + roteiro Playwright que falha acima do limite, com folga para o CI).
+Testes: os acima + pnpm check/teste/build. Atualizar docs/funcional/features.md e tecnico.md (armadilha encontrada).
