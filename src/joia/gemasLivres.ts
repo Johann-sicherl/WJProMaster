@@ -188,6 +188,12 @@ export function apoioMaisProximo(d: DocJoia, m: Montagem, q: V3): Apoio {
       const folga = Math.max(0, comp(sub(q, f.pts[i])) - f.raios[i]);
       if (folga < melhor.folga) melhor = { ponto: f.pts[i], folga };
     }
+  // folhas (J9b): a chapa é apoio (folha com pedra: as garras descem na folha)
+  for (const fl of m.folhas)
+    for (const p of fl.apoios) {
+      const folga = Math.max(0, comp(sub(q, p)) - fl.e / 2);
+      if (folga < melhor.folga) melhor = { ponto: p, folga };
+    }
   for (const g of m.garras) {
     const c = pontoNoSegmento(q, g.base, g.topo);
     const folga = Math.max(0, comp(sub(q, c)) - g.r);

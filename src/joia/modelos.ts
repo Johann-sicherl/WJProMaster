@@ -2,10 +2,11 @@
 // "Anel folhas com oval" (J9a): aro BR 10 de 1,80 × 1,45 mm em ouro 750 amarelo, dividido perto da
 // cabeça; oval 8 × 6 (rubi) ao longo do dedo; uma redonda em cada ponta da oval; de cada lado um
 // leque de três navetes saindo da oval como folhas (a de 2,5 × 1,25 no meio do leque, na direção
-// transversal; as de 2,0 × 1,0 a ±50°); ramos e gavinhas em fio (ornamento) e folhinhas de metal
-// (escultura partindo da forma folha; o J9b troca por folhas paramétricas). Tudo editável.
+// transversal; as de 2,0 × 1,0 a ±50°); ramos achatados e torcidos que sobem e descem, moldura em meia-cana
+// e gavinha que afina (fios avançados do J9b) e folhas paramétricas de fundição (J9b, no lugar das folhinhas
+// esculpidas do J9a). Concordância de 0,2 mm ligada. Tudo editável.
 
-import { codificar, formaInicial, type Escultura } from "./escultura";
+import { folhaNova, type Folha } from "./folhas";
 import { gemaLivreNova, type GemaLivre } from "./gemasLivres";
 import { esbocoNovoOrnamento, type FioCfg, type Ornamento } from "./ornamento";
 import { diametroInterno, docNovo, type DocJoia, type Gema } from "./regras";
@@ -30,20 +31,18 @@ function ornamentoRamos(id: string, larguraAro: number): Ornamento {
     esb.geos.push({ id: gid, tipo: "spline", pontos: pts.map(([x, y]) => pt(x, y)) });
     fios[gid] = cfg;
   };
-  // moldura sob as gemas (um quadrante; a simetria fecha a volta): sob a redonda da ponta e sob o leque
-  spline([[0, 5.3], [1.6, 4.95], [3.0, 3.9], [3.9, 2.4], [4.3, 0]], { d0: 0.8, a0: -0.55, a1: 0.45 });
-  // ramo do aro dividido: sai do ombro (embutido no aro) e sobe até a moldura
-  spline([[8.6, 0.35], [6.8, 0.9], [5.4, 1.9], [4.2, 2.9], [3.3, 3.6]], { d0: 0.9, d1: 0.8, a0: -0.25, a1: 0.85 });
-  // gavinha (voluta) onde o aro se divide
-  spline([[6.4, 1.0], [7.3, 1.8], [8.3, 1.75], [8.6, 1.15], [8.1, 0.95]], { d0: 0.7, d1: 0.6, a0: 0.05, a1: -0.12 });
+  // moldura sob as gemas (um quadrante; a simetria fecha a volta): meia-cana (base reta) sob a redonda da ponta e o leque
+  spline([[0, 5.3], [1.6, 4.95], [3.0, 3.9], [3.9, 2.4], [4.3, 0]], { perfil: "meia-cana", d0: 0.95, h0: 0.6, a0: -0.55, a1: 0.45 });
+  // ramo do aro dividido: achatado (oval 0,95 × 0,6), meia volta de torção, sobe e desce ao longo do caminho até a moldura
+  spline([[8.6, 0.35], [6.8, 0.9], [5.4, 1.9], [4.2, 2.9], [3.3, 3.6]], {
+    perfil: "oval", torcao: 0.5,
+    controles: [{ u: 0, d: 0.95, h: 0.6, a: -0.3 }, { u: 0.35, d: 0.9, h: 0.6, a: 0.15 }, { u: 0.65, d: 0.85, h: 0.6, a: 0.05 }, { u: 1, d: 0.85, h: 0.6, a: 0.85 }],
+  });
+  // gavinha (voluta) onde o aro se divide: redonda, afinando por pontos de controle até a ponta enrolada
+  spline([[6.4, 1.0], [7.3, 1.8], [8.3, 1.75], [8.6, 1.15], [8.1, 0.95]], {
+    controles: [{ u: 0, d: 0.75, a: 0.05 }, { u: 0.5, d: 0.66, a: 0.1 }, { u: 1, d: 0.6, a: -0.12 }],
+  });
   return { id, nome: "Ramos e gavinhas", ativo: true, esboco: esb, altura: 0, diametro: 0.8, simetria: "xy", envolver: true, pontas: true, fios, pontos: {} };
-}
-
-/** Folhinha de metal: forma "folha" da escultura engrossada para fundir (≥ 0,5 mm no centro). */
-function folha(id: string, nome: string, lugar: Escultura["lugar"], espelhar: boolean): Escultura {
-  const m = formaInicial("folha", 4);
-  for (let i = 1; i < m.pos.length; i += 3) m.pos[i] = (m.pos[i] + 0.25) * 3.2 - 0.25;
-  return { id, nome, ativo: true, base: "folha", nivel: 4, pos: codificar(m.pos), lugar, espelhar };
 }
 
 export function anelFolhasOval(): DocJoia {
@@ -77,15 +76,20 @@ export function anelFolhasOval(): DocJoia {
   nova("Navete 2,0 × 1,0 (leque, ±50°)", { lapidacao: "navete", material: "diamante", comprimento: 2, largura: 1 }, rn * Math.cos(phi), rn * Math.sin(phi), -0.4, -50, 10, "xy");
   d.gemasLivres = livres;
   d.ornamentos = [ornamentoRamos("ramos", d.aro.largura)];
-  // folhinhas entre as navetes (±25° do leque) e nos ombros, com a cópia do outro lado do aro
-  const rf = ax + 1.15, xf = rf * Math.cos(25 * RAD), zf = rf * Math.sin(25 * RAD);
-  const thf = Math.atan2(xf, yC) / RAD;
-  const altF = Math.hypot(xf, yC - 1.15) - R - d.aro.espessura;
-  d.esculturas = [
-    folha("folha1", "Folhinha entre navetes (frente)", { th: thf, z: zf, altura: altF, tamanho: 1.3, rx: 0, ry: -25, rz: -12 }, true),
-    folha("folha2", "Folhinha entre navetes (trás)", { th: thf, z: -zf, altura: altF, tamanho: 1.3, rx: 0, ry: 25, rz: -12 }, true),
-    folha("folha3", "Folhinha do ombro (frente)", { th: 40, z: 0.55, altura: -0.22, tamanho: 1.6, rx: 0, ry: -20, rz: 0 }, true),
-    folha("folha4", "Folhinha do ombro (trás)", { th: 40, z: -0.55, altura: -0.22, tamanho: 1.6, rx: 0, ry: 20, rz: 0 }, true),
+  // folhas paramétricas entre as navetes (±25° do leque) e nos ombros; cópia do outro lado pela simetria
+  const rf = ax + 0.35, phiF = 25 * RAD;
+  const xf = rf * Math.cos(phiF), zf = rf * Math.sin(phiF);
+  const folha = (id: string, nome: string, o: Partial<Folha>): Folha => ({ ...folhaNova(id, 1), nome, ...o });
+  d.folhas = [
+    folha("folha1", "Folha entre navetes", {
+      contorno: "lanceolada", comprimento: 2.3, largura: 1.05, espessura: 0.6, dobra: 24, curvatura: -0.25, nervura: "vinco", profNervura: 0.1,
+      th: Math.round((Math.atan2(xf, yC - 0.9) / RAD) * 100) / 100, z: Math.round(zf * 100) / 100, refAltura: "central", altura: -0.95, seguir: false, giro: -25, inclinacao: 8, simetria: "xy",
+    }),
+    folha("folha2", "Folha do ombro", {
+      contorno: "lanceolada", comprimento: 2.0, largura: 0.95, espessura: 0.6, dobra: 20, curvatura: -0.15, nervura: "vinco", profNervura: 0.1,
+      th: 38, z: 0.5, refAltura: "aro", altura: -0.2, seguir: true, giro: 10, inclinacao: 0, simetria: "xy",
+    }),
   ];
+  d.concordancia = { ativo: true, raio: 0.2 };
   return d;
 }

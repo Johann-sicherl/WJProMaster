@@ -8,9 +8,23 @@
 import type { FeatureEsboco } from "../model";
 import { amostrar, mapaPontos, ORIGEM, type P2 as Q2 } from "../esboco/geometria";
 import type { V3 } from "./regras";
+import { interpolar, pontosParaTorcao, type ControleFio, type FioMalha, type PerfilFio } from "./fios";
 
 export type Simetria = "nenhuma" | "x" | "y" | "xy";
-export interface FioCfg { d0?: number; d1?: number; a0?: number; a1?: number }
+/**
+ * Configuração de cada fio (vazio = padrão do ornamento). J7: Ø e altura no início/fim. J9b (fio avançado,
+ * vira malha): perfil, altura da seção (h0/h1), inclinação (i0/i1, °), pontos de controle ao longo do fio
+ * (valem no lugar dos de início/fim), torção (voltas), trançado e subida livre até um apoio.
+ */
+export interface FioCfg {
+  d0?: number; d1?: number; a0?: number; a1?: number;
+  perfil?: PerfilFio; h0?: number; h1?: number; i0?: number; i1?: number;
+  controles?: ControleFio[];
+  torcao?: number;
+  trancado?: boolean;
+  subir?: "nenhum" | "inicio" | "fim" | "ambos";
+  concordancia?: number;
+}
 export interface PontoCfg { tipo: "conta" | "inglesa"; d: number; material: string }
 export interface Ornamento {
   id: string;
@@ -30,7 +44,7 @@ export interface Ornamento {
   pontos: Record<string, PontoCfg>;
 }
 
-export interface Fio { pts: V3[]; raios: number[]; bolinhaIni: boolean; bolinhaFim: boolean }
+export interface Fio { pts: V3[]; raios: number[]; bolinhaIni: boolean; bolinhaFim: boolean; /** fio avançado (J9b): vira malha */ malha?: FioMalha }
 export interface PontoOrn { p: V3; th: number; z: number; base: number; tipo: "conta" | "inglesa"; d: number; material: string }
 export interface Ornamentacao { fios: Fio[]; pontos: PontoOrn[]; avisos: string[] }
 
@@ -61,6 +75,30 @@ export function reamostrar(pl: Q2[], n: number): { pts: Q2[]; L: number } {
 /** Mesma curva (em qualquer sentido ou ponto de partida, como nos círculos espelhados): mesmos pontos. */
 const iguais = (a: Q2[], b: Q2[], tol = 1e-3) =>
   a.length === b.length && a.every((p) => b.some((q) => Math.hypot(p.x - q.x, p.y - q.y) < tol)) && b.every((p) => a.some((q) => Math.hypot(p.x - q.x, p.y - q.y) < tol));
+
+const numOk = (v: unknown, a: number, b: number): number | undefined => (typeof v === "number" && Number.isFinite(v) ? Math.min(b, Math.max(a, v)) : undefined);
+
+/** Altura padrão da seção (fração da largura) por perfil. */
+export const ALTURA_PERFIL: Record<PerfilFio, number> = { redondo: 1, oval: 0.6, "meia-cana": 0.5, faca: 0.6 };
+
+/** O fio tem opção do J9b (vira malha)? */
+export const fioAvancado = (c: FioCfg) => (!!c.perfil && c.perfil !== "redondo") || !!c.controles?.length || !!c.torcao || !!c.trancado || (!!c.subir && c.subir !== "nenhum") || c.i0 !== undefined || c.i1 !== undefined;
+
+/** Pontos de controle do fio (os do arquivo ou os de início/fim), limpos e ordenados. */
+export function controlesFio(c: FioCfg, d0: number, d1: number, a0: number, a1: number): ControleFio[] {
+  const perfil = c.perfil ?? "redondo", k = ALTURA_PERFIL[perfil];
+  const lista: ControleFio[] = [];
+  for (const x of Array.isArray(c.controles) ? c.controles : []) {
+    const u = numOk(x?.u, 0, 1), d = numOk(x?.d, 0.2, 5), a = numOk(x?.a, -5, 15);
+    if (u === undefined || d === undefined || a === undefined) continue;
+    lista.push({ u, d, a, h: numOk(x?.h, 0.1, 5), i: numOk(x?.i, -90, 90) });
+  }
+  lista.sort((x, y) => x.u - y.u);
+  if (lista.length) return lista.map((x) => ({ ...x, h: x.h ?? x.d * k, i: x.i ?? 0 }));
+  const h0 = numOk(c.h0, 0.1, 5) ?? d0 * k, h1 = numOk(c.h1, 0.1, 5) ?? (c.h0 !== undefined ? h0 : d1 * k);
+  const i0 = numOk(c.i0, -90, 90) ?? 0, i1 = numOk(c.i1, -90, 90) ?? i0;
+  return [{ u: 0, d: d0, h: h0, a: a0, i: i0 }, { u: 1, d: d1, h: h1, a: a1, i: i1 }];
+}
 
 /**
  * Converte os ornamentos em fios e pontos 3D. `t(θ)` = espessura do aro no ângulo θ (mm a partir
@@ -120,9 +158,37 @@ export function ornamentar(orns: Ornamento[], R: number, t: (th: number) => numb
         feitos.push(m2);
         let L0 = 0;
         for (let i = 1; i < m2.length; i++) L0 += Math.hypot(m2[i].x - m2[i - 1].x, m2[i].y - m2[i - 1].y);
+        const fio: Fio = { pts: [], raios: [], bolinhaIni: !fechado && o.pontas && solta(ext[0]), bolinhaFim: !fechado && o.pontas && solta(ext[1]) };
+        if (fioAvancado(cfg)) {
+          // fio avançado (J9b): valores dos pontos de controle interpolados ao longo do fio
+          const ctrl = controlesFio(cfg, d0, d1, a0, a1);
+          // cópia espelhada (reflexão): torção e inclinação trocam de sentido (as seções são simétricas)
+          const sinal = sx * sy < 0 ? -1 : 1;
+          const perfil = cfg.perfil ?? "redondo", trancado = !!cfg.trancado, torcao = sinal * (numOk(cfg.torcao, -20, 20) ?? 0);
+          const dMin = Math.min(...ctrl.map((x) => Math.min(x.d, x.h ?? x.d)));
+          const n = pontosParaTorcao(Math.max(4, Math.min(200, Math.ceil(L0 / (dMin * 0.6)) + 1)), torcao, trancado);
+          const { pts } = reamostrar(m2, n);
+          const us = pts.map((_, i) => i / (pts.length - 1));
+          const D = interpolar(ctrl.map((x) => ({ u: x.u, v: x.d })), us), H = interpolar(ctrl.map((x) => ({ u: x.u, v: x.h ?? x.d })), us);
+          const A = interpolar(ctrl.map((x) => ({ u: x.u, v: x.a })), us), I = interpolar(ctrl.map((x) => ({ u: x.u, v: x.i ?? 0 })), us);
+          const fm: FioMalha = { perfil, larguras: [], alturas: [], incl: [], up: [], torcao, trancado, subirIni: cfg.subir === "inicio" || cfg.subir === "ambos", subirFim: cfg.subir === "fim" || cfg.subir === "ambos", fechado, concordancia: numOk(cfg.concordancia, 0, 2) };
+          pts.forEach((p, i) => {
+            const alt = trancado ? 1.84 * D[i] : perfil === "redondo" ? D[i] : H[i];
+            const q = no3d(p.x, p.y, A[i], alt / 2);
+            fio.pts.push(q.p);
+            fio.raios.push(alt / 2);
+            fm.larguras.push(D[i]);
+            fm.alturas.push(perfil === "redondo" ? D[i] : H[i]);
+            fm.incl.push((sinal * I[i] * Math.PI) / 180);
+            fm.up.push(o.envolver ? [Math.sin(q.th), Math.cos(q.th), 0] : [0, 1, 0]);
+          });
+          if (fechado) fio.pts[fio.pts.length - 1] = fio.pts[0];
+          fio.malha = fm;
+          fios.push(fio);
+          continue;
+        }
         const n = Math.max(4, Math.min(160, Math.ceil(L0 / (Math.min(d0, d1) * 0.6)) + 1));
         const { pts } = reamostrar(m2, n);
-        const fio: Fio = { pts: [], raios: [], bolinhaIni: !fechado && o.pontas && solta(ext[0]), bolinhaFim: !fechado && o.pontas && solta(ext[1]) };
         pts.forEach((p, i) => {
           const u = i / (pts.length - 1);
           const r = (d0 + (d1 - d0) * u) / 2;

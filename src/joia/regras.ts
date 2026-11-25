@@ -6,6 +6,9 @@
 import { ornamentar, type Ornamentacao, type Ornamento, type Simetria } from "./ornamento";
 import type { Escultura, FormaBase } from "./escultura";
 import { posicionarLivres, validarLivre, zonasLivres, type GemaLivre, type LivrePosta } from "./gemasLivres";
+import { posicionarFolhas, validarFolha, zonasFolhas, type Folha, type FolhaPosta } from "./folhas";
+import { encaixarFios } from "./fios";
+import { validarReferencia, type RefFoto } from "./referencia";
 
 export type P2 = [number, number];
 export type V3 = [number, number, number];
@@ -43,6 +46,13 @@ export interface DocJoia {
   /** gemas livres (qualquer lapidação, posição e orientação, engaste próprio) e o liga/desliga do construtor */
   gemasLivres: GemaLivre[];
   gemasLivresAtivo: boolean;
+  /** folhas paramétricas (J9b) e o liga/desliga do construtor */
+  folhas: Folha[];
+  folhasAtivo: boolean;
+  /** concordância (transição suave) entre aro, fios, folhas, garras e cabeça: só na versão final e no STL */
+  concordancia: { ativo: boolean; raio: number };
+  /** imagem de referência (foto da joia), só no arquivo; null = nenhuma */
+  referencia: RefFoto | null;
 }
 
 const RAD = Math.PI / 180;
@@ -370,6 +380,8 @@ export interface Montagem {
   gemasOrn: { gema: GemaPosta; yBase: number; yTopo: number }[];
   /** gemas livres postas (com as cópias da simetria), garras e apoios */
   livres: LivrePosta[];
+  /** folhas postas (com as cópias da simetria) */
+  folhas: FolhaPosta[];
   /** pontas alongadas das garras (cápsulas: esfera nas duas pontas) */
   capsulas: Haste[];
   orn: Ornamentacao;
@@ -388,7 +400,7 @@ export function montar(d: DocJoia): Montagem {
   const a = d.aro;
   const R = diametroInterno(a.norma, a.tamanho) / 2;
   const s0 = secao(a, 0);
-  const m: Montagem = { R, garras: [], pave: [], gemasOrn: [], livres: [], capsulas: [], orn: { fios: [], pontos: [], avisos: [] }, contas: [], trilhos: [], zonaCabeca: 0, zonaPave: 0, descartadas: 0, avisos: [] };
+  const m: Montagem = { R, garras: [], pave: [], gemasOrn: [], livres: [], folhas: [], capsulas: [], orn: { fios: [], pontos: [], avisos: [] }, contas: [], trilhos: [], zonaCabeca: 0, zonaPave: 0, descartadas: 0, avisos: [] };
   let meiaCabeca = 0; // meia extensão tangencial da cabeça (mm, na superfície do topo)
 
   if (d.cabeca.ativo) {
@@ -482,8 +494,12 @@ export function montar(d: DocJoia): Montagem {
     const pr = proporcoes(m.cabeca.gema), folga = m.cabeca.ref.p[1] - pr.pavilhao - (R + s0.t);
     if (folga < 0) m.avisos.push(`A culaça da gema central entra ${(-folga).toFixed(2)} mm no aro: altura da cintura mínima sugerida ${(d.cabeca.elevacao - folga + 0.2).toFixed(1)} mm.`);
   }
-  // gemas livres por último: as garras descem até o aro, os fios dos ornamentos ou as garras da central
+  // folhas antes das gemas livres (as garras se apoiam nelas); gemas livres por último: as garras descem até o
+  // aro, os fios dos ornamentos, as folhas ou as garras da central
+  posicionarFolhas(d, m);
   posicionarLivres(d, m);
+  // fios que sobem livres até uma garra, gema livre ou folha
+  encaixarFios(m);
   return m;
 }
 
@@ -660,7 +676,7 @@ export function zonasOcupadas(d: DocJoia, m: Montagem, comprimentoTexto: number,
   const z: [number, number][] = [];
   if (m.zonaCabeca) z.push([0, m.zonaCabeca + 6]);
   if (m.zonaPave) z.push([0, m.zonaPave + 4]);
-  z.push(...zonasLivres(m));
+  z.push(...zonasLivres(m), ...zonasFolhas(m));
   if (d.gravacao.ativo && comprimentoTexto > 0 && (incluirInterna ? d.gravacao.lado === "interno" : d.gravacao.lado === "externo")) {
     const r = d.gravacao.lado === "interno" ? m.R : m.R + secao(d.aro, d.gravacao.posicao * RAD).t;
     z.push([d.gravacao.posicao, (comprimentoTexto / 2 / r) / RAD + 4]);
@@ -843,6 +859,10 @@ export function docNovo(): DocJoia {
     esculturas: [],
     gemasLivres: [],
     gemasLivresAtivo: true,
+    folhas: [],
+    folhasAtivo: true,
+    concordancia: { ativo: false, raio: 0.2 },
+    referencia: null,
   };
 }
 
@@ -913,6 +933,11 @@ export function validarDoc(x: unknown): DocJoia {
     // .wjgd antigo sem o campo: lista vazia
     gemasLivres: (Array.isArray(o.gemasLivres) ? o.gemasLivres : []).slice(0, 60).map((x: any, i: number) => validarLivre(x, i, g)),
     gemasLivresAtivo: o.gemasLivresAtivo !== false,
+    // .wjgd do J9a e anteriores: sem folhas, concordância desligada e sem foto
+    folhas: (Array.isArray(o.folhas) ? o.folhas : []).slice(0, 60).map((x: any, i: number) => validarFolha(x, i)),
+    folhasAtivo: o.folhasAtivo !== false,
+    concordancia: { ativo: !!o.concordancia?.ativo, raio: num(o.concordancia?.raio, 0.2, 0.05, 1) },
+    referencia: validarReferencia(o.referencia),
   };
   if (doc.cabeca.gema.lapidacao === "redonda") doc.cabeca.gema.comprimento = doc.cabeca.gema.largura;
   return doc;
