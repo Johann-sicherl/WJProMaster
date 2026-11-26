@@ -96,11 +96,11 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
 - **Fila de 15/11 → `docs/global/fila-central.md`** (estado e prompts). Entregues: #127 (WJPDM zerar/importar/login),
   #128 (nome persistente), #129 (1ª caixa + seleção rápida; falta "arestas do laço"), #131 (fatiamento real P1S/Kobra 3),
   #132 (aresta da peça, calculadora em todo campo, cotas no duplo clique), #133 (pintura multicor), #134 (custos,
-  orçamento MATRIZ_V01 e proposta no WJWrite). **Pausada** até o Johann mandar "retomar a fila": faltam C1, C2, C3.
+  orçamento MATRIZ_V01 e proposta no WJWrite). **Pausada** até o Johann mandar "retomar a fila": C1 (#137), C2 (#142) e C3 (#151) entregues depois.
 - **Importar no WJPDM:** só lê pasta do aparelho; no tablet (Android) o seletor não enxerga o Google Drive. Johann fará no
   notebook a partir de `G:\Meu Drive\PDM TEMP` (tirar as pastas dele de dentro de `WJPDM`).
-- **Lições de orquestração (15/11):** a central abre e acompanha conversas (create_session/get_session/send_later); uma
-  central criada por outra conversa NÃO tem essas ferramentas — a central nova é aberta pelo Johann. Conferir com
+- **Lições de orquestração (15/11):** a central abre e acompanha conversas (create_session/get_session/send_later); a
+  central criada por outra conversa também TEM essas ferramentas (corrigido em 26/11: conferir logo no início). Conferir com
   get_session (barato), nunca list_events. Sonnet custou ≈ 1/2 a 1/3 do Opus por tarefa (S2 4,3; S3 8,4 × Opus 9,5–17).
 - **Pendências das entregas:** linhas de inferência pontilhadas e Tangente automática em arcos (F3,
   `docs/funcional/sketch.md`).
@@ -115,7 +115,7 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
 
 ## 6. Limite de uso (10/11/2026)
 
-- **Medição 25/11:** J9b + P1 + C3 (Opus) em paralelo: sessão 24 % → 96 % em ~45 min (≈ 1,5 ponto/min); semana 22 % → 28 %. Teto da sessão foi 85 % só neste dia (Johann). Custos de tabela: P1 ≈ US$ 15,9; J9b ≈ 28,7 + 2,6 (troca de conversa); C3 a medir.
+- **Medição 25/11:** J9b + P1 + C3 (Opus) em paralelo: sessão 24 % → 96 % em ~45 min (≈ 1,5 ponto/min); semana 22 % → 28 %. Teto da sessão foi 85 % só neste dia (Johann). Custos de tabela: P1 ≈ US$ 15,9; J9b ≈ 28,7 + 2,6 (troca de conversa); C3 ≈ US$ 13,6 (mesclado em 26/11 pela central).
 
 - **Teto de 70 % do limite semanal (Johann, 24/11):** regra em `regras.md` §1. Antes de abrir ou retomar
   qualquer conversa, perguntar ao Johann o % atual; ≥ 70 % (ou tarefa que possa passar disso) = não abrir.
