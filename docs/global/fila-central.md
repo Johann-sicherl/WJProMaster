@@ -2,7 +2,7 @@
 
 
 CABEÇALHO (pôr antes de cada prompt):
-(Pedido enviado pela central do WJProMaster em nome do Johann, que não acompanha esta conversa ao vivo. Siga o CLAUDE.md até o fim: check/teste/build, PR, CI verde e MERGE. Dúvida de requisito: escolha a opção mais segura e simples, registre no PR e siga; só pare se for impossível continuar. Última mensagem: "PRONTO: PR #N mesclado, versão publicada" ou "BLOQUEADO: motivo".)
+(Pedido enviado pela central do WJProMaster em nome do Johann, que não acompanha esta conversa ao vivo. Siga o CLAUDE.md até o fim: check/teste/build, PR, CI verde e MERGE. Dúvida de requisito: escolha a opção mais segura e simples, registre no PR e siga; só pare se for impossível continuar. Contexto: passou de ~180 mil tokens = push, resumo de passagem de até ~40 linhas à central e parar. Última mensagem: "PRONTO: PR #N mesclado, versão publicada" ou "BLOQUEADO: motivo".)
 
 1. WJPDM — PRONTO PR #127 (15/11)
 2. WJCAD referências — PRONTO PR #128

@@ -87,6 +87,12 @@
     ~200 mil tokens faz push, manda à central um resumo de até ~40 linhas (entregue, falta, decisões, testes,
     PR) e para; a central abre conversa nova no mesmo ramo com o resumo. (J9b: ≈ US$ 28,7 na conversa grande ×
     ≈ US$ 2,6 para fechar na nova.)
+  - **Economia de contexto (Johann, 26/11/2026)** — o gasto grande vem de conversa longa (cada mensagem relê o
+    contexto), não de código a mais (C3: 404 mil tokens de contexto, 34,9 mi relidos do cache, ≈ US$ 13,6):
+    (1) **teto de ~200 mil tokens cumprido pela central:** a cada conferência ela lê `context_usage.used_tokens`
+    (get_session) de cada conversa; a ~180 mil manda push + resumo de passagem e abre conversa nova no mesmo ramo;
+    (2) **tarefas fatiadas** antes de abrir: cada parte deve caber em ~200 mil tokens (ex.: J10 em partes);
+    (3) **Sonnet por padrão**; Opus só para kernel, geometria difícil ou motor numérico.
   - **Modelo e paralelo:** Opus para trabalho pesado (kernel, geometria, motor); Sonnet para fechamento,
     documentação, PR e tarefas pequenas. Paralelo sem limite de quantidade, mas no máximo **2 Opus** ao mesmo
     tempo; as demais em Sonnet.
