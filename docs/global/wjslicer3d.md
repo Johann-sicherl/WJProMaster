@@ -266,3 +266,6 @@ entram com lucro 0 % (o WJERP não tem esse dado).
 - Pendente do Johann: valores de referência medidos (tabela do teste) e uma impressão multicolorida medida (purga e tempo da troca).
 - Possíveis (só se ele pedir): outros bicos (0,2/0,6/0,8), "uma parede só no topo", preenchimento de vãos,
   borda automática, arrastar a peça na mesa à mão.
+- **Layout de fatiador completo (pedido de 26/11/2026)**: abas Preparar/Prévia/Bancada, barra lateral Impressora/Filamento/Processo com
+  as seis abas (Qualidade, Resistência, Velocidade, Suporte, Multimaterial, Outros), aba Objetos e barra de ferramentas: inventário,
+  arquitetura e fatias L/M/S/X/O/T em **`docs/global/wjslicer3d-layout.md`** (decisões pendentes na §7 dele).

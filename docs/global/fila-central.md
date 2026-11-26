@@ -17,6 +17,7 @@ C2 — PRONTO PR #142 (24/11, Sonnet, ≈ US$ 11,3; pendência: conferir as fam�
 C1 — PRONTO PR #137 (21/11, Sonnet, ≈ US$ 1,2)
 **FILA RETOMADA (Johann, 25/11; semana 22 %, sessão 24 % ao retomar):** J9b, P1 e C3 em paralelo. Passou de 70 % (semana ou sessão) ou aviso de limite = parar todas (push imediato).
 **Fora da fila, em paralelo (Johann, 21/11): J9a (Opus) → J9b (Opus), em sequência** (só WJGoldDiamond, src/joia/; não cruza com C1/C2/C3). J9b só depois de "PRONTO" do J9a; parte do main com o J9a.
+L-série (26/11) — WJSlicer3D com o layout de fatiador completo: PLANEJADA em `docs/global/wjslicer3d-layout.md` (fatias L0–L3, M1–M4, S1–S2, X1–X2, O1–O2, T1–T6; nenhuma aberta; aguarda decisões §7 do Johann e o % do limite).
 J9a — PRONTO PR #139 (21/11, Opus, ≈ US$ 15,8; 2,97 g, 9 gemas, reconstrução ~22 s)
 J9b — PRONTO PR #150 (25/11; troca de conversa com resumo de passagem: parte 1 ≈ US$ 28,7, parte 2 ≈ 2,6; antes: sessão session_01MWdNyhFZCWjbWJb91ALqhi; ≈ US$ 16,8 até a pausa)
 Objetivo do J9: modelar no WJGoldDiamond, a partir de UMA foto, um anel igual ao da foto (ANEL AMOR, descrito no J9a), pronto para resina e fundição; tudo em parâmetros para o Johann ajustar olhando a foto no app (J9b). Inspiração só de FUNÇÃO nos CADs de joalheria; nenhum nome, ícone ou texto de terceiros na interface.
