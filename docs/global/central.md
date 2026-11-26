@@ -102,6 +102,9 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
 - **Lições de orquestração (15/11):** a central abre e acompanha conversas (create_session/get_session/send_later); a
   central criada por outra conversa também TEM essas ferramentas (corrigido em 26/11: conferir logo no início). Conferir com
   get_session (barato), nunca list_events. Sonnet custou ≈ 1/2 a 1/3 do Opus por tarefa (S2 4,3; S3 8,4 × Opus 9,5–17).
+- **Economia de contexto (26/11, regras.md §1):** em cada conferência ler `context_usage.used_tokens` de cada conversa
+  (get_session); ~180 mil = push + resumo de passagem + conversa nova. Fatiar tarefa grande antes de abrir; Sonnet por
+  padrão, Opus só kernel/geometria/motor. Skills de terceiros por propaganda (Ponytail etc.): não instalar (26/11).
 - **Pendências das entregas:** linhas de inferência pontilhadas e Tangente automática em arcos (F3,
   `docs/funcional/sketch.md`).
 - Conversa antiga "Software CAD": mantida só para consulta; não usar para pedidos novos.
