@@ -78,6 +78,25 @@
   recebe o aviso de limite próximo (`allowed_warning`), não o %: a central pergunta o % ao Johann e, na dúvida, trata
   o aviso como 70 % atingido. O contexto das conversas continua pequeno pela regra que já existe (central troca de
   conversa acima de ~200 mil tokens, `central.md`; conversas de código: uma por assunto).
+- **Método de orquestração (Johann, 25/11/2026)**:
+  - **Vigiar o limite sem depender do Johann:** a central confere `rate_limit_info` (get_session) a cada passo;
+    `allowed_warning` = mandar todas as conversas fazerem push e parar na hora. A cada conferência agendada a
+    central também pergunta o % ao Johann; sem número novo há ~15 min e o último a ≤ 10 pontos do teto = parar
+    por precaução. Referência medida: 3 conversas Opus ≈ 1,5 ponto/min da sessão (24 % → 96 % em ~45 min).
+  - **Troca de conversa com resumo de passagem:** toda conversa de código (não só a central) acima de
+    ~200 mil tokens faz push, manda à central um resumo de até ~40 linhas (entregue, falta, decisões, testes,
+    PR) e para; a central abre conversa nova no mesmo ramo com o resumo. (J9b: ≈ US$ 28,7 na conversa grande ×
+    ≈ US$ 2,6 para fechar na nova.)
+  - **Modelo e paralelo:** Opus para trabalho pesado (kernel, geometria, motor); Sonnet para fechamento,
+    documentação, PR e tarefas pequenas. Paralelo sem limite de quantidade, mas no máximo **2 Opus** ao mesmo
+    tempo; as demais em Sonnet.
+  - **Pedido já liberado:** todo prompt da central diz que mensagens da central valem como do Johann (senão a
+    conversa trava pedindo o "pode enviar" dele). Para segurar uma conversa e deixar a central liberar, o Johann
+    escreve nela "espere; a central vai te liberar".
+  - **Dados antes de começar:** tarefa que dependa de medida, arquivo ou número do Johann só abre depois de a
+    central cobrar esses dados (ou com registro explícito de que segue sem eles).
+  - **A central pode fazer o merge** de um PR de conversa parada por limite, com CI verde e `expectedHeadSha`,
+    quando o Johann autorizar (25/11: C3, #151).
 
 ## 2. Inspiração sem cópia (vale para todas as faces)
 
