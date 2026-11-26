@@ -475,7 +475,7 @@ ok(PARTES.length === 13, "tempo por tipo de caminho: 13 partes (com trocas de co
   const cores = new Uint8Array(m.tri.length / 3).map((_, t) => t % 4);
   const fils = filamentosPadrao("petg", 150);
   const texto = await empacotar({
-    nome: "Teste", maquina: "acu-k3", material: "petg", ajustes: ajustesPadrao(k3.processo), precos: { petg: 150 }, filamentos: fils,
+    nome: "Teste", maquina: "acu-k3", material: "petg", perfil: {}, precos: { petg: 150 }, filamentos: fils,
     trocas: { "acu-k3": { ...k3.troca, purgaMm3: 321 } }, pecas: [{ nome: "Caixa", copias: 3, pos: m.pos, tri: m.tri, cores }],
   });
   const p = await desempacotar(texto);

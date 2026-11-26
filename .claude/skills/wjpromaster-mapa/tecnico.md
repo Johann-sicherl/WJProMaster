@@ -475,3 +475,9 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
   `peca:tela`, `previa:aplicada/tela`, `salvar:ini/fim` no painel Desempenho do navegador; o kernel devolve `etapas`
   (recursos, prévia, malha, topologia). `scripts/roteiro-desempenho.cjs` (tablet; `FOLGA`, `LENTO`) monta a tabela;
   `scripts/teste-desempenho.ts` (no `pnpm teste`) guarda o kernel e a lógica da fila.
+
+## WJSlicer3D — perfis em camadas (L0, 26/11/2026)
+- `esquema.ts` é a fonte dos parâmetros: id = chave do `Processo` achatada (`vBalanco.2`, `arvore.angulo`); `origem` processo/projeto/maquina/material/novo; campos `novo` têm `padrao` neutro e estado ≠ motor (🔶 `naoAplicado`, ou `oculto` para G-code, temperaturas, ventoinhas); `percentual` guarda fração 0–1. Campo novo do motor = uma linha na tabela + o campo em `Processo`/`perfis.ts` (o teste barra id sem par).
+- `camadas.ts`: o motor ainda lê `Processo` + `Ajustes`; `resolver()` devolve o `Processo` e `ajustesDe()` o `Ajustes`. As preferências da tela (`pref.ajustes`, localStorage) continuam como estavam e viram diferenças em `diferencasDeAjustes()` no momento de fatiar/salvar. Valor fora do esquema (id, tipo ou limite) é descartado (`limparDiferencas`).
+- `.wjprf`: fora de `EXT_DA_FACE`/`APPS` de propósito (igual ao `.wjcus`). A exclusão fica como marca (`excluido`) para propagar entre aparelhos. Sem UI ainda (L2).
+- Armadilha: o perfil de sistema 0,12 mm tem MAIS camadas de fundo que "altura 0,12 sobre o padrão" (mantém a espessura em mm); o teste confere os dois caminhos.

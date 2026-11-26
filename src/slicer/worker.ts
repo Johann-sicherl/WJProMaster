@@ -2,7 +2,9 @@
 // organiza, fatia e guarda os caminhos de cada camada para a prévia. O fatiamento de uma mesa cheia
 // leva alguns segundos e não pode travar a tela do tablet.
 
-import { fatiarPlaca, type Ajustes, type MalhaImpressao, type Previa, type Resultado } from "./fatiar";
+import { ajustesDe, PERFIL_PADRAO, resolver } from "./camadas";
+import type { Plano } from "./esquema";
+import { fatiarPlaca, type MalhaImpressao, type Previa, type Resultado } from "./fatiar";
 import type { Filamento } from "./cores";
 import { centralizar, malhaDeStl, malhaDeTriangulos, melhorApoio, orientarMalha, organizar, type Eixo } from "./malha";
 import { maquinaPorId, materialDa, type ConfigTroca, type IdMaterial } from "./perfis";
@@ -23,7 +25,7 @@ export type PedidoSlicer =
   | { tipo: "projeto"; pecas: { nome: string; copias: number; pos: Float32Array; tri: Uint32Array; cores: Uint8Array }[] }
   /** pede as peças (malha, cópias, pintura) para salvar o projeto */
   | { tipo: "exportar" }
-  | { tipo: "estimar"; seq: number; maquina: string; material: IdMaterial; precoKg: number; ajustes: Ajustes; filamentos: Filamento[]; troca: ConfigTroca }
+  | { tipo: "estimar"; seq: number; maquina: string; material: IdMaterial; precoKg: number; perfil: Plano; filamentos: Filamento[]; troca: ConfigTroca }
   | { tipo: "camada"; seq: number; i: number };
 
 export interface PecaInfo {
@@ -132,11 +134,13 @@ self.onmessage = (e: MessageEvent<PedidoSlicer>) => {
       publicar([]);
     } else if (p.tipo === "estimar") {
       if (!pecas.length) throw new Error("Abra um STL primeiro.");
-      const maq = maquinaPorId(p.maquina);
+      // o Processo vem das camadas (sistema 0,20 Padrão + diferenças do projeto): mesmo resultado de antes
+      const res = resolver({ maquina: p.maquina, sistema: PERFIL_PADRAO, projeto: p.perfil });
+      const maq = { ...maquinaPorId(p.maquina), processo: res.processo };
       const mat = { ...materialDa(maq, p.material), precoKg: p.precoKg };
       let ultimo = 0;
       const { r, previa: pv } = fatiarPlaca(
-        pecas.map((x) => ({ nome: x.nome, malha: x.malha, posicoes: x.posicoes, cores: x.cores })), maq, mat, p.ajustes,
+        pecas.map((x) => ({ nome: x.nome, malha: x.malha, posicoes: x.posicoes, cores: x.cores })), maq, mat, ajustesDe(res),
         (f) => {
           const agora = performance.now();
           if (agora - ultimo > 80) {
