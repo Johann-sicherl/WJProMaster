@@ -2,6 +2,7 @@
 // (OpenCascade via replicad). Não depende do navegador: roda no Web Worker e nos testes.
 // Campos e comportamento de cada recurso: docs/funcional/features.md.
 
+import { solidoEngrenagem } from "./engrenagem";
 import { casarFaces, type CorDeFace } from "../aparencia";
 import { coresDoStep } from "./coresImportadas";
 import {
@@ -3475,6 +3476,8 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
     }
     case "linhaParticao":
       return linhaParticao(f, ctx);
+    case "engrenagem":
+      return aplicar(ctx, f.id, [{ tool: solidoEngrenagem(f), op: "adicionar" }]);
     case "inserirPeca":
       return aplicar(ctx, f.id, [{ tool: pecaInserida(f), op: "adicionar" }], f.mesclar);
     case "combinar":

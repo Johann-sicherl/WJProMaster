@@ -1,4 +1,4 @@
-# Biblioteca de componentes — elementos de fixação (WJCAD › Montagem)
+# Biblioteca de componentes — elementos de fixação e engrenagens (WJCAD › Montagem)
 
 > Pedido C2 (21/11/2026). Nome nosso: **Biblioteca de componentes** (o nome da biblioteca do CAD de referência
 > nunca aparece). Inspirada na biblioteca de componentes padrão dos CADs profissionais: parafusos, porcas,
@@ -102,3 +102,91 @@ peça; a massa é volume do kernel × densidade do material.
   pilha de arruela/porca, comprimento sugerido e compatibilidade.
 - `scripts/roteiro-biblioteca.cjs` (tablet 1280×800, Playwright): chapa com 2 furos → Allen M6 nos 2 furos → arruela por arrasto →
   porca pelo lado oposto → lista de materiais.
+
+---
+
+# Engrenagens (pedido C3, 25/11/2026)
+
+> Mesmo painel: Montagem → **Biblioteca de componentes** → aba **Engrenagens** (a outra aba é **Fixação**). Na Peça há
+> também o comando **Features → Engrenagem**. O nome da biblioteca do CAD de referência nunca aparece.
+
+## Estado (25/11/2026)
+
+✅ 7 tipos: **dentes retos, helicoidais, cremalheira (reta ou helicoidal), cônicas de dentes retos, sem-fim, coroa, internas
+(retas ou helicoidais)** · ✅ entrada só do necessário (módulo, dentes, α = 20°, largura, β e sentido, furo/cubo/chaveta DIN 6885,
+deslocamento x) · ✅ valores calculados no painel (Ø primitivo/externo/raiz/base, passo, espessura no primitivo e na ponta, mt/αt,
+δ/Re/zv, γ/avanço, aviso de adelgaçamento com o x mínimo, ponta fina, furo perto da raiz) · ✅ **perfil evolvente exato gerado
+no kernel** · ✅ peça paramétrica: os valores ficam **no recurso "Engrenagem"** (duplo toque → painel, mudar e ✓ regenera) ·
+✅ salva em **CAD › Biblioteca › Engrenagens** com o nome dos valores e **reaproveitada** · ✅ **par**: distância entre centros (com
+deslocamento: ângulo de funcionamento αw), razão, grau de recobrimento, compatibilidade; **Inserir o par engrenado** e **Engrenar
+as 2 selecionadas** com o dente no vão certo, presas por um posicionamento **Travar** ("Engrenamento N").
+⏸ Posicionamento de **relação de engrenagem** (girar uma gira a outra na razão): não existe no solver da Montagem; hoje o par fica
+travado na posição de engrenamento. ⏸ Rebaixo (adelgaçamento) da raiz não é desenhado (só avisado). ⏸ Coroa sem garganta (cilíndrica
+helicoidal); cônica com a face maior plana (ver §E3).
+
+## E1. Como usar
+
+1. Montagem → **Biblioteca de componentes** → aba **Engrenagens**.
+2. **Tipo** e os campos (só os do tipo aparecem). A caixa **Valores calculados** muda a cada campo; entrada impossível aparece em
+   vermelho com o motivo (ex.: "Dente pontudo: reduza o deslocamento de perfil x").
+3. **Inserir engrenagem**: a peça é gerada (ou reaproveitada do cofre) e entra ao lado do modelo.
+4. **Par**: informe os dentes da 2ª (e o x dela). A 2ª é sugerida compatível: mesma família/módulo/α, hélice oposta (externas) ou
+   igual (interna, sem-fim/coroa), "Dentes da outra" trocados na cônica, coroa com as entradas do sem-fim. A caixa mostra distância
+   entre centros, razão i = n1/n2, αw e εα. **Inserir o par engrenado** gera as duas e posiciona.
+5. **Engrenar as 2 selecionadas**: toque duas engrenagens no modelo (com a aba Engrenagens aberta o toque marca/desmarca) ou na
+   árvore; a 2ª vai para a posição de engrenamento (se estiver fixa, a 1ª), e o travamento antigo entre as duas é substituído.
+6. Editar depois: abra a peça (WJCAD › Peça), **duplo toque no recurso** (na árvore ou no modelo) → mesmo painel → ✓.
+
+## E2. Campos e convenções
+
+| Campo | Observação |
+|---|---|
+| Módulo m | normal (helicoidais); sem-fim/coroa: módulo **axial** do sem-fim (= transversal da coroa) |
+| Nº de dentes z | sem-fim: **nº de entradas** (1–8) |
+| Ângulo de pressão α | normal, 20° de fábrica |
+| Largura b | sem-fim: comprimento; cônica: até Re/2 (recomendado Re/3) |
+| Ângulo de hélice β, sentido | helicoidal (β > 0), interna e cremalheira (0 = retos); coroa: β = γ do sem-fim |
+| Deslocamento x | ISO 21771; na interna x > 0 engrossa o dente interno |
+| Furo, chaveta, cubo | furo passante; rasgo DIN 6885 (forma A, profundidade t2 no cubo) em +Z; cubo do lado y < 0 |
+| Cônica | dentes da outra e ângulo entre eixos Σ (90° de fábrica) |
+| Sem-fim / coroa | coeficiente de diâmetro q (d1 = q·m); a coroa guarda as entradas do sem-fim |
+| Cremalheira | comprimento e altura total (pontas em +Z, linha primitiva em z = 0) |
+| Interna | Ø externo do aro (0 = df + 6m) |
+
+Peça: **eixo Y**, face de referência em y = 0, dentes em y ∈ [0, b]; dente 0 centrado em +X. Hélice à direita = parafuso à direita
+em torno de +Y. Material de fábrica: Aço 1045.
+
+## E3. Geometria
+
+- **Evolvente**: cada flanco é a B-spline cúbica que passa pelos pontos da própria evolvente (ρ, θ = ±ψ(ρ), ψ = s/2r + inv αt −
+  inv αρ); desvio medido sobre o flanco do kernel: nanômetros (teste exige < 0,1 µm). Ponta e raiz em arco; abaixo da base, trecho
+  radial até a raiz.
+- **Helicoidal / coroa**: o perfil transversal extrudado com torção φ = b·tan β / r (exata: varredura com hélice auxiliar).
+- **Interna**: anel = face do aro com o furo dentado (o "dente" do furo é o vão da interna), extrudada; helicoidal por cascas torcidas
+  fechadas pelas tampas — sem booleana (rápido mesmo com 100+ dentes).
+- **Cremalheira**: perfil trapezoidal exato (evolvente de raio infinito) extrudado com cisalhamento b·tan β e recortado no comprimento.
+- **Cônica (Tredgold)**: o perfil da ponta maior é a evolvente da engrenagem virtual (rv = r/cos δ, zv = z/cos δ) sobre o cone
+  complementar, projetado pelo vértice no plano y = 0; loft regrado até o mesmo contorno escalado para o vértice (flancos = retas que
+  passam pelo vértice). **Face maior plana** (o recorte pelo cone complementar custava segundos por engrenagem e não muda o
+  engrenamento); o painel mostra o Ø externo teórico (cone complementar) e o da face plana.
+- **Sem-fim (ZA, perfil axial reto)**: a seção transversal tem flancos em **espiral de Arquimedes** exata (Δθ = 2π·w(ρ)/avanço) e
+  é extrudada com torção de 2π por avanço — helicoide exato, sem booleana.
+- **Coroa**: helicoidal com β = γ e o perfil transversal = perfil axial do sem-fim; sem garganta.
+
+## E4. Pares
+
+- Externas paralelas: inv αw = inv αt + 2 tan αn (x1 + x2)/(z1 + z2); a = (z1 + z2)·mt·cos αt / (2 cos αw); εα pelos raios.
+- Interna: a = (z2 − z1)·mt·cos αt / (2 cos αw), com o sinal da interna; diferença de dentes ≥ 10.
+- Cremalheira: eixo do pinhão a r + x·m da linha primitiva; "razão" = avanço por volta (π·d).
+- Cônicas: vértices coincidentes, eixos a Σ; cada uma precisa dos dentes da outra.
+- Sem-fim/coroa: a = (d1 + d2)/2 + x2·m, eixos a 90°, sem-fim na meia largura da coroa; razão = z2/z1.
+- Posição: o dente 0 da 1ª no vão da 2ª na linha de centros (flancos simétricos → folga igual dos dois lados; zero com a distância
+  calculada). Conferido no kernel: interseção do par posicionado ≈ 0 mm³ e, meio passo defasado, dezenas/centenas de mm³.
+
+## E5. Testes
+
+- `scripts/teste-engrenagens.ts` (no `pnpm teste`): diâmetros pela norma, flanco do kernel sobre a evolvente, **espessura no
+  primitivo = π·m/2** (x = 0, 0,3, −0,2; helicoidal transversal, interna, coroa e cônica) medida no sólido, volume = perfil × largura,
+  sentido da hélice, chaveta, pares (distância, razão, compatibilidade) e engrenamento de 12 pares no kernel.
+- `scripts/roteiro-engrenagens.cjs` (tablet 1280×800): aba Engrenagens, valores calculados, erro claro, par reto inserido engrenado
+  e travado, cofre CAD › Biblioteca › Engrenagens, helicoidais engrenadas pelas selecionadas, peça editada pelo recurso na Peça.

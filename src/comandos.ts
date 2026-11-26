@@ -38,6 +38,7 @@ export const ABAS: Aba[] = [
       { id: "revolucao", rotulo: "Revolução", icone: "revolucao", dica: "Ressalto girando um perfil em torno de um eixo", grupo: 0 },
       { id: "varredura", rotulo: "Varredura", icone: "varredura", dica: "Leva um perfil ao longo de uma trajetória (tubos, cabos, canais)", grupo: 0 },
       { id: "loft", rotulo: "Loft", icone: "loft", dica: "Transição suave entre dois ou mais perfis", grupo: 0 },
+      { id: "engrenagem", rotulo: "Engrenagem", icone: "engrenagem", dica: "Engrenagem de perfil evolvente: retas, helicoidais, cremalheira, cônicas, sem-fim e coroa, internas", grupo: 0 },
       { id: "corte", rotulo: "Corte extrudado", icone: "corte", dica: "Remove material extrudando um perfil", grupo: 1 },
       {
         id: "grupo-furo", rotulo: "Furo assistido", icone: "furo", dica: "Furo assistido e rosca", grupo: 1,

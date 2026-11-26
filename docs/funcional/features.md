@@ -404,6 +404,7 @@ Abas: Manual · Assistente (⏸)
 
 | Comando | Campos principais | Fase |
 |---|---|---|
+| Engrenagem | ✅ (25/11/2026, pedido C3) Features → **Engrenagem**: retas, helicoidais, cremalheira, cônicas retas, sem-fim, coroa, internas; perfil evolvente exato gerado no kernel, valores no recurso (duplo toque → painel). Detalhes em [biblioteca.md](biblioteca.md) §Engrenagens | ✅ |
 | Domo (Dome) | ✅ (04/11/2026) faces planas, altura, inverter (côncavo): calota esférica que sobe a altura no centro e encosta no ponto mais afastado do contorno (face circular: calota exata; termina 0,01% do raio para dentro da borda, senão a booleana do kernel falha). Ponto/esboço de restrição, elíptico e contínuo ⏸ | ✅ |
 | Envolver (Wrap) | tipo: gravar/em relevo/riscar; método analítico/spline; esboço, face, espessura | ⏸ |
 | Combinar (Combine) | ✅ (04/11/2026) Adicionar · Subtrair (do corpo principal) · Comum; corpos tocados na peça ou na pasta Corpos sólidos | ✅ |

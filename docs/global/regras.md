@@ -359,6 +359,13 @@
   coincidente** e oferece **"repetir em todos os furos iguais"**; arruelas/porcas empilham sozinhas. Propriedades (norma, descrição,
   material, massa) vão para a lista de materiais. Famílias de forma/cotas aproximadas ficam marcadas "≈" até o Johann conferir.
   `docs/funcional/biblioteca.md`.
+- **Gerador de engrenagens** (25/11/2026, pedido C3): mesma Biblioteca, aba **Engrenagens** (e Features → Engrenagem na Peça). Tipos:
+  retas, helicoidais, cremalheira, cônicas retas, sem-fim e coroa, internas. Entrada só do necessário (módulo, dentes, α 20°, largura,
+  β e sentido, furo/cubo/chaveta DIN 6885, deslocamento x); diâmetros, distância entre centros e razão calculados e mostrados.
+  **Perfil evolvente exato no kernel**; valores **no recurso "Engrenagem"** (editável); peça em **CAD › Biblioteca › Engrenagens**,
+  reaproveitada. Par: distância e posição com o dente no vão; sem posicionamento de relação de engrenagem no solver (o par fica
+  **travado**). Decisões técnicas (registradas no PR, pela opção mais simples/segura): cônica por Tredgold com face maior plana; sem-fim
+  ZA; coroa sem garganta. `docs/funcional/biblioteca.md` §Engrenagens.
 - Medir e propriedades de massa funcionam em corpos importados (STEP e malha STL).
 - Arquivo `.wjcad` (abre `.jlscad`/`.cadt`). Chaves internas `jlscad:` ficam como estão.
 

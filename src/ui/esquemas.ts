@@ -12,6 +12,8 @@ import { TABELA_CHAPA } from "../model";
 import { LIMITE_SOLIDO_EXATO } from "../kernel/stl";
 import { FIXADORES, ISO, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
 import type { Caixa, Campo, ContextoFormulario, Esquema } from "./formulario";
+import type { FeatureEngrenagem } from "../model";
+import { caixasEngrenagem } from "../biblioteca/painelEngrenagens";
 
 export interface DadosEsquema {
   esbocosAntes: [string, string][];
@@ -226,6 +228,8 @@ function esquemaBase(f: Feature, d: DadosEsquema): Esquema<Feature> {
           { t: "info", texto: () => "Perfil ISO em V de 60°: pino (rosca externa, profundidade 0,6134 P) ou furo (interna, 0,5413 P; faça o furo no Ø da broca). O comprimento para na ponta da face." },
         ] },
       ] };
+    case "engrenagem":
+      return { titulo: "Engrenagem", caixas: caixasEngrenagem<FeatureEngrenagem>() as unknown as Caixa<Feature>[] };
     case "linhaParticao":
       return { titulo: "Linha de partição", caixas: [{ titulo: "Seleções", campos: [
         { t: "sel", rot: "Esboço", cam: "esboco", opcoes: () => [["", "(escolha)"], ...d.esbocosAntes] },

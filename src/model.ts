@@ -596,6 +596,61 @@ export interface FeatureRosca extends FeatureBase {
   inverter: boolean;
 }
 
+/** Tipos do gerador de engrenagens (biblioteca.md §Engrenagens). */
+export type TipoEngrenagem = "reta" | "helicoidal" | "cremalheira" | "conica" | "semFim" | "coroa" | "interna";
+
+/**
+ * Parâmetros de uma engrenagem: só o necessário; diâmetros, distância entre centros e razão são
+ * calculados (src/biblioteca/engrenagens.ts). Eixo da peça = Y; face de referência em y = 0.
+ */
+export interface ParamEngrenagem {
+  tipoEngrenagem: TipoEngrenagem;
+  /** módulo normal (mm); sem-fim e coroa: módulo axial do sem-fim (= transversal da coroa) */
+  modulo: number;
+  /** nº de dentes; sem-fim: nº de entradas */
+  dentes: number;
+  /** ângulo de pressão normal (graus), 20 padrão */
+  angPressao: number;
+  /** largura do dente (mm); sem-fim: comprimento */
+  largura: number;
+  /** ângulo de hélice (graus; helicoidal, interna e cremalheira) */
+  helice: number;
+  sentido: "direita" | "esquerda";
+  /** coeficiente de deslocamento de perfil x */
+  deslocamento: number;
+  /** Ø do furo (0 = maciço) */
+  furo: number;
+  /** rasgo de chaveta DIN 6885 no furo */
+  chaveta: boolean;
+  /** cubo (0 = sem cubo), do lado y < 0 */
+  cuboDiametro: number;
+  cuboComprimento: number;
+  /** cremalheira: comprimento e altura total */
+  comprimento: number;
+  altura: number;
+  /** cônica: nº de dentes da outra e ângulo entre eixos */
+  dentesPar: number;
+  anguloEixos: number;
+  /** sem-fim e coroa: coeficiente de diâmetro q (d1 = q·m) */
+  coefDiametro: number;
+  /** coroa: nº de entradas do sem-fim */
+  entradas: number;
+  /** interna: Ø externo do aro (0 = automático) */
+  aro: number;
+}
+
+/** Valores de fábrica do gerador de engrenagens (reta m2 z20, 20°, largura 20). */
+export const PARAM_ENGRENAGEM_PADRAO: ParamEngrenagem = {
+  tipoEngrenagem: "reta", modulo: 2, dentes: 20, angPressao: 20, largura: 20, helice: 0, sentido: "direita", deslocamento: 0,
+  furo: 0, chaveta: false, cuboDiametro: 0, cuboComprimento: 0, comprimento: 200, altura: 20, dentesPar: 40, anguloEixos: 90,
+  coefDiametro: 10, entradas: 1, aro: 0,
+};
+
+/** Engrenagem paramétrica (perfil evolvente gerado no kernel); valores guardados no recurso. */
+export interface FeatureEngrenagem extends FeatureBase, ParamEngrenagem {
+  tipo: "engrenagem";
+}
+
 /** Linha de partição (features.md §16): projeta o esboço nas faces e as divide. */
 export interface FeatureLinhaParticao extends FeatureBase {
   tipo: "linhaParticao";
@@ -839,7 +894,7 @@ export type Feature =
   | FeatureFecharCanto | FeatureAlivioCanto | FeatureQuebrarCanto | FeatureDesdobrar | FeatureDobrar | FeatureConverterChapa
   | FeatureImportado | FeatureMoverFace | FeatureExcluirFace | FeatureSubstituirFace
   | FeaturePontoRef | FeatureSistemaCoord | FeatureEscala | FeatureDomo | FeatureMoverCorpo
-  | FeatureExcluirCorpo | FeatureCombinar | FeatureDividir | FeatureRosca | FeatureLinhaParticao | FeatureInserirPeca;
+  | FeatureExcluirCorpo | FeatureCombinar | FeatureDividir | FeatureRosca | FeatureLinhaParticao | FeatureInserirPeca | FeatureEngrenagem;
 
 /**
  * Corpo importado de um arquivo neutro (STEP ou STL, de qualquer CAD): o sólido entra na árvore
@@ -1035,6 +1090,8 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco" | "importado
       return { ...base, tipo, nome: `Rosca${indice}`, tamanho: "M10", passo: 1.5, comprimento: 10, esquerda: false, inverter: false };
     case "linhaParticao":
       return { ...base, tipo, nome: `LinhaDePartição${indice}`, faces: [] };
+    case "engrenagem":
+      return { ...base, tipo, nome: `Engrenagem${indice}`, ...PARAM_ENGRENAGEM_PADRAO };
     case "inserirPeca":
       return { ...base, tipo, nome: `Peça${indice}`, arquivo: "", nomeArquivo: "", features: [], espelhar: false, planoEspelho: "YZ", dx: 0, dy: 0, dz: 0, mesclar: false };
     case "moverCorpo":
@@ -1183,6 +1240,7 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   combinar: "Combinar",
   dividir: "Dividir",
   rosca: "Rosca",
+  engrenagem: "Engrenagem",
   linhaParticao: "Linha de partição",
   inserirPeca: "Peça inserida",
 };
