@@ -384,6 +384,17 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
   `semLascas`. Aro dividido com **afastamento**: cunha do topo cortada + loft do meio perfil de cada lado
   (recuado 0,01 mm, passando 3° para dentro do aro). Modelo "Anel folhas com oval": 22,5 s em Node, ~26 s no
   navegador do teste (prévia na hora).
+- **Foto, fios, folhas e concordância (WJGoldDiamond J9b, 25/11/2026)**: versão final **na malha** (`src/joia/final.ts`):
+  o OpenCascade só faz as peças (`pecas()` em `geometria.ts`), fios avançados (`fios.ts`), folhas (`folhas.ts`) e
+  esculturas são malhas, união e cortes (assentos, ramos do aro dividido) no `manifold-3d`; STEP segue por
+  `construir()` (só a parte paramétrica). Concordância (`concordancia.ts`) = **fechamento morfológico** (dilatar/erodir R)
+  em voxels só perto das junções; o enchimento menos os assentos é unido (só acrescenta metal; migalhas < 0,5 mm³
+  saem; peças soltas que já existiam são aceitas na conferência). **Suavização Laplaciana descartada** (deforma tudo).
+  Folha: dobra em V e nervura estreita cruzavam a face de baixo → dobra arredondada (raio ≥ espessura) e nervura
+  ≥ 1,2·√(2·prof·e). Trançado em voluta muito fechada não é fundível. Câmera da foto por Levenberg–Marquardt
+  (`referencia.ts`; 4 pares acertam também o foco); perspectiva **só** no modo "câmera da foto". `malhaVista` usa
+  normais com quebra de 35°. Toque sintético do Playwright não tem captura de ponteiro: `setPointerCapture` em
+  try (vista da joia e editor de esboço). Modelo "Anel folhas com oval": 2,89 g, ~5 s com concordância.
 - **Malha × B-Rep (WJGoldDiamond J8)**: escultura fica em malha; para peso/área/STL a joia do OpenCascade é
   tesselada (`mesh`, tol. 0,01 mm; volume ~0,5 % abaixo do exato), soldada (`Mesh.merge`) e unida no
   `manifold-3d` (centenas de ms). Não unir malha densa no OpenCascade (milhares de faces = minutos).

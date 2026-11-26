@@ -81,4 +81,4 @@ link do PR; **código completo só quando ele pedir** (aí o arquivo/bloco intei
 - Publicação: merge no `main` → GitHub Actions → `https://johann-sicherl.github.io/WJProMaster/`.
 - Fase atual: Fases 1–3 entregues, quase toda a 5 antecipada, núcleo da 4 (Sheet Metal) entregue;
   pendências e estado em `docs/funcional/README.md` e no fim de cada `docs/global/<face>.md`.
-  WJGoldDiamond: J0–J8 e **J9a** entregues (gemas livres + modelo "Anel folhas com oval", 21/11/2026); J9b é o próximo.
+  WJGoldDiamond: J0–J9b entregues (J9b: foto de referência, fios avançados, folhas e concordância, 25/11/2026); J10 é o próximo.

@@ -14,6 +14,7 @@ import { SolverEsboco } from "../esboco/solver";
 import type { FeatureEsboco } from "../model";
 import { amostrar, mapaPontos } from "../esboco/geometria";
 import type { Simetria } from "./ornamento";
+import { fotoNoEsboco, type RefFoto } from "./referencia";
 import { lerPrefsCad, relacoesAutoLigadas } from "../ui/preferenciasCad";
 
 const FORA = new Set(["grupo-esboco", "grupo-converter", "escalaReal", "calibrarTela", "converter", "intersecao", "silhueta"]);
@@ -57,12 +58,31 @@ export class EditorOrnamento {
     this.vp.aposDesenhar = f;
   }
   private svg: SVGSVGElement;
+  private foto: RefFoto | null = null;
+
+  /** Foto de referência por baixo do desenho (decalque), com a escala e o lugar da vista de cima. */
+  definirFoto(r: RefFoto | null) {
+    this.foto = r && r.ativo ? r : null;
+    this.espelho();
+  }
+
+  /** SVG da foto no esboço: imagem com a transformação afim pixel → tela (três cantos). */
+  private fotoSvg(): string {
+    const r = this.foto, ed = this.ed;
+    if (!r || !ed) return "";
+    const ref = ed.referencial;
+    const tela = (u: number, v: number) => { const [x, y] = fotoNoEsboco(r, u, v); return this.vp.planoParaTela(ref, x, y); };
+    const a = tela(0, 0), b = tela(r.largura, 0), c = tela(0, r.altura);
+    const m = [(b.x - a.x) / r.largura, (b.y - a.y) / r.largura, (c.x - a.x) / r.altura, (c.y - a.y) / r.altura, a.x, a.y].map((x) => x.toFixed(5)).join(" ");
+    return `<image class="gd-decalque" href="${r.imagem}" width="${r.largura}" height="${r.altura}" preserveAspectRatio="none" opacity="${r.opacidade}" transform="matrix(${m})"/>`;
+  }
 
   /** Prévia (cinza) das cópias que a simetria vai criar: o desenho completo aparece enquanto se desenha. */
   private espelho() {
     const ed = this.ed;
     if (!ed) return void (this.svg.innerHTML = "");
     const sim = this.o.simetria();
+    const foto = this.fotoSvg();
     const copias = ({ nenhuma: [], x: [[-1, 1]], y: [[1, -1]], xy: [[-1, 1], [1, -1], [-1, -1]] } as Record<Simetria, [number, number][]>)[sim];
     const ref = ed.referencial, mp = mapaPontos(ed.esb);
     let h = "";
@@ -76,7 +96,15 @@ export class EditorOrnamento {
           : `<polyline points="${pts.map((q) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(" ")}"/>`;
       }
     }
-    this.svg.innerHTML = h;
+    // a foto muda pouco: só reescreve a imagem quando a transformação muda (o texto da imagem é grande)
+    const img = this.svg.querySelector("image");
+    if (foto) {
+      const tf = /transform="([^"]+)"/.exec(foto)![1], op = /opacity="([^"]+)"/.exec(foto)![1];
+      if (!img || img.getAttribute("href")?.length !== this.foto!.imagem.length) this.svg.innerHTML = foto;
+      else { img.setAttribute("transform", tf); img.setAttribute("opacity", op); }
+    } else img?.remove();
+    this.svg.querySelectorAll("polyline, circle").forEach((x) => x.remove());
+    this.svg.insertAdjacentHTML("beforeend", h);
   }
 
   static async criar(o: OpcoesEditor): Promise<EditorOrnamento> {
