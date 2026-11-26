@@ -269,3 +269,12 @@ entram com lucro 0 % (o WJERP não tem esse dado).
 - **Layout de fatiador completo (pedido de 26/11/2026)**: abas Preparar/Prévia/Bancada, barra lateral Impressora/Filamento/Processo com
   as seis abas (Qualidade, Resistência, Velocidade, Suporte, Multimaterial, Outros), aba Objetos e barra de ferramentas: inventário,
   arquitetura e fatias L/M/S/X/O/T em **`docs/global/wjslicer3d-layout.md`** (decisões pendentes na §7 dele).
+- **L0 do novo layout (26/11/2026, entregue; sem mudança visual)**: `src/slicer/esquema.ts` (tabela de todos os parâmetros do
+  `Processo` e os de impressora/filamento da §3, com aba, grupo, tipo, unidade, mín/máx, nível, estado e "visível se"; 🔶 entram com
+  valor neutro sem mexer no motor; ⚪/⛔ entram **ocultos**), `camadas.ts` (sistema → usuário → projeto → objeto → faixa de Z;
+  `resolver()`, `diferencas()`, `aplicarDiferencas()`; 9 perfis de sistema por impressora) e `perfisUsuario.ts` (`Perfis do usuário.wjprf` no
+  cofre, junção pela mais recente, exclusão propagada). O worker obtém o `Processo` por `resolver()`; o projeto `.wjslc` (versão 2) grava
+  **só as diferenças sobre o 0,20 mm Padrão** (`config.perfil`, mais `ajustes` para app antigo) e o antigo abre igual. Regra dos perfis de
+  sistema: 0,20 Padrão = `Processo` de fábrica; os outros mudam só a altura, mantêm a 1ª camada em 0,20 mm e sobem topo/fundo para manter a
+  mesma espessura em mm; velocidades, acelerações e fluxos iguais (os "Alta qualidade" = o normal da mesma altura até o Johann mandar
+  valores). Cubo 20 mm e cilindro Ø20×20 na P1S e no Kobra 3: tempo e massa idênticos aos de antes (`teste-esquema.ts`).

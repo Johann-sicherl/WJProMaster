@@ -1,9 +1,12 @@
 // WJSlicer3D: projeto salvo no cofre do WJPDM (arquivo .wjslc, JSON): as peças da mesa (malha na posição
 // de impressão, cópias, pintura de cada triângulo), os filamentos (cor, material, R$/kg), a troca de cor
 // de cada impressora e os ajustes. As malhas vão em binário comprimido (gzip) dentro do JSON, para o
-// arquivo abrir pelo mesmo caminho dos outros apps do cofre. Puro: testado em scripts/teste-slicer.ts.
+// arquivo abrir pelo mesmo caminho dos outros apps do cofre. Desde a L0 do novo layout (26/11/2026) o projeto grava o
+// **perfil do projeto = só as diferenças sobre o "0,20 mm Padrão"** da impressora (`camadas.ts`); o `.wjslc` antigo (campo
+// `ajustes` inteiro) abre igual e é convertido em diferenças, sem perder nada. Puro: testado em scripts/teste-slicer.ts.
 
-import type { Ajustes } from "./caminhos";
+import { ajustesDe, diferencasDeAjustes, limparDiferencas, resolver } from "./camadas";
+import type { Plano } from "./esquema";
 import { filamentosPadrao, MAX_CORES, type Filamento } from "./cores";
 import { MAQUINAS, type ConfigTroca, type IdMaterial } from "./perfis";
 
@@ -22,7 +25,8 @@ export interface ProjetoSlicer {
   nome: string;
   maquina: string;
   material: IdMaterial;
-  ajustes: Ajustes;
+  /** perfil do projeto: só as diferenças sobre o 0,20 mm Padrão da impressora (id → valor) */
+  perfil: Plano;
   precos: Partial<Record<IdMaterial, number>>;
   filamentos: Filamento[];
   /** troca de cor editada, por impressora (o que não está aqui usa o de fábrica) */
@@ -60,15 +64,16 @@ export async function empacotar(p: ProjetoSlicer): Promise<string> {
     pecas.push({ nome: x.nome, copias: x.copias, nv, nt, gz: comprime, dados: paraBase64(dados) });
   }
   return JSON.stringify({
-    formato: EXTENSAO_PROJETO, versao: 1, nome: p.nome,
-    config: { maquina: p.maquina, material: p.material, ajustes: p.ajustes, precos: p.precos, filamentos: p.filamentos, trocas: p.trocas, ...(p.orcamento ? { orcamento: p.orcamento } : {}) },
+    formato: EXTENSAO_PROJETO, versao: 2, nome: p.nome,
+    // `ajustes` também vai, só para uma versão antiga do app (aparelho ainda sem "Atualizar") abrir o projeto; quem lê prefere `perfil`
+    config: { maquina: p.maquina, material: p.material, perfil: p.perfil, ajustes: ajustesDe(resolver({ maquina: p.maquina, projeto: p.perfil })), precos: p.precos, filamentos: p.filamentos, trocas: p.trocas, ...(p.orcamento ? { orcamento: p.orcamento } : {}) },
     pecas,
   });
 }
 
 /** Lê o texto de um projeto (valida o que importa; o que faltar volta ao padrão). */
 export async function desempacotar(texto: string): Promise<ProjetoSlicer> {
-  let j: { formato?: string; nome?: string; config?: Partial<ProjetoSlicer>; pecas?: { nome: string; copias: number; nv: number; nt: number; gz: boolean; dados: string }[] };
+  let j: { formato?: string; nome?: string; config?: Partial<ProjetoSlicer> & { ajustes?: Record<string, unknown> }; pecas?: { nome: string; copias: number; nv: number; nt: number; gz: boolean; dados: string }[] };
   try {
     j = JSON.parse(texto);
   } catch {
@@ -92,7 +97,8 @@ export async function desempacotar(texto: string): Promise<ProjetoSlicer> {
   const padrao = filamentosPadrao();
   const filamentos = Array.from({ length: MAX_CORES }, (_, k) => ({ ...padrao[k], ...(c.filamentos?.[k] ?? {}) }));
   return {
-    nome: j.nome || "Projeto de impressão", maquina, material: c.material ?? "pla", ajustes: c.ajustes as Ajustes, precos: c.precos ?? {},
+    nome: j.nome || "Projeto de impressão", maquina, material: c.material ?? "pla",
+    perfil: c.perfil ? limparDiferencas(c.perfil) : diferencasDeAjustes(maquina, c.ajustes), precos: c.precos ?? {},
     filamentos, trocas: c.trocas ?? {}, ...(c.orcamento ? { orcamento: c.orcamento } : {}), pecas,
   };
 }

@@ -12,6 +12,7 @@ import { botaoDiagnostico } from "../comum/diagnostico";
 import { registrarComAtualizacao } from "../comum/atualizacao";
 import { IC } from "../comum/icones";
 import { pegar } from "../comum/transferir";
+import { ajustesDe, diferencasDeAjustes, resolver } from "./camadas";
 import { ajustesPadrao, formatarTempo, NOMES_PARTES, PARTES, type Ajustes, type Parte, type Resultado } from "./fatiar";
 import { MAQUINAS, maquinaPorId, materiaisDa, materialDa, NOMES_PADROES, type ConfigTroca, type IdMaterial, type Padrao, type TipoSuporte } from "./perfis";
 import { balde, filamentosPadrao, MAX_CORES, pincel, pintarCorpo, topologia, type Filamento, type Topologia } from "./cores";
@@ -60,6 +61,8 @@ function lerPreferencias(): Preferencias {
   }
 }
 const pref = lerPreferencias();
+/** Os ajustes da tela viram o perfil do projeto: só as diferenças sobre o 0,20 mm Padrão da impressora (camadas.ts). */
+const perfilDoProjeto = () => diferencasDeAjustes(pref.maquina, pref.ajustes);
 const guardar = () => {
   try {
     localStorage.setItem(CHAVE, JSON.stringify(pref));
@@ -375,7 +378,7 @@ function recalcular(atraso = 250) {
     $("sl-ocupado").hidden = false;
     $("sl-barra").style.width = "0%";
     const mat = materialDa(maquina(), pref.material);
-    pedir({ tipo: "estimar", seq, maquina: pref.maquina, material: pref.material, precoKg: pref.precos[pref.material] ?? mat.precoKg, ajustes: pref.ajustes, filamentos: filamentosEfetivos(), troca: trocaAtual() });
+    pedir({ tipo: "estimar", seq, maquina: pref.maquina, material: pref.material, precoKg: pref.precos[pref.material] ?? mat.precoKg, perfil: perfilDoProjeto(), filamentos: filamentosEfetivos(), troca: trocaAtual() });
   }, atraso);
 }
 
@@ -719,7 +722,7 @@ async function salvarProjeto(): Promise<string> {
   const trocas: Record<string, ConfigTroca> = {};
   for (const m of MAQUINAS) if (pref.trocas[m.id]) trocas[m.id] = { ...m.troca, ...pref.trocas[m.id] };
   const nome = nomeProjeto || lista[0].nome || "Projeto de impressão";
-  const texto = await empacotar({ nome, maquina: pref.maquina, material: pref.material, ajustes: pref.ajustes, precos: pref.precos, filamentos: filamentosEfetivos(), trocas, orcamento: orcamento.obter(), pecas: lista });
+  const texto = await empacotar({ nome, maquina: pref.maquina, material: pref.material, perfil: perfilDoProjeto(), precos: pref.precos, filamentos: filamentosEfetivos(), trocas, orcamento: orcamento.obter(), pecas: lista });
   avisar("Salvando no cofre…");
   const msg = await salvarNoCofre("slicer", `${nome}.${EXTENSAO_PROJETO}`, new Blob([texto], { type: "application/json" }), (n) => (nomeProjeto = n));
   avisar(msg, 7000);
@@ -732,7 +735,7 @@ function aplicarProjeto(p: ProjetoSlicer) {
   pref.maquina = p.maquina;
   pref.material = p.material;
   pref.precos = { ...pref.precos, ...p.precos };
-  pref.ajustes = { ...ajustesPadrao(maquina().processo), ...p.ajustes };
+  pref.ajustes = ajustesDe(resolver({ maquina: p.maquina, projeto: p.perfil }));
   pref.filamentos = p.filamentos;
   pref.trocas = { ...pref.trocas, ...p.trocas };
   guardar();
