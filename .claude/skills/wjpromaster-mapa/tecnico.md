@@ -309,6 +309,14 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
   numa cota refaz a etiqueta, então o `dblclick` do navegador nunca chega: o duplo toque é medido por tempo
   (`ultimoToqueCota`, 450 ms).
 
+- **Reorganizar cotas** (27/11/2026, C7, `cotas.ts` `ajustarTextoCota(..., livre)`/`moverLinhaCota`, `editor.ts` `prenderArrasteCota`):
+  só muda `CotaEsboco.texto` (posição absoluta no plano; decisão: não relativa, é a mais simples e já é salva), nunca valor,
+  geometria nem solver. Rigidez antiga: número 29×22 px, mínimo de 1 passo, centralização forçada. Agora: alvo de 44 px
+  (`::after`, tablet/celular), arrasto livre com ímã de 5 px, faixa invisível `.cota-faixa` sobre a linha (só Selecionar ou
+  Cota sem cota em andamento; angular só pelo número). **Armadilha:** `montarOverlay` refaz tudo a cada `redesenhar`; o
+  elemento arrastado (`arrCota`) é reaproveitado, senão o toque se perde; o número tem `z-index: 1` acima da faixa. Esc e
+  `pointercancel` restauram o texto.
+
 - **Referência oculta do esboço** (10/11/2026, `src/esboco/externas.ts`): `GeoEsboco.oculta` marca a geometria
   externa criada para cota, linha de espelho ou direção de padrão (`criarExterna(..., true)`). Fica fora de
   `visual.ts` (traço e pontos), `achar`/`encaixar` do editor, `idsNaSelecao`, relações automáticas, lista de
