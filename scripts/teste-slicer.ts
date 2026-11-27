@@ -287,7 +287,7 @@ if (faltam.length) console.log(`  (pendente: valores de referência medidos pelo
 ok(MAQUINAS.length === 2 && MAQUINAS.map((m) => m.modelo).join() === "P1S,Kobra 3", "perfis: só P1S e Kobra 3");
 ok(MAQUINAS.every((m) => m.processo.altura === 0.2 && m.processo.alturaPrimeira === 0.2 && m.jerk > 0 && m.aMax > 0), "processos de 0,20 mm (bico 0,4) com limites da máquina");
 ok(MAQUINAS.every((m) => materiaisDa(m).length === 6 && materiaisDa(m).every((x) => x.vazaoMax > 0 && x.densidade > 1 && x.fluxo > 0.9)), "seis materiais por máquina com densidade, fluxo e vazão");
-ok(PARTES.length === 13, "tempo por tipo de caminho: 13 partes (com trocas de cor e torre de purga)");
+ok(PARTES.length === 14, "tempo por tipo de caminho: 14 partes (com vãos, trocas de cor e torre de purga)");
 
 {
   // desempenho: esfera facetada de 40 mm (≈ 20 mil triângulos)

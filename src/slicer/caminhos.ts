@@ -13,6 +13,7 @@
 import {
   amostrar, campoDistancia, campoDoMapa, celula, compactar, comprimento, contornos, expandir, rasterizar, recortar, rotular, type Grade,
 } from "./campo";
+import { GeradorM1, type ParedeGerada } from "./paredes";
 import type { Parte } from "./planejador";
 import type { Maquina, Padrao, Processo, TipoSuporte } from "./perfis";
 
@@ -619,7 +620,7 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
   // ---- paredes ----
   const wE = prim ? pr.lPrimeira : pr.lParedeExt, wI = prim ? pr.lPrimeira : pr.lParedeInt;
   const sE = espacamento(wE, h), sI = espacamento(wI, h);
-  const voltas = Math.max(1, aj.paredes);
+  const voltas = prim && pr.umaParedePrimeira ? 1 : Math.max(1, aj.paredes);
   const niveis: number[] = [sE / 2];
   for (let k = 1; k < voltas; k++) niveis.push(sE + (k - 0.5) * sI);
   const rot = rotular(dentro, g);
@@ -640,50 +641,113 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     const v = frac >= 1 ? pr.vBalancoTotal : pr.vBalanco[Math.min(3, Math.floor(frac * 4))];
     return v > 0 ? v : Infinity;
   };
+  // ---- M1: largura variável, vãos e uma parede só no topo (tudo desligado = clássico, sem custo extra) ----
+  const wSp = prim ? pr.lPrimeira : pr.lEsparso;
+  const nivel1 = sE / 2 + sE / 2 - pr.sobreposicao * wSp;
+  let umaParede: Uint8Array | null = null;
+  if (pr.umaParedeTopo && !prim && voltas > 1) {
+    // superfície de topo: dentro nesta camada e fora na de cima; mais estreita que o limite fica com todas as paredes
+    const acima = i + 1 < F.n ? expandir(F.bits[i + 1], N) : new Uint8Array(N);
+    const m = new Uint8Array(N);
+    let algum = false;
+    for (let q = 0; q < N; q++)
+      if (dentro[q] && !acima[q]) {
+        m[q] = 1;
+        algum = true;
+      }
+    if (algum && pr.umaParedeTopoLimite > 0) {
+      const r = Math.max(1, Math.round(pr.umaParedeTopoLimite / 2 / g.c)), aux = new Uint8Array(N), fora = new Uint8Array(N), er = new Uint8Array(N);
+      for (let q = 0; q < N; q++) fora[q] = m[q] ? 0 : 1;
+      dilatar(fora, g, r, er, aux);
+      for (let q = 0; q < N; q++) er[q] = er[q] ? 0 : 1;
+      dilatar(er, g, r, m, aux);
+      for (let q = 0; q < N; q++) if (!dentro[q]) m[q] = 0;
+    }
+    if (algum) umaParede = m;
+  }
+  const variavel = pr.geradorParedes === "larguraVariavel";
+  const m1 = variavel || pr.preenchimentoVaos || umaParede
+    ? new GeradorM1(F.segs[i], F.segs[i].length / 4, g, {
+        variavel, vaos: pr.preenchimentoVaos, niveis: niveis.slice(0, voltas), umaParede,
+        p: { sE, sI, voltas, sMin: Math.max(0.05, espacamento(pr.geradorLarguraMinima * 0.4, h)), sMax: 2 * sI, detMin: pr.geradorDetalheMinimo * 0.4, distrib: pr.geradorParedesTransicao },
+        cosTrans: Math.cos((pr.geradorAnguloTransicao * Math.PI) / 180), filtro: pr.geradorFiltro,
+        vaoMin: Math.max(0.05, pr.geradorDetalheMinimo * 0.4), vaoMax: espacamento(prim ? pr.lPrimeira : pr.lSolido, h),
+      })
+    : null;
+  const vaosPorIlha: Trecho[][] = Array.from({ length: rot.n + 1 }, () => []);
+  /** largura do filete para a cobertura `s` (inverso de `espacamento`) */
+  const larguraDe = (s: number) => s + h * (1 - Math.PI / 4);
+  const emitirParede = (pts: Float64Array, fechado: boolean, w: number, ext: boolean, Llaco: number, destino: Trecho[], parte: Parte = ext ? "paredeExt" : "paredeInt") => {
+    let vSeg: Float32Array | undefined;
+    if (abaixo && !prim && pr.vBalanco.some((v) => v > 0)) {
+      // subdivide em passos de 1 mm e mede o balanço em cada ponto
+      const np = pts.length / 2;
+      const novo: number[] = [];
+      for (let a = 0; a < (fechado ? np : np - 1); a++) {
+        const b = (a + 1) % np;
+        const ax = pts[a * 2], ay = pts[a * 2 + 1], bx = pts[b * 2], by = pts[b * 2 + 1];
+        const m = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
+        for (let s = 0; s < m; s++) novo.push(ax + ((bx - ax) * s) / m, ay + ((by - ay) * s) / m);
+      }
+      if (!fechado) novo.push(pts[np * 2 - 2], pts[np * 2 - 1]);
+      const nn = novo.length / 2;
+      const fr = new Float32Array(nn);
+      let algum = false;
+      for (let a = 0; a < nn; a++) {
+        const d = amostrar(abaixo, g, novo[a * 2], novo[a * 2 + 1]);
+        fr[a] = (w / 2 - d) / w;
+        if (fr[a] >= 0.1) algum = true;
+      }
+      if (algum) {
+        pts = Float64Array.from(novo);
+        vSeg = new Float32Array(nn);
+        for (let a = 0; a < nn; a++) vSeg[a] = Math.min(velBalanco(fr[a]), velBalanco(fr[(a + 1) % nn]));
+      }
+    }
+    let v = parte === "vaos" ? pr.vVaos : prim ? pr.vPrimeira : ext ? pr.vParedeExt : pr.vParedeInt;
+    if (parte !== "vaos" && pr.limitePerimetroPequeno > 0 && Llaco < pr.limitePerimetroPequeno) v = Math.min(v, pr.vPerimetroPequeno);
+    const a = parte === "vaos" ? (prim ? pr.aPrimeira : pr.aSolido) : prim ? pr.aPrimeira : ext ? pr.aParedeExt : pr.aParedeInt;
+    const j = jj(parte === "vaos" ? (prim ? pr.jPrimeira : pr.jPreench) : prim ? pr.jPrimeira : ext ? pr.jParedeExt : pr.jParedeInt);
+    destino.push({ pts, fechado, parte, w, fluxo: 1, v: vol(v, w, 1), vSeg, a, j });
+  };
+  const gerados = (lista: ParedeGerada[], Llaco: (r: ParedeGerada) => number) => {
+    for (const r of lista) {
+      const ilha = ilhaDe(r.pts[0], r.pts[1]);
+      const vao = r.tipo === "vao";
+      emitirParede(r.pts, r.fechado, larguraDe(r.s), r.externa, Llaco(r), vao ? vaosPorIlha[ilha] : porIlha[ilha], vao ? "vaos" : undefined);
+    }
+  };
+  // filetes do meio (o mais de dentro) e vãos, pela sonda: curva de nível rasa que existe até nas partes finas
+  if (m1 && (variavel || pr.preenchimentoVaos)) {
+    const nivelSonda = Math.max(0.02, Math.min(sE / 2, (pr.geradorDetalheMinimo * 0.4) / 2 * 0.9));
+    gerados(m1.centros(contornos(campo, g, nivelSonda), nivelSonda), (r) => (r.fechado ? comprimento(r.pts, true) : Infinity));
+  }
   for (let k = voltas - 1; k >= 0; k--) {
     const ext = k === 0;
     const w = ext ? wE : wI;
     const lacos = contornos(campo, g, niveis[k]);
     if (lacos.length) ultimoNivel = Math.max(ultimoNivel, k);
     for (const l of lacos) {
-      if (comprimento(l.pts, true) < 3 * w) continue;
-      let pts = l.pts;
-      let vSeg: Float32Array | undefined;
-      if (abaixo && !prim && pr.vBalanco.some((v) => v > 0)) {
-        // subdivide em passos de 1 mm e mede o balanço em cada ponto
-        const np = pts.length / 2;
-        const novo: number[] = [];
-        for (let a = 0; a < np; a++) {
-          const b = (a + 1) % np;
-          const ax = pts[a * 2], ay = pts[a * 2 + 1], bx = pts[b * 2], by = pts[b * 2 + 1];
-          const m = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
-          for (let s = 0; s < m; s++) novo.push(ax + ((bx - ax) * s) / m, ay + ((by - ay) * s) / m);
-        }
-        const nn = novo.length / 2;
-        const fr = new Float32Array(nn);
-        let algum = false;
-        for (let a = 0; a < nn; a++) {
-          const d = amostrar(abaixo, g, novo[a * 2], novo[a * 2 + 1]);
-          fr[a] = (w / 2 - d) / w;
-          if (fr[a] >= 0.1) algum = true;
-        }
-        if (algum) {
-          pts = Float64Array.from(novo);
-          vSeg = new Float32Array(nn);
-          for (let a = 0; a < nn; a++) vSeg[a] = Math.min(velBalanco(fr[a]), velBalanco(fr[(a + 1) % nn]));
-        }
+      const L = comprimento(l.pts, true);
+      if (L < 3 * w) continue;
+      const partes = m1 ? m1.laco(l.pts, k) : null;
+      if (!partes) {
+        emitirParede(l.pts, true, w, ext, L, porIlha[ilhaDe(l.pts[0], l.pts[1])]);
+        continue;
       }
-      const v = prim ? pr.vPrimeira : ext ? pr.vParedeExt : pr.vParedeInt;
-      porIlha[ilhaDe(pts[0], pts[1])].push({
-        pts, fechado: true, parte: ext ? "paredeExt" : "paredeInt", w, fluxo: 1, v: vol(v, w, 1), vSeg,
-        a: prim ? pr.aPrimeira : ext ? pr.aParedeExt : pr.aParedeInt, j: jj(prim ? pr.jPrimeira : ext ? pr.jParedeExt : pr.jParedeInt),
-      });
+      for (const r of partes) emitirParede(r.pts, r.fechado, larguraDe(r.s), ext, L, porIlha[ilhaDe(r.pts[0], r.pts[1])]);
     }
   }
 
   // ---- preenchimento ----
-  const wSp = prim ? pr.lPrimeira : pr.lEsparso;
   const nivelP = ultimoNivel < 0 ? Infinity : niveis[voltas - 1] + (voltas > 1 ? sI : sE) / 2 - pr.sobreposicao * wSp;
+  // uma parede só no topo: ali o preenchimento começa logo depois da parede externa (campo deslocado nessas células)
+  let campoP = campo;
+  if (umaParede && nivelP < Infinity && nivelP > nivel1) {
+    campoP = Float32Array.from(campo);
+    const dd = nivelP - nivel1;
+    for (let q = 0; q < N; q++) if (umaParede[q]) campoP[q] += dd;
+  }
   // classes por célula pelas camadas vizinhas (palavras de 32 bits)
   const topoN = aj.topo > 0 ? Math.max(aj.topo, Math.ceil(pr.topoMm / aj.altura - 1e-6)) : 0;
   const fundoN = aj.fundo > 0 ? Math.max(aj.fundo, Math.ceil(pr.fundoMm / aj.altura - 1e-6)) : 0;
@@ -712,9 +776,11 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
         classe[q] = cl;
       }
     }
+    // vãos preenchidos ficam fora do preenchimento
+    if (m1) for (let q = 0; q < N; q++) if (m1.semPreench[q]) classe[q] = 0;
     // área pequena de esparso vira sólido
     const mE = new Uint8Array(N);
-    for (let q = 0; q < N; q++) mE[q] = classe[q] === CLASSE.esparso && campo[q] >= nivelP ? 1 : 0;
+    for (let q = 0; q < N; q++) mE[q] = classe[q] === CLASSE.esparso && campoP[q] >= nivelP ? 1 : 0;
     const comp = rotular(mE, g);
     const minCel = pr.areaMinEsparso / (g.c * g.c);
     for (let q = 0; q < N; q++) {
@@ -723,7 +789,7 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     }
     // esparso a 100% vira sólido (como no perfil)
     if (!prim && aj.preenchimento >= 0.999) for (let q = 0; q < N; q++) if (classe[q] === CLASSE.esparso) classe[q] = CLASSE.solido;
-    for (let q = 0; q < N; q++) if (classe[q] && campo[q] >= nivelP) presentes.add(classe[q]);
+    for (let q = 0; q < N; q++) if (classe[q] && campoP[q] >= nivelP) presentes.add(classe[q]);
   }
   // caixa da camada
   let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
@@ -799,7 +865,7 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     const p = preenchimentos[pi];
     if (!presentes.has(p.cl) || nivelP === Infinity) continue;
     const recortes: number[][] = [];
-    for (const cv of p.curvas()) recortar(cv, g, campo, nivelP, classe, p.cl, recortes);
+    for (const cv of p.curvas()) recortar(cv, g, campoP, nivelP, classe, p.cl, recortes);
     for (const r of recortes) {
       if (comprimento(r, false) < p.w) continue;
       const chave = `${ilhaDe(r[0], r[1])}:${pi}`;
@@ -817,8 +883,10 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
       const linhas = linhasPorIlha.get(`${ilha}:${pi}`);
       if (!linhas) continue;
       const p = preenchimentos[pi];
-      [px, py] = ligar(linhas, px, py, p.liga, campo, g, nivelP, p.w, { parte: p.parte, w: p.w, fluxo: p.fluxo, v: vol(p.v, p.w, p.fluxo), a: p.a, j: p.j }, trechos);
+      [px, py] = ligar(linhas, px, py, p.liga, campoP, g, nivelP, p.w, { parte: p.parte, w: p.w, fluxo: p.fluxo, v: vol(p.v, p.w, p.fluxo), a: p.a, j: p.j }, trechos);
     }
+    // vãos da ilha depois do preenchimento
+    trechos.push(...vaosPorIlha[ilha]);
   }
 
   // ---- suporte ----

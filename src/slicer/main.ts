@@ -99,7 +99,7 @@ vista.aoEscolher = (id) => {
 };
 
 const CORES: Record<Parte, string> = {
-  paredeExt: "#2f7fd0", paredeInt: "#6aa7e3", solido: "#e08a2e", topo: "#d0582f", ponte: "#a35d9e",
+  paredeExt: "#2f7fd0", paredeInt: "#6aa7e3", vaos: "#1f9e5a", solido: "#e08a2e", topo: "#d0582f", ponte: "#a35d9e",
   esparso: "#e2b13c", suporte: "#8a96a3", interface: "#5e6b78", borda: "#4bb39b", troca: "#c0507a", torre: "#8f6fd0", deslocamento: "#b9c2cc", resfriamento: "#38424d",
 };
 const CORES_HEX = PARTES.map((p) => parseInt(CORES[p].slice(1), 16));

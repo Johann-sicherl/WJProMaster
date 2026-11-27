@@ -125,15 +125,20 @@ grupo("qualidade", "Passar ferro", NOVO, "naoAplicado", "avancado", [
   ["ferroVelocidade", "Velocidade", "numero", "mm/s", 1, 500, { padrao: 15, visivelSe: "ferroTipo!=nenhum" }],
   ["ferroAngulo", "Ângulo", "numero", "°", 0, 360, { padrao: 0, visivelSe: "ferroTipo!=nenhum" }],
 ]);
-grupo("qualidade", "Gerador de paredes", NOVO, "naoAplicado", "especialista", [
-  ["geradorParedes", "Gerador de paredes", "lista", "", undefined, undefined, { padrao: "classico", nivel: "avancado", opcoes: lista(["classico", "Clássico"], ["larguraVariavel", "Largura variável"]) }],
-  ["geradorAnguloTransicao", "Ângulo de transição", "numero", "°", 1, 59, { padrao: 10, visivelSe: "geradorParedes=larguraVariavel" }],
-  ["geradorFiltro", "Filtro de transição", "numero", "mm", 0, 5, { padrao: 1, visivelSe: "geradorParedes=larguraVariavel" }],
-  ["geradorParedesTransicao", "Paredes na transição", "inteiro", "", 1, 10, { padrao: 3, visivelSe: "geradorParedes=larguraVariavel" }],
-  ["geradorLarguraMinima", "Largura mínima de parede", "percentual", "%", 0, 2, { padrao: 0.85, visivelSe: "geradorParedes=larguraVariavel" }],
-  ["geradorDetalheMinimo", "Tamanho mínimo de detalhe", "percentual", "%", 0, 2, { padrao: 0.25, visivelSe: "geradorParedes=larguraVariavel" }],
+grupo("qualidade", "Gerador de paredes", "processo", "motor", "especialista", [
+  ["geradorParedes", "Gerador de paredes", "lista", "", undefined, undefined, { nivel: "avancado", opcoes: lista(["classico", "Clássico"], ["larguraVariavel", "Largura variável"]) }],
+  ["geradorAnguloTransicao", "Ângulo de transição", "numero", "°", 1, 59, { visivelSe: "geradorParedes=larguraVariavel" }],
+  ["geradorFiltro", "Filtro de transição", "numero", "mm", 0, 5, { visivelSe: "geradorParedes=larguraVariavel" }],
+  ["geradorParedesTransicao", "Paredes na transição", "inteiro", "", 1, 10, { visivelSe: "geradorParedes=larguraVariavel" }],
+  ["geradorLarguraMinima", "Largura mínima de parede", "percentual", "%", 0, 2, { visivelSe: "geradorParedes=larguraVariavel" }],
+  ["geradorDetalheMinimo", "Tamanho mínimo de detalhe", "percentual", "%", 0, 2, { visivelSe: "geradorParedes=larguraVariavel" }],
 ]);
-grupo("qualidade", "Paredes e pontes", "processo", "motor", "avancado", [["fluxoPonte", "Fluxo de ponte", "numero", "", 0.5, 1.5]]);
+grupo("qualidade", "Paredes e pontes", "processo", "motor", "avancado", [
+  ["fluxoPonte", "Fluxo de ponte", "numero", "", 0.5, 1.5],
+  ["umaParedeTopo", "Só uma parede no topo", "booleano", "", undefined, undefined],
+  ["umaParedeTopoLimite", "Limite da parede única no topo", "numero", "mm", 0, 50, { visivelSe: "umaParedeTopo" }],
+  ["umaParedePrimeira", "Só uma parede na 1ª camada", "booleano", "", undefined, undefined, { nivel: "especialista" }],
+]);
 grupo("qualidade", "Paredes e pontes", NOVO, "naoAplicado", "especialista", [
   ["ordemParedes", "Ordem das paredes", "lista", "", undefined, undefined, { padrao: "internaExterna", nivel: "avancado", opcoes: lista(["internaExterna", "Interna e depois externa"], ["externaInterna", "Externa e depois interna"], ["internaExternaInterna", "Interna, externa, interna"]) }],
   ["pontesGrossas", "Pontes grossas", "booleano", "", undefined, undefined, { padrao: false }],
@@ -143,9 +148,6 @@ grupo("qualidade", "Paredes e pontes", NOVO, "naoAplicado", "especialista", [
   ["paredesExtrasBalanco", "Paredes extras em balanço", "booleano", "", undefined, undefined, { padrao: false }],
   ["inverterParImpar", "Inverter em camadas pares/ímpares", "booleano", "", undefined, undefined, { padrao: false }],
   ["inverterLimite", "Limite para inverter", "numero", "mm", 0, 50, { padrao: 0, visivelSe: "inverterParImpar" }],
-  ["umaParedeTopo", "Só uma parede no topo", "booleano", "", undefined, undefined, { padrao: false, nivel: "avancado" }],
-  ["umaParedeTopoLimite", "Limite da parede única no topo", "numero", "mm", 0, 50, { padrao: 0, visivelSe: "umaParedeTopo" }],
-  ["umaParedePrimeira", "Só uma parede na 1ª camada", "booleano", "", undefined, undefined, { padrao: false }],
   ["evitarCruzarParedes", "Evitar cruzar paredes", "booleano", "", undefined, undefined, { padrao: false, nivel: "avancado" }],
   ["evitarCruzarDesvio", "Desvio máximo para evitar cruzar", "numero", "mm", 0, 100, { padrao: 0, visivelSe: "evitarCruzarParedes" }],
 ]);
@@ -186,9 +188,9 @@ grupo("resistencia", "Preenchimento esparso", "processo", "motor", "simples", [
   ["preenchimento", "Densidade do preenchimento", "percentual", "%", 0, 1],
   ["padrao", "Padrão do preenchimento", "padrao", "", undefined, undefined, { opcoes: OPC_PADRAO }],
 ]);
-grupo("resistencia", "Preenchimento de vãos", NOVO, "naoAplicado", "avancado", [
-  ["preenchimentoVaos", "Preencher vãos", "booleano", "", undefined, undefined, { padrao: false }],
-  ["vVaos", "Velocidade do preenchimento de vãos", "numero", "mm/s", 1, 500, { padrao: 30, visivelSe: "preenchimentoVaos" }],
+grupo("resistencia", "Preenchimento de vãos", "processo", "motor", "avancado", [
+  ["preenchimentoVaos", "Preencher vãos", "booleano", "", undefined, undefined],
+  ["vVaos", "Velocidade do preenchimento de vãos", "numero", "mm/s", 1, 1000, { visivelSe: "preenchimentoVaos" }],
 ]);
 
 // ===== Velocidade =====
@@ -205,9 +207,9 @@ grupo("velocidade", "Outras camadas", "processo", "motor", "simples", [
   ["vSuporte", "Suporte", "numero", "mm/s", 1, 1000],
   ["vInterface", "Interface do suporte", "numero", "mm/s", 1, 1000],
 ]);
-grupo("velocidade", "Outras camadas", NOVO, "naoAplicado", "avancado", [
-  ["vPerimetroPequeno", "Perímetro pequeno", "numero", "mm/s", 1, 1000, { padrao: 50 }],
-  ["limitePerimetroPequeno", "Limite de perímetro pequeno", "numero", "mm", 0, 100, { padrao: 0 }],
+grupo("velocidade", "Outras camadas", "processo", "motor", "avancado", [
+  ["vPerimetroPequeno", "Perímetro pequeno", "numero", "mm/s", 1, 1000],
+  ["limitePerimetroPequeno", "Limite de perímetro pequeno (0 = desligado)", "numero", "mm", 0, 100],
 ]);
 grupo("velocidade", "Balanços e pontes", "processo", "motor", "avancado", [
   ["vBalanco.0", "Balanço até 25 % (0 = sem desacelerar)", "numero", "mm/s", 0, 1000],
