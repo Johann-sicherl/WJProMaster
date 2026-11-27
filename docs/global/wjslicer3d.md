@@ -196,6 +196,30 @@ estiver no bico.
   (cai fora da peça).
 Tudo entra no tempo (partes "Trocas de cor" e "Torre de purga") e no material de cada cor (g, m e R$).
 
+**Multimaterial completo (fatia X1, 27/11/2026; motor e dados — a tela é da L1/L2)**. Parâmetros no processo (aba
+Multimaterial e Suporte do esquema), todos com o padrão que deixa o resultado **idêntico** ao de antes:
+- **Filamento por função** (0 = como hoje; 1–4 = esse filamento): **parede** (externa e internas) e **sólido interno** (0 = a cor
+  pintada), **suporte** (corpo; a jangada ainda não existe) e **interface do suporte** (0 = o filamento que estiver no bico). O caminho
+  de cada função sai na cor escolhida; a camada continua impressa cor por cor, começando pela cor do bico e terminando numa cor da
+  camada de cima (a previsão conta a parede e o suporte/interface fixos). Ex.: parede na cor 2 e miolo na cor 1 = 1 troca por camada.
+- **Torre de purga**: largura (da impressora), **borda** da torre (voltas na 1ª camada), **posição automática** (como hoje) ou **X/Y**
+  do canto a partir da frente à esquerda da mesa (aviso, com a posição, se passar da borda ou encostar numa peça; arrastar na mesa é
+  da tela), **ângulo de rotação** (a área ocupada vira a diagonal), **volume de purga na torre** por troca (linhas de purga dentro do
+  anel, na cor que entra, com **espaçamento das linhas**, **espaço extra** e **fluxo extra**; se não couber, a torre **se alarga** e
+  avisa). Sempre estável: camadas até a última com troca. **Tipo de parede (nervura), cone de estabilização e distância máxima de
+  ponte** ficam guardados, ainda sem efeito (🔶, fatia X2).
+- **Purgar no preenchimento / nos objetos / no suporte**: parte da purga de cada troca sai dentro do preenchimento esparso, de tudo
+  o que a peça tem (objetos) ou do suporte **da cor que entra, naquela camada**; o aproveitado sai da purga desperdiçada (material e
+  tempo de purga). Limite físico: nunca mais do que esse volume na camada nem mais do que a purga. "Nos objetos" vale para todas as
+  peças (escolher a peça é da aba Objetos, O1: 🟡). Com purga no suporte, o suporte do bico sai logo depois da 1ª troca da camada.
+- O resultado ganha `purgaAproveitadaMm3`, `torrePurgaMm3`, `torreLado`, `torreOcupa` e `torrePosicao`; o material de cada cor
+  (g, m, R$) continua somando purga e torre e o orçamento recebe pelo mesmo caminho.
+Teste: `scripts/teste-multimaterial.ts` (Node): 20 casos (cubo 20 mm sem pintura, 2 e 4 cores, só topo, só fundo, laterais; peça
+com balanço e suporte normal/árvore; P1S e Kobra 3) idênticos à linha de base de antes da X1; parede na cor 2 (100 trocas em 100
+camadas, cor 2 = paredes + 50 purgas); suporte na cor 3 e interface na cor 4 (trocas contadas à mão pelas camadas, material por cor);
+torre (borda, giro, posição na mesa/fora dela/sobre a peça, volume, alargamento, fluxo extra, desligada); purga no preenchimento =
+esparso da camada da troca (11,9 mm³ no cubo), nos objetos, no suporte e nunca acima da purga; projeto `.wjslc` com os campos; sem NaN.
+
 **Cores e filamentos** (cartão, no projeto): 4 filamentos com **cor, nome, material e R$/kg** (o 1º usa o
 material e o preço de "Impressora e material"); a densidade e o preço de cada cor entram no orçamento.
 Estrutura pronta para a **biblioteca de custos (S3)**. Fluxo e vazão do bico seguem o material da cor 1.
@@ -292,6 +316,9 @@ entram com lucro 0 % (o WJERP não tem esse dado).
   várias peças, prévia das camadas, tempo por tipo de caminho.
 - **S2.1 (16/11/2026, entregue)**: pintura de até 4 cores, trocas/purga/torre no orçamento, filamentos editáveis e projeto `.wjslc` no cofre.
 - **S3 (16/11/2026, entregue)**: biblioteca de custos no cofre, orçamento com a conta da MATRIZ_V01, proposta comercial no WJWrite (PDF e DOCX).
+- **X1 (27/11/2026, entregue; sem tela)**: multimaterial no motor — filamento por função, torre de purga completa (borda, posição,
+  giro, volume de purga, linhas, alargamento) e purga aproveitada no preenchimento/objetos/suporte (§5). Falta: a tela (L1/L2), arrastar a
+  torre na mesa (T1), nervura/cone/distância de ponte e a matriz de purga por par de cores (X2).
 - Pendente do Johann: valores de referência medidos (tabela do teste) e uma impressão multicolorida medida (purga e tempo da troca).
 - Possíveis (só se ele pedir): outros bicos (0,2/0,6/0,8), borda automática, arrastar a peça na mesa à mão.
 - **Layout de fatiador completo (pedido de 26/11/2026)**: abas Preparar/Prévia/Bancada, barra lateral Impressora/Filamento/Processo com

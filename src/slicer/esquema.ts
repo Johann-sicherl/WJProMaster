@@ -269,9 +269,9 @@ grupo("suporte", "Jangada", NOVO, "naoAplicado", "avancado", [
   ["jangadaDensidadePrimeira", "Densidade da 1ª camada", "percentual", "%", 0, 1, { padrao: 1, visivelSe: "jangadaCamadas" }],
   ["jangadaExpansaoPrimeira", "Expansão da 1ª camada", "numero", "mm", 0, 20, { padrao: 0, visivelSe: "jangadaCamadas" }],
 ]);
-grupo("suporte", "Filamento do suporte", NOVO, "naoAplicado", "avancado", [
-  ["filamentoSuporte", "Filamento da base (0 = o do objeto)", "inteiro", "", 0, 4, { padrao: 0 }],
-  ["filamentoInterface", "Filamento da interface (0 = o do objeto)", "inteiro", "", 0, 4, { padrao: 0 }],
+grupo("suporte", "Filamento do suporte", "processo", "motor", "avancado", [
+  ["filamentoSuporte", "Filamento da base e da jangada (0 = o que estiver no bico)", "inteiro", "", 0, 4, { nota: "Jangada ainda não existe no motor (fatia S1): vale para o corpo do suporte." }],
+  ["filamentoInterface", "Filamento da interface (0 = o que estiver no bico)", "inteiro", "", 0, 4],
 ]);
 grupo("suporte", "Avançado", "processo", "motor", "especialista", [
   ["suporteDistZ", "Distância Z do topo", "numero", "mm", 0, 2, { visivelSe: "suporte!=nenhum" }],
@@ -307,24 +307,31 @@ grupo("suporte", "Árvore", NOVO, "naoAplicado", "especialista", [
 ]);
 
 // ===== Multimaterial =====
-grupo("multimaterial", "Filamento por função", NOVO, "naoAplicado", "avancado", [
-  ["filamentoParede", "Filamento da parede (0 = o do objeto)", "inteiro", "", 0, 4, { padrao: 0 }],
-  ["filamentoSolidoInterno", "Filamento do sólido interno (0 = o do objeto)", "inteiro", "", 0, 4, { padrao: 0 }],
+// X1 (27/11/2026): filamento por função, torre completa e purga aproveitada no motor (fatiar.ts).
+grupo("multimaterial", "Filamento por função", "processo", "motor", "avancado", [
+  ["filamentoParede", "Filamento da parede (0 = a cor pintada)", "inteiro", "", 0, 4],
+  ["filamentoSolidoInterno", "Filamento do sólido interno (0 = a cor pintada)", "inteiro", "", 0, 4],
 ]);
-grupo("multimaterial", "Torre de purga", NOVO, "naoAplicado", "avancado", [
-  ["torreBorda", "Largura da borda da torre", "numero", "mm", 0, 20, { padrao: 0 }],
-  ["torreX", "Posição X da torre (arrastar na mesa)", "numero", "mm", 0, 1000, { padrao: 0 }],
-  ["torreY", "Posição Y da torre", "numero", "mm", 0, 1000, { padrao: 0 }],
-  ["purgarNoPreenchimento", "Purgar dentro do preenchimento", "booleano", "", undefined, undefined, { padrao: false }],
-  ["purgarNosObjetos", "Purgar dentro dos objetos", "booleano", "", undefined, undefined, { padrao: false }],
-  ["purgarNoSuporte", "Purgar dentro do suporte", "booleano", "", undefined, undefined, { padrao: false }],
-  ["torreAngulo", "Ângulo de rotação da torre", "numero", "°", 0, 360, { padrao: 0, nivel: "especialista" }],
-  ["torreDistPonte", "Distância máxima de ponte", "numero", "mm", 0, 100, { padrao: 0, nivel: "especialista" }],
-  ["torreEspacoExtra", "Espaçamento extra", "numero", "mm", 0, 20, { padrao: 0, nivel: "especialista" }],
-  ["torreAnguloCone", "Ângulo do cone de estabilização", "numero", "°", 0, 90, { padrao: 0, nivel: "especialista" }],
-  ["torreEspacoLinhas", "Espaçamento das linhas de purga", "numero", "mm", 0, 20, { padrao: 0, nivel: "especialista" }],
-  ["torreFluxoExtra", "Fluxo extra da purga", "numero", "", 0.5, 2, { padrao: 1, nivel: "especialista" }],
-  ["torreParede", "Tipo de parede da torre", "lista", "", undefined, undefined, { padrao: "reta", nivel: "especialista", opcoes: lista(["reta", "Reta"], ["nervura", "Nervura"]) }],
+grupo("multimaterial", "Torre de purga", "processo", "motor", "avancado", [
+  ["torreBorda", "Largura da borda da torre", "numero", "mm", 0, 20],
+  ["torreAuto", "Posição automática (ao lado das peças)", "booleano", "", undefined, undefined],
+  ["torreX", "Posição X da torre (canto, a partir da frente à esquerda)", "numero", "mm", 0, 1000, { visivelSe: "torreAuto=false", nota: "Arrastar a torre na mesa fica para a tela (L1b/T1)." }],
+  ["torreY", "Posição Y da torre", "numero", "mm", 0, 1000, { visivelSe: "torreAuto=false" }],
+  ["torreVolume", "Volume de purga na torre (por troca)", "numero", "mm³", 0, 1000],
+  ["purgarNoPreenchimento", "Purgar dentro do preenchimento", "booleano", "", undefined, undefined],
+  ["purgarNoSuporte", "Purgar dentro do suporte", "booleano", "", undefined, undefined],
+  ["torreAngulo", "Ângulo de rotação da torre", "numero", "°", 0, 360, { nivel: "especialista" }],
+  ["torreEspacoExtra", "Espaçamento extra das linhas de purga", "numero", "mm", 0, 20, { nivel: "especialista" }],
+  ["torreEspacoLinhas", "Espaçamento das linhas de purga (0 = encostadas)", "numero", "mm", 0, 20, { nivel: "especialista" }],
+  ["torreFluxoExtra", "Fluxo extra da purga", "numero", "", 0.5, 2, { nivel: "especialista" }],
+]);
+grupo("multimaterial", "Torre de purga", "processo", "parcial", "avancado", [
+  ["purgarNosObjetos", "Purgar dentro dos objetos", "booleano", "", undefined, undefined, { nota: "Vale para todas as peças da mesa; escolher a peça é da aba Objetos (fatia O1)." }],
+]);
+grupo("multimaterial", "Torre de purga", NOVO, "naoAplicado", "especialista", [
+  ["torreDistPonte", "Distância máxima de ponte", "numero", "mm", 0, 100, { padrao: 0, nota: "Só muda o preenchimento esparso da torre, que o motor ainda não desenha (a torre tem o anel e as linhas de purga)." }],
+  ["torreAnguloCone", "Ângulo do cone de estabilização", "numero", "°", 0, 90, { padrao: 0, nota: "Guardado; o cone ainda não entra no material (fatia X2)." }],
+  ["torreParede", "Tipo de parede da torre", "lista", "", undefined, undefined, { padrao: "reta", nota: "Nervura guardada; o motor imprime a parede reta (fatia X2).", opcoes: lista(["reta", "Reta"], ["nervura", "Nervura"]) }],
 ]);
 grupo("multimaterial", "Matriz de purga", NOVO, "naoAplicado", "avancado", [
   ["matrizPurgaMultiplicador", "Multiplicador da matriz", "numero", "", 0, 10, { padrao: 1 }],

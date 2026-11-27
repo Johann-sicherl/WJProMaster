@@ -3,7 +3,7 @@
 
 import type { NomeIcone } from "./icones";
 
-export type IdAba = "features" | "sketch" | "chapa" | "avaliar";
+export type IdAba = "features" | "sketch" | "chapa" | "avaliar" | "toolbox";
 
 export interface Comando {
   id: string;
@@ -21,6 +21,8 @@ export interface Comando {
   itens?: Comando[];
   /** Ainda não implementado: aparece com o selo "em breve". */
   emBreve?: boolean;
+  /** Só funciona na Montagem: na Peça fica desabilitado, com dica (aba Toolbox). */
+  soMontagem?: boolean;
 }
 
 export interface Aba {
@@ -38,7 +40,6 @@ export const ABAS: Aba[] = [
       { id: "revolucao", rotulo: "Revolução", icone: "revolucao", dica: "Ressalto girando um perfil em torno de um eixo", grupo: 0 },
       { id: "varredura", rotulo: "Varredura", icone: "varredura", dica: "Leva um perfil ao longo de uma trajetória (tubos, cabos, canais)", grupo: 0 },
       { id: "loft", rotulo: "Loft", icone: "loft", dica: "Transição suave entre dois ou mais perfis", grupo: 0 },
-      { id: "engrenagem", rotulo: "Engrenagem", icone: "engrenagem", dica: "Engrenagem de perfil evolvente: retas, helicoidais, cremalheira, cônicas, sem-fim e coroa, internas", grupo: 0 },
       { id: "corte", rotulo: "Corte extrudado", icone: "corte", dica: "Remove material extrudando um perfil", grupo: 1 },
       {
         id: "grupo-furo", rotulo: "Furo assistido", icone: "furo", dica: "Furo assistido e rosca", grupo: 1,
@@ -293,6 +294,14 @@ export const ABAS: Aba[] = [
       { id: "zebra", rotulo: "Zebra", icone: "zebra", dica: "Listras zebra para avaliar continuidade entre faces", grupo: 2 },
       { id: "curvatura", rotulo: "Curvatura", icone: "curvatura", dica: "Faces coloridas pela curvatura", grupo: 2 },
       { id: "desempenho", rotulo: "Desempenho", icone: "desempenho", dica: "Tempo de reconstrução de cada recurso", grupo: 3 },
+    ],
+  },
+  {
+    id: "toolbox",
+    rotulo: "Toolbox",
+    comandos: [
+      { id: "biblioteca", rotulo: "Biblioteca de componentes", icone: "biblioteca", dica: "Parafusos, porcas, arruelas, rebites e pinos ISO/DIN: insere e encaixa nos furos (só na Montagem)", grupo: 0, soMontagem: true },
+      { id: "engrenagem", rotulo: "Engrenagem", icone: "engrenagem", dica: "Engrenagem de perfil evolvente: retas, helicoidais, cremalheira, cônicas, sem-fim e coroa, internas", grupo: 0 },
     ],
   },
 ];

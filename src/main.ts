@@ -1,3 +1,4 @@
+import { tornarFaixaRolavel } from "./comum/faixaRolavel";
 import { atualizarExternas } from "./esboco/externas";
 import { abrirCalibracao, lerPxPorMm, pxPorMmAutomatico } from "./esboco/escalaReal";
 import { abrirEditorCor } from "./ui/editorCor";
@@ -577,6 +578,7 @@ function renderizarAbas() {
   }
 
   const faixa = $("faixa-comandos");
+  tornarFaixaRolavel(faixa);
   faixa.innerHTML = "";
   const aba = ABAS.find((a) => a.id === prefs.aba) ?? ABAS[0];
   let grupo = aba.comandos[0]?.grupo;
@@ -631,9 +633,9 @@ function botaoComando(c: Comando, aba: IdAba): HTMLButtonElement {
   b.title = c.fase ? `${c.dica} — chega na Fase ${c.fase}` : c.emBreve ? `${c.dica} — em breve` : c.dica;
   const sairDoEsboco = aba === "sketch" && c.id === "esboco" && editor;
   b.innerHTML = sairDoEsboco ? `${ICONES.concluir}<span>Sair do esboço</span>` : `${ICONES[c.icone]}<span>${c.rotulo}</span>`;
-  if (c.fase || c.emBreve) {
+  if (c.fase || c.emBreve || c.soMontagem) {
     b.setAttribute("aria-disabled", "true");
-    b.insertAdjacentHTML("beforeend", `<em class="selo">${c.fase ? `F${c.fase}` : "breve"}</em>`);
+    b.insertAdjacentHTML("beforeend", `<em class="selo">${c.fase ? `F${c.fase}` : c.soMontagem ? "Montagem" : "breve"}</em>`);
   }
   if (aba === "sketch" && editor) {
     const [ferr, variante] = c.id.split(":");
@@ -660,6 +662,10 @@ function executarComando(c: Comando, aba: IdAba, botao: HTMLElement) {
   }
   if (c.emBreve) {
     avisar(`${c.rotulo}: em breve.`);
+    return;
+  }
+  if (c.soMontagem) {
+    avisar(`${c.rotulo}: disponível na Montagem (os itens são inseridos como componentes e encaixados nos furos). Nesta Peça, use Engrenagem.`, 6000);
     return;
   }
   esconderBarraContexto();

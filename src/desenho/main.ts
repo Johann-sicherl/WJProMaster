@@ -10,6 +10,7 @@ import { abrirEmNovaJanela, gravarNaJanela, lerDaJanela, podarJanelas } from "..
 import { abrirConfiguracoesCad, calibrarTelaCad, type IdSecao } from "../ui/configuracoesCad";
 import { aoMudarPrefsCad, gravarPrefsCad, ampliacaoDaRoda, lerPrefsCad, type PrefsCad } from "../ui/preferenciasCad";
 import "../style.css";
+import { tornarFaixaRolavel } from "../comum/faixaRolavel";
 import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
 import type { Corte, Projecao } from "../kernel/projecao";
@@ -1171,6 +1172,7 @@ function renderizarAbas() {
     abas.append(b);
   }
   const faixa = $("faixa-comandos");
+  tornarFaixaRolavel(faixa);
   faixa.innerHTML = "";
   const aba = ABAS_D.find((a) => a.id === abaAtiva)!;
   let grupo = aba.comandos[0]?.grupo;

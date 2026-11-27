@@ -71,6 +71,7 @@ const conferir = (ok, texto) => {
     }
   };
   // 1) comando e árvore
+  await p.locator("#abas button", { hasText: "Toolbox" }).first().tap();
   await p.locator("button.cmd", { hasText: "Biblioteca de componentes" }).first().tap();
   await p.waitForSelector(".bib-grupo", { timeout: 5000 });
   const grupos = await p.locator(".bib-grupo").allTextContents();
