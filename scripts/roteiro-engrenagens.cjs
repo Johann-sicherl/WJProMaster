@@ -54,6 +54,7 @@ const conferir = (ok, texto) => {
   };
 
   // 1) aba Engrenagens e valores calculados
+  await p.locator("#abas button", { hasText: "Toolbox" }).first().tap();
   await p.locator("button.cmd", { hasText: "Biblioteca de componentes" }).first().tap();
   await p.waitForSelector(".bib-abas", { timeout: 5000 });
   await p.locator(".bib-abas button", { hasText: "Engrenagens" }).tap();

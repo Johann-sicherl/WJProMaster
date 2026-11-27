@@ -108,7 +108,7 @@ peça; a massa é volume do kernel × densidade do material.
 # Engrenagens (pedido C3, 25/11/2026)
 
 > Mesmo painel: Montagem → **Biblioteca de componentes** → aba **Engrenagens** (a outra aba é **Fixação**). Na Peça há
-> também o comando **Features → Engrenagem**. O nome da biblioteca do CAD de referência nunca aparece.
+> também o comando **Toolbox → Engrenagem** (27/11/2026, C5: a aba Toolbox, depois de Avaliar, reúne os itens de biblioteca; saiu de Features). O nome da biblioteca do CAD de referência nunca aparece.
 
 ## Estado (25/11/2026)
 
@@ -188,5 +188,10 @@ em torno de +Y. Material de fábrica: Aço 1045.
 - `scripts/teste-engrenagens.ts` (no `pnpm teste`): diâmetros pela norma, flanco do kernel sobre a evolvente, **espessura no
   primitivo = π·m/2** (x = 0, 0,3, −0,2; helicoidal transversal, interna, coroa e cônica) medida no sólido, volume = perfil × largura,
   sentido da hélice, chaveta, pares (distância, razão, compatibilidade) e engrenamento de 12 pares no kernel.
+- **Aba Toolbox** (27/11/2026, pedido C5; Peça e Montagem, não existe no Desenho): ordem Features · Sketch · Sheet Metal · Avaliar · **Toolbox**.
+  Na Montagem: **Biblioteca de componentes** (saiu da aba Montagem; abre na aba Fixação) e **Engrenagem** (abre a mesma Biblioteca já na aba
+  Engrenagens). Na Peça: **Engrenagem** (cria o recurso, como antes em Features) e **Biblioteca de componentes** desabilitada com o selo
+  "Montagem" e aviso ao tocar. Novos itens de biblioteca entram como mais um comando da aba (`src/comandos.ts` e `ABAS_M` da Montagem).
+- `scripts/roteiro-toolbox.cjs`: faixa rolável (computador 1280×720 e 1024×600 com mouse/roda, tablet com toque, celular) e a aba Toolbox.
 - `scripts/roteiro-engrenagens.cjs` (tablet 1280×800): aba Engrenagens, valores calculados, erro claro, par reto inserido engrenado
   e travado, cofre CAD › Biblioteca › Engrenagens, helicoidais engrenadas pelas selecionadas, peça editada pelo recurso na Peça.

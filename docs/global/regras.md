@@ -278,7 +278,10 @@
   (atalho para Cópias do cofre). Vale na hora, guardado por aparelho, e as outras janelas abertas seguem a
   mudança. O item antigo "Ferramentas → Dispositivo" saiu (a janela de dispositivo só aparece na primeira
   vez). A ⚙ da página inicial continua como está.
-- Só quatro áreas de comando: **Features, Sketch, Sheet Metal e Avaliar**. Nada de superfícies, soldas,
+- **Toolbox e faixa rolável** (27/11/2026, pedido C5): nova aba **Toolbox** depois de Avaliar (Peça e Montagem) com os itens de
+  biblioteca (Biblioteca de componentes e Engrenagem; saíram de onde estavam); a faixa de comandos de toda aba e de todas as faces rola
+  com barra visível embaixo, roda do mouse, arrastar e setas ‹ › (`src/comum/faixaRolavel.ts`).
+- Áreas de comando: **Features, Sketch, Sheet Metal, Avaliar e Toolbox**. Nada de superfícies, soldas,
   moldes, simulação (o WJFlow é app separado).
 - Especificação campo a campo e status em `docs/funcional/` (consultar antes de implementar; atualizar
   ✅/🟡/fase ao entregar). Lacunas priorizadas em `docs/funcional/referencia-introducao.md`.

@@ -12,6 +12,7 @@ import { aoMudarPrefsCad, gravarPrefsCad, type PrefsCad } from "../ui/preferenci
 import "../style.css";
 import { abrirEditorCor } from "../ui/editorCor";
 import { indiceDoCorpoRef, trechosDeCor, type TrechoCor } from "../aparencia";
+import { tornarFaixaRolavel } from "../comum/faixaRolavel";
 import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
 import { montagemDoStep } from "./step";
@@ -795,7 +796,6 @@ const ABAS_M: { id: string; rotulo: string; comandos: Cmd[] }[] = [
   {
     id: "montagem", rotulo: "Montagem", comandos: [
       { id: "inserir", rotulo: "Inserir componentes", icone: "inserirComponente", dica: "Insere peças do cofre ou do aparelho (I)", grupo: 0 },
-      { id: "biblioteca", rotulo: "Biblioteca de componentes", icone: "biblioteca", dica: "Parafusos, porcas, arruelas, rebites e pinos ISO/DIN: escolha e arraste até um furo (encaixa sozinho)", grupo: 0 },
       { id: "posicionar", rotulo: "Posicionar", icone: "posicionar", dica: "Posicionamentos: coincidente, paralelo, perpendicular, tangente, concêntrico, travar, distância, ângulo (M)", grupo: 0 },
       { id: "mover", rotulo: "Mover componente", icone: "moverComponente", dica: "Arrastar livre, por ΔXYZ ou para uma posição XYZ", grupo: 1 },
       { id: "girar", rotulo: "Girar componente", icone: "girarComponente", dica: "Arrastar livre ou por ângulos em X, Y e Z", grupo: 1 },
@@ -814,6 +814,12 @@ const ABAS_M: { id: string; rotulo: string; comandos: Cmd[] }[] = [
       { id: "interferencia", rotulo: "Interferência", icone: "interferencia", dica: "Detecta volumes de interferência entre componentes", grupo: 0 },
       { id: "massa", rotulo: "Propriedades de massa", icone: "massa", dica: "Massa, volume e centro de massa da montagem", grupo: 0 },
       { id: "medir", rotulo: "Medir", icone: "medir", dica: "Distâncias e ângulos entre componentes", grupo: 1 },
+    ],
+  },
+  {
+    id: "toolbox", rotulo: "Toolbox", comandos: [
+      { id: "biblioteca", rotulo: "Biblioteca de componentes", icone: "biblioteca", dica: "Parafusos, porcas, arruelas, rebites e pinos ISO/DIN: escolha e arraste até um furo (encaixa sozinho)", grupo: 0 },
+      { id: "engrenagem", rotulo: "Engrenagem", icone: "engrenagem", dica: "Engrenagens de perfil evolvente (retas, helicoidais, cremalheira, cônicas, sem-fim e coroa, internas): cria a peça no cofre e insere na montagem", grupo: 0 },
     ],
   },
 ];
@@ -835,6 +841,7 @@ function renderizarAbas() {
     abas.append(b);
   }
   const faixa = $("faixa-comandos");
+  tornarFaixaRolavel(faixa);
   faixa.innerHTML = "";
   const aba = ABAS_M.find((a) => a.id === abaAtiva)!;
   let grupo = aba.comandos[0]?.grupo;
@@ -851,7 +858,7 @@ function renderizarAbas() {
       b.setAttribute("aria-disabled", "true");
       b.insertAdjacentHTML("beforeend", `<em class="selo">breve</em>`);
     }
-    const ativo = (c.id === "posicionar" && comando?.tipo === "posicionar") || (c.id === "inserir" && comando?.tipo === "inserir") || (c.id === "biblioteca" && comando?.tipo === "biblioteca")
+    const ativo = (c.id === "posicionar" && comando?.tipo === "posicionar") || (c.id === "inserir" && comando?.tipo === "inserir") || (c.id === "biblioteca" && comando?.tipo === "biblioteca" && estadoBib.aba !== "engrenagens") || (c.id === "engrenagem" && comando?.tipo === "biblioteca" && estadoBib.aba === "engrenagens")
       || (c.id === "mover" && comando?.tipo === "mover" && !comando.girar) || (c.id === "girar" && comando?.tipo === "mover" && comando.girar)
       || (c.id === "isolar" && !!isolados) || (c.id === "explodir-recolher" && mostrarExplodida)
       || (c.id === "medir" && comando?.tipo === "medir") || (c.id === "explodida" && comando?.tipo === "explodir")
@@ -868,7 +875,8 @@ function executar(c: Cmd) {
   esconderBarra();
   switch (c.id) {
     case "inserir": return abrirInserir();
-    case "biblioteca": return abrirBiblioteca();
+    case "biblioteca": return abrirBiblioteca("fixacao");
+    case "engrenagem": return abrirBiblioteca("engrenagens");
     case "posicionar": return abrirPosicionar();
     case "mover": return abrirMover(false);
     case "girar": return abrirMover(true);
@@ -1461,8 +1469,9 @@ function guardarEstadoBib() {
   }
 }
 
-function abrirBiblioteca() {
+function abrirBiblioteca(aba?: "fixacao" | "engrenagens") {
   if (comando) cancelarComando();
+  if (aba) { estadoBib.aba = aba; guardarEstadoBib(); }
   comando = { tipo: "biblioteca", armado: false };
   furoBib = null;
   mostrarPainel(true);
@@ -1507,6 +1516,7 @@ function colocarAbasBiblioteca() {
     estadoBib.aba = a;
     if (comando?.tipo === "biblioteca") comando.armado = false;
     renderizarBiblioteca();
+    renderizarAbas();
     atualizarStatus();
   }));
 }
