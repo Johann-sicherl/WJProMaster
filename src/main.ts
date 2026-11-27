@@ -57,6 +57,8 @@ import { renderizarPainelEsboco } from "./esboco/painel";
 import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } from "./esboco/referencial";
 import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
+import { CotasEngrenagemNaVista } from "./biblioteca/desenhoCotasEngrenagem";
+import { aoMudarCotasEngrenagem, cotasDasPrefs, cotasMarcadas } from "./biblioteca/painelEngrenagens";
 import { ISO } from "./kernel/furos";
 import { abrirCopias, abrirDoCofre, desligar, escolherDoCofre, exportarComo, instalarPainelCofre, lerDoCofre, ligar, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
 import { botaoDiagnostico, registrarMetrica } from "./comum/diagnostico";
@@ -132,6 +134,8 @@ interface Prefs {
   /** Configurações → Mouse e zoom: sentido da roda e passo do zoom por clique (%). */
   rodaFrenteAfasta?: boolean;
   passoZoom?: number;
+  /** Toolbox de Engrenagens: cotas de diâmetro no modelo (a Peça regrava este objeto inteiro: manter igual ao guardado). */
+  engCotas?: string[];
   /** já aplicou "planos ocultos por padrão" (04/11/2026) nas preferências antigas */
   planosOcultosPadrao?: boolean;
 }
@@ -1280,8 +1284,21 @@ function renderizarComando() {
   const apareceu = renderizarCaixaFlutuante(esq, ctx);
   atualizarDestaques();
   atualizarAlcas();
+  atualizarCotasEngrenagem();
   if (apareceu) posicionarCaixaFlutuante();
 }
+
+/** Cotas de diâmetro da engrenagem em edição (caixas "Cotas no modelo" do painel): só a vista, sem regenerar. */
+const cotasEngrenagem = new CotasEngrenagemNaVista(viewport, $("viewport").parentElement!);
+function atualizarCotasEngrenagem() {
+  const f = comando?.f;
+  if (f?.tipo === "engrenagem") cotasEngrenagem.mostrar([{ p: f }], cotasMarcadas(f.tipoEngrenagem));
+  else cotasEngrenagem.limpar();
+}
+aoMudarCotasEngrenagem(() => {
+  prefs.engCotas = cotasDasPrefs(); // salvarPrefs regrava `prefs` inteiro: não pode desfazer a escolha
+  atualizarCotasEngrenagem();
+});
 
 // ---------- caixa flutuante do comando (celular/tablet: opções perto da peça) ----------
 
@@ -1417,6 +1434,7 @@ function fecharComando() {
   comando = null;
   esconderCaixaFlutuante();
   cotasDoComando.limpar();
+  cotasEngrenagem.limpar();
   viewport.mostrarPrevia(null);
   atualizarRegioesDividir(null);
   viewport.mostrarAlcas([]);

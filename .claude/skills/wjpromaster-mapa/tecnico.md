@@ -439,6 +439,16 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
   `poseDoPar` com `quatDeBase`), sólido `src/kernel/engrenagem.ts` (`solidoEngrenagem`), painel `painelEngrenagens.ts` (caixas do
   `formulario.ts`, usadas no recurso da Peça e na aba da Montagem), cofre `pecaDeEngrenagem`. Recurso `engrenagem` em `model.ts`
   (`ParamEngrenagem` achatado no recurso; `PARAM_ENGRENAGEM_PADRAO`).
+- **Cotas de diâmetro no modelo** (27/11/2026, pedido C6): caixa "Cotas no modelo" no painel (`caixasDeCotas` em `painelEngrenagens.ts`, vale
+  na Peça e na Montagem): Diâmetro externo / primitivo (e **interno** só na interna: externo = aro, primitivo = d, interno = ponta da).
+  `cotasEngrenagem.ts` (puro) dá as linhas de cota no referencial da peça (eixo Y): plano da face de trás (y = largura; cônica em y = 0,
+  onde está a face maior plana e o Ø externo é o dela), externo ao longo de +X, primitivo ao longo de Z (tracejado), interno a 45°;
+  valor = `geometria()`, igual às linhas "Valores calculados". `desenhoCotasEngrenagem.ts` desenha em `viewport.grupoEsboco` (LineSegments
+  sem teste de profundidade + setas) com os rótulos de `CotasNoModelo` (só leitura). Marcar/desmarcar grava `PrefsCad.engCotas`
+  (padrão nenhuma) e avisa por `aoMudarCotasEngrenagem`: **só a vista, sem regenerar**. Peça: `atualizarCotasEngrenagem` no fim de
+  `renderizarComando` (comando Engrenagem aberto); Montagem: aba Engrenagens aberta, nas engrenagens selecionadas ou em todas. **Armadilha**:
+  a Peça regrava o objeto `prefs` inteiro em `jlscad:interface`; por isso `prefs.engCotas` é atualizado no mesmo ouvinte (senão o
+  próximo `salvarPrefs` desfaz a escolha).
 - **Armadilhas**: (1) `makeBSplineApproximation` com grau até 6 desvia ~5 µm entre os pontos; **grau 3** com 24 pontos dá nanômetros;
   (2) arestas retas/arcos são ligadas às **pontas reais** das B-splines (senão `assembleWire` dá "disconnected wire");
   (3) `twistExtrude` do replicad não aceita sentido: torção própria com `makeHelix(..., lefthand)` como espinha auxiliar
