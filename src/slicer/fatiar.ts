@@ -46,11 +46,19 @@ export interface ResultadoTrocas {
   camadas: number;
   maximoPorCamada: number;
   purgaMm3: number;
+  /** purga aproveitada no preenchimento, nos objetos ou no suporte (já descontada de `purgaMm3`), mm³ */
+  purgaAproveitadaMm3: number;
   /** tempo das trocas (troca do filamento + purga), s */
   tempoS: number;
   torreCamadas: number;
+  /** material da torre (anel, borda e linhas de purga), mm³, e só das linhas de purga da torre */
   torreMm3: number;
+  torrePurgaMm3: number;
   torreTempoS: number;
+  /** lado da torre usado (mm; cresce se a purga da torre não couber), a área que ela ocupa na mesa (com borda e giro) e o canto escolhido (mm, a partir da frente à esquerda; null = automática) */
+  torreLado: number;
+  torreOcupa: number;
+  torrePosicao: [number, number] | null;
 }
 
 export interface Resultado {
@@ -215,8 +223,19 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
   const densidade = (c: number) => (c === 0 ? mat.densidade : materialDa(maq, filamentos[c]?.material ?? mat.id).densidade);
   const preco = (c: number) => (c === 0 ? mat.precoKg : filamentos[c]?.precoKg ?? mat.precoKg);
   const volCor = new Float64Array(MAX_CORES);
+  /** material de um trecho (mm³), a mesma conta de `emitir` */
+  const volumeTrecho = (t: Trecho, h: number) => {
+    const p = t.pts, np = p.length / 2;
+    let L = 0;
+    for (let k = 1; k < np; k++) L += Math.hypot(p[k * 2] - p[k * 2 - 2], p[k * 2 + 1] - p[k * 2 - 1]);
+    if (t.fechado && np > 1) L += Math.hypot(p[0] - p[np * 2 - 2], p[1] - p[np * 2 - 1]);
+    return L * espacamento(t.w, h) * h * t.fluxo * mat.fluxo;
+  };
   const usadaCor = new Uint8Array(MAX_CORES);
-  const painel = { total: 0, camadas: 0, maximo: 0, ultima: -1 };
+  const painel = { total: 0, camadas: 0, maximo: 0, ultima: -1, aproveitada: 0 };
+  /** trocas de cada camada (a torre recebe a purga dela por troca) */
+  const trocasPorCamada: number[] = [];
+  const torreVolume = troca.torre ? Math.max(0, pr.torreVolume ?? 0) : 0;
   let ferramenta = -1;
   const tPurga = troca.purgaMm3 / Math.max(0.1, troca.vazaoPurga);
   /** peças pintadas: cores das sementes de cada camada */
@@ -228,10 +247,26 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
         for (const v of c.f.corSeg[j]) r.add(v);
         for (const v of coresDosPlanos(c.f.corPlano?.[j])) r.add(v);
       }
+      if (j < c.f.n && corParede >= 0) r.add(corParede);
+      if (c.sup && j < c.f.n) {
+        if (corSuporte >= 0 && (c.sup.corpo[j] || c.sup.galhos[j])) r.add(corSuporte);
+        if (corInterface >= 0 && c.sup.interface[j]) r.add(corInterface);
+      }
     }
     return r;
   };
   const livre = (parte: Parte) => parte === "suporte" || parte === "interface" || parte === "borda";
+  // filamento por função (0 = o de hoje; 1–4 = esse filamento): cor fixa da parte, -1 = sem
+  const filamentoDe = (k: number | undefined) => (k !== undefined && k >= 1 && k <= MAX_CORES ? Math.round(k) - 1 : -1);
+  const corParede = filamentoDe(pr.filamentoParede), corSolido = filamentoDe(pr.filamentoSolidoInterno);
+  const corSuporte = filamentoDe(pr.filamentoSuporte), corInterface = filamentoDe(pr.filamentoInterface);
+  const fixa = (parte: Parte) =>
+    parte === "paredeExt" || parte === "paredeInt" ? corParede : parte === "solido" ? corSolido : parte === "suporte" ? corSuporte : parte === "interface" ? corInterface : -1;
+  // purga aproveitada: partes que podem receber a purga da cor que entra
+  const recebePurga = new Set<Parte>();
+  if (pr.purgarNoPreenchimento) recebePurga.add("esparso");
+  if (pr.purgarNoSuporte) recebePurga.add("suporte");
+  if (pr.purgarNosObjetos) for (const x of ["paredeExt", "paredeInt", "solido", "topo", "ponte", "esparso"] as Parte[]) recebePurga.add(x);
   const passoCor = (c: Contexto) => Math.max(c.f.g.c, 0.4);
   /** trechos da camada com a cor de cada um (-1 = livre: usa a ferramenta que estiver no bico) */
   const colorir = (c: Contexto, i: number, trechos: Trecho[]): { t: Trecho; cor: number }[] => {
@@ -239,11 +274,13 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
     const sementes = new Set<number>(seg ?? []);
     for (const v of coresDosPlanos(c.f.corPlano?.[i])) sementes.add(v);
     const unica = sementes.size <= 1 ? (sementes.size ? [...sementes][0] : 0) : -2;
-    if (unica !== -2) return trechos.map((t) => ({ t, cor: livre(t.parte) ? -1 : unica }));
+    if (unica !== -2) return trechos.map((t) => ({ t, cor: fixa(t.parte) >= 0 ? fixa(t.parte) : livre(t.parte) ? -1 : unica }));
     const mapa = corDasCelulas(c.f.g, c.f.segs[i], seg!, c.f.corPlano?.[i], aj.paredes * pr.lParedeInt + 0.3);
     const saida: { t: Trecho; cor: number }[] = [];
     for (const t of trechos) {
-      if (livre(t.parte)) saida.push({ t, cor: -1 });
+      const f = fixa(t.parte);
+      if (f >= 0) saida.push({ t, cor: f });
+      else if (livre(t.parte)) saida.push({ t, cor: -1 });
       else for (const x of cortarPorCor(t, c.f.g, mapa, 0, passoCor(c))) saida.push(x);
     }
     return saida;
@@ -332,22 +369,34 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
       grupos.push(comeco, ...resto);
     }
     let trocasDaCamada = 0;
+    // o que não tem cor (suporte, interface, borda com o filamento do bico) sai com o 1º grupo; purgando no suporte,
+    // sai logo depois da 1ª troca da camada (a purga da cor que entra vai para dentro dele)
+    const grupoLivre = pr.purgarNoSuporte && grupos.length > 1 && grupos[0] === ferramenta ? 1 : 0;
 
     for (let gi = 0; gi < grupos.length; gi++) {
       const cor = grupos[gi];
+      const deste = (x: { cor: number }) => x.cor === cor || (gi === grupoLivre && x.cor < 0);
+      const fila: [number, number, number][] = todas.filter(([k]) => itens[k].some(deste));
       if (ferramenta < 0) ferramenta = cor;
       else if (ferramenta !== cor) {
-        // troca de filamento: recolhe, carrega o novo e purga (a purga é do filamento que entra)
-        plan.parar(troca.tempoS + tPurga, "troca");
-        plan.volume[IDX.troca] += troca.purgaMm3;
-        volCor[cor] += troca.purgaMm3;
+        // troca de filamento: recolhe, carrega o novo e purga (a purga é do filamento que entra); a parte aproveitada
+        // sai no preenchimento/objeto/suporte desta cor nesta camada (limite: o volume que eles têm aqui)
+        let aproveitada = 0;
+        if (recebePurga.size) {
+          let disp = 0;
+          for (const [k] of fila) for (const it of itens[k]) if (deste(it) && recebePurga.has(it.t.parte)) disp += volumeTrecho(it.t, h);
+          aproveitada = Math.min(troca.purgaMm3, disp);
+        }
+        const purga = troca.purgaMm3 - aproveitada;
+        plan.parar(troca.tempoS + (aproveitada > 0 ? purga / Math.max(0.1, troca.vazaoPurga) : tPurga), "troca");
+        plan.volume[IDX.troca] += purga;
+        volCor[cor] += purga + torreVolume;
+        painel.aproveitada += aproveitada;
         retraido = true;
         ferramenta = cor;
         trocasDaCamada++;
       }
       usadaCor[cor] = 1;
-      const deste = (x: { cor: number }) => x.cor === cor || (gi === 0 && x.cor < 0);
-      const fila: [number, number, number][] = todas.filter(([k]) => itens[k].some(deste));
 
       // saia: uma volta em volta de tudo na primeira camada (com a primeira cor)
       if (prim && gi === 0 && aj.saia && todas.length) {
@@ -381,6 +430,7 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
         for (const it of itens[k]) if (deste(it)) emitir(it.t, x, y, cor);
       }
     }
+    trocasPorCamada.push(trocasDaCamada);
     if (trocasDaCamada) {
       painel.total += trocasDaCamada;
       painel.camadas++;
@@ -393,24 +443,79 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
     if (progresso && (i % 4 === 0 || i === n - 1)) progresso(0.3 + (0.7 * (i + 1)) / n);
   }
 
-  // ---- torre de purga: anel de estabilização em todas as camadas até a última troca (a purga cai dentro dela) ----
-  let torreMm3 = 0, torreTempoS = 0, torreCamadas = 0;
+  // ---- torre de purga: anel de estabilização em todas as camadas até a última troca, borda na 1ª camada e as linhas
+  // de purga da torre (volume por troca); a torre cresce se a purga de uma camada não couber dentro do anel ----
+  let torreMm3 = 0, torreTempoS = 0, torreCamadas = 0, torrePurgaMm3 = 0, torreLado = 0, torreOcupa = 0;
+  let torrePosicao: [number, number] | null = null;
   if (troca.torre && painel.total > 0) {
     torreCamadas = painel.ultima + 1;
-    const L = troca.larguraTorre;
+    const L0 = troca.larguraTorre;
+    const fx = Math.max(0.1, pr.torreFluxoExtra ?? 1);
+    // lado necessário para as linhas de purga da camada mais cheia
+    let L = L0;
+    if (torreVolume > 0) {
+      for (let i = 0; i < torreCamadas; i++) {
+        if (!trocasPorCamada[i]) continue;
+        const h = i === 0 ? zs[0] : zs[i] - zs[i - 1];
+        const w = i === 0 ? pr.lPrimeira : pr.lParedeExt, s = espacamento(w, h);
+        const passo = Math.max(s, pr.torreEspacoLinhas > 0 ? pr.torreEspacoLinhas : s) + Math.max(0, pr.torreEspacoExtra ?? 0);
+        const comp = (trocasPorCamada[i] * torreVolume) / (s * h * fx * mat.fluxo);
+        L = Math.max(L, Math.sqrt(comp * passo) + 2 * s);
+      }
+      if (L > L0 + 1e-6) avisos.push(`A purga da torre (${torreVolume} mm³ por troca) não cabe numa torre de ${L0} mm: a torre foi alargada para ${Math.ceil(L)} mm.`);
+    }
     for (let i = 0; i < torreCamadas; i++) {
       const h = i === 0 ? zs[0] : zs[i] - zs[i - 1];
       const w = i === 0 ? pr.lPrimeira : pr.lParedeExt, s = espacamento(w, h);
+      const vT = 0.7 * (i === 0 ? pr.vPrimeira : pr.vParedeExt);
       const comprimento = 4 * Math.max(0, L - s) * (i === 0 ? 2 : 1);
       torreMm3 += comprimento * s * h * mat.fluxo;
-      torreTempoS += comprimento / (0.7 * (i === 0 ? pr.vPrimeira : pr.vParedeExt)) + 1;
+      torreTempoS += comprimento / vT + 1;
+      if (i === 0 && pr.torreBorda > 0) {
+        // borda: voltas para fora do anel na 1ª camada
+        const voltas = Math.ceil(pr.torreBorda / s - 1e-9);
+        let cb = 0;
+        for (let k = 1; k <= voltas; k++) cb += 4 * (L - s + 2 * k * s);
+        torreMm3 += cb * s * h * mat.fluxo;
+        torreTempoS += cb / vT;
+      }
+      if (torreVolume > 0 && trocasPorCamada[i]) {
+        // linhas de purga dentro do anel (limitadas pela vazão do bico)
+        const v = trocasPorCamada[i] * torreVolume;
+        const sec = s * h * fx * mat.fluxo;
+        torrePurgaMm3 += v;
+        torreTempoS += v / sec / Math.min(vT, mat.vazaoMax / sec);
+      }
     }
+    torreMm3 += torrePurgaMm3;
     plan.volume[PARTES.indexOf("torre")] += torreMm3;
     plan.tempo[PARTES.indexOf("torre")] += torreTempoS;
+    // o anel e a borda se dividem entre as cores usadas; a purga da torre já entrou na cor de cada troca
     const quais = [...usadaCor.keys()].filter((c) => usadaCor[c]);
-    for (const c of quais) volCor[c] += torreMm3 / quais.length;
-    const margemTorre = 6;
-    if ((mx1 - mx0) + L + margemTorre > maq.mesa[0] && (my1 - my0) + L + margemTorre > maq.mesa[1]) avisos.push(`A torre de purga (${L} × ${L} mm) não cabe ao lado das peças na mesa: reduza a torre ou tire uma peça.`);
+    for (const c of quais) volCor[c] += (torreMm3 - torrePurgaMm3) / quais.length;
+    torreLado = L;
+    const lado = L + 2 * Math.max(0, pr.torreBorda ?? 0);
+    const ang = (((pr.torreAngulo ?? 0) % 90) * Math.PI) / 180;
+    torreOcupa = lado * (Math.abs(Math.cos(ang)) + Math.abs(Math.sin(ang)));
+    if (pr.torreAuto === false) {
+      // posição escolhida: canto da torre a partir da frente à esquerda da mesa; tem de ficar na mesa e fora das peças
+      torrePosicao = [pr.torreX, pr.torreY];
+      const cx = pr.torreX + lado / 2 - maq.mesa[0] / 2, cy = pr.torreY + lado / 2 - maq.mesa[1] / 2, r = torreOcupa / 2;
+      const onde = `na posição X ${pr.torreX.toFixed(0)} / Y ${pr.torreY.toFixed(0)} mm`;
+      if (cx - r < -maq.mesa[0] / 2 - 1e-6 || cx + r > maq.mesa[0] / 2 + 1e-6 || cy - r < -maq.mesa[1] / 2 - 1e-6 || cy + r > maq.mesa[1] / 2 + 1e-6)
+        avisos.push(`A torre de purga (${torreOcupa.toFixed(0)} × ${torreOcupa.toFixed(0)} mm) ${onde} passa da borda da mesa de ${maq.mesa[0]} × ${maq.mesa[1]} mm: mude a posição.`);
+      const folgaTorre = 2;
+      const encostam = new Set<string>();
+      ativas.forEach((p, k) => {
+        const c = caixas[k];
+        for (const [x, y] of p.posicoes)
+          if (x + c.max[0] > cx - r - folgaTorre && x + c.min[0] < cx + r + folgaTorre && y + c.max[1] > cy - r - folgaTorre && y + c.min[1] < cy + r + folgaTorre) encostam.add(p.nome);
+      });
+      if (encostam.size) avisos.push(`A torre de purga ${onde} encosta em ${[...encostam].join(", ")}: mude a posição da torre.`);
+    } else {
+      const margemTorre = 6;
+      if ((mx1 - mx0) + L + margemTorre > maq.mesa[0] && (my1 - my0) + L + margemTorre > maq.mesa[1]) avisos.push(`A torre de purga (${L} × ${L} mm) não cabe ao lado das peças na mesa: reduza a torre ou tire uma peça.`);
+    }
   }
 
   const partes = Object.fromEntries(PARTES.map((p, k) => [p, { tempo: plan.tempo[k], volume: plan.volume[k] }])) as Resultado["partes"];
@@ -429,8 +534,8 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
       camadas: n, alturas: zs, dimensoes: [mx1 - mx0, my1 - my0, H], volumePeca, volumeMm3, comprimentoM: volumeMm3 / secao / 1000, massaG,
       custo, tempoS, preparoS: maq.preparoMin * 60, partes, copias, avisos, cores: porCor,
       trocas: {
-        total: painel.total, camadas: painel.camadas, maximoPorCamada: painel.maximo, purgaMm3: painel.total * troca.purgaMm3,
-        tempoS: partes.troca.tempo, torreCamadas, torreMm3, torreTempoS,
+        total: painel.total, camadas: painel.camadas, maximoPorCamada: painel.maximo, purgaMm3: painel.total * troca.purgaMm3 - painel.aproveitada,
+        purgaAproveitadaMm3: painel.aproveitada, tempoS: partes.troca.tempo, torreCamadas, torreMm3, torrePurgaMm3, torreTempoS, torreLado, torreOcupa, torrePosicao,
       },
     },
     previa,

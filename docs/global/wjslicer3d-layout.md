@@ -105,7 +105,7 @@ não perder o valor. Os demais campos mostram o estado (🟡/🔶 = "ainda não 
 |---|---|---|
 | Suporte | ligar; tipo: normal (auto) / árvore (auto) / normal (manual) / árvore (manual); **estilo**: padrão, grade, justo, orgânico, árvore forte, árvore fina, árvore híbrida; ângulo-limite ✅; só na mesa ✅; remover balanços pequenos; só regiões críticas; garantir suporte de pontes longas | 🟡 (2 tipos ✅; estilos e manual 🔶) |
 | Jangada | camadas; distância Z de contato; expansão; densidade e expansão da 1ª camada | 🔶 |
-| Filamento do suporte | base; interface | 🔶 (depende de multimaterial) |
+| Filamento do suporte | base; interface | ✅ (X1) |
 | Avançado | densidade da 1ª camada; expansão da 1ª camada; distância Z topo ✅ e fundo; padrão da base (padrão, retilíneo, grade, favo, relâmpago, oco) ; espaçamento ✅; ângulo; camadas de interface topo ✅ e fundo ✅; padrão da interface; espaçamento da interface ✅; expansão do suporte normal; distância XY ✅; não apoiar pontes; altura de camada independente; paredes do suporte | 🟡 |
 | Árvore | distância entre galhos ✅; Ø do galho ✅; ângulo do galho ✅; paredes ✅; árvore com preenchimento; largura da borda automática | 🟡 |
 | **Pintar suporte** (ferramenta, §3.10) | reforçar / bloquear suporte tocando a peça | 🔶 |
@@ -116,8 +116,8 @@ não perder o valor. Os demais campos mostram o estado (🟡/🔶 = "ainda não 
 
 | Grupo | Campos | Estado |
 |---|---|---|
-| Torre de purga | ligar ✅; largura ✅; largura da borda; posição X/Y (**arrastar na mesa**); volume de purga; purgar para dentro do preenchimento / dos objetos / do suporte; ângulo de rotação; distância máxima de ponte; espaçamento extra; ângulo do cone de estabilização; espaçamento das linhas de purga; fluxo extra da purga; tipo de parede (reta / nervura) | 🟡 (hoje: anel fixo de 35 mm) |
-| Filamento por função | filamento da parede; do sólido interno; do suporte/jangada; da interface do suporte | 🔶 |
+| Torre de purga | ligar ✅; largura ✅; largura da borda ✅; posição automática ✅ ou X/Y ✅ (**arrastar na mesa** 🔶 T1); volume de purga ✅; purgar para dentro do preenchimento ✅ / dos objetos 🟡 (todas as peças até a O1) / do suporte ✅; ângulo de rotação ✅; espaçamento extra ✅; espaçamento das linhas de purga ✅; fluxo extra da purga ✅; distância máxima de ponte 🔶; ângulo do cone de estabilização 🔶; tipo de parede (reta ✅ / nervura 🔶) | 🟡 (X1, 27/11/2026; 🔶 = X2) |
+| Filamento por função | filamento da parede; do sólido interno; do suporte/jangada; da interface do suporte | ✅ (X1; jangada ainda não existe) |
 | Evitar vazamento | ligar; variação de temperatura; tempo de pré-aquecimento; passos | ⚪ oculto |
 | Matriz de purga | volume purgado para cada par de cores (4 × 4), multiplicador | 🔶 (hoje: um valor só por troca) |
 | Avançado | encaixe de feixes (intertravar peças de cores diferentes); camadas, largura, profundidade e orientação do encaixe; casca de interface; evitar cruzar parede ao trocar | 🔶 |
@@ -262,7 +262,7 @@ Ferramentas:  T1 mover/girar/escala/apoiar/orientar ─► T2 cortar/medir ─�
 | **M4** | Padrões que faltam (cúbico adaptativo, relâmpago, estrela, octeto, multilinha…), padrões de topo/fundo, combinar preenchimento, suavizar extrusão | Sonnet | `caminhos.ts` | densidade 20 % por padrão (como hoje) |
 | **S1** | Suporte: estilos (grade, justo, orgânico, árvore forte/fina/híbrida), jangada, regiões críticas | **Opus** | `caminhos.ts` | Node: balanço e ponte longa por estilo |
 | **S2** | Suporte manual: reforço e bloqueador pintados + ferramenta | Sonnet | `cores.ts`-like, vista | roteiro com caneta (CDP) |
-| **X1** | Multimaterial: filamento por função, torre completa e arrastável, purgar no preenchimento/objetos/suporte | **Opus** | `fatiar.ts`, `cores.ts` | Node: trocas; torre cabe na mesa |
+| **X1 ✅** (27/11/2026) | Multimaterial: filamento por função, torre completa e arrastável, purgar no preenchimento/objetos/suporte (motor e dados; arrastar e tela ficam para L1b/T1) | **Opus** | `fatiar.ts`, `cores.ts` | Node: trocas; torre cabe na mesa |
 | **X2** | **Matriz de purga** por par de cores, encaixe de feixes, evitar vazamento | Sonnet | `orcamento`-ligado | Node: custo por par |
 | **O1** | Aba **Objetos**: ajustes por objeto, partes, parte negativa, modificadores de volume | **Opus** | `camadas.ts`, `fatiar.ts`, worker | Node: objeto com 5 paredes e outro com 2 |
 | **O2** | Faixas de altura e **camada variável** (automática e pintada) | **Opus** | `caminhos.ts` | Node: faixa de Z; camadas de alturas diferentes |
