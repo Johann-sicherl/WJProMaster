@@ -4,10 +4,57 @@
 
 import type { ParamEngrenagem, TipoEngrenagem } from "../model";
 import type { Caixa } from "../ui/formulario";
+import { gravarPrefsCad, lerPrefsCad } from "../ui/preferenciasCad";
+import { cotasDisponiveis, ROTULO_COTA, type TipoCotaEng } from "./cotasEngrenagem";
 import { ROTULO_TIPO, TIPOS_ENGRENAGEM, valoresCalculados } from "./engrenagens";
 
 const tipo = (f: ParamEngrenagem) => f.tipoEngrenagem;
 const em = (...t: TipoEngrenagem[]) => (f: ParamEngrenagem) => t.includes(f.tipoEngrenagem);
+
+// ---------- cotas de diâmetro no modelo (caixas da Toolbox de Engrenagens) ----------
+
+const ouvintesCotas = new Set<() => void>();
+/** A Peça e a Montagem escutam aqui para mostrar/esconder as cotas (sem regenerar o sólido). */
+export const aoMudarCotasEngrenagem = (f: () => void) => void ouvintesCotas.add(f);
+
+/** Todas as caixas marcadas nas preferências do usuário (padrão: nenhuma), de qualquer tipo. */
+export function cotasDasPrefs(): TipoCotaEng[] {
+  const g = lerPrefsCad().engCotas;
+  return Array.isArray(g) ? (["externo", "primitivo", "interno"] as const).filter((t) => g.includes(t)) : [];
+}
+
+/** As marcadas que existem para o tipo (cremalheira: nenhuma; "interno" só na interna). */
+export function cotasMarcadas(tipo: TipoEngrenagem): TipoCotaEng[] {
+  const ok = cotasDisponiveis(tipo);
+  return cotasDasPrefs().filter((t) => ok.includes(t));
+}
+
+/** Caixas de seleção "Diâmetro externo / primitivo (/ interno)": instantâneas, o estado fica nas preferências. */
+function caixasDeCotas(f: ParamEngrenagem): HTMLElement {
+  const d = document.createElement("div");
+  d.className = "eng-cotas";
+  const marcadas = new Set(cotasMarcadas(f.tipoEngrenagem));
+  for (const t of cotasDisponiveis(f.tipoEngrenagem)) {
+    const l = document.createElement("label");
+    l.className = "interruptor";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.dataset.cota = t;
+    cb.checked = marcadas.has(t);
+    cb.onchange = () => {
+      const todas = new Set<string>(cotasDasPrefs());
+      if (cb.checked) todas.add(t);
+      else todas.delete(t);
+      gravarPrefsCad({ engCotas: [...todas] });
+      ouvintesCotas.forEach((o) => o());
+    };
+    const sp = document.createElement("span");
+    sp.textContent = ROTULO_COTA[t];
+    l.append(cb, sp);
+    d.append(l);
+  }
+  return d;
+}
 
 /** Ao trocar o tipo: valores de partida que fazem sentido (o resto do que foi digitado fica). */
 export function aoTrocarTipo(f: ParamEngrenagem, t: TipoEngrenagem) {
@@ -68,6 +115,10 @@ export function caixasEngrenagem<F extends ParamEngrenagem>(): Caixa<F>[] {
       { t: "check", rot: "Rasgo de chaveta (DIN 6885)", cam: "chaveta", vis: (f) => f.furo > 0 },
       { t: "num", rot: "Ø do cubo (0 = sem cubo)", cam: "cuboDiametro", un: "mm", min: 0, passo: 1, vis: (f) => tipo(f) !== "semFim" },
       { t: "num", rot: "Comprimento do cubo", cam: "cuboComprimento", un: "mm", min: 0, passo: 1, vis: (f) => tipo(f) !== "semFim" && f.cuboDiametro > 0 },
+    ] },
+    { titulo: "Cotas no modelo", vis: (f) => cotasDisponiveis(f.tipoEngrenagem).length > 0, campos: [
+      { t: "elemento", criar: (f) => caixasDeCotas(f) },
+      { t: "info", texto: () => "Mostram a medida na vista (estilo de esboço); marcar ou desmarcar não refaz o sólido. Valem para todas as engrenagens e ficam guardadas neste aparelho." },
     ] },
     { titulo: "Valores calculados", campos: [
       { t: "elemento", criar: (f) => tabelaCalculada(f) },

@@ -3,7 +3,9 @@
 // campos (Ø primitivo, externo, raiz), erro claro de entrada, par reto 24/36 (distância 60, razão 1,5) inserido
 // engrenado e travado, peças em CAD › Biblioteca › Engrenagens e reaproveitadas, helicoidal à esquerda inserida
 // solta e engrenada com "Engrenar as 2 selecionadas" (com uma à direita), e a peça aberta na Peça com o recurso
-// Engrenagem editável (duplo toque → painel, 24 → 30 dentes muda o volume). Uso: pnpm dev --port 5199 e depois
+// Engrenagem editável (duplo toque → painel, 24 → 30 dentes muda o volume) e as caixas "Cotas no modelo" (Ø externo e
+// primitivo: marcar mostra a cota com o valor certo na posição certa, desmarcar some, sem regenerar, estado guardado
+// nas preferências e visto de novo ao reabrir; interna ganha o Ø interno, cremalheira não tem caixa). Uso: pnpm dev --port 5199 e depois
 //   node scripts/roteiro-engrenagens.cjs
 const { chromium } = require("playwright");
 const BASE = process.env.URL_BASE ?? "http://localhost:5199/";
@@ -17,7 +19,8 @@ const conferir = (ok, texto) => {
   const b = await chromium.launch({ args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader"] });
   const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true, isMobile: true });
   await ctx.addInitScript(() => {
-    localStorage.setItem("jlscad:interface", JSON.stringify({ dispositivo: "tablet", caixaFlutuante: false }));
+    // só na primeira página: as outras janelas veem o que foi guardado (cotas das engrenagens nas preferências)
+    if (!localStorage.getItem("jlscad:interface")) localStorage.setItem("jlscad:interface", JSON.stringify({ dispositivo: "tablet", caixaFlutuante: false }));
     localStorage.setItem("wjpdm:semAvisoConexoes", "1");
   });
   const p = await ctx.newPage();
@@ -96,6 +99,45 @@ const conferir = (ok, texto) => {
   });
   conferir(JSON.stringify(await cofre()) === JSON.stringify(["Engrenagem reta m2,5 z24 b20.wjcad", "Engrenagem reta m2,5 z36 b20.wjcad"]), `peças em CAD › Biblioteca › Engrenagens: ${(await cofre()).join(", ")}`);
 
+
+  // 2b) cotas de diâmetro no modelo (caixas "Cotas no modelo"): par 24/36 selecionado, tipo reta
+  const caixasCota = () => p.evaluate(() => [...document.querySelectorAll("#painel-comando .eng-cotas input")].map((i) => ({ cota: i.dataset.cota, marcada: i.checked, alto: i.closest("label").getBoundingClientRect().height })));
+  const rotulosCota = () => p.evaluate(() => [...document.querySelectorAll(".camada-cotas-eng .cota-modelo")].map((e) => ({ t: e.textContent, x: parseFloat(e.style.left), y: parseFloat(e.style.top) })));
+  const marcarCota = async (nome) => {
+    await p.locator("#painel-comando .eng-cotas label", { hasText: nome }).tap();
+    await p.waitForTimeout(250);
+  };
+  const cx0 = await caixasCota();
+  conferir(cx0.length === 2 && cx0.every((c) => !c.marcada && c.alto >= 44), `caixas "Diâmetro externo" e "Diâmetro primitivo" desmarcadas por padrão, alvo ≥ 44 px: ${JSON.stringify(cx0.map((c) => [c.cota, c.alto]))}`);
+  conferir((await rotulosCota()).length === 0, "sem cota na vista enquanto desmarcadas");
+  await p.evaluate(() => { window.__malha0 = window.__asm.cena().malha; window.__n0 = window.__asm.doc().componentes.length; });
+  await marcarCota("Diâmetro externo");
+  const r1 = await rotulosCota();
+  conferir(r1.length === 2 && r1.map((r) => r.t).sort().join() === "Ø65,Ø95", `Ø externo marcado: cota de cada engrenagem do par com o valor certo (m2,5: z24 → Ø65, z36 → Ø95): ${r1.map((r) => r.t)}`);
+  const linhasGl = await p.evaluate(() => window.__asm.viewport.grupoEsboco.children.reduce((n, g) => n + (g.userData?.quantas ?? 0), 0));
+  conferir(linhasGl === 2, `2 linhas de cota (com setas) desenhadas na vista: ${linhasGl}`);
+  await marcarCota("Diâmetro primitivo");
+  const r2 = await rotulosCota();
+  conferir(r2.length === 4 && ["Ø60", "Ø90"].every((t) => r2.some((r) => r.t === t)), `Ø primitivo marcado: 4 cotas (Ø60, Ø90, Ø65, Ø95): ${r2.map((r) => r.t)}`);
+  // posição na tela = ponto 3D da cota (meio do raio da engrenagem 1: externo em +X, y = largura)
+  const pos = await p.evaluate(async () => {
+    const { aplicarPonto } = await import("/src/montagem/modelo.ts");
+    const d = window.__asm.doc();
+    const c = d.componentes[0];
+    const alvo = (v) => window.__asm.viewport.mundoParaTela(aplicarPonto(c.t, v));
+    return { ext: alvo([32.5 / 2, 20, 0]), pri: alvo([0, 20, 15]) };
+  });
+  const perto = (rot, e) => !!rot && Math.abs(rot.x - e.x) < 1.5 && Math.abs(rot.y - e.y) < 1.5;
+  conferir(perto(r2.find((r) => r.t === "Ø65"), pos.ext) && perto(r2.find((r) => r.t === "Ø60"), pos.pri), "o valor fica preso ao ponto 3D da linha de cota (externo em +X, primitivo em Z)");
+  conferir(await p.evaluate(() => window.__asm.cena().malha === window.__malha0 && window.__asm.doc().componentes.length === window.__n0), "marcar não regenerou o sólido (mesma malha, mesmos componentes)");
+  await marcarCota("Diâmetro externo");
+  const r3 = await rotulosCota();
+  conferir(r3.length === 2 && r3.every((r) => /^Ø(60|90)$/.test(r.t)), `Ø externo desmarcado: somem as cotas dele, ficam as do primitivo: ${r3.map((r) => r.t)}`);
+  conferir(await p.evaluate(() => JSON.parse(localStorage.getItem("jlscad:interface")).engCotas.join() === "primitivo"), "estado guardado nas preferências do usuário (engCotas = primitivo)");
+  await p.evaluate(() => window.__asm.selecionar([window.__asm.doc().componentes[1].id]));
+  const r4 = await rotulosCota();
+  conferir(r4.length === 1 && r4[0].t === "Ø90", `com só a engrenagem 2 selecionada, só ela mostra a cota: ${r4.map((r) => r.t)}`);
+
   // 3) helicoidal: inserir duas soltas (uma à direita, outra à esquerda) e engrenar as selecionadas
   await p.locator("#painel-comando label.campo", { hasText: "Tipo de engrenagem" }).locator("select").selectOption("helicoidal");
   await p.waitForTimeout(300);
@@ -131,6 +173,19 @@ const conferir = (ok, texto) => {
   });
   conferir(/2ª engrenagem/.test(await painel()), "caixa Par mostra a 2ª engrenagem sugerida (hélice oposta)");
 
+
+  // 4b) tipos: interna ganha o Ø interno; cremalheira não tem diâmetros (sem caixa)
+  const tipoSel = p.locator("#painel-comando label.campo", { hasText: "Tipo de engrenagem" }).locator("select");
+  await tipoSel.selectOption("interna");
+  await p.waitForTimeout(300);
+  conferir((await caixasCota()).map((c) => c.cota).join() === "externo,primitivo,interno", `interna: 3 caixas (externo, primitivo, interno): ${(await caixasCota()).map((c) => c.cota)}`);
+  await tipoSel.selectOption("cremalheira");
+  await p.waitForTimeout(300);
+  conferir((await caixasCota()).length === 0 && !/Cotas no modelo/.test(await painel()), "cremalheira: a caixa 'Cotas no modelo' some (não há diâmetros)");
+  await tipoSel.selectOption("reta");
+  await p.waitForTimeout(300);
+  conferir((await caixasCota()).map((c) => c.marcada).join() === "false,true", "voltando à reta, o estado guardado reaparece (primitivo marcado)");
+
   // 5) a peça na Peça: recurso Engrenagem editável (duplo toque abre o painel)
   const docEng = await p.evaluate(() => window.__asm.doc().pecas.find((x) => /z24/.test(x.nome)).doc);
   const peca = await ctx.newPage();
@@ -153,17 +208,42 @@ const conferir = (ok, texto) => {
   await peca.waitForSelector("#painel-comando .eng-valores", { timeout: 8000 }).catch(() => {});
   const txt = await peca.evaluate(() => document.querySelector("#painel-comando")?.textContent ?? "");
   conferir(/Engrenagem/.test(txt) && /Módulo m/.test(txt) && /Valores calculados/.test(txt), "duplo toque no recurso abre o painel Engrenagem com os valores");
+  const rotPeca = () => peca.evaluate(() => [...document.querySelectorAll(".camada-cotas-eng .cota-modelo")].map((e) => e.textContent));
+  conferir((await peca.evaluate(() => document.querySelector('#painel-comando input[data-cota="primitivo"]')?.checked)) === true && JSON.stringify(await rotPeca()) === '["Ø60"]', `Peça: estado guardado visto ao abrir o comando (primitivo marcado) com a cota Ø60: ${await rotPeca()}`);
   const dentes = peca.locator("#painel-comando label.campo", { hasText: "Nº de dentes z" }).locator("input").first();
   await dentes.tap();
   await dentes.fill("30");
   await dentes.evaluate((e) => e.dispatchEvent(new Event("change", { bubbles: true })));
   await peca.waitForTimeout(500);
+  conferir(JSON.stringify(await rotPeca()) === '["Ø75"]', `Peça: com 30 dentes a cota do primitivo vira Ø75: ${await rotPeca()}`);
+  await peca.locator("#painel-comando .eng-cotas label", { hasText: "Diâmetro externo" }).tap();
+  await peca.waitForTimeout(250);
+  conferir((await rotPeca()).length === 2 && (await rotPeca()).includes("Ø80"), `Peça: Ø externo marcado → Ø80 (m2,5 z30): ${await rotPeca()}`);
   await peca.locator("#painel-comando .pc-ok").tap();
   await peca.waitForTimeout(6000);
   const doc2 = await peca.evaluate(() => window.__cad.doc().features[0].dentes);
   const v2 = await volume();
   // volume (cm³) cresce na proporção da área do perfil: z24 → z30 com m2,5 e b20 ≈ (30/24)² do disco
   conferir(doc2 === 30 && v2 > v1 * 1.4 && v2 < v1 * 1.65, `recurso editado: 24 → ${doc2} dentes; volume ${v1} → ${v2} cm³`);
+  conferir((await rotPeca()).length === 0, "Peça: ao fechar o comando as cotas somem da vista");
+  // reabrir em outra janela: as duas caixas continuam marcadas (preferências do usuário)
+  const peca2 = await ctx.newPage();
+  peca2.on("pageerror", (e) => console.log("erro na Peça 2:", e.message));
+  await peca2.goto(BASE + "cad/");
+  await peca2.waitForTimeout(1500);
+  await peca2.evaluate((d) => window.__cad.abrir(d), docEng);
+  await peca2.waitForTimeout(3000);
+  const item2 = peca2.locator("#arvore li", { hasText: "Engrenagem reta" }).last();
+  await item2.tap();
+  await peca2.waitForTimeout(150);
+  await item2.tap();
+  await peca2.waitForSelector("#painel-comando .eng-cotas", { timeout: 8000 });
+  const estado2 = await peca2.evaluate(() => ({ caixas: [...document.querySelectorAll("#painel-comando .eng-cotas input")].map((i) => `${i.dataset.cota}:${i.checked}`), rot: [...document.querySelectorAll(".camada-cotas-eng .cota-modelo")].map((e) => e.textContent) }));
+  conferir(estado2.caixas.join() === "externo:true,primitivo:true" && estado2.rot.length === 2, `reaberto: as caixas continuam marcadas e as cotas aparecem: ${JSON.stringify(estado2)}`);
+  // desmarcar tudo devolve o padrão (nada na vista) e fica guardado
+  for (const nome of ["Diâmetro externo", "Diâmetro primitivo"]) await peca2.locator("#painel-comando .eng-cotas label", { hasText: nome }).tap();
+  await peca2.waitForTimeout(250);
+  conferir((await peca2.evaluate(() => document.querySelectorAll(".camada-cotas-eng .cota-modelo").length)) === 0 && (await peca2.evaluate(() => JSON.parse(localStorage.getItem("jlscad:interface")).engCotas.length)) === 0, "tudo desmarcado: nenhuma cota na vista e preferência vazia");
   await peca.screenshot({ path: process.env.SAIDA_PECA ?? "/tmp/claude-0/engrenagens-peca.png" });
 
   await b.close();

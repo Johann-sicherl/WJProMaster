@@ -373,7 +373,7 @@
   β e sentido, furo/cubo/chaveta DIN 6885, deslocamento x); diâmetros, distância entre centros e razão calculados e mostrados.
   **Perfil evolvente exato no kernel**; valores **no recurso "Engrenagem"** (editável); peça em **CAD › Biblioteca › Engrenagens**,
   reaproveitada. Par: distância e posição com o dente no vão; sem posicionamento de relação de engrenagem no solver (o par fica
-  **travado**). Decisões técnicas (registradas no PR, pela opção mais simples/segura): cônica por Tredgold com face maior plana; sem-fim
+  **travado**). **Cotas de diâmetro no modelo** (27/11/2026, pedido C6): caixas "Diâmetro externo", "Diâmetro primitivo" (e "interno" na interna) no painel; marcadas mostram a cota na vista, sem regenerar; guardadas nas preferências (padrão desmarcadas). Decisões técnicas (registradas no PR, pela opção mais simples/segura): cônica por Tredgold com face maior plana; sem-fim
   ZA; coroa sem garganta. `docs/funcional/biblioteca.md` §Engrenagens.
 - Medir e propriedades de massa funcionam em corpos importados (STEP e malha STL).
 - Arquivo `.wjcad` (abre `.jlscad`/`.cadt`). Chaves internas `jlscad:` ficam como estão.
