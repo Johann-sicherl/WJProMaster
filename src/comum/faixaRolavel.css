@@ -1,0 +1,21 @@
+/* ---------- faixa rolável (src/comum/faixaRolavel.ts) ---------- */
+.faixa-rol { position: relative; min-width: 0; }
+.faixa-rol > .faixa-comandos, .faixa-rol > .wj-faixa { cursor: default; }
+.faixa-rol .arrastando { cursor: grabbing; user-select: none; }
+.faixa-barra { position: relative; height: 14px; margin: 0 6px 2px; border-radius: 7px; background: var(--painel-2); border: 1px solid var(--linha); }
+.faixa-barra[hidden], .faixa-seta[hidden] { display: none; }
+.faixa-dedo { position: absolute; top: 1px; bottom: 1px; left: 0; border-radius: 6px; background: #b6bfcc; cursor: grab; touch-action: none; }
+.faixa-dedo:hover, .faixa-dedo:active { background: var(--acento); }
+.faixa-seta {
+  position: absolute; top: 4px; width: 26px; height: 54px; padding: 0; z-index: 2;
+  border: 1px solid var(--linha); background: var(--painel); font-size: 22px; line-height: 1; opacity: 0.94;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.18);
+}
+.faixa-seta-esq { left: 0; border-radius: 0 6px 6px 0; }
+.faixa-seta-dir { right: 0; border-radius: 6px 0 0 6px; }
+body.disp-tablet .faixa-barra { height: 44px; margin: 0; border-radius: 0; border-width: 1px 0 0; }
+body.disp-tablet .faixa-dedo { top: 10px; bottom: 10px; border-radius: 12px; }
+body.disp-tablet .faixa-seta { width: 44px; height: 64px; top: 0; }
+body.disp-celular .faixa-barra { height: 28px; }
+body.disp-celular .faixa-dedo { top: 6px; bottom: 6px; }
+body.disp-celular .faixa-seta { width: 36px; }

@@ -481,3 +481,15 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
 - `camadas.ts`: o motor ainda lê `Processo` + `Ajustes`; `resolver()` devolve o `Processo` e `ajustesDe()` o `Ajustes`. As preferências da tela (`pref.ajustes`, localStorage) continuam como estavam e viram diferenças em `diferencasDeAjustes()` no momento de fatiar/salvar. Valor fora do esquema (id, tipo ou limite) é descartado (`limparDiferencas`).
 - `.wjprf`: fora de `EXT_DA_FACE`/`APPS` de propósito (igual ao `.wjcus`). A exclusão fica como marca (`excluido`) para propagar entre aparelhos. Sem UI ainda (L2).
 - Armadilha: o perfil de sistema 0,12 mm tem MAIS camadas de fundo que "altura 0,12 sobre o padrão" (mantém a espessura em mm); o teste confere os dois caminhos.
+
+## Faixa rolável e aba Toolbox (27/11/2026, pedido C5)
+
+- `src/comum/faixaRolavel.ts` (+ `.css`): `tornarFaixaRolavel(faixa)` embrulha a faixa (`.faixa-comandos` do WJCAD e `.wj-faixa` da casca das
+  outras faces) em `.faixa-rol`, com barra fina (14 px computador, 44 px tablet, 28 px celular), setas ‹ ›, roda sem Shift, arrastar com
+  o mouse em área sem botão e um `MutationObserver` (a faixa é refeita por `innerHTML` a cada render: mantém a posição na mesma aba e
+  traz o `aria-pressed` para a vista). Idempotente; chamada em `renderizarAbas` (Peça, Montagem, Desenho) e na `casca.ts`. Armadilha:
+  seta/barra só somem a ≤ 8 px do fim (padding da faixa), senão a seta cobre o último botão.
+- Aba `toolbox` em `src/comandos.ts` (`IdAba`) e em `ABAS_M` da Montagem. `Comando.soMontagem` = desabilitado na Peça com selo e aviso.
+  Montagem: `abrirBiblioteca("fixacao" | "engrenagens")`; o botão ativo segue `estadoBib.aba`.
+- Roteiros: o da biblioteca/engrenagens tocam na aba Toolbox antes; no ambiente da sessão o arrasto com mouse do `roteiro-biblioteca.cjs`
+  (passo da arruela) já falhava antes desta mudança. Páginas abrem vazias com `#novo` (Peça, Montagem, Desenho).

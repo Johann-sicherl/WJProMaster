@@ -6,6 +6,7 @@ import { botaoDiagnostico } from "./diagnostico";
 import { abrirCopias, abrirDoCofre, APPS, desligar, instalarPainelCofre, salvarNoCofre, sincronizarAoAbrir, type ChaveApp } from "./cofre";
 import "./comum.css";
 import { IC, type NomeIc } from "./icones";
+import { tornarFaixaRolavel } from "./faixaRolavel";
 import { registrarComAtualizacao } from "./atualizacao";
 import { instalarCalculadoras } from "./calculadora";
 
@@ -104,6 +105,7 @@ export class Casca {
     this.faixa = el("div", { class: "wj-faixa", role: "toolbar" });
     this.abasEl = el("div", { class: "wj-abas", role: "tablist" });
     comandos.append(this.faixa, this.abasEl);
+    tornarFaixaRolavel(this.faixa);
     this.status = el("footer", { class: "wj-status" });
     this.statusDireita = el("div", { class: "wj-direita" });
     this.status.append(el("span", { class: "wj-status-texto" }), this.statusDireita);
