@@ -65,6 +65,28 @@ polígonos (frágeis em malhas reais):
   sobreposição de 15 %) e pela classe de cada célula;
 - **ilhas** da camada (componentes ligados) para a ordem de impressão.
 
+**Paredes da fatia M1 (27/11/2026, `paredes.ts`)** — tudo atrás de parâmetros do processo; **com os padrões o
+resultado é idêntico ao de antes** (clássico, sem vãos, todas as paredes no topo, perímetro pequeno desligado):
+- **Gerador de paredes**: *clássico* (curvas de nível de largura fixa, acima) ou **largura variável**. Na largura
+  variável a espessura local T sai de um raio lançado de cada ponto da parede, na normal, até o outro lado da seção
+  (exato, pelos segmentos do corte). Se T cabe menos que todas as paredes dos dois lados, a camada usa o nº de filetes
+  cuja soma mais se aproxima de T e divide a sobra pelos filetes de dentro (**paredes na transição**; 1 = só o de
+  dentro, as externas ficam com a largura nominal), entre a **largura mínima de parede** (85 % do bico) e ~2× a linha:
+  os filetes cobrem a seção inteira, sem vão nem sobreposição. Nº ímpar de filetes = um **filete no meio** (no eixo da
+  parte fina, esticado até a ponta); parte mais fina que o **tamanho mínimo de detalhe** (25 % do bico) não é impressa.
+  **Ângulo de transição** (10°): lados que abrem mais que isso (cantos) não contam como parte fina; **filtro de
+  transição** (1 mm): trecho mais curto que isso não troca o nº de filetes. Extrusão com largura variável = trechos de
+  largura constante (pedaço novo quando a largura muda > 0,02 mm): material = largura × altura × comprimento de cada
+  trecho, tempo pela velocidade limitada pela vazão volumétrica com a largura dele.
+- **Preenchimento de vãos** (liga/desliga + velocidade): fresta no meio das paredes mais estreita que uma linha (e mais
+  larga que o detalhe mínimo) vira um filete fino central, tipo de caminho próprio **"Preenchimento de vãos"** (tempo,
+  material e cor na prévia); a fresta sai do preenchimento.
+- **Só uma parede no topo** (+ limite): nas superfícies de topo (nada na camada de cima) só a parede externa; o topo
+  sólido começa logo depois dela. Topo mais estreito que o limite (mm) fica com todas as paredes. **Só uma parede na 1ª
+  camada** (opcional).
+- **Perímetro pequeno**: laço de parede mais curto que o limite (mm; 0 = desligado) anda na velocidade de perímetro
+  pequeno.
+
 **Classes por célula** (pelas camadas vizinhas, em palavras de 32 bits): **ponte** (sem nada embaixo),
 **topo** (sem nada em cima), **sólido** (falta material em alguma das N camadas de topo/fundo; espessura
 mínima do perfil), **esparso**; área de esparso menor que 15 mm² vira sólido; primeira camada toda sólida.
@@ -133,6 +155,12 @@ Conferidos em 15/11/2026 nos arquivos de dados de fábrica (herança resolvida),
   rampa a 60° sem suporte), os sete padrões (densidade de 20 %), TPU limitado pela vazão, várias peças (4
   cópias = 4 × material, organizar dentro da mesa, avisos de mesa), borda e saia, STL, giro e apoio,
   perfis. Esfera de Ø40 com árvore fatiada em ~2 s no Node.
+- `scripts/teste-paredes.ts` (Node, M1): com os padrões, cubo 20 mm, cilindro Ø20×20 e peça com balanço na P1S e no
+  Kobra 3 com tempo e massa **idênticos** aos medidos antes da M1; pilha de filetes (soma = espessura, limites de
+  largura); **placa de 0,9 mm** (clássico cobre ~82 % da seção; com vãos ou largura variável ~99 %, sem sobreposição;
+  material ≈ volume × fluxo), **cunha de 3 → 0,5 mm**, **anel de 0,8 e de 0,5 mm** (filete único fechado no meio),
+  caminhos dentro da peça e sem NaN; uma parede no topo (cubo e degrau, limite), uma parede na 1ª camada, perímetro
+  pequeno; desempenho (M1 ligada ≈ 1,2× o clássico; esfera Ø40 com árvore em ~3 s).
 - **Referências medidas pelo Johann**: tabela `REFERENCIAS` no teste (cubo e cilindro na P1S e no Kobra 3,
   peça com balanço na P1S; PLA, perfil padrão): **pendentes** — quando ele mandar os valores do fatiador de
   referência, o teste passa a exigir ±5 % de tempo e de massa.
@@ -142,7 +170,8 @@ Conferidos em 15/11/2026 nos arquivos de dados de fábrica (herança resolvida),
 
 **Precisão**: o caminho é gerado de verdade (paredes, linhas, ligações, deslocamentos), então material e
 tempo seguem a geometria. Diferenças para o fatiador de referência que ainda podem pesar: emenda e
-ordem exata dos caminhos, preenchimento de vãos estreitos, "uma parede só no topo", suporte em árvore
+ordem exata dos caminhos (M2), padrões de fábrica da M1 (largura variável, vãos e uma parede no topo vêm
+**desligados** até o Johann confirmar como o perfil dele está), suporte em árvore
 (algoritmo próprio, mais simples) e a borda automática (aqui é liga/desliga). A **calibração** com uma
 impressão real deixa o tempo fiel para a impressora do dia a dia.
 
@@ -299,8 +328,7 @@ entram com lucro 0 % (o WJERP não tem esse dado).
   giro, volume de purga, linhas, alargamento) e purga aproveitada no preenchimento/objetos/suporte (§5). Falta: a tela (L1/L2), arrastar a
   torre na mesa (T1), nervura/cone/distância de ponte e a matriz de purga por par de cores (X2).
 - Pendente do Johann: valores de referência medidos (tabela do teste) e uma impressão multicolorida medida (purga e tempo da troca).
-- Possíveis (só se ele pedir): outros bicos (0,2/0,6/0,8), "uma parede só no topo", preenchimento de vãos,
-  borda automática, arrastar a peça na mesa à mão.
+- Possíveis (só se ele pedir): outros bicos (0,2/0,6/0,8), borda automática, arrastar a peça na mesa à mão.
 - **Layout de fatiador completo (pedido de 26/11/2026)**: abas Preparar/Prévia/Bancada, barra lateral Impressora/Filamento/Processo com
   as seis abas (Qualidade, Resistência, Velocidade, Suporte, Multimaterial, Outros), aba Objetos e barra de ferramentas: inventário,
   arquitetura e fatias L/M/S/X/O/T em **`docs/global/wjslicer3d-layout.md`** (decisões pendentes na §7 dele).
@@ -313,3 +341,10 @@ entram com lucro 0 % (o WJERP não tem esse dado).
   sistema: 0,20 Padrão = `Processo` de fábrica; os outros mudam só a altura, mantêm a 1ª camada em 0,20 mm e sobem topo/fundo para manter a
   mesma espessura em mm; velocidades, acelerações e fluxos iguais (os "Alta qualidade" = o normal da mesma altura até o Johann mandar
   valores). Cubo 20 mm e cilindro Ø20×20 na P1S e no Kobra 3: tempo e massa idênticos aos de antes (`teste-esquema.ts`).
+- **M1 do novo layout (27/11/2026, entregue; motor, sem tela nova)**: `src/slicer/paredes.ts` — gerador de paredes **largura
+  variável** (espessura local por raio, pilha de filetes, filete do meio no eixo, ângulo/filtro/paredes na transição, largura
+  mínima e detalhe mínimo), **preenchimento de vãos** (parte própria "Preenchimento de vãos" no tempo, no material e na legenda da
+  prévia), **só uma parede no topo** (+ limite) e **na 1ª camada**, **perímetro pequeno** (limite + velocidade). Campos do esquema
+  passaram a ✅ (origem `processo`). Padrões = comportamento de antes (valores idênticos no teste). Precisão conferida **só
+  geometricamente** (cobertura da seção, volume × fluxo): a tabela `REFERENCIAS` continua vazia. Pendente do Johann: valores de
+  referência e dizer se o perfil dele usa largura variável / vãos / uma parede no topo (para mudar o padrão do perfil de sistema).
