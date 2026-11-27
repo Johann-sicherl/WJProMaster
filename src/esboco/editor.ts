@@ -6,7 +6,7 @@ import type * as THREE from "three";
 import type { CotaEsboco, FeatureEsboco, GeoEsboco, OpcoesTexto, Referencia, RestricaoEsboco } from "../model";
 import { ehCota, novoId } from "../model";
 import type { TipoEntidade, Viewport } from "../viewport";
-import { ajustarTextoCota, desenharCota, medirCota, textoCota } from "./cotas";
+import { ajustarTextoCota, desenharCota, medirCota, moverLinhaCota, textoCota } from "./cotas";
 import {
   amostrar, angulo, angulosArco, centroTresPontos, tracosDaGeo, paramElipse, parabolaDe, paramParabola, pontoElipse, pontoParabola, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
   cruzamentoDoLaco, encontrarLacos, idsNaSelecao, mapaPontos, mult, ORIGEM, pontosDaGeo, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type FormaSelecao, type P2,
@@ -2819,12 +2819,14 @@ export class EditorEsboco {
 
   // ---------- rótulos HTML: cotas, relações, dica do cursor, lupa ----------
 
-  private rotulos: { el: HTMLElement; p: P2; dx?: number; dy?: number }[] = [];
+  private rotulos: { el: HTMLElement; p: P2; dx?: number; dy?: number; faixa?: [P2, P2] }[] = [];
+  /** Arrasto de cota em andamento (o elemento é reaproveitado ao refazer o overlay: o toque não se perde). */
+  private arrCota: { el: HTMLElement; id: string; kind: "texto" | "linha" } | null = null;
 
   private montarOverlay() {
     const ov = this.h.overlay;
     // preserva a caixa de edição de cota e a lupa
-    for (const el of [...ov.children]) if (el !== this.edicaoCota?.el && el !== this.lupa?.canvas && el !== this.caixaRel?.el) el.remove();
+    for (const el of [...ov.children]) if (el !== this.edicaoCota?.el && el !== this.lupa?.canvas && el !== this.caixaRel?.el && el !== this.arrCota?.el) el.remove();
     this.atualizarCaixaRelacoes();
     this.rotulos = [];
     const pts = mapaPontos(this.esb);
@@ -2835,14 +2837,28 @@ export class EditorEsboco {
       const d = desenharCota(r, this.esb, this.mmPxDesenho);
       if (!d) continue;
       if (this.edicaoCota?.id === r.id) continue; // em edição: o valor digitado fica no lugar da etiqueta
-      const el = document.createElement("div");
+      // faixa de arrasto da linha de cota (Selecionar, ou Cota sem cota em andamento): afasta a linha sem
+      // mexer no valor; nas outras ferramentas o toque passa direto para o desenho embaixo
+      if (d.linha) {
+        const reuso = this.arrCota?.id === r.id && this.arrCota.kind === "linha";
+        const fa = reuso ? this.arrCota!.el : document.createElement("div");
+        fa.className = "cota-faixa";
+        if (!reuso) this.prenderArrasteCota(fa, r, "linha");
+        fa.style.pointerEvents = this.ferramenta === "selecionar" || (this.ferramenta === "cota" && !this.cotaEntidades.length) ? "" : "none";
+        if (!reuso) ov.appendChild(fa);
+        this.rotulos.push({ el: fa, p: d.texto, faixa: d.linha });
+      }
+      const reusoT = this.arrCota?.id === r.id && this.arrCota.kind === "texto";
+      const el = reusoT ? this.arrCota!.el : document.createElement("div");
       el.className = "cota-rotulo";
       el.classList.toggle("selecionado", this.selecao.has(r.id));
       el.classList.toggle("conflito", this.conflito.has(r.id));
       el.classList.toggle("referencia", !!r.referencia);
       el.textContent = textoCota(r);
-      this.prenderArrasteCota(el, r);
-      ov.appendChild(el);
+      if (!reusoT) {
+        this.prenderArrasteCota(el, r, "texto");
+        ov.appendChild(el);
+      }
       this.rotulos.push({ el, p: d.texto });
     }
 
@@ -2999,9 +3015,26 @@ export class EditorEsboco {
     return alvo?.tipo === "ponto";
   }
 
-  /** Arrastar o número move a cota; tocar abre a edição do valor. */
-  private prenderArrasteCota(el: HTMLElement, c: CotaEsboco) {
-    let ini: { x: number; y: number; moveu: boolean } | null = null;
+  /**
+   * Arrastar o número (livre, nas duas direções) ou a linha de cota (só o afastamento) reorganiza o desenho
+   * da cota: guarda `c.texto` e nada mais (valor, geometria e solver ficam como estão). Esc ou cancelamento
+   * do toque devolvem a posição de antes; um passo de Desfazer por arrasto. Tocar no número abre a edição.
+   */
+  private prenderArrasteCota(el: HTMLElement, c: CotaEsboco, kind: "texto" | "linha") {
+    let ini: { x: number; y: number; moveu: boolean; texto0?: P2; T0: P2; desl: P2 } | null = null;
+    const fim = () => {
+      ini = null;
+      this.arrCota = null;
+      window.removeEventListener("keydown", esc, true);
+    };
+    const esc = (ev: KeyboardEvent) => {
+      if (ev.key !== "Escape" || !ini) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      c.texto = ini.texto0;
+      fim();
+      this.redesenhar();
+    };
     el.onpointerdown = (e) => {
       e.stopPropagation();
       try {
@@ -3009,21 +3042,37 @@ export class EditorEsboco {
       } catch {
         /* etiqueta refeita no meio do toque (caixa de outra cota aplicada): segue sem captura */
       }
-      ini = { x: e.clientX, y: e.clientY, moveu: false };
+      const T0 = desenharCota(c, this.esb, this.mmPxDesenho)?.texto ?? { x: 0, y: 0 };
+      const p0 = this.noPlano(e) ?? T0;
+      // o dedo leva a cota pelo ponto que pegou (sem o salto do número até o centro do dedo)
+      ini = { x: e.clientX, y: e.clientY, moveu: false, texto0: c.texto ? { ...c.texto } : undefined, T0, desl: sub(T0, p0) };
+      this.arrCota = { el, id: c.id, kind };
+      window.addEventListener("keydown", esc, true);
     };
     el.onpointermove = (e) => {
       if (!ini) return;
-      if (Math.hypot(e.clientX - ini.x, e.clientY - ini.y) > 5) ini.moveu = true;
+      if (Math.hypot(e.clientX - ini.x, e.clientY - ini.y) > (e.pointerType === "mouse" ? 5 : 8)) ini.moveu = true;
       if (!ini.moveu) return;
       const p = this.noPlano(e);
       if (!p) return;
-      c.texto = ajustarTextoCota(c, this.esb, p, this.mmPxDesenho);
+      const local = soma(p, ini.desl);
+      c.texto = kind === "texto" ? ajustarTextoCota(c, this.esb, local, this.mmPxDesenho, true) : moverLinhaCota(c, this.esb, local, ini.T0, this.mmPxDesenho);
+      this.redesenhar();
+    };
+    el.onpointercancel = () => {
+      if (!ini) return;
+      c.texto = ini.texto0;
+      fim();
       this.redesenhar();
     };
     el.onpointerup = () => {
       if (!ini) return;
       const moveu = ini.moveu;
-      ini = null;
+      fim();
+      if (kind === "linha") {
+        if (moveu) this.h.alterou(true);
+        return; // tocar na linha sem arrastar não faz nada (o toque no número é que edita)
+      }
       // duplo clique / duplo toque (dois toques na mesma cota em até 0,45 s) abre a edição com qualquer
       // ferramenta; o dblclick do navegador não serve, porque o 1º toque refaz a etiqueta
       const agora = performance.now();
@@ -3044,6 +3093,13 @@ export class EditorEsboco {
   private posicionarOverlay() {
     const vp = this.h.viewport;
     for (const r of this.rotulos) {
+      if (r.faixa) {
+        const ta = vp.planoParaTela(this.ref, r.faixa[0].x, r.faixa[0].y), tb = vp.planoParaTela(this.ref, r.faixa[1].x, r.faixa[1].y);
+        r.el.style.width = `${Math.hypot(tb.x - ta.x, tb.y - ta.y)}px`;
+        r.el.style.transformOrigin = "0 0";
+        r.el.style.transform = `translate(${ta.x}px, ${ta.y}px) rotate(${Math.atan2(tb.y - ta.y, tb.x - ta.x)}rad) translate(0, -50%)`;
+        continue;
+      }
       const t = vp.planoParaTela(this.ref, r.p.x, r.p.y);
       r.el.style.transform = `translate(${t.x + (r.dx ?? 0)}px, ${t.y + (r.dy ?? 0)}px) translate(-50%, -50%)`;
     }

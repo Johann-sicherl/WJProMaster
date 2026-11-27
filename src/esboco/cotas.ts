@@ -115,6 +115,8 @@ export function geometriaAngulo(c: CotaEsboco, esb: FeatureEsboco): { O: P2; a0:
 export interface DesenhoCota {
   segmentos: P2[]; // pares de pontos
   texto: P2; // onde fica o número
+  /** Trecho da linha de cota que o dedo pode pegar para afastá-la (não há para a angular: arco). */
+  linha?: [P2, P2];
 }
 
 function seta(ponta: P2, dir: P2, tam: number): P2[] {
@@ -177,7 +179,7 @@ export function desenharCota(c: CotaEsboco, esb: FeatureEsboco, mmPx: number): D
       const B = polar(ctr, r, th + Math.PI);
       seg.push(B, fora ? T : A, ...seta(A, sub(A, ctr), s), ...seta(B, sub(B, ctr), s));
     }
-    return { segmentos: seg, texto: T };
+    return { segmentos: seg, texto: T, linha: [c.tipo === "raio" ? ctr : polar(ctr, r, th + Math.PI), fora ? T : A] };
   }
 
   if (c.tipo === "angulo") {
@@ -256,11 +258,13 @@ export function desenharCota(c: CotaEsboco, esb: FeatureEsboco, mmPx: number): D
     if (tt < 0 || tt > 1) seg.push(t <= 0 ? A : B, soma(A, mult(AB, tt)));
     seg.push(...seta(A, sub(A, B), s), ...seta(B, sub(B, A), s));
   }
-  return { segmentos: seg, texto: T };
+  return { segmentos: seg, texto: T, linha: lab > 1e-9 ? [A, B] : undefined };
 }
 
 /** Espaçamento automático entre a geometria e a cota (e entre cotas empilhadas), em pixels. */
 export const PASSO_COTA_PX = 26;
+/** Ímã (px) do arrasto livre: perto de um múltiplo do passo a cota gruda nele. */
+export const LIMITE_IMA_PX = 5;
 
 /**
  * "Distanciador" automático: ajusta onde o número da cota fica a partir de onde o usuário
@@ -268,12 +272,21 @@ export const PASSO_COTA_PX = 26;
  * encaixa em múltiplos do passo, deixando cotas paralelas igualmente espaçadas; dentro das
  * linhas de chamada o número fica centrado. Longe dos encaixes a posição é livre.
  */
-export function ajustarTextoCota(c: CotaEsboco, esb: FeatureEsboco, local: P2, mmPx: number): P2 {
+export function ajustarTextoCota(c: CotaEsboco, esb: FeatureEsboco, local: P2, mmPx: number, livre = false): P2 {
   const passo = PASSO_COTA_PX * mmPx;
-  /** Afastamento com sinal → encaixado (mínimo 1 passo; perto de um múltiplo, gruda nele). */
+  /**
+   * Afastamento com sinal → encaixado. Ao criar: mínimo 1 passo e grude num raio de 30 % do passo.
+   * `livre` (reorganizar uma cota que já existe): sem mínimo e sem centralizar à força; só um ímã
+   * curto (5 px) nos múltiplos do passo, para alinhar cotas paralelas sem travar o dedo.
+   */
+  const ima = LIMITE_IMA_PX * mmPx;
   const encaixar = (off: number): number => {
     const s = off < 0 ? -1 : 1;
     const a = Math.abs(off);
+    if (livre) {
+      const k = Math.round(a / passo);
+      return k >= 1 && Math.abs(a - k * passo) < ima ? s * k * passo : off;
+    }
     if (a <= passo) return s * passo;
     const k = Math.round(a / passo);
     return Math.abs(a - k * passo) < passo * 0.3 ? s * k * passo : off;
@@ -303,7 +316,7 @@ export function ajustarTextoCota(c: CotaEsboco, esb: FeatureEsboco, local: P2, m
     if (local[eixo] >= max) out[eixo] = max + encaixar(local[eixo] - max);
     else if (local[eixo] <= min) out[eixo] = min + encaixar(local[eixo] - min);
     const lo = Math.min(P[ao], Q[ao]), hi = Math.max(P[ao], Q[ao]);
-    if (local[ao] > lo && local[ao] < hi) out[ao] = (lo + hi) / 2;
+    if (local[ao] > lo && local[ao] < hi && (!livre || Math.abs(local[ao] - (lo + hi) / 2) < ima * 1.6)) out[ao] = (lo + hi) / 2;
     return out;
   }
   // alinhada (comprimento de linha, ponto-ponto, ponto-linha, linha-linha)
@@ -314,6 +327,40 @@ export function ajustarTextoCota(c: CotaEsboco, esb: FeatureEsboco, local: P2, m
   const n = { x: -t.y, y: t.x };
   const off = esc2(sub(local, P), n);
   const ao = esc2(sub(local, P), t);
-  const aoAjustado = ao > 0 && ao < l ? l / 2 : ao;
+  const aoAjustado = ao > 0 && ao < l && (!livre || Math.abs(ao - l / 2) < ima * 1.6) ? l / 2 : ao;
   return soma(P, soma(mult(t, aoAjustado), mult(n, encaixar(off))));
+}
+
+/**
+ * Arrastar a **linha** de cota (não o número): só o afastamento muda, o número continua na mesma posição
+ * ao longo dela. `local` é onde a linha deve passar (ponto do dedo já corrigido pelo ponto pego) e `T0`, o
+ * texto no começo do arrasto. Só mexe no deslocamento visual: valor e geometria ficam como estão.
+ */
+export function moverLinhaCota(c: CotaEsboco, esb: FeatureEsboco, local: P2, T0: P2, mmPx: number): P2 {
+  const pts = mapaPontos(esb);
+  const geos = new Map(esb.geos.map((g) => [g.id, g]));
+  let alvo: P2 = local;
+  if (c.tipo === "raio" || c.tipo === "diametro") {
+    const g = geos.get(c.a);
+    if (g && (g.tipo === "circulo" || g.tipo === "arco")) {
+      const ctr = pts.get(g.c)!;
+      alvo = polar(ctr, dist(ctr, local), angulo(ctr, T0));
+    }
+  } else if (c.tipo === "angulo") {
+    const g = geometriaAngulo(c, esb);
+    if (g) alvo = polar(g.O, dist(g.O, local), angulo(g.O, T0));
+  } else if (c.tipo === "distanciaH") alvo = { x: T0.x, y: local.y };
+  else if (c.tipo === "distanciaV") alvo = { x: local.x, y: T0.y };
+  else {
+    const e = extremosLineares(c, esb);
+    if (e) {
+      const u = sub(e[1], e[0]);
+      const l = Math.hypot(u.x, u.y);
+      if (l > 1e-9) {
+        const t = { x: u.x / l, y: u.y / l }, n = { x: -t.y, y: t.x };
+        alvo = soma(e[0], soma(mult(t, esc2(sub(T0, e[0]), t)), mult(n, esc2(sub(local, e[0]), n))));
+      }
+    }
+  }
+  return ajustarTextoCota(c, esb, alvo, mmPx, true);
 }

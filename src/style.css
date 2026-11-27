@@ -463,6 +463,12 @@ body.disp-tablet .lista-regioes .regioes-botoes button, body.disp-celular .lista
   cursor: pointer;
   touch-action: none;
 }
+/* alvo de toque de 44 px em volta do número (tablet e celular) */
+body.disp-tablet .cota-rotulo::after, body.disp-celular .cota-rotulo::after { content: ""; position: absolute; inset: -12px -9px; }
+/* faixa invisível sobre a linha de cota: pegar e afastar sem mexer no valor */
+.cota-rotulo { z-index: 1; } /* o número fica acima da faixa da linha, mesmo com o elemento reaproveitado no arrasto */
+.cota-faixa { height: 12px; cursor: grab; touch-action: none; }
+body.disp-tablet .cota-faixa, body.disp-celular .cota-faixa { height: 44px; }
 .cota-rotulo.selecionado { color: #f08c00; outline: 1.5px solid #f08c00; }
 .cota-rotulo.conflito { color: var(--erro); }
 .cota-rotulo.previa { color: #6c7a89; border: 1px dashed #9aa6b2; pointer-events: none !important; }
