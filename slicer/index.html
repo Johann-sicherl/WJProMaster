@@ -8,138 +8,233 @@
     <link rel="icon" href="/wjpromaster.svg" type="image/svg+xml" />
     <title>WJSlicer3D — WJProMaster</title>
   </head>
-  <body class="sl-app">
-    <header class="wj-topo">
+  <body class="sl-app" data-aba="preparar">
+    <header class="wj-topo sl-topo">
       <a class="wj-marca" href="../" title="Voltar ao WJProMaster"><img src="/wjpromaster.svg" alt="" /><span>WJSlicer3D <small id="sl-versao" class="versao-app"></small></span></a>
-      <button id="sl-abrir" class="sl-abrir" title="Pôr na mesa um STL do cofre ou do aparelho"><span>Adicionar STL</span></button>
-      <button id="sl-salvar" class="sl-abrir" title="Salvar o projeto (peças, pintura, filamentos e ajustes) no cofre do WJPDM"><span>Salvar projeto</span></button>
-      <button id="sl-abrir-projeto" class="sl-abrir" title="Abrir um projeto do WJSlicer3D do cofre"><span>Abrir projeto</span></button>
-      <button id="sl-orcamento" class="sl-abrir" title="Orçamento: filamento por cor, horas de máquina e itens da biblioteca, com lucro por linha"><span>Orçamento</span></button>
-      <button id="sl-biblioteca" class="sl-abrir" title="Biblioteca de custos: material, mão de obra, serviço, filamento e máquina"><span>Biblioteca de custos</span></button>
+      <button id="sl-arquivo" class="sl-tb" aria-haspopup="menu" title="Arquivo: adicionar STL, abrir e salvar projeto"><i class="sl-ic" data-ic="arquivo"></i><span>Arquivo ▾</span></button>
+      <button id="sl-salvar" class="sl-tb" title="Salvar o projeto (peças, pintura, filamentos e ajustes) no cofre do WJPDM"><i class="sl-ic" data-ic="salvar"></i><span>Salvar</span></button>
+      <button id="sl-desfazer-cor" class="sl-tb sl-so-ic" disabled title="Desfazer a pintura" aria-label="Desfazer a pintura"><i class="sl-ic" data-ic="desfazer"></i></button>
+      <button id="sl-refazer-cor" class="sl-tb sl-so-ic" disabled title="Refazer a pintura" aria-label="Refazer a pintura"><i class="sl-ic" data-ic="refazer"></i></button>
+      <button id="sl-calibrar" class="sl-tb" aria-haspopup="menu" title="Calibrar o tempo desta impressora pelo tempo real de uma impressão"><i class="sl-ic" data-ic="calibrar"></i><span>Calibrar ▾</span></button>
       <span class="sl-sub">Tempo e material por fatiamento real · sem G-code</span>
       <div id="sl-direita" class="wj-direita"></div>
     </header>
+
+    <nav class="sl-abas" id="sl-abas" role="tablist" aria-label="Telas do WJSlicer3D">
+      <button id="sl-gaveta" class="sl-gaveta" aria-label="Mostrar ou esconder a barra lateral" aria-expanded="false" title="Barra lateral"><i class="sl-ic" data-ic="menu"></i></button>
+      <button role="tab" id="sl-aba-inicio" data-aba="inicio" aria-selected="false"><i class="sl-ic" data-ic="inicio"></i><span>Início</span></button>
+      <button role="tab" id="sl-aba-preparar" data-aba="preparar" aria-selected="true"><i class="sl-ic" data-ic="preparar"></i><span>Preparar</span></button>
+      <button role="tab" id="sl-aba-previa" data-aba="previa" aria-selected="false"><i class="sl-ic" data-ic="previa"></i><span>Prévia</span></button>
+      <button role="tab" id="sl-aba-bancada" data-aba="bancada" aria-selected="false"><i class="sl-ic" data-ic="bancada"></i><span>Bancada</span></button>
+    </nav>
+
     <main class="sl-principal">
-      <section class="sl-vista-wrap">
-        <div id="sl-vista" class="sl-vista"></div>
-        <div id="sl-vazio" class="sl-vazio">
-          <p>Abra uma peça STL para estimar o tempo de impressão e o material.</p>
-          <button id="sl-vazio-abrir" class="destaque">Abrir STL…</button>
-          <p class="sl-nota">No WJCAD: menu da Peça → Estimar impressão 3D.</p>
+      <aside id="sl-lateral" class="sl-lateral" aria-label="Impressora, filamento e processo">
+        <!-- ===== Preparar ===== -->
+        <div id="sl-painel-preparar" class="sl-painel-aba">
+          <details class="sl-bloco" id="sl-bloco-pecas" open>
+            <summary>Peças na mesa</summary>
+            <ul id="sl-lista" class="sl-lista"></ul>
+            <p class="sl-nota">Toque numa peça (na lista ou na mesa) para girar, apoiar ou mudar as cópias. Use “Organizar” para reorganizar a mesa.</p>
+          </details>
+
+          <section class="sl-bloco" id="sl-bloco-pintura" hidden>
+            <h2>Pintura <button id="sl-pintar-fechar" class="sl-mini" title="Terminar de pintar">Concluir</button></h2>
+            <div id="sl-pintura">
+              <div id="sl-ferramentas" class="sl-ferramentas" role="toolbar" aria-label="Ferramentas de pintura">
+                <button data-ferr="pincel" aria-pressed="true" title="Pincel: pinta onde a caneta passa">Pincel</button>
+                <button data-ferr="face" aria-pressed="false" title="Balde por face: pinta a face plana tocada">Balde (face)</button>
+                <button data-ferr="regiao" aria-pressed="false" title="Balde por região: pinta tudo o que está ligado e tem a mesma cor">Balde (região)</button>
+                <button data-ferr="angulo" aria-pressed="false" title="Preencher por ângulo: espalha até uma aresta mais viva que o ângulo">Por ângulo</button>
+                <button data-ferr="corpo" aria-pressed="false" title="Corpo inteiro: pinta o corpo tocado (peça com vários corpos)">Corpo inteiro</button>
+                <button data-ferr="borracha" aria-pressed="false" title="Borracha: volta à cor 1">Borracha</button>
+              </div>
+              <div id="sl-paleta" class="sl-paleta" role="radiogroup" aria-label="Cor para pintar"></div>
+              <label class="sl-campo" id="sl-campo-pincel">Tamanho do pincel <span class="sl-faixa-valor"><input id="sl-pincel" type="range" min="1" max="30" step="0.5" value="4" /><b id="sl-pincel-v"></b></span></label>
+              <label class="sl-campo" id="sl-campo-angulo" hidden>Ângulo máximo entre triângulos <span class="sl-faixa-valor"><input id="sl-angulo" type="range" min="2" max="90" step="1" value="30" /><b id="sl-angulo-v"></b></span></label>
+              <div class="sl-linha"><button id="sl-limpar-cor" title="Volta a peça escolhida para a cor 1">Limpar pintura</button></div>
+              <p class="sl-nota">Caneta ou mouse pintam; o dedo gira e aproxima a vista. Até 4 cores por peça. Desfazer e refazer ficam na barra de cima.</p>
+            </div>
+          </section>
+
+          <section class="sl-bloco" id="sl-bloco-impressora">
+            <h2>Impressora
+              <span class="sl-cab-acoes"><button class="sl-mini sl-ic-btn" disabled title="Configurações da impressora — em breve" aria-label="Configurações da impressora (em breve)"><i class="sl-ic" data-ic="engrenagem"></i></button></span>
+            </h2>
+            <div class="sl-linha-sel">
+              <select id="sl-maquina" aria-label="Impressora"></select>
+              <button class="sl-mini sl-ic-btn" disabled title="Editar o perfil da impressora — em breve" aria-label="Editar impressora (em breve)"><i class="sl-ic" data-ic="lapis"></i></button>
+            </div>
+            <p id="sl-maq-info" class="sl-nota"></p>
+          </section>
+
+          <section class="sl-bloco" id="sl-bloco-filamento">
+            <h2>Filamento</h2>
+            <div id="sl-filamentos" class="sl-filamentos"></div>
+            <p class="sl-nota">Posição 1 = material e preço do orçamento. As cores seguem para a pintura e para a biblioteca de custos.</p>
+            <details class="sl-detalhe" id="sl-det-troca">
+              <summary>Custo das trocas de cor</summary>
+              <div class="sl-par">
+                <label class="sl-campo">Purga por troca (mm³) <input id="sl-purga" type="number" min="0" step="10" inputmode="decimal" /></label>
+                <label class="sl-campo">Tempo da troca (s) <input id="sl-tempo-troca" type="number" min="0" step="5" inputmode="decimal" /></label>
+              </div>
+              <div class="sl-par">
+                <label class="sl-chave"><input id="sl-torre" type="checkbox" /> Torre de purga</label>
+                <label class="sl-campo">Lado da torre (mm) <input id="sl-torre-l" type="number" min="10" max="80" step="1" inputmode="decimal" /></label>
+              </div>
+              <button id="sl-troca-padrao" class="sl-mini" title="Volta aos valores de fábrica desta impressora">Padrão de fábrica</button>
+              <p id="sl-troca-info" class="sl-nota"></p>
+            </details>
+          </section>
+
+          <section class="sl-bloco" id="sl-bloco-processo">
+            <h2>Processo</h2>
+            <div class="sl-seg" role="group" aria-label="Escopo do processo">
+              <button id="sl-proc-global" aria-pressed="true" title="Ajustes do projeto inteiro">Global</button>
+              <button id="sl-proc-objetos" disabled title="Ajustes por objeto — em breve">Objetos <small>em breve</small></button>
+            </div>
+            <label class="sl-chave"><input id="sl-avancado" type="checkbox" disabled /> Avançado <small class="sl-nota">em breve</small></label>
+            <div class="sl-linha-sel">
+              <button id="sl-perfil-voltar" class="sl-voltar-perfil" hidden title="Alterado: voltar tudo ao valor do perfil" aria-label="Voltar ao valor do perfil">↺</button>
+              <select id="sl-perfil" aria-label="Perfil de processo"></select>
+              <button id="sl-perfil-menu" class="sl-mini sl-ic-btn" aria-haspopup="menu" title="Salvar, renomear ou excluir perfil do usuário" aria-label="Menu do perfil"><i class="sl-ic" data-ic="salvar"></i></button>
+            </div>
+            <input id="sl-busca" class="sl-busca" type="search" disabled placeholder="🔍 Buscar parâmetro — em breve" aria-label="Buscar parâmetro (em breve)" />
+            <div class="sl-pabs" id="sl-pabs" role="tablist" aria-label="Abas do processo">
+              <button role="tab" data-pab="qualidade" aria-selected="true">Qualidade</button>
+              <button role="tab" data-pab="resistencia" aria-selected="false">Resistência</button>
+              <button role="tab" data-pab="velocidade" aria-selected="false">Velocidade</button>
+              <button role="tab" data-pab="suporte" aria-selected="false">Suporte</button>
+              <button role="tab" data-pab="multimaterial" aria-selected="false">Multimaterial</button>
+              <button role="tab" data-pab="outros" aria-selected="false">Outros</button>
+            </div>
+
+            <div class="sl-pab" data-pab="qualidade" role="tabpanel">
+              <div class="sl-cp" data-id="altura"><label class="sl-campo">Altura da camada <select id="sl-altura"></select></label><button class="sl-voltar" data-voltar="altura" hidden aria-label="Voltar a altura da camada ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
+              <p class="sl-nota sl-prox">Os demais campos de qualidade (larguras de linha, costura, precisão…) chegam na próxima etapa.</p>
+            </div>
+            <div class="sl-pab" data-pab="resistencia" role="tabpanel" hidden>
+              <div class="sl-trio">
+                <div class="sl-cp" data-id="paredes"><div class="sl-campo">Paredes<div class="sl-passo"><button data-alvo="sl-paredes" data-passo="-1" aria-label="Menos paredes">−</button><input id="sl-paredes" type="number" min="1" max="10" inputmode="numeric" /><button data-alvo="sl-paredes" data-passo="1" aria-label="Mais paredes">+</button></div></div><button class="sl-voltar" data-voltar="paredes" hidden aria-label="Voltar as paredes ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
+                <div class="sl-cp" data-id="topo"><div class="sl-campo">Camadas de topo<div class="sl-passo"><button data-alvo="sl-topo" data-passo="-1" aria-label="Menos camadas de topo">−</button><input id="sl-topo" type="number" min="0" max="20" inputmode="numeric" /><button data-alvo="sl-topo" data-passo="1" aria-label="Mais camadas de topo">+</button></div></div><button class="sl-voltar" data-voltar="topo" hidden aria-label="Voltar as camadas de topo ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
+                <div class="sl-cp" data-id="fundo"><div class="sl-campo">Camadas de fundo<div class="sl-passo"><button data-alvo="sl-fundo" data-passo="-1" aria-label="Menos camadas de fundo">−</button><input id="sl-fundo" type="number" min="0" max="20" inputmode="numeric" /><button data-alvo="sl-fundo" data-passo="1" aria-label="Mais camadas de fundo">+</button></div></div><button class="sl-voltar" data-voltar="fundo" hidden aria-label="Voltar as camadas de fundo ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
+              </div>
+              <div class="sl-cp" data-id="preenchimento"><label class="sl-campo">Preenchimento <span class="sl-faixa-valor"><input id="sl-preench" type="range" min="0" max="100" step="1" /><b id="sl-preench-v"></b></span></label><button class="sl-voltar" data-voltar="preenchimento" hidden aria-label="Voltar o preenchimento ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
+              <div class="sl-cp" data-id="padrao"><label class="sl-campo">Padrão do preenchimento <select id="sl-desenho"></select></label><button class="sl-voltar" data-voltar="padrao" hidden aria-label="Voltar o padrão do preenchimento ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
+            </div>
+            <div class="sl-pab" data-pab="velocidade" role="tabpanel" hidden>
+              <p class="sl-nota sl-prox">Velocidades, acelerações e jerk chegam na próxima etapa.</p>
+            </div>
+            <div class="sl-pab" data-pab="suporte" role="tabpanel" hidden>
+              <label class="sl-campo">Suporte <select id="sl-suporte"><option value="nenhum">Sem suporte</option><option value="normal">Normal</option><option value="arvore">Árvore</option></select></label>
+              <p class="sl-nota sl-prox">Estilos, jangada e distâncias do suporte chegam na próxima etapa.</p>
+            </div>
+            <div class="sl-pab" data-pab="multimaterial" role="tabpanel" hidden>
+              <p class="sl-nota sl-prox">Por enquanto, a purga e a torre ficam em Filamento › Custo das trocas de cor. O resto chega na próxima etapa.</p>
+            </div>
+            <div class="sl-pab" data-pab="outros" role="tabpanel" hidden>
+              <label class="sl-chave"><input id="sl-borda" type="checkbox" /> Borda (aba de 5 mm)</label>
+              <label class="sl-chave"><input id="sl-saia" type="checkbox" /> Saia (uma volta)</label>
+              <p class="sl-nota sl-prox">Tipo de borda, voltas da saia e modos especiais chegam na próxima etapa.</p>
+            </div>
+          </section>
+          <p class="sl-nota sl-rodape">Orçamento por fatiamento real (paredes, preenchimento, topo e fundo, suporte, borda) com os perfis de fábrica (bico 0,4 mm) e o planejador de movimento da máquina. Não gera G-code nem envia para a impressora.</p>
         </div>
-        <div class="sl-orientar" role="toolbar" aria-label="Orientação da peça escolhida">
-          <button data-girar="x" disabled title="Girar a peça escolhida 90° em torno de X">↻ X</button>
-          <button data-girar="y" disabled title="Girar a peça escolhida 90° em torno de Y">↻ Y</button>
-          <button data-girar="z" disabled title="Girar a peça escolhida 90° em torno de Z (na mesa)">↻ Z</button>
-          <button id="sl-apoio" disabled title="Deita a peça escolhida na face plana maior (menos suporte, melhor aderência)">Melhor apoio</button>
+
+        <!-- ===== Prévia ===== -->
+        <div id="sl-painel-previa" class="sl-painel-aba" hidden>
+          <section class="sl-bloco sl-resultado-cartao">
+            <div id="sl-peca" class="sl-peca"><strong>Nenhuma peça na mesa</strong></div>
+            <div id="sl-resultado" class="sl-resultado" hidden>
+              <div class="sl-grandes">
+                <div><small>Tempo de impressão</small><b id="sl-tempo"></b></div>
+                <div><small>Material</small><b id="sl-massa"></b></div>
+              </div>
+              <div id="sl-faixa" class="sl-faixa" aria-hidden="true"></div>
+              <dl id="sl-dados" class="sl-dados"></dl>
+              <div id="sl-por-cor" class="sl-por-cor" hidden></div>
+              <div id="sl-avisos" class="sl-avisos" hidden></div>
+              <details class="sl-detalhe" open>
+                <summary>Tempo por tipo de caminho</summary>
+                <table id="sl-partes" class="wj-tabela sl-partes"></table>
+              </details>
+              <div class="sl-linha"><span id="sl-calibrado" class="sl-nota"></span></div>
+            </div>
+            <p id="sl-previa-vazia" class="sl-nota">Ponha uma peça na mesa (aba Preparar) para ver o tempo, o material e as camadas.</p>
+            <div id="sl-ocupado" class="sl-ocupado" hidden><span>Fatiando…</span><div class="sl-progresso"><i id="sl-barra"></i></div></div>
+          </section>
         </div>
-        <div id="sl-previa" class="sl-previa" hidden>
-          <button id="sl-camadas" class="sl-mini" aria-pressed="false" title="Mostra os caminhos de cada camada">Prévia das camadas</button>
-          <div id="sl-deslizante" class="sl-deslizante" hidden>
-            <button data-camada="-1" aria-label="Camada de baixo">−</button>
-            <input id="sl-camada" type="range" min="0" max="0" step="1" value="0" aria-label="Camada" />
-            <button data-camada="1" aria-label="Camada de cima">+</button>
-            <span id="sl-camada-v"></span>
+      </aside>
+
+      <section class="sl-centro">
+        <!-- vista 3D (Preparar e Prévia) -->
+        <div id="sl-pagina-vista" class="sl-vista-wrap">
+          <div id="sl-vista" class="sl-vista"></div>
+          <div id="sl-vazio" class="sl-vazio">
+            <p>Abra uma peça STL para estimar o tempo de impressão e o material.</p>
+            <button id="sl-vazio-abrir" class="destaque">Abrir STL…</button>
+            <p class="sl-nota">No WJCAD: menu da Peça → Estimar impressão 3D.</p>
           </div>
-          <div id="sl-legenda" class="sl-legenda" hidden></div>
+          <div id="sl-mini" class="sl-mini-resumo" hidden></div>
+          <div id="sl-previa" class="sl-previa" hidden>
+            <div id="sl-deslizante" class="sl-deslizante">
+              <button data-camada="-1" aria-label="Camada de baixo">−</button>
+              <input id="sl-camada" type="range" min="0" max="0" step="1" value="0" aria-label="Camada" />
+              <button data-camada="1" aria-label="Camada de cima">+</button>
+              <span id="sl-camada-v"></span>
+            </div>
+            <div id="sl-legenda" class="sl-legenda"></div>
+          </div>
+          <div class="sl-ferr" id="sl-ferr" role="toolbar" aria-label="Ferramentas da mesa">
+            <button id="sl-adicionar" title="Pôr um STL na mesa (cofre ou aparelho)"><i class="sl-ic" data-ic="objeto"></i><span>Objeto</span></button>
+            <button id="sl-organizar" title="Reorganizar as peças na mesa"><i class="sl-ic" data-ic="organizar"></i><span>Organizar</span></button>
+            <button id="sl-apoio" disabled title="Deita a peça escolhida na face plana maior (menos suporte, melhor aderência)"><i class="sl-ic" data-ic="apoio"></i><span>Auto-orientar</span></button>
+            <span class="sl-ferr-sep" aria-hidden="true"></span>
+            <button data-girar="x" disabled title="Girar a peça escolhida 90° em torno de X"><i class="sl-ic" data-ic="girar"></i><span>Girar X</span></button>
+            <button data-girar="y" disabled title="Girar a peça escolhida 90° em torno de Y"><i class="sl-ic" data-ic="girar"></i><span>Girar Y</span></button>
+            <button data-girar="z" disabled title="Girar a peça escolhida 90° em torno de Z (na mesa)"><i class="sl-ic" data-ic="girar"></i><span>Girar Z</span></button>
+            <span class="sl-ferr-sep" aria-hidden="true"></span>
+            <button id="sl-pintar" aria-pressed="false" title="Pintar a peça escolhida: caneta ou mouse pintam, o dedo gira a vista"><i class="sl-ic" data-ic="pintar"></i><span>Pintar</span></button>
+            <span class="sl-ferr-sep" aria-hidden="true"></span>
+            <button disabled title="Mover com valores — em breve"><i class="sl-ic" data-ic="mover"></i><span>Mover</span></button>
+            <button disabled title="Cortar — em breve"><i class="sl-ic" data-ic="cortar"></i><span>Cortar</span></button>
+            <button disabled title="Medir — em breve"><i class="sl-ic" data-ic="medir"></i><span>Medir</span></button>
+          </div>
+        </div>
+
+        <!-- Início -->
+        <div id="sl-pagina-inicio" class="sl-pagina" hidden>
+          <div class="sl-pagina-corpo">
+            <h1>WJSlicer3D</h1>
+            <p class="sl-nota">Tempo de impressão e material por fatiamento real, com orçamento e proposta. Não gera G-code nem envia para a impressora.</p>
+            <div class="sl-inicio-grade">
+              <button id="sl-ini-adicionar" class="sl-card-acao"><i class="sl-ic" data-ic="objeto"></i><b>Adicionar STL</b><small>Do cofre (WJPDM) ou do aparelho</small></button>
+              <button id="sl-ini-abrir" class="sl-card-acao"><i class="sl-ic" data-ic="arquivo"></i><b>Abrir projeto</b><small>Um projeto salvo no cofre</small></button>
+              <button id="sl-ini-preparar" class="sl-card-acao"><i class="sl-ic" data-ic="preparar"></i><b>Preparar a mesa</b><small>Peças, cópias, pintura e ajustes</small></button>
+              <button id="sl-ini-previa" class="sl-card-acao"><i class="sl-ic" data-ic="previa"></i><b>Ver a prévia</b><small>Camadas, tempo por caminho e material</small></button>
+              <button id="sl-ini-bancada" class="sl-card-acao"><i class="sl-ic" data-ic="bancada"></i><b>Bancada</b><small>Orçamento, proposta, biblioteca e projetos</small></button>
+            </div>
+            <div id="sl-ini-resumo" class="sl-ini-resumo"></div>
+          </div>
+        </div>
+
+        <!-- Bancada -->
+        <div id="sl-pagina-bancada" class="sl-pagina" hidden>
+          <div class="sl-pagina-corpo">
+            <h1>Bancada</h1>
+            <p class="sl-nota">Orçar e entregar: custos, proposta e projetos do cofre.</p>
+            <div class="sl-inicio-grade">
+              <button id="sl-biblioteca" class="sl-card-acao"><i class="sl-ic" data-ic="biblioteca"></i><b>Biblioteca de custos</b><small>Material, mão de obra, serviço, filamento e máquina</small></button>
+              <button id="sl-orcamento" class="sl-card-acao"><i class="sl-ic" data-ic="orcamento"></i><b>Orçamento</b><small>Filamento por cor, horas de máquina e itens, com lucro por linha</small></button>
+              <button id="sl-proposta" class="sl-card-acao"><i class="sl-ic" data-ic="proposta"></i><b>Proposta</b><small>Gera a proposta comercial no WJWrite (PDF/DOCX)</small></button>
+              <button id="sl-bancada-salvar" class="sl-card-acao"><i class="sl-ic" data-ic="salvar"></i><b>Salvar projeto</b><small>Peças, pintura, filamentos e ajustes no cofre</small></button>
+              <button id="sl-abrir-projeto" class="sl-card-acao"><i class="sl-ic" data-ic="arquivo"></i><b>Abrir projeto</b><small>Um projeto do WJSlicer3D do cofre</small></button>
+              <button id="sl-cofre" class="sl-card-acao"><i class="sl-ic" data-ic="cofre"></i><b>Cofre</b><small>GO-OUT / GO-IN e arquivos em GO-OUT</small></button>
+            </div>
+          </div>
+          <div id="sl-bancada-area" class="sl-bancada-area"></div>
         </div>
       </section>
-      <aside class="sl-painel" aria-label="Impressora, ajustes e resultado">
-        <section class="sl-cartao sl-resultado-cartao">
-          <div id="sl-peca" class="sl-peca"><strong>Nenhuma peça na mesa</strong></div>
-          <div id="sl-resultado" class="sl-resultado" hidden>
-            <div class="sl-grandes">
-              <div><small>Tempo de impressão</small><b id="sl-tempo"></b></div>
-              <div><small>Material</small><b id="sl-massa"></b></div>
-            </div>
-            <div id="sl-faixa" class="sl-faixa" aria-hidden="true"></div>
-            <dl id="sl-dados" class="sl-dados"></dl>
-            <div id="sl-por-cor" class="sl-por-cor" hidden></div>
-            <div id="sl-avisos" class="sl-avisos" hidden></div>
-            <details class="sl-detalhe">
-              <summary>Tempo por tipo de caminho</summary>
-              <table id="sl-partes" class="wj-tabela sl-partes"></table>
-            </details>
-            <div class="sl-linha">
-              <button id="sl-calibrar" title="Ajusta o tempo desta impressora pelo tempo real de uma impressão">Calibrar tempo…</button>
-              <span id="sl-calibrado" class="sl-nota"></span>
-            </div>
-          </div>
-          <div id="sl-ocupado" class="sl-ocupado" hidden><span>Fatiando…</span><div class="sl-progresso"><i id="sl-barra"></i></div></div>
-        </section>
-        <section class="sl-cartao">
-          <h2>Peças na mesa <button id="sl-adicionar" class="sl-mini" title="Pôr outro STL na mesa">+ Peça</button></h2>
-          <ul id="sl-lista" class="sl-lista"></ul>
-          <p class="sl-nota">Toque numa peça (na lista ou na mesa) para girar, apoiar ou mudar as cópias. A mesa se organiza sozinha.</p>
-        </section>
-        <section class="sl-cartao" id="sl-cartao-cores">
-          <h2>Cores e pintura <button id="sl-pintar" class="sl-mini" aria-pressed="false" title="Pintar a peça escolhida: caneta ou mouse pintam, o dedo gira a vista">Pintar</button></h2>
-          <div id="sl-pintura" hidden>
-            <div id="sl-ferramentas" class="sl-ferramentas" role="toolbar" aria-label="Ferramentas de pintura">
-              <button data-ferr="pincel" aria-pressed="true" title="Pincel: pinta onde a caneta passa">Pincel</button>
-              <button data-ferr="face" aria-pressed="false" title="Balde por face: pinta a face plana tocada">Balde (face)</button>
-              <button data-ferr="regiao" aria-pressed="false" title="Balde por região: pinta tudo o que está ligado e tem a mesma cor">Balde (região)</button>
-              <button data-ferr="angulo" aria-pressed="false" title="Preencher por ângulo: espalha até uma aresta mais viva que o ângulo">Por ângulo</button>
-              <button data-ferr="corpo" aria-pressed="false" title="Corpo inteiro: pinta o corpo tocado (peça com vários corpos)">Corpo inteiro</button>
-              <button data-ferr="borracha" aria-pressed="false" title="Borracha: volta à cor 1">Borracha</button>
-            </div>
-            <div id="sl-paleta" class="sl-paleta" role="radiogroup" aria-label="Cor para pintar"></div>
-            <label class="sl-campo" id="sl-campo-pincel">Tamanho do pincel <span class="sl-faixa-valor"><input id="sl-pincel" type="range" min="1" max="30" step="0.5" value="4" /><b id="sl-pincel-v"></b></span></label>
-            <label class="sl-campo" id="sl-campo-angulo" hidden>Ângulo máximo entre triângulos <span class="sl-faixa-valor"><input id="sl-angulo" type="range" min="2" max="90" step="1" value="30" /><b id="sl-angulo-v"></b></span></label>
-            <div class="sl-linha">
-              <button id="sl-desfazer-cor" disabled>↶ Desfazer</button>
-              <button id="sl-limpar-cor" title="Volta a peça escolhida para a cor 1">Limpar pintura</button>
-            </div>
-            <p class="sl-nota">Caneta ou mouse pintam; o dedo gira e aproxima a vista. Até 4 cores por peça.</p>
-          </div>
-          <details class="sl-detalhe" id="sl-det-fil">
-            <summary>Cores e filamentos do projeto</summary>
-            <div id="sl-filamentos" class="sl-filamentos"></div>
-            <p class="sl-nota">A cor 1 usa o material e o preço de “Impressora e material”. Os filamentos ficam no projeto e seguem para a biblioteca de custos.</p>
-          </details>
-          <details class="sl-detalhe" id="sl-det-troca">
-            <summary>Custo das trocas de cor</summary>
-            <div class="sl-par">
-              <label class="sl-campo">Purga por troca (mm³) <input id="sl-purga" type="number" min="0" step="10" inputmode="decimal" /></label>
-              <label class="sl-campo">Tempo da troca (s) <input id="sl-tempo-troca" type="number" min="0" step="5" inputmode="decimal" /></label>
-            </div>
-            <div class="sl-par">
-              <label class="sl-chave"><input id="sl-torre" type="checkbox" /> Torre de purga</label>
-              <label class="sl-campo">Lado da torre (mm) <input id="sl-torre-l" type="number" min="10" max="80" step="1" inputmode="decimal" /></label>
-            </div>
-            <button id="sl-troca-padrao" class="sl-mini" title="Volta aos valores de fábrica desta impressora">Padrão de fábrica</button>
-            <p id="sl-troca-info" class="sl-nota"></p>
-          </details>
-        </section>
-        <section class="sl-cartao">
-          <h2>Impressora e material</h2>
-          <label class="sl-campo">Impressora <select id="sl-maquina"></select></label>
-          <div class="sl-par">
-            <label class="sl-campo">Material <select id="sl-material"></select></label>
-            <label class="sl-campo">Preço (R$/kg) <input id="sl-preco" type="number" min="0" step="1" inputmode="decimal" /></label>
-          </div>
-          <p id="sl-maq-info" class="sl-nota"></p>
-        </section>
-        <section class="sl-cartao">
-          <h2>Ajustes <button id="sl-padrao" class="sl-mini" title="Volta aos valores de fábrica do perfil desta impressora">Padrão do perfil</button></h2>
-          <label class="sl-campo">Altura da camada <select id="sl-altura"></select></label>
-          <div class="sl-trio">
-            <div class="sl-campo">Paredes<div class="sl-passo"><button data-alvo="sl-paredes" data-passo="-1" aria-label="Menos paredes">−</button><input id="sl-paredes" type="number" min="1" max="10" inputmode="numeric" /><button data-alvo="sl-paredes" data-passo="1" aria-label="Mais paredes">+</button></div></div>
-            <div class="sl-campo">Camadas de topo<div class="sl-passo"><button data-alvo="sl-topo" data-passo="-1" aria-label="Menos camadas de topo">−</button><input id="sl-topo" type="number" min="0" max="20" inputmode="numeric" /><button data-alvo="sl-topo" data-passo="1" aria-label="Mais camadas de topo">+</button></div></div>
-            <div class="sl-campo">Camadas de fundo<div class="sl-passo"><button data-alvo="sl-fundo" data-passo="-1" aria-label="Menos camadas de fundo">−</button><input id="sl-fundo" type="number" min="0" max="20" inputmode="numeric" /><button data-alvo="sl-fundo" data-passo="1" aria-label="Mais camadas de fundo">+</button></div></div>
-          </div>
-          <label class="sl-campo">Preenchimento <span class="sl-faixa-valor"><input id="sl-preench" type="range" min="0" max="100" step="1" /><b id="sl-preench-v"></b></span></label>
-          <div class="sl-par">
-            <label class="sl-campo">Padrão do preenchimento <select id="sl-desenho"></select></label>
-            <label class="sl-campo">Suporte <select id="sl-suporte"><option value="nenhum">Sem suporte</option><option value="normal">Normal</option><option value="arvore">Árvore</option></select></label>
-          </div>
-          <div class="sl-par">
-            <label class="sl-chave"><input id="sl-borda" type="checkbox" /> Borda (aba de 5 mm)</label>
-            <label class="sl-chave"><input id="sl-saia" type="checkbox" /> Saia (uma volta)</label>
-          </div>
-        </section>
-        <p class="sl-nota sl-rodape">Orçamento por fatiamento real (paredes, preenchimento, topo e fundo, suporte, borda) com os perfis de fábrica (bico 0,4 mm) e o planejador de movimento da máquina (acelerações, cantos, vazão). Não gera G-code nem envia para a impressora.</p>
-      </aside>
     </main>
     <div id="sl-aviso" class="wj-aviso" role="status" hidden></div>
     <script type="module" src="/src/slicer/main.ts"></script>
