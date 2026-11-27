@@ -93,7 +93,38 @@ export interface Processo {
   bordaLargura: number;
   bordaFolga: number;
   saiaDistancia: number;
+  /**
+   * Multimaterial (fatia X1). Filamento por função: 0 = o de hoje (paredes e sólido na cor pintada; suporte e interface
+   * com o filamento que estiver no bico); 1–4 = esse filamento.
+   */
+  filamentoParede: number;
+  filamentoSolidoInterno: number;
+  filamentoSuporte: number;
+  filamentoInterface: number;
+  /** torre de purga: borda da 1ª camada (mm), posição automática ou o canto (X, Y) medido do canto da frente à esquerda da mesa (mm), giro (°) */
+  torreBorda: number;
+  torreAuto: boolean;
+  torreX: number;
+  torreY: number;
+  torreAngulo: number;
+  /** purga depositada na torre a cada troca (mm³; além da purga da troca), linhas de purga: espaçamento (0 = encostadas), espaço extra (mm) e fluxo extra */
+  torreVolume: number;
+  torreEspacoLinhas: number;
+  torreEspacoExtra: number;
+  torreFluxoExtra: number;
+  /** aproveitar a purga da troca no preenchimento esparso, nos objetos ou no suporte da cor que entra */
+  purgarNoPreenchimento: boolean;
+  purgarNosObjetos: boolean;
+  purgarNoSuporte: boolean;
 }
+
+/** Multimaterial de fábrica: nada muda o resultado de antes da X1 (filamento do bico, torre de hoje, sem aproveitar purga). */
+export const MULTIMATERIAL_PADRAO = {
+  filamentoParede: 0, filamentoSolidoInterno: 0, filamentoSuporte: 0, filamentoInterface: 0,
+  torreBorda: 0, torreAuto: true, torreX: 0, torreY: 0, torreAngulo: 0,
+  torreVolume: 0, torreEspacoLinhas: 0, torreEspacoExtra: 0, torreFluxoExtra: 1,
+  purgarNoPreenchimento: false, purgarNosObjetos: false, purgarNoSuporte: false,
+} satisfies Partial<Processo>;
 
 /**
  * Troca de cor (sistema de 4 filamentos de cada impressora). Valores de fábrica = típicos do sistema de
@@ -106,9 +137,9 @@ export interface ConfigTroca {
   tempoS: number;
   /** vazão da purga (mm³/s) */
   vazaoPurga: number;
-  /** torre de purga: onde a purga é depositada (desligada: a purga cai fora da peça) */
+  /** torre de purga: anel de estabilização nas camadas até a última troca (desligada: a purga cai fora da peça) */
   torre: boolean;
-  /** lado da torre (mm) */
+  /** lado da torre (mm; cresce sozinho se a purga da torre não couber) */
   larguraTorre: number;
 }
 
@@ -190,6 +221,7 @@ export const MAQUINAS: Maquina[] = [
       interfaceTopo: 2, interfaceFundo: 2, soNaMesa: false,
       arvore: { angulo: 45, diametro: 2, ponta: 0.8, anguloDiametro: 5, distancia: 5, paredeDupla: 3 },
       bordaLargura: 5, bordaFolga: 0.1, saiaDistancia: 2,
+      ...MULTIMATERIAL_PADRAO,
     },
     materiais: {
       pla: { densidade: 1.26, fluxo: 0.98, vazaoMax: 21, tempoCamada: 4, vMinResfriar: 20 },
@@ -218,6 +250,7 @@ export const MAQUINAS: Maquina[] = [
       interfaceTopo: 3, interfaceFundo: 3, soNaMesa: true,
       arvore: { angulo: 40, diametro: 5, ponta: 0.8, anguloDiametro: 5, distancia: 5, paredeDupla: 3 },
       bordaLargura: 5, bordaFolga: 0.15, saiaDistancia: 2,
+      ...MULTIMATERIAL_PADRAO,
     },
     materiais: {
       pla: { densidade: 1.24, fluxo: 0.96, vazaoMax: 12, tempoCamada: 8, vMinResfriar: 20 },
