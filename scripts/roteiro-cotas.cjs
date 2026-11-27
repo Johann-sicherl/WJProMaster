@@ -177,6 +177,109 @@ const ok = (nome, cond, extra = "") => {
   ok("filetes iguais: uma cota R só para o grupo", e.restricoes.filter((r) => r.tipo === "raio").length === 1 && e.restricoes.some((r) => r.tipo === "igual"));
   await botao("Selecionar").tap();
 
+  // 5a. Reorganizar o desenho das cotas (pedido do Johann, 27/11/2026): arrastar o número e a linha de cota
+  //     com dedo, caneta e mouse; nunca mexe no valor nem na geometria; Esc, Desfazer, salvar e reabrir.
+  {
+    await botao("Cota").tap();
+    const cotasDe = (es) => es.restricoes.filter((r) => ["distancia", "angulo", "distanciaH", "distanciaV", "raio", "diametro"].includes(r.tipo));
+    const foto = (es) => JSON.stringify({ p: es.pontos, g: es.geos, v: cotasDe(es).map((r) => [r.id, r.tipo, r.valor]) });
+    const base0 = await esb();
+    const fotoAntes = foto(base0);
+    const cotaBase = cotasDe(base0).find((r) => r.tipo === "distancia");
+    const texto = async (id) => (await esb()).restricoes.find((r) => r.id === id).texto;
+    const rotulo = () => p.locator(".cota-rotulo", { hasText: /^30$/ }).first();
+    const centro = async () => { const bb = await rotulo().boundingBox(); return [bb.x + bb.width / 2, bb.y + bb.height / 2]; };
+    const dedo = async (de, para, passos = 10) => {
+      await toque("touchStart", de[0], de[1]);
+      for (let i = 1; i <= passos; i++) { await toque("touchMove", de[0] + ((para[0] - de[0]) * i) / passos, de[1] + ((para[1] - de[1]) * i) / passos); await p.waitForTimeout(16); }
+      await toque("touchEnd", para[0], para[1]);
+      await p.waitForTimeout(400);
+    };
+    const caneta = async (de, para, passos = 10) => {
+      const m = (type, x, y) => cdp.send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mouseReleased" ? 0 : 1, clickCount: 1, pointerType: "pen" });
+      await m("mousePressed", de[0], de[1]);
+      for (let i = 1; i <= passos; i++) { await m("mouseMoved", de[0] + ((para[0] - de[0]) * i) / passos, de[1] + ((para[1] - de[1]) * i) / passos); await p.waitForTimeout(16); }
+      await m("mouseReleased", para[0], para[1]);
+      await p.waitForTimeout(400);
+    };
+    ok("a cota da base tem um número na tela", (await rotulo().count()) === 1);
+
+    // alvo de toque de 44 px em volta do número (o número em si é bem menor)
+    let [cx, cy] = await centro();
+    const bb0 = await rotulo().boundingBox();
+    const naBorda = await p.evaluate(([x, y]) => document.elementFromPoint(x, y)?.className ?? "", [cx + 21, cy]);
+    ok("alvo do número com ≥ 44 px (toque 21 px ao lado ainda pega o número)", /cota-rotulo/.test(naBorda) && bb0.width < 44, `número ${Math.round(bb0.width)}×${Math.round(bb0.height)}, pegou "${naBorda}"`);
+
+    // dedo: arrasta o número para perto da linha (a 8 px dela) e ao longo dela — fica onde foi solto
+    const t0 = { ...(await texto(cotaBase.id)) };
+    const [bx, by] = await tela([t0.x - 8, 0, 0]); // a linha da base está em y = 0 (plano)
+    await dedo([cx, cy], [bx, by + 8]);
+    let t1 = await texto(cotaBase.id);
+    ok("dedo: o número fica a ~8 px da linha (sem pular para a distância padrão)", Math.abs(t1.y) > 0 && Math.abs(t1.y) < Math.abs(t0.y) * 0.6, `y ${t0.y.toFixed(2)} → ${t1.y.toFixed(2)}`);
+    ok("dedo: a posição ao longo da linha acompanhou o dedo", Math.abs(t1.x - t0.x) > 3, `x ${t0.x.toFixed(2)} → ${t1.x.toFixed(2)}`);
+    e = await esb();
+    ok("dedo: valor e geometria intactos", foto(e) === fotoAntes);
+    ok("dedo: arrastar o número não abre a caixa do valor", (await p.locator(".cota-edicao").count()) === 0);
+    if (PASTA) await p.screenshot({ path: `${PASTA}/cota-livre-dedo.png` });
+
+    // Desfazer devolve a posição de antes do arrasto
+    await p.locator("#btn-desfazer").tap();
+    await p.waitForTimeout(500);
+    let t2 = await texto(cotaBase.id);
+    ok("Desfazer devolve o número onde estava antes do arrasto", Math.abs(t2.x - t0.x) < 1e-6 && Math.abs(t2.y - t0.y) < 1e-6, JSON.stringify(t2));
+
+    // caneta: arrasta a LINHA de cota (fora do número): só o afastamento muda, o número fica na mesma posição ao longo dela
+    [cx, cy] = await centro();
+    const tAntesLinha = { ...(await texto(cotaBase.id)) };
+    const [lx, ly] = await tela([2, tAntesLinha.y, 0]);
+    ok("a faixa da linha de cota aceita toque com a Cota ativa", await p.evaluate(() => getComputedStyle(document.querySelector(".cota-faixa")).pointerEvents !== "none"));
+    await caneta([lx, ly], [lx, ly + 36]);
+    const tLinha = await texto(cotaBase.id);
+    ok("caneta na linha de cota: o afastamento mudou", Math.abs(tLinha.y - tAntesLinha.y) > 2, `y ${tAntesLinha.y.toFixed(2)} → ${tLinha.y.toFixed(2)}`);
+    ok("caneta na linha de cota: o número fica na mesma posição ao longo dela", Math.abs(tLinha.x - tAntesLinha.x) < 1e-6, `x ${tAntesLinha.x.toFixed(3)} → ${tLinha.x.toFixed(3)}`);
+    ok("caneta na linha de cota: valor e geometria intactos", foto(await esb()) === fotoAntes);
+
+    // mouse: arrasta o número; Esc no meio do arrasto devolve a posição
+    [cx, cy] = await centro();
+    const tAntesEsc = { ...(await texto(cotaBase.id)) };
+    await p.mouse.move(cx, cy);
+    await p.mouse.down();
+    for (let i = 1; i <= 8; i++) { await p.mouse.move(cx + i * 8, cy + i * 6); await p.waitForTimeout(16); }
+    const meio = await texto(cotaBase.id);
+    ok("mouse: durante o arrasto o número acompanha", Math.abs(meio.x - tAntesEsc.x) > 1 || Math.abs(meio.y - tAntesEsc.y) > 1);
+    await p.keyboard.press("Escape");
+    await p.mouse.up();
+    await p.waitForTimeout(300);
+    const depoisEsc = await texto(cotaBase.id);
+    ok("Esc no meio do arrasto devolve a posição de antes", Math.abs(depoisEsc.x - tAntesEsc.x) < 1e-6 && Math.abs(depoisEsc.y - tAntesEsc.y) < 1e-6, JSON.stringify(depoisEsc));
+    ok("Esc no arrasto não saiu da cota nem fechou o esboço", (await p.locator(".cota-rotulo").count()) > 0);
+
+    // cota angular: o número vai para onde o dedo levar (livre nas duas direções), valor 45° intacto
+    const angulo = cotasDe(await esb()).find((r) => r.tipo === "angulo");
+    const rAng = p.locator(".cota-rotulo", { hasText: /°/ }).first();
+    const bbA = await rAng.boundingBox();
+    const tAng0 = { ...(await texto(angulo.id)) };
+    await dedo([bbA.x + bbA.width / 2, bbA.y + bbA.height / 2], [bbA.x + bbA.width / 2 + 70, bbA.y + bbA.height / 2 - 50]);
+    const tAng1 = await texto(angulo.id);
+    ok("cota angular: o número acompanhou o dedo", Math.hypot(tAng1.x - tAng0.x, tAng1.y - tAng0.y) > 5, `${tAng0.x.toFixed(1)},${tAng0.y.toFixed(1)} → ${tAng1.x.toFixed(1)},${tAng1.y.toFixed(1)}`);
+    ok("cota angular: valor 45° e geometria intactos", foto(await esb()) === fotoAntes && Math.abs(cotasDe(await esb()).find((r) => r.tipo === "angulo").valor - 45) < 1e-6);
+
+    // com outra ferramenta (Linha) a faixa deixa o toque passar para o desenho embaixo
+    await botao("Linha").tap();
+    await p.waitForTimeout(300);
+    ok("com a Linha ativa a faixa da cota não rouba o toque", await p.evaluate(() => [...document.querySelectorAll(".cota-faixa")].every((f) => getComputedStyle(f).pointerEvents === "none")));
+    await p.keyboard.press("Escape");
+    await botao("Cota").tap();
+
+    // salvar e reabrir: o deslocamento volta no lugar (e continua só visual)
+    const salvo = await p.evaluate(() => JSON.stringify(window.__cad.doc()));
+    const reaberto = (await esb()).restricoes.find((r) => r.id === cotaBase.id).texto;
+    const guardado = JSON.parse(salvo).features.find((f) => f.tipo === "esboco").restricoes.find((r) => r.id === cotaBase.id).texto;
+    ok("salvo e reaberto: o deslocamento da cota continua igual", Math.abs(reaberto.x - guardado.x) < 1e-9 && Math.abs(reaberto.y - guardado.y) < 1e-9);
+    ok("salvo e reaberto: valor e geometria iguais", foto(await esb()) === fotoAntes);
+    if (PASTA) await p.screenshot({ path: `${PASTA}/cota-livre-final.png` });
+  }
+
   // 6. sair do esboço; Extrusão nova → ✕: nada de recurso novo na árvore, o esboço fica
   await aba("Sketch");
   await p.locator("#faixa-comandos button").first().tap();

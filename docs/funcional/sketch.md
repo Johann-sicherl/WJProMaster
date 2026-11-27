@@ -328,6 +328,11 @@ esperado × encontrado — hoje o erro aparece na feature ✅)
   cota vai sozinha para a distância padrão da geometria; mais longe encaixa em múltiplos dessa
   distância (cotas paralelas igualmente espaçadas); entre as linhas de chamada o número fica
   centrado. O mesmo vale ao arrastar uma cota existente.
+- **Reorganizar cotas** ✅ (27/11/2026, pedido do Johann): arrastar o **número** (livre nas duas direções, sem afastamento mínimo;
+  ímã de 5 px nos múltiplos do passo e no centro) ou a **linha de cota** (só o afastamento; número fica onde está) com dedo,
+  caneta ou mouse; alvo de 44 px no tablet; vale para distância, H/V, raio, diâmetro e angular (angular só pelo número).
+  Só muda a posição guardada na cota: valor, geometria e solver não mudam. Esc cancela o arrasto; Ctrl+Z desfaz.
+
 O tipo depende do que se seleciona e de **onde se solta o número**:
 
 | Seleção | Cota | Status |
