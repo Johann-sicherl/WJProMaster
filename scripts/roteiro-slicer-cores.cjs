@@ -65,6 +65,7 @@ function stlCubo(L, n) {
     await p.waitForFunction(() => document.getElementById("sl-ocupado").hidden && !document.getElementById("sl-resultado").hidden, null, { timeout: 90000 });
     return { tempo: await p.locator("#sl-tempo").textContent(), massa: parseFloat((await p.locator("#sl-massa").textContent()).replace(",", ".")) };
   };
+  const porCorOculto = () => p.evaluate(() => document.getElementById("sl-por-cor").hidden);
   const centro = async () => {
     const r = await p.locator("#sl-vista").boundingBox();
     return { x: r.x + r.width / 2, y: r.y + r.height / 2, r };
@@ -90,7 +91,7 @@ function stlCubo(L, n) {
   await fc.setFiles(fCubo);
   const r0 = await esperarResultado();
   ok("cubo fatiado sem pintura", r0.massa > 0, `${r0.tempo}, ${r0.massa} g`);
-  ok("sem pintura: nada de tabela de cores", await p.locator("#sl-por-cor").isHidden());
+  ok("sem pintura: nada de tabela de cores", await porCorOculto());
 
   // painel de pintura
   await p.locator("#sl-pintar").tap();
@@ -99,7 +100,7 @@ function stlCubo(L, n) {
   ok("seis ferramentas", ferr.join(",") === "pincel,face,regiao,angulo,corpo,borracha", ferr.join(","));
   ok("4 cores na paleta", (await p.locator("#sl-paleta button").count()) === 4);
   const pequenos = await p.evaluate(() =>
-    [...document.querySelectorAll("#sl-ferramentas button, #sl-paleta button, #sl-desfazer-cor, #sl-limpar-cor, #sl-pintar, #sl-filamentos input, #sl-filamentos select")]
+    [...document.querySelectorAll("#sl-ferramentas button, #sl-paleta button, #sl-desfazer-cor, #sl-refazer-cor, #sl-limpar-cor, #sl-pintar, #sl-ferr button, #sl-pintar-fechar, #sl-filamentos input, #sl-filamentos select")]
       .filter((e) => e.offsetParent && e.getBoundingClientRect().height < 43.5).map((e) => e.id || e.dataset.ferr || e.dataset.c || e.textContent));
   ok("alvos de toque ≥ 44 px", pequenos.length === 0, pequenos.join(", "));
   ok("desfazer desligado sem pintura", await p.locator("#sl-desfazer-cor").isDisabled());
@@ -118,8 +119,12 @@ function stlCubo(L, n) {
   await p.waitForTimeout(400);
   ok("caneta pinta (desfazer liga)", await p.locator("#sl-desfazer-cor").isEnabled());
   const r1 = await esperarResultado();
-  ok("tabela de cores e trocas aparecem", await p.locator("#sl-por-cor").isVisible() && (await p.locator("#sl-por-cor tbody tr").count()) === 2, `${r1.tempo}, ${r1.massa} g`);
+  ok("tabela de cores e trocas aparecem", !(await porCorOculto()) && (await p.locator("#sl-por-cor tbody tr").count()) === 2, `${r1.tempo}, ${r1.massa} g`);
   const trocas = await p.locator("#sl-por-cor dl").textContent();
+  // a aba Prévia mostra o resultado com a tabela por cor (a pintura segue ligada ao voltar à mesa)
+  await p.locator("#sl-aba-previa").tap();
+  ok("Prévia: tabela por cor visível", await p.locator("#sl-por-cor").isVisible());
+  await p.locator("#sl-aba-preparar").tap();
   ok("trocas, purga e torre no resultado", /Trocas de cor/.test(trocas) && /Purga/.test(trocas) && /Torre de purga/.test(trocas) && /Tempo das trocas/.test(trocas), trocas.replace(/\s+/g, " ").slice(0, 160));
   ok("a pintura soma tempo e material", r1.massa > r0.massa);
   await p.screenshot({ path: path.join(SAIDA, "slicer-cores-tablet.png") });
@@ -127,7 +132,15 @@ function stlCubo(L, n) {
   // desfazer volta ao orçamento sem pintura
   await p.locator("#sl-desfazer-cor").tap();
   const r2 = await esperarResultado();
-  ok("desfazer: volta à peça sem pintura", Math.abs(r2.massa - r0.massa) < 0.02 && (await p.locator("#sl-por-cor").isHidden()), `${r2.massa} g`);
+  ok("desfazer: volta à peça sem pintura", Math.abs(r2.massa - r0.massa) < 0.02 && (await porCorOculto()), `${r2.massa} g`);
+
+  // refazer traz a pintura de volta; pintar de novo descarta o refazer
+  ok("refazer ligado depois de desfazer", await p.locator("#sl-refazer-cor").isEnabled());
+  await p.locator("#sl-refazer-cor").tap();
+  const rR = await esperarResultado();
+  ok("refazer: volta a pintura", Math.abs(rR.massa - r1.massa) < 0.02 && !(await porCorOculto()) && (await p.locator("#sl-refazer-cor").isDisabled()), `${rR.massa} g`);
+  await p.locator("#sl-desfazer-cor").tap();
+  await esperarResultado();
 
   // corpo inteiro com a cor 3: sem troca, material da cor 3
   await p.locator("[data-ferr=corpo]").tap();
@@ -136,7 +149,7 @@ function stlCubo(L, n) {
   await p.waitForTimeout(300);
   ok("corpo inteiro pinta tudo", await p.locator("#sl-desfazer-cor").isEnabled());
   await esperarResultado();
-  ok("peça de uma cor só: sem trocas", await p.locator("#sl-por-cor").isHidden());
+  ok("peça de uma cor só: sem trocas", await porCorOculto());
   // balde por face e preencher por ângulo: aparecem os controles certos
   await p.locator("[data-ferr=angulo]").tap();
   ok("ângulo: controle do ângulo aparece e o do pincel some", await p.locator("#sl-campo-angulo").isVisible() && await p.locator("#sl-campo-pincel").isHidden());
@@ -145,10 +158,9 @@ function stlCubo(L, n) {
   // limpar pintura
   await p.locator("#sl-limpar-cor").tap();
   await esperarResultado();
-  ok("limpar pintura", await p.locator("#sl-por-cor").isHidden());
+  ok("limpar pintura", await porCorOculto());
 
   // filamentos editáveis: material e preço da cor 2
-  await p.locator("#sl-det-fil summary").tap();
   const linha2 = p.locator(".sl-filamento[data-i='1']");
   await linha2.locator("[data-c=nome]").fill("Verde");
   await linha2.locator("[data-c=nome]").dispatchEvent("change");
@@ -184,6 +196,7 @@ function stlCubo(L, n) {
   await p.locator("#sl-lista li[data-id] [data-acao=remover]").last().tap();
   await p.waitForTimeout(500);
   ok("mesa vazia", (await p.locator("#sl-lista li[data-id]").count()) === 0);
+  await p.locator("#sl-aba-bancada").tap();
   await p.locator("#sl-abrir-projeto").tap();
   await p.waitForSelector(".wje-lista li[data-k^='a:']", { timeout: 15000 });
   await p.locator(".wje-lista li[data-k^='a:']").first().dblclick();

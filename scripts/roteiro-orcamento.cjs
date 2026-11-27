@@ -54,6 +54,7 @@ function stlCaixas(lista) {
   ok("perfil tablet", await p.evaluate(() => document.body.classList.contains("disp-tablet")));
 
   // ---- STL do aparelho ----
+  await p.locator("#sl-aba-preparar").tap();
   await p.locator("#sl-vazio-abrir").tap();
   const [fc] = await Promise.all([p.waitForEvent("filechooser"), p.getByText("STL do aparelho…").tap()]);
   await fc.setFiles(fT);
@@ -62,6 +63,7 @@ function stlCaixas(lista) {
   ok("peça fatiada", massa > 0, `${massa} g`);
 
   // ---- biblioteca de custos ----
+  await p.locator("#sl-aba-bancada").tap();
   await p.locator("#sl-biblioteca").tap();
   await p.waitForSelector(".or-tela [data-linhas] tr");
   const itens0 = await p.locator(".or-tela [data-linhas] tr").count();
@@ -78,22 +80,22 @@ function stlCaixas(lista) {
   await p.locator(".wj-janela [data-f=unidade]").fill("un");
   await p.locator(".wj-janela [data-f=custo]").fill("0.5");
   await p.locator(".wj-janela [data-f=lucro]").fill("100");
-  await p.getByRole("button", { name: "Salvar", exact: true }).tap();
+  await p.locator(".wj-janela").getByRole("button", { name: "Salvar", exact: true }).tap();
   ok("incluir item", (await p.locator(".or-tela [data-linhas] tr").count()) === 12);
   // editar
   await p.locator(".or-tela tr", { hasText: "Parafuso M3" }).locator("[data-a=editar]").tap();
   await p.locator(".wj-janela [data-f=custo]").fill("0.75");
-  await p.getByRole("button", { name: "Salvar", exact: true }).tap();
+  await p.locator(".wj-janela").getByRole("button", { name: "Salvar", exact: true }).tap();
   ok("editar item", (await p.locator(".or-tela tr", { hasText: "Parafuso M3" }).textContent()).includes("0,75"));
   // item inválido não fecha
   await p.locator(".or-tela [data-novo]").tap();
-  await p.getByRole("button", { name: "Salvar", exact: true }).tap();
+  await p.locator(".wj-janela").getByRole("button", { name: "Salvar", exact: true }).tap();
   ok("nome em branco é recusado", await p.locator(".wj-janela [data-erro]").isVisible());
   await p.getByRole("button", { name: "Cancelar" }).tap();
   // duplicar (abre a cópia para editar)
   await p.locator(".or-tela tr", { hasText: "Parafuso M3" }).locator("[data-a=duplicar]").tap();
   ok("duplicar abre a cópia", (await p.locator(".wj-janela [data-f=nome]").inputValue()) === "Parafuso M3 (cópia)");
-  await p.getByRole("button", { name: "Salvar", exact: true }).tap();
+  await p.locator(".wj-janela").getByRole("button", { name: "Salvar", exact: true }).tap();
   ok("cópia na lista", (await p.locator(".or-tela [data-linhas] tr").count()) === 13);
   // desativar
   await p.locator(".or-tela tr", { hasText: "Parafuso M3 (cópia)" }).locator("[data-a=ativo]").tap();
@@ -120,6 +122,7 @@ function stlCaixas(lista) {
   await p.evaluate(() => localStorage.removeItem("wjslicer:biblioteca"));
   await p.reload();
   await p.waitForTimeout(1500);
+  await p.locator("#sl-aba-bancada").tap();
   await p.locator("#sl-biblioteca").tap();
   await p.waitForFunction(() => document.querySelector(".or-tela [data-linhas]")?.textContent.includes("Parafuso M3"), null, { timeout: 15000 }).catch(() => {});
   ok("biblioteca lida do cofre (com o item novo)", (await p.locator(".or-tela [data-linhas]").textContent()).includes("Parafuso M3"));
@@ -128,10 +131,12 @@ function stlCaixas(lista) {
   // ---- orçamento ----
   await p.locator("#sl-vazio-abrir").isVisible().catch(() => false);
   // depois do reload não há peça: põe de novo
+  await p.locator("#sl-aba-preparar").tap();
   await p.locator("#sl-vazio-abrir").tap();
   const [fc2] = await Promise.all([p.waitForEvent("filechooser"), p.getByText("STL do aparelho…").tap()]);
   await fc2.setFiles(fT);
   await p.waitForFunction(() => document.getElementById("sl-ocupado").hidden && !document.getElementById("sl-resultado").hidden, null, { timeout: 60000 });
+  await p.locator("#sl-aba-bancada").tap();
   await p.locator("#sl-orcamento").tap();
   await p.waitForSelector(".or-tela [data-l]");
   const linhas = await p.locator(".or-tela [data-l]").allTextContents();
@@ -160,7 +165,7 @@ function stlCaixas(lista) {
   await p.locator(".or-tela [data-bib]").tap();
   await p.locator(".or-tela [data-linhas] tr", { hasText: "Ímã 10×4" }).locator("[data-a=editar]").tap();
   await p.locator(".wj-janela [data-f=custo]").fill("50");
-  await p.getByRole("button", { name: "Salvar", exact: true }).tap();
+  await p.locator(".wj-janela").getByRole("button", { name: "Salvar", exact: true }).tap();
   await p.locator(".or-tela [data-fechar]").last().tap();
   ok("mudar o custo na biblioteca não muda o orçamento já feito", Math.abs(num(await p.locator(".or-tela [data-v=precoFinal]").first().textContent()) - salvoAntes) < 0.001);
   // pedido: quantidade 2 e 2 unidades por mesa
@@ -199,10 +204,12 @@ function stlCaixas(lista) {
   });
 
   // ---- peça de novo e proposta ----
+  await p.locator("#sl-aba-preparar").tap();
   await p.locator("#sl-vazio-abrir").tap();
   const [fc3] = await Promise.all([p.waitForEvent("filechooser"), p.getByText("STL do aparelho…").tap()]);
   await fc3.setFiles(fT);
   await p.waitForFunction(() => document.getElementById("sl-ocupado").hidden && !document.getElementById("sl-resultado").hidden, null, { timeout: 60000 });
+  await p.locator("#sl-aba-bancada").tap();
   await p.locator("#sl-orcamento").tap();
   await p.waitForSelector(".or-tela [data-l]");
   await p.locator(".or-tela [data-proposta]").tap();

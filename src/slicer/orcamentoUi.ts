@@ -31,6 +31,8 @@ export interface ContextoOrcamento {
   /** texto para preencher "Cores" e "Material" da proposta */
   resumo: () => { cores: string; material: string; dimensoes: string };
   avisar: (msg: string, ms?: number) => void;
+  /** onde as telas (orçamento e biblioteca) se abrem; sem isso, por cima da página inteira (Bancada do WJSlicer3D passa a aba) */
+  raiz?: () => HTMLElement;
 }
 
 const CHAVE_ORC = "wjslicer:orcamento";
@@ -259,7 +261,7 @@ export function iniciarOrcamento(ctx: ContextoOrcamento) {
         <label class="sl-chave"><input data-inativos type="checkbox" /> Mostrar desativados</label></div>
         <div class="or-rolagem"><table class="wj-tabela or-tabela"><thead><tr><th>Item</th><th>Categoria</th><th>Unidade</th><th class="num">Custo por unidade</th><th class="num">Lucro padrão</th><th></th></tr></thead><tbody data-linhas></tbody></table></div>
         <p class="sl-nota">Um arquivo só no cofre (pasta Impressão 3D), igual em todos os aparelhos. Mudar um item aqui não muda orçamentos já feitos. Lucro = % sobre o custo (markup, como na MATRIZ).</p></div>`;
-    document.body.append(t);
+    (ctx.raiz?.() ?? document.body).append(t);
     telaBiblioteca = t;
     const q = <T extends HTMLElement>(s: string) => t.querySelector<T>(s)!;
     const desenhar = () => {
@@ -344,7 +346,7 @@ export function iniciarOrcamento(ctx: ContextoOrcamento) {
     if (d) definir(sincronizarImpressao(orc, d, biblioteca));
     const t = document.createElement("div");
     t.className = "or-tela";
-    document.body.append(t);
+    (ctx.raiz?.() ?? document.body).append(t);
     telaOrcamento = t;
     const q = <T extends HTMLElement>(s: string) => t.querySelector<T>(s)!;
 
@@ -664,7 +666,7 @@ export function iniciarOrcamento(ctx: ContextoOrcamento) {
   void carregarBiblioteca();
 
   return {
-    abrirOrcamento, abrirBiblioteca, impressaoMudou,
+    abrirOrcamento, abrirBiblioteca, abrirProposta, impressaoMudou,
     obter: () => orc,
     definir: (o: Orcamento | null | undefined) => {
       orc = normalizarOrcamento(o);
