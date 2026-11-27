@@ -77,6 +77,28 @@ export interface Processo {
   /** ligação das linhas do preenchimento junto às paredes (mm) e área mínima de esparso (mm²; menor vira sólido) */
   ancoraMax: number;
   areaMinEsparso: number;
+  /**
+   * Gerador de paredes (M1): "classico" = curvas de nível com largura fixa; "larguraVariavel" = em partes finas as
+   * paredes se alargam/estreitam para preencher a seção. Ângulo de transição (°, faces mais abertas que isso não contam
+   * como parte fina), filtro (mm: trecho mais curto que isso não troca o nº de paredes), paredes que dividem a sobra,
+   * largura mínima de parede e tamanho mínimo de detalhe (frações do bico de 0,4 mm)
+   */
+  geradorParedes: "classico" | "larguraVariavel";
+  geradorAnguloTransicao: number;
+  geradorFiltro: number;
+  geradorParedesTransicao: number;
+  geradorLarguraMinima: number;
+  geradorDetalheMinimo: number;
+  /** preenchimento de vãos (fresta entre paredes menor que uma linha) e a velocidade dele (mm/s) */
+  preenchimentoVaos: boolean;
+  vVaos: number;
+  /** só uma parede nas superfícies de topo (topo mais estreito que o limite, em mm, fica com todas) e na 1ª camada */
+  umaParedeTopo: boolean;
+  umaParedeTopoLimite: number;
+  umaParedePrimeira: boolean;
+  /** perímetro (laço de parede) mais curto que o limite (mm; 0 = desligado) anda na velocidade própria (mm/s) */
+  vPerimetroPequeno: number;
+  limitePerimetroPequeno: number;
   /** suporte */
   suporteTipo: Exclude<TipoSuporte, "nenhum">;
   anguloSuporte: number;
@@ -217,6 +239,8 @@ export const MAQUINAS: Maquina[] = [
       aDeslocamento: 10000, aDeslocPrimeira: 6000,
       jParedeExt: 0, jParedeInt: 0, jPreench: 0, jTopo: 0, jPrimeira: 0, jDeslocamento: 0, jPadrao: 0,
       sobreposicao: 0.15, fluxoTopo: 1, fluxoPonte: 1, ancoraMax: 20, areaMinEsparso: 15,
+      geradorParedes: "classico", geradorAnguloTransicao: 10, geradorFiltro: 1, geradorParedesTransicao: 1, geradorLarguraMinima: 0.85, geradorDetalheMinimo: 0.25,
+      preenchimentoVaos: false, vVaos: 250, umaParedeTopo: false, umaParedeTopoLimite: 0, umaParedePrimeira: false, vPerimetroPequeno: 100, limitePerimetroPequeno: 0,
       suporteTipo: "arvore", anguloSuporte: 30, suporteDistZ: 0.2, suporteDistXY: 0.35, espacoSuporte: 2.5, espacoInterface: 0.5,
       interfaceTopo: 2, interfaceFundo: 2, soNaMesa: false,
       arvore: { angulo: 45, diametro: 2, ponta: 0.8, anguloDiametro: 5, distancia: 5, paredeDupla: 3 },
@@ -246,6 +270,8 @@ export const MAQUINAS: Maquina[] = [
       aDeslocamento: 15000, aDeslocPrimeira: 15000,
       jParedeExt: 15, jParedeInt: 15, jPreench: 9, jTopo: 9, jPrimeira: 9, jDeslocamento: 12, jPadrao: 20,
       sobreposicao: 0.15, fluxoTopo: 0.97, fluxoPonte: 0.9, ancoraMax: 20, areaMinEsparso: 15,
+      geradorParedes: "classico", geradorAnguloTransicao: 10, geradorFiltro: 1, geradorParedesTransicao: 1, geradorLarguraMinima: 0.85, geradorDetalheMinimo: 0.25,
+      preenchimentoVaos: false, vVaos: 130, umaParedeTopo: false, umaParedeTopoLimite: 0, umaParedePrimeira: false, vPerimetroPequeno: 65, limitePerimetroPequeno: 0,
       suporteTipo: "arvore", anguloSuporte: 40, suporteDistZ: 0.25, suporteDistXY: 0.25, espacoSuporte: 0.2, espacoInterface: 0.2,
       interfaceTopo: 3, interfaceFundo: 3, soNaMesa: true,
       arvore: { angulo: 40, diametro: 5, ponta: 0.8, anguloDiametro: 5, distancia: 5, paredeDupla: 3 },

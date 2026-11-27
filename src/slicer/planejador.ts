@@ -7,10 +7,10 @@
 // Puro: testado em scripts/teste-slicer.ts.
 
 export type Parte =
-  | "paredeExt" | "paredeInt" | "solido" | "topo" | "ponte" | "esparso" | "suporte" | "interface" | "borda" | "troca" | "torre" | "deslocamento" | "resfriamento";
-export const PARTES: Parte[] = ["paredeExt", "paredeInt", "solido", "topo", "ponte", "esparso", "suporte", "interface", "borda", "troca", "torre", "deslocamento", "resfriamento"];
+  | "paredeExt" | "paredeInt" | "vaos" | "solido" | "topo" | "ponte" | "esparso" | "suporte" | "interface" | "borda" | "troca" | "torre" | "deslocamento" | "resfriamento";
+export const PARTES: Parte[] = ["paredeExt", "paredeInt", "vaos", "solido", "topo", "ponte", "esparso", "suporte", "interface", "borda", "troca", "torre", "deslocamento", "resfriamento"];
 export const NOMES_PARTES: Record<Parte, string> = {
-  paredeExt: "Parede externa", paredeInt: "Paredes internas", solido: "Preenchimento sólido", topo: "Superfície de topo", ponte: "Pontes (sobre o vazio)",
+  paredeExt: "Parede externa", paredeInt: "Paredes internas", vaos: "Preenchimento de vãos", solido: "Preenchimento sólido", topo: "Superfície de topo", ponte: "Pontes (sobre o vazio)",
   esparso: "Preenchimento esparso", suporte: "Suporte", interface: "Interface do suporte", borda: "Borda e saia", troca: "Trocas de cor (tempo e purga)", torre: "Torre de purga",
   deslocamento: "Deslocamentos, retrações e trocas de camada", resfriamento: "Desaceleração para resfriar",
 };
