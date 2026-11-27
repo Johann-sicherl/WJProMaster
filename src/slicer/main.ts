@@ -10,9 +10,12 @@ import { aplicarDispositivo, escapar, escolherArquivo, janela, menu } from "../c
 import { abrirDoCofre, escolherDoCofre, instalarPainelCofre, lerBytesDoCofre, salvarNoCofre, sincronizarAoAbrir } from "../comum/cofre";
 import { botaoDiagnostico } from "../comum/diagnostico";
 import { registrarComAtualizacao } from "../comum/atualizacao";
-import { IC } from "../comum/icones";
 import { pegar } from "../comum/transferir";
-import { ajustesDe, diferencasDeAjustes, resolver } from "./camadas";
+import { ajustesDe, diferencas, diferencasDeAjustes, PERFIL_PADRAO, PERFIS_SISTEMA, perfilSistema, resolver } from "./camadas";
+import type { Plano } from "./esquema";
+import type { PerfilUsuario } from "./camadas";
+import { empacotarPerfis, excluirPerfil, juntarPerfis, lerPerfis, novoPerfil, perfisAtivos, perfisVazios, salvarPerfil, sincronizarPerfis, type BibliotecaPerfis } from "./perfisUsuario";
+import { pintarIcones } from "./icones";
 import { ajustesPadrao, formatarTempo, NOMES_PARTES, PARTES, type Ajustes, type Parte, type Resultado } from "./fatiar";
 import { MAQUINAS, maquinaPorId, materiaisDa, materialDa, NOMES_PADROES, type ConfigTroca, type IdMaterial, type Padrao, type TipoSuporte } from "./perfis";
 import { balde, filamentosPadrao, MAX_CORES, pincel, pintarCorpo, topologia, type Filamento, type Topologia } from "./cores";
@@ -39,11 +42,26 @@ interface Preferencias {
   filamentos: Filamento[];
   /** troca de cor editada por impressora (o que falta usa o de fábrica) */
   trocas: Record<string, Partial<ConfigTroca>>;
+  /** perfil de processo escolhido: "s:<id>" (sistema) ou "u:<id>" (do usuário); o selo ↺ compara os ajustes com ele */
+  perfil: string;
 }
 const CHAVE = "wjslicer:preferencias";
 
+// ---------- perfis de processo (camadas.ts): o que a tela mostra no selo ↺ ----------
+
+/** Os campos de processo que a tela edita hoje (suporte, borda e saia são do projeto: não entram no selo ↺). */
+const CHAVES_PROCESSO = ["altura", "paredes", "topo", "fundo", "preenchimento", "padrao"] as const;
+const planoProcesso = (a: Ajustes): Plano => Object.fromEntries(CHAVES_PROCESSO.map((k) => [k, a[k]]));
+/** Perfil de sistema cujos valores batem com os ajustes (preferências e projetos antigos): o sem "Alta qualidade" primeiro. */
+function adivinharPerfil(maquina: string, aj: Ajustes): string {
+  const atual = planoProcesso(aj);
+  const iguais = (id: string) => Object.keys(diferencas(planoProcesso(ajustesDe(resolver({ maquina, sistema: id }))), atual)).length === 0;
+  const lista = [...PERFIS_SISTEMA].sort((a, b) => Number(a.altaQualidade) - Number(b.altaQualidade));
+  return lista.find((p) => iguais(p.id))?.id ?? PERFIL_PADRAO;
+}
+
 function lerPreferencias(): Preferencias {
-  const padrao: Preferencias = { maquina: MAQUINAS[0].id, material: "pla", precos: {}, ajustes: ajustesPadrao(MAQUINAS[0].processo), calibracao: {}, filamentos: filamentosPadrao(), trocas: {} };
+  const padrao: Preferencias = { maquina: MAQUINAS[0].id, material: "pla", precos: {}, ajustes: ajustesPadrao(MAQUINAS[0].processo), calibracao: {}, filamentos: filamentosPadrao(), trocas: {}, perfil: `s:${PERFIL_PADRAO}` };
   try {
     const p = JSON.parse(localStorage.getItem(CHAVE) ?? "null") as (Partial<Preferencias> & { ajustes?: Partial<Ajustes> & { suporte?: unknown } }) | null;
     if (!p) return padrao;
@@ -55,7 +73,8 @@ function lerPreferencias(): Preferencias {
     if (typeof (p.ajustes?.suporte as unknown) === "boolean") aj.suporte = p.ajustes!.suporte ? maquinaPorId(maquina).processo.suporteTipo : "nenhum";
     if (!(aj.padrao in NOMES_PADROES)) aj.padrao = base.padrao;
     const fil = Array.from({ length: MAX_CORES }, (_, k) => ({ ...padrao.filamentos[k], ...(p.filamentos?.[k] ?? {}) }));
-    return { ...padrao, ...p, maquina, ajustes: aj, precos: p.precos ?? {}, calibracao: p.calibracao ?? {}, filamentos: fil, trocas: p.trocas ?? {} };
+    const perfil = typeof p.perfil === "string" && /^[su]:./.test(p.perfil) ? p.perfil : `s:${adivinharPerfil(maquina, aj)}`;
+    return { ...padrao, ...p, maquina, ajustes: aj, precos: p.precos ?? {}, calibracao: p.calibracao ?? {}, filamentos: fil, trocas: p.trocas ?? {}, perfil };
   } catch {
     return padrao;
   }
@@ -85,6 +104,9 @@ interface DadosPeca {
 }
 const malhas = new Map<number, DadosPeca>();
 let desfazerPilha: { id: number; cores: Uint8Array }[] = [];
+let refazerPilha: { id: number; cores: Uint8Array }[] = [];
+type Aba = "inicio" | "preparar" | "previa" | "bancada";
+let aba: Aba = "preparar";
 let resolverExportar: ((p: { nome: string; copias: number; pos: Float32Array; tri: Uint32Array; cores: Uint8Array }[]) => void) | null = null;
 let nomeProjeto = "";
 
@@ -111,11 +133,15 @@ worker.onmessage = (e: MessageEvent<RespostaSlicer>) => {
       vista.definirMalha(m.id, m.pos, m.tri, m.cores);
       malhas.set(m.id, { pos: m.pos, tri: m.tri, cores: m.cores });
       desfazerPilha = desfazerPilha.filter((x) => x.id !== m.id);
+      refazerPilha = refazerPilha.filter((x) => x.id !== m.id);
     }
     for (const id of [...malhas.keys()]) if (!r.lista.some((p) => p.id === id)) malhas.delete(id);
     atualizarDesfazer();
     pecas = r.lista;
-    if (r.malhas.length) escolhida = r.malhas[r.malhas.length - 1].id;
+    if (r.malhas.length) {
+      escolhida = r.malhas[r.malhas.length - 1].id;
+      if (aba === "inicio") irPara("preparar"); // peça adicionada pelo Início: vai para a mesa
+    }
     if (!pecas.some((p) => p.id === escolhida)) escolhida = pecas[0]?.id ?? null;
     ultimo = null;
     desenharPecas();
@@ -125,8 +151,11 @@ worker.onmessage = (e: MessageEvent<RespostaSlicer>) => {
     else {
       $("sl-resultado").hidden = true;
       $("sl-previa").hidden = true;
+      $("sl-previa-vazia").hidden = false;
       ligarPrevia(false);
     }
+    atualizarMini();
+    if (aba === "inicio") desenharInicio();
   } else if (r.tipo === "projetoPecas") {
     resolverExportar?.(r.pecas);
     resolverExportar = null;
@@ -141,6 +170,7 @@ worker.onmessage = (e: MessageEvent<RespostaSlicer>) => {
     if (previaLigada) vista.mostrarCamada({ z: r.z, seg: r.seg, parte: r.parte, cores: CORES_HEX });
   } else if (r.tipo === "erro" && (r.seq === undefined || r.seq === seq)) {
     $("sl-ocupado").hidden = true;
+    atualizarMini();
     avisar(r.msg);
   }
 };
@@ -197,16 +227,20 @@ async function pecaDoCad() {
   pedir({ tipo: "cad", nome: p.nome, vertices: p.vertices, triangulos: p.triangulos });
 }
 
-const menuAbrir = (b: HTMLElement) => {
+/** Menu junto do botão: para baixo se o botão está na metade de cima da tela, para cima se está embaixo (barra de ferramentas). */
+const menuEm = (b: HTMLElement, itens: Parameters<typeof menu>[2]) => {
   const r = b.getBoundingClientRect();
-  menu(r.left, r.bottom + 4, [
+  menu(r.left, r.top > innerHeight / 2 ? r.top - itens.length * 48 - 12 : r.bottom + 4, itens);
+};
+const menuAbrir = (b: HTMLElement) =>
+  menuEm(b, [
     { rotulo: "STL do cofre (WJPDM)…", icone: "pasta", acao: () => void abrirDoCofreSTL() },
     { rotulo: "STL do aparelho…", icone: "abrir", acao: () => void abrirDoAparelho() },
   ]);
-};
-$("sl-abrir").onclick = () => menuAbrir($("sl-abrir"));
 $("sl-adicionar").onclick = () => menuAbrir($("sl-adicionar"));
 $("sl-vazio-abrir").onclick = () => menuAbrir($("sl-vazio-abrir"));
+$("sl-ini-adicionar").onclick = () => menuAbrir($("sl-ini-adicionar"));
+$("sl-organizar").onclick = () => (pecas.length ? avisarMesa() : avisar("Ponha uma peça na mesa primeiro."));
 
 // ---------- peças na mesa ----------
 
@@ -254,12 +288,10 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("[data-girar]"))
   b.onclick = () => escolhida !== null && pedir({ tipo: "girar", id: escolhida, eixo: b.dataset.girar as "x" | "y" | "z", quartos: 1 });
 $("sl-apoio").onclick = () => escolhida !== null && pedir({ tipo: "apoio", id: escolhida });
 
-// ---------- painel: impressora, material, ajustes ----------
+// ---------- barra lateral: impressora, processo (perfis, ajustes) ----------
 
 const selMaq = $<HTMLSelectElement>("sl-maquina");
 for (const m of MAQUINAS) selMaq.append(new Option(`${m.marca} ${m.modelo}`, m.id));
-const selMat = $<HTMLSelectElement>("sl-material");
-const preco = $<HTMLInputElement>("sl-preco");
 const selAltura = $<HTMLSelectElement>("sl-altura");
 for (const h of [0.08, 0.12, 0.16, 0.2, 0.24, 0.28]) selAltura.append(new Option(`${num(h, 2)} mm`, String(h)));
 const selDesenho = $<HTMLSelectElement>("sl-desenho");
@@ -279,16 +311,165 @@ const campos = {
 const folgaMesa = () => 6 + (pref.ajustes.borda ? 2 * maquina().processo.bordaLargura : 0);
 const avisarMesa = () => pedir({ tipo: "mesa", mesa: maquina().mesa, folga: folgaMesa() });
 
+// ---- perfis do usuário (.wjprf): lista no aparelho, igual no cofre (perfisUsuario.ts) ----
+const CHAVE_PERFIS = "wjslicer:perfis";
+function lerPerfisLocais(): BibliotecaPerfis {
+  try {
+    const t = localStorage.getItem(CHAVE_PERFIS);
+    return t ? lerPerfis(t) : perfisVazios();
+  } catch {
+    return perfisVazios();
+  }
+}
+let perfis = lerPerfisLocais();
+const guardarPerfis = () => {
+  try {
+    localStorage.setItem(CHAVE_PERFIS, empacotarPerfis(perfis));
+  } catch {
+    /* sem espaço: segue sem lembrar */
+  }
+};
+const perfilUsuario = (id: string) => perfisAtivos(perfis).find((p) => p.id === id);
+const perfilExiste = (id: string) => (id.startsWith("s:") ? PERFIS_SISTEMA.some((p) => p.id === id.slice(2)) : !!perfilUsuario(id.slice(2)));
+
+/** Valores do perfil escolhido (sistema, ou usuário sobre o seu perfil de sistema) para a impressora de agora. */
+function ajustesDoPerfil(id: string): Ajustes {
+  const sistema = id.startsWith("s:") ? perfilSistema(id.slice(2)).id : undefined;
+  return ajustesDe(resolver({ maquina: pref.maquina, sistema, usuario: id.startsWith("u:") ? perfilUsuario(id.slice(2)) : undefined }));
+}
+
+function desenharPerfis() {
+  if (!perfilExiste(pref.perfil)) pref.perfil = `s:${PERFIL_PADRAO}`; // perfil do usuário que foi excluído
+  const usu = perfisAtivos(perfis);
+  $<HTMLSelectElement>("sl-perfil").innerHTML =
+    `<optgroup label="Perfis do usuário">${usu.length ? usu.map((p) => `<option value="u:${p.id}">${escapar(p.nome)}</option>`).join("") : `<option disabled>Nenhum ainda — use 💾 para salvar</option>`}</optgroup>` +
+    `<optgroup label="Perfis do sistema">${PERFIS_SISTEMA.map((p) => `<option value="s:${p.id}">${escapar(p.nome)}</option>`).join("")}</optgroup>`;
+  $<HTMLSelectElement>("sl-perfil").value = pref.perfil;
+}
+
+const ABA_DO_CAMPO: Record<string, string> = { altura: "qualidade", paredes: "resistencia", topo: "resistencia", fundo: "resistencia", preenchimento: "resistencia", padrao: "resistencia" };
+/** Selo ↺ de alterado: o que difere do perfil escolhido (`diferencas()` de camadas.ts). */
+function atualizarSelos() {
+  const dif = diferencas(planoProcesso(ajustesDoPerfil(pref.perfil)), planoProcesso(pref.ajustes));
+  for (const b of document.querySelectorAll<HTMLElement>("[data-voltar]")) b.hidden = !(b.dataset.voltar! in dif);
+  $("sl-perfil-voltar").hidden = !Object.keys(dif).length;
+  const abas = new Set(Object.keys(dif).map((k) => ABA_DO_CAMPO[k]));
+  for (const b of document.querySelectorAll<HTMLElement>("#sl-pabs [data-pab]")) b.classList.toggle("alterada", abas.has(b.dataset.pab!));
+}
+
+/** Volta os campos ao valor do perfil escolhido (suporte, borda e saia são do projeto e não mudam). */
+function voltarAoPerfil(chaves: readonly string[]) {
+  const alvo = ajustesDoPerfil(pref.perfil) as unknown as Record<string, unknown>;
+  const novo = { ...pref.ajustes } as unknown as Record<string, unknown>;
+  for (const k of chaves) novo[k] = alvo[k];
+  pref.ajustes = novo as unknown as Ajustes;
+  guardar();
+  preencherPainel();
+  recalcular();
+}
+
+function aplicarPerfil(id: string) {
+  pref.perfil = id;
+  const { suporte, borda, saia } = pref.ajustes;
+  pref.ajustes = { ...ajustesDoPerfil(id), suporte, borda, saia };
+  guardar();
+  preencherPainel();
+  recalcular();
+}
+
+let sincPerfis: Promise<void> = Promise.resolve();
+/** Junta a lista do aparelho com a do cofre, em fila (um aparelho sem cofre agora só segue no aparelho). */
+function sincronizarPerfisCofre() {
+  sincPerfis = sincPerfis.then(async () => {
+    try {
+      const r = await sincronizarPerfis(perfis);
+      const novo = juntarPerfis(perfis, r.lista);
+      if (empacotarPerfis(novo) !== empacotarPerfis(perfis)) {
+        perfis = novo;
+        guardarPerfis();
+        desenharPerfis();
+        atualizarSelos();
+      }
+    } catch {
+      /* sem cofre agora */
+    }
+  });
+}
+
+function difDoPerfil(herdaDe: string): Plano {
+  return diferencas(planoProcesso(ajustesDe(resolver({ maquina: pref.maquina, sistema: herdaDe }))), planoProcesso(pref.ajustes));
+}
+function gravarPerfil(p: PerfilUsuario, msg: string) {
+  perfis = salvarPerfil(perfis, p);
+  guardarPerfis();
+  pref.perfil = `u:${p.id}`;
+  guardar();
+  desenharPerfis();
+  atualizarSelos();
+  avisar(msg);
+  sincronizarPerfisCofre();
+}
+function pedirNome(titulo: string, inicial: string, ok: (nome: string) => void) {
+  janela(titulo, `<label class="sl-campo">Nome do perfil <input id="sl-nome-perfil" type="text" maxlength="40" value="${escapar(inicial)}" /></label>`, [
+    { rotulo: "Cancelar" },
+    {
+      rotulo: "Salvar", destaque: true, acao: (corpo: HTMLElement) => {
+        const n = corpo.querySelector<HTMLInputElement>("#sl-nome-perfil")!.value.trim();
+        if (!n) {
+          avisar("Dê um nome ao perfil.");
+          return false;
+        }
+        ok(n);
+      },
+    },
+  ]);
+}
+$("sl-perfil-menu").onclick = () => {
+  const u = pref.perfil.startsWith("u:") ? perfilUsuario(pref.perfil.slice(2)) : undefined;
+  const herda = u?.herdaDe ?? pref.perfil.slice(2);
+  menuEm($("sl-perfil-menu"), [
+    ...(u ? [{ rotulo: `Salvar alterações em “${u.nome}”`, acao: () => gravarPerfil({ ...u, diferencas: difDoPerfil(u.herdaDe) }, `Perfil “${u.nome}” salvo.`) }] : []),
+    { rotulo: "Salvar como novo perfil…", acao: () => pedirNome("Salvar perfil do usuário", "", (nome) => { const n = novoPerfil(nome, herda); gravarPerfil({ ...n, diferencas: difDoPerfil(n.herdaDe) }, `Perfil “${n.nome}” salvo.`); }) },
+    ...(u ? [
+      { rotulo: "Renomear…", acao: () => pedirNome("Renomear perfil", u.nome, (nome) => gravarPerfil({ ...u, nome }, `Perfil renomeado para “${nome}”.`)) },
+      {
+        rotulo: "Excluir perfil", acao: () =>
+          janela("Excluir perfil", `<p>Excluir o perfil “${escapar(u.nome)}”? Os ajustes de agora ficam como estão.</p>`, [
+            { rotulo: "Cancelar" },
+            {
+              rotulo: "Excluir", destaque: true, acao: () => {
+                perfis = excluirPerfil(perfis, u.id);
+                guardarPerfis();
+                pref.perfil = `s:${u.herdaDe}`;
+                guardar();
+                desenharPerfis();
+                atualizarSelos();
+                sincronizarPerfisCofre();
+              },
+            },
+          ]),
+      },
+    ] : []),
+  ]);
+};
+$("sl-perfil").onchange = () => aplicarPerfil($<HTMLSelectElement>("sl-perfil").value);
+$("sl-perfil-voltar").onclick = () => voltarAoPerfil(CHAVES_PROCESSO);
+for (const b of document.querySelectorAll<HTMLButtonElement>("[data-voltar]")) b.onclick = () => voltarAoPerfil([b.dataset.voltar!]);
+
+/** abas do Processo (Qualidade … Outros) */
+$("sl-pabs").onclick = (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-pab]");
+  if (!b) return;
+  for (const t of document.querySelectorAll<HTMLElement>("#sl-pabs [data-pab]")) t.setAttribute("aria-selected", String(t === b));
+  for (const pn of document.querySelectorAll<HTMLElement>(".sl-pab")) pn.hidden = pn.dataset.pab !== b.dataset.pab;
+};
+
 function preencherPainel() {
   const m = maquina();
   selMaq.value = m.id;
   const mats = materiaisDa(m);
-  selMat.innerHTML = "";
-  for (const x of mats) selMat.append(new Option(x.nome, x.id));
   if (!mats.some((x) => x.id === pref.material)) pref.material = mats[0].id;
-  selMat.value = pref.material;
   const mat = materialDa(m, pref.material);
-  preco.value = String(pref.precos[pref.material] ?? mat.precoKg);
   const a = pref.ajustes;
   selAltura.value = String(a.altura);
   campos.paredes.value = String(a.paredes);
@@ -306,14 +487,13 @@ function preencherPainel() {
   $("sl-calibrado").textContent = f ? `Tempo calibrado para esta impressora: × ${num(f, 2)}` : "";
   desenharFilamentos();
   preencherTroca();
+  desenharPerfis();
+  atualizarSelos();
 }
 
 const inteiro = (inp: HTMLInputElement, min: number, max: number) => Math.max(min, Math.min(max, Math.round(Number(inp.value) || 0)));
 
 function lerPainel() {
-  pref.material = selMat.value as IdMaterial;
-  const p = Number(preco.value.replace(",", "."));
-  if (p > 0) pref.precos[pref.material] = p;
   pref.ajustes = {
     altura: Number(selAltura.value),
     paredes: inteiro(campos.paredes, 1, 10),
@@ -326,25 +506,21 @@ function lerPainel() {
     saia: campos.saia.checked,
   };
   guardar();
+  atualizarSelos();
 }
 
 selMaq.onchange = () => {
-  // outra impressora: valores de fábrica dela (o perfil muda paredes, cascas e o padrão)
+  // outra impressora: valores do perfil escolhido para ela (o perfil muda paredes, cascas e o padrão)
   const { suporte, borda, saia, preenchimento } = pref.ajustes;
   pref.maquina = selMaq.value;
-  pref.ajustes = { ...ajustesPadrao(maquina().processo), suporte, borda, saia, preenchimento };
+  pref.ajustes = { ...ajustesDoPerfil(pref.perfil), suporte, borda, saia, preenchimento };
   vista.definirMesa(...maquina().mesa);
   vista.enquadrar();
   preencherPainel();
   guardar();
   avisarMesa(); // reorganiza na mesa nova e recalcula
 };
-selMat.onchange = () => {
-  lerPainel();
-  preencherPainel();
-  recalcular();
-};
-for (const inp of [preco, selAltura, ...Object.values(campos)])
+for (const inp of [selAltura, ...Object.values(campos)])
   inp.addEventListener(inp === campos.preenchimento ? "input" : "change", () => {
     $("sl-preench-v").textContent = `${campos.preenchimento.value}%`;
     const borda = pref.ajustes.borda;
@@ -359,13 +535,6 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("[data-passo]"))
     inp.value = String(Number(inp.value) + Number(b.dataset.passo));
     inp.dispatchEvent(new Event("change"));
   };
-$("sl-padrao").onclick = () => {
-  const { suporte, borda, saia } = pref.ajustes;
-  pref.ajustes = { ...ajustesPadrao(maquina().processo), suporte, borda, saia };
-  preencherPainel();
-  guardar();
-  recalcular();
-};
 
 // ---------- orçamento ----------
 
@@ -377,6 +546,7 @@ function recalcular(atraso = 250) {
     seq++;
     $("sl-ocupado").hidden = false;
     $("sl-barra").style.width = "0%";
+    atualizarMini();
     const mat = materialDa(maquina(), pref.material);
     pedir({ tipo: "estimar", seq, maquina: pref.maquina, material: pref.material, precoKg: pref.precos[pref.material] ?? mat.precoKg, perfil: perfilDoProjeto(), filamentos: filamentosEfetivos(), troca: trocaAtual() });
   }, atraso);
@@ -388,6 +558,7 @@ function mostrarResultado() {
   const fator = pref.calibracao[pref.maquina] ?? 1;
   const tempo = r.tempoS * fator;
   $("sl-resultado").hidden = false;
+  $("sl-previa-vazia").hidden = true;
   $("sl-tempo").textContent = formatarTempo(tempo);
   $("sl-massa").textContent = `${num(r.massaG, 1)} g`;
   $("sl-dados").innerHTML = `
@@ -411,7 +582,18 @@ function mostrarResultado() {
   av.innerHTML = r.avisos.map((a) => `<p>⚠ ${escapar(a)}</p>`).join("");
   av.hidden = !r.avisos.length;
   desenharPecas();
+  atualizarMini();
+  if (aba === "inicio") desenharInicio();
   orcamento.impressaoMudou();
+}
+
+/** Resumo flutuante na mesa (aba Preparar): tempo e material sem sair da mesa. */
+function atualizarMini() {
+  const m = $("sl-mini");
+  const ocupado = !$("sl-ocupado").hidden;
+  if (ocupado) m.textContent = "Fatiando…";
+  else if (ultimo) m.textContent = `${formatarTempo(ultimo.tempoS * (pref.calibracao[pref.maquina] ?? 1))} · ${num(ultimo.massaG, 1)} g${ultimo.trocas.total > 0 ? ` · ${ultimo.trocas.total} trocas de cor` : ""}`;
+  m.hidden = !pecas.length || (!ocupado && !ultimo);
 }
 
 // ---------- cores: filamentos, trocas, pintura ----------
@@ -454,8 +636,11 @@ $("sl-filamentos").addEventListener("change", (e) => {
   else if (c === "material") {
     f.material = campo.value as IdMaterial;
     if (i === 0) {
-      selMat.value = campo.value;
-      selMat.dispatchEvent(new Event("change"));
+      // a posição 1 manda no material do orçamento
+      pref.material = f.material;
+      guardar();
+      preencherPainel();
+      recalcular();
       return;
     }
   } else if (c === "preco") {
@@ -463,8 +648,9 @@ $("sl-filamentos").addEventListener("change", (e) => {
     if (!(v >= 0)) return;
     f.precoKg = v;
     if (i === 0) {
-      preco.value = String(v);
-      preco.dispatchEvent(new Event("change"));
+      pref.precos[pref.material] = v;
+      guardar();
+      recalcular();
       return;
     }
   }
@@ -580,26 +766,35 @@ rAngulo.addEventListener("input", lerPincel);
 function ligarPintura(on: boolean) {
   if (on && !pecas.length) return avisar("Ponha uma peça na mesa para pintar.");
   pintando = on;
-  vista.pintando = on;
   $("sl-pintar").setAttribute("aria-pressed", String(on));
-  $("sl-pintura").hidden = !on;
+  $("sl-bloco-pintura").hidden = !on;
   if (on && escolhida === null) escolhida = pecas[0]?.id ?? null;
-  if (!on) {
-    vista.mostrarPincel = false;
-    vista.moverCursor(null);
-  }
-  else escolherFerramenta(ferramenta);
+  if (on) escolherFerramenta(ferramenta);
+  aplicarPintura();
   desenharPecas();
   mostrarLista();
+  if (on && aba === "preparar") $("sl-bloco-pintura").scrollIntoView({ block: "nearest" });
+}
+/** A vista só pinta na aba Preparar (na Prévia a caneta só olha). */
+function aplicarPintura() {
+  const vale = pintando && aba === "preparar";
+  vista.pintando = vale;
+  if (!vale) {
+    vista.mostrarPincel = false;
+    vista.moverCursor(null);
+  } else vista.mostrarPincel = ferramenta === "pincel" || ferramenta === "borracha";
 }
 $("sl-pintar").onclick = () => ligarPintura(!pintando);
+$("sl-pintar-fechar").onclick = () => ligarPintura(false);
 
 function atualizarDesfazer() {
   $<HTMLButtonElement>("sl-desfazer-cor").disabled = !desfazerPilha.length;
+  $<HTMLButtonElement>("sl-refazer-cor").disabled = !refazerPilha.length;
 }
 function empilhar(id: number, antes: Uint8Array) {
   desfazerPilha.push({ id, cores: antes });
   if (desfazerPilha.length > 40) desfazerPilha.shift();
+  refazerPilha = []; // pintura nova: o que se desfez não volta mais
   atualizarDesfazer();
 }
 /** manda a pintura da peça ao worker e recalcula o orçamento */
@@ -645,11 +840,23 @@ vista.aoPintar = (a) => {
 };
 $("sl-desfazer-cor").onclick = () => {
   const u = desfazerPilha.pop();
-  atualizarDesfazer();
   const d = u && malhas.get(u.id);
-  if (!u || !d) return;
-  d.cores.set(u.cores);
-  pintouPeca(u.id);
+  if (u && d) {
+    refazerPilha.push({ id: u.id, cores: d.cores.slice() });
+    d.cores.set(u.cores);
+    pintouPeca(u.id);
+  }
+  atualizarDesfazer();
+};
+$("sl-refazer-cor").onclick = () => {
+  const u = refazerPilha.pop();
+  const d = u && malhas.get(u.id);
+  if (u && d) {
+    desfazerPilha.push({ id: u.id, cores: d.cores.slice() });
+    d.cores.set(u.cores);
+    pintouPeca(u.id);
+  }
+  atualizarDesfazer();
 };
 $("sl-limpar-cor").onclick = () => {
   const d = escolhida !== null ? malhas.get(escolhida) : null;
@@ -698,9 +905,11 @@ const orcamento = iniciarOrcamento({
     return { cores: usadas.map((f) => f.nome).join(", "), material: mats.join(", "), dimensoes: dim };
   },
   avisar: (m, ms) => avisar(m, ms),
+  raiz: () => $("sl-bancada-area"), // as telas abrem dentro da aba Bancada
 });
 $("sl-orcamento").onclick = () => orcamento.abrirOrcamento();
 $("sl-biblioteca").onclick = () => orcamento.abrirBiblioteca();
+$("sl-proposta").onclick = () => void orcamento.abrirProposta();
 
 // ---------- projeto no cofre (.wjslc) ----------
 
@@ -736,6 +945,7 @@ function aplicarProjeto(p: ProjetoSlicer) {
   pref.material = p.material;
   pref.precos = { ...pref.precos, ...p.precos };
   pref.ajustes = ajustesDe(resolver({ maquina: p.maquina, projeto: p.perfil }));
+  pref.perfil = `s:${adivinharPerfil(p.maquina, pref.ajustes)}`; // o projeto guarda só as diferenças: o selo ↺ mostra o que fugir do perfil
   pref.filamentos = p.filamentos;
   pref.trocas = { ...pref.trocas, ...p.trocas };
   guardar();
@@ -744,6 +954,8 @@ function aplicarProjeto(p: ProjetoSlicer) {
   vista.enquadrar();
   preencherPainel();
   desfazerPilha = [];
+  refazerPilha = [];
+  atualizarDesfazer();
   pedir({ tipo: "mesa", mesa: maquina().mesa, folga: folgaMesa() });
   const pecasP = p.pecas.map((x) => ({ ...x }));
   pedir({ tipo: "projeto", pecas: pecasP }, pecasP.flatMap((x) => [x.pos.buffer, x.tri.buffer, x.cores.buffer]));
@@ -760,8 +972,21 @@ async function abrirDoAutosave() {
     avisar((e as Error).message || "Não foi possível abrir o projeto.", 7000);
   }
 }
+const abrirProjeto = () => void abrirDoCofre("slicer", pecas.length > 0);
 $("sl-salvar").onclick = () => void salvarProjeto();
-$("sl-abrir-projeto").onclick = () => void abrirDoCofre("slicer", pecas.length > 0);
+$("sl-bancada-salvar").onclick = () => void salvarProjeto();
+$("sl-abrir-projeto").onclick = abrirProjeto;
+$("sl-cofre").onclick = () => document.querySelector<HTMLElement>(".wjc-aba")?.click();
+$("sl-arquivo").onclick = () =>
+  menuEm($("sl-arquivo"), [
+    { rotulo: "Adicionar STL do cofre (WJPDM)…", icone: "pasta", acao: () => void abrirDoCofreSTL() },
+    { rotulo: "Adicionar STL do aparelho…", icone: "abrir", acao: () => void abrirDoAparelho() },
+    "-",
+    { rotulo: "Abrir projeto do cofre…", acao: abrirProjeto },
+    { rotulo: "Salvar projeto", acao: () => void salvarProjeto() },
+    "-",
+    { rotulo: "Bancada (orçamento e proposta)", acao: () => irPara("bancada") },
+  ]);
 
 // ---------- prévia das camadas ----------
 
@@ -770,6 +995,7 @@ function prepararPrevia() {
   const r = ultimo!;
   $("sl-previa").hidden = false;
   const max = r.camadas - 1;
+  $("sl-previa-vazia").hidden = true;
   const ia = Number(deslizante.value);
   deslizante.max = String(max);
   if (!previaLigada || ia > max) deslizante.value = String(max);
@@ -777,6 +1003,7 @@ function prepararPrevia() {
   $("sl-legenda").innerHTML = PARTES.filter((k) => k !== "deslocamento" && k !== "resfriamento" && k !== "troca" && k !== "torre" && r.partes[k].volume > 0.5)
     .map((k) => `<span><i style="background:${CORES[k]}"></i>${NOMES_PARTES[k]}</span>`)
     .join("");
+  if (aba === "previa" && !previaLigada) ligarPrevia(true); // na aba Prévia as camadas aparecem sozinhas
 }
 let pedidoCamada = 0;
 function pedirCamada() {
@@ -785,13 +1012,11 @@ function pedirCamada() {
 }
 function ligarPrevia(on: boolean) {
   previaLigada = on;
-  $("sl-camadas").setAttribute("aria-pressed", String(on));
   $("sl-deslizante").hidden = !on;
   $("sl-legenda").hidden = !on;
   if (on) pedirCamada();
   else vista.mostrarCamada(null);
 }
-$("sl-camadas").onclick = () => ligarPrevia(!previaLigada);
 deslizante.addEventListener("input", pedirCamada);
 for (const b of document.querySelectorAll<HTMLButtonElement>("[data-camada]"))
   b.onclick = () => {
@@ -801,7 +1026,13 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("[data-camada]"))
 
 // ---------- calibração do tempo ----------
 
-$("sl-calibrar").onclick = () => {
+$("sl-calibrar").onclick = () =>
+  menuEm($("sl-calibrar"), [
+    { rotulo: "Calibrar tempo…", acao: calibrarTempo },
+    ...(pref.calibracao[pref.maquina] ? [{ rotulo: "Remover calibração", acao: () => { delete pref.calibracao[pref.maquina]; guardar(); preencherPainel(); if (ultimo) mostrarResultado(); atualizarMini(); } }] : []),
+  ]);
+
+function calibrarTempo() {
   if (!ultimo) return avisar("Ponha uma peça na mesa primeiro.");
   const m = maquina();
   const f = pref.calibracao[m.id];
@@ -845,22 +1076,70 @@ $("sl-calibrar").onclick = () => {
       },
     ],
   );
+}
+
+// ---------- abas: Início · Preparar · Prévia · Bancada ----------
+
+function irPara(a: Aba) {
+  aba = a;
+  document.body.dataset.aba = a;
+  for (const b of document.querySelectorAll<HTMLElement>("#sl-abas [data-aba]")) b.setAttribute("aria-selected", String(b.dataset.aba === a));
+  $("sl-pagina-vista").hidden = a === "inicio" || a === "bancada";
+  $("sl-pagina-inicio").hidden = a !== "inicio";
+  $("sl-pagina-bancada").hidden = a !== "bancada";
+  $("sl-painel-preparar").hidden = a !== "preparar";
+  $("sl-painel-previa").hidden = a !== "previa";
+  fecharGaveta();
+  $("sl-lateral").scrollTop = 0;
+  aplicarPintura();
+  ligarPrevia(a === "previa" && !!ultimo);
+  if (a === "inicio") desenharInicio();
+}
+$("sl-abas").addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("button[data-aba]");
+  if (b) irPara(b.dataset.aba as Aba);
+});
+
+/** celular: a barra lateral é uma gaveta */
+function fecharGaveta() {
+  document.body.classList.remove("sl-gaveta-aberta");
+  $("sl-gaveta").setAttribute("aria-expanded", "false");
+}
+$("sl-gaveta").onclick = () => {
+  const aberta = document.body.classList.toggle("sl-gaveta-aberta");
+  $("sl-gaveta").setAttribute("aria-expanded", String(aberta));
 };
+$("sl-pagina-vista").addEventListener("pointerdown", fecharGaveta);
+
+function desenharInicio() {
+  const tot = pecas.reduce((s, p) => s + p.posicoes.length, 0);
+  const r = ultimo;
+  $("sl-ini-resumo").innerHTML = pecas.length
+    ? `<strong>${escapar(nomeProjeto || pecas[0].nome || "Mesa atual")}</strong>
+       <p class="sl-nota">${tot} peça${tot > 1 ? "s" : ""} na mesa · ${escapar(maquina().marca)} ${escapar(maquina().modelo)}${r ? ` · ${formatarTempo(r.tempoS * (pref.calibracao[pref.maquina] ?? 1))} · ${num(r.massaG, 1)} g` : ""}</p>`
+    : `<p class="sl-nota">A mesa está vazia. Adicione um STL ou abra um projeto para começar.</p>`;
+}
+$("sl-ini-abrir").onclick = abrirProjeto;
+$("sl-ini-preparar").onclick = () => irPara("preparar");
+$("sl-ini-previa").onclick = () => irPara("previa");
+$("sl-ini-bancada").onclick = () => irPara("bancada");
 
 // ---------- início ----------
 
+pintarIcones();
 $("sl-versao").textContent = `v${__VERSAO__}`;
 const diag = botaoDiagnostico("wj-ic");
 if (diag) $("sl-direita").append(diag);
-$("sl-abrir").insertAdjacentHTML("afterbegin", IC.abrir);
 escolherFerramenta("pincel");
 vista.definirMesa(...maquina().mesa);
 vista.enquadrar();
 preencherPainel();
 mostrarLista();
+irPara("preparar");
 avisarMesa();
 registrarComAtualizacao();
 void sincronizarAoAbrir()?.catch(() => {});
 instalarPainelCofre("slicer", salvarProjeto);
+sincronizarPerfisCofre();
 if (location.hash === "#peca-do-cad") void pecaDoCad();
 else if (location.hash === "#abrir-autosave") void abrirDoAutosave();

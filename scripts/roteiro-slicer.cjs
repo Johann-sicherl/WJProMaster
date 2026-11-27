@@ -69,6 +69,8 @@ function stl(tris) {
   const opcoes = await p.locator("#sl-maquina option").allTextContents();
   ok("só duas impressoras", opcoes.join("|") === "Bambu Lab P1S|Anycubic Kobra 3", opcoes.join(", "));
 
+  const abaProc = (nome) => p.locator(`#sl-pabs [data-pab=${nome}]`).tap();
+  const irPara = (aba) => p.locator(`#sl-aba-${aba}`).tap();
   const adicionar = async (arquivo, botao = "#sl-adicionar") => {
     await p.locator(botao).tap();
     const [fc] = await Promise.all([p.waitForEvent("filechooser"), p.getByText("STL do aparelho…").tap()]);
@@ -100,8 +102,11 @@ function stl(tris) {
   // Kobra 3, suporte em árvore, giroide
   await p.locator("#sl-maquina").selectOption("acu-k3");
   await esperarResultado();
+  await abaProc("resistencia");
   ok("Kobra 3: padrão de fábrica linhas cruzadas", (await p.locator("#sl-desenho").inputValue()) === "cruzado");
+  await abaProc("suporte");
   await p.locator("#sl-suporte").selectOption("arvore");
+  await abaProc("resistencia");
   await p.locator("#sl-desenho").selectOption("giroide");
   const r4 = await esperarResultado();
   const partes4 = await p.locator("#sl-partes tbody tr").allTextContents();
@@ -109,9 +114,9 @@ function stl(tris) {
   const longas = await p.evaluate(() => window.__longas);
   ok("fatiamento no worker: a tela não trava", Math.max(0, ...longas) < 200, `maior tarefa ${Math.round(Math.max(0, ...longas))} ms`);
 
-  // prévia das camadas
-  await p.locator("#sl-camadas").tap();
-  await p.waitForTimeout(500);
+  // prévia das camadas (aba Prévia liga as camadas sozinha)
+  await irPara("previa");
+  await p.waitForTimeout(700);
   const txt0 = await p.locator("#sl-camada-v").textContent();
   await p.locator("[data-camada='-1']").tap();
   for (let k = 0; k < 4; k++) await p.locator("[data-camada='-1']").tap();
@@ -127,12 +132,13 @@ function stl(tris) {
 
   // alvos de toque ≥ 44 px
   const pequenos = await p.evaluate(() =>
-    [...document.querySelectorAll(".sl-copias button, .sl-remover, .sl-deslizante button, #sl-camadas, #sl-adicionar")]
+    [...document.querySelectorAll(".sl-copias button, .sl-remover, .sl-deslizante button, #sl-abas button, #sl-arquivo, #sl-salvar, #sl-calibrar")]
       .filter((e) => e.offsetParent && e.getBoundingClientRect().height < 43.5).map((e) => e.id || e.className || e.textContent));
   ok("alvos de toque ≥ 44 px", pequenos.length === 0, pequenos.join(", "));
 
-  // calibração
+  // calibração (menu Calibrar ▾)
   await p.locator("#sl-calibrar").tap();
+  await p.getByText("Calibrar tempo…").tap();
   await p.locator("#sl-cal-h").fill("1");
   await p.getByRole("button", { name: "Calibrar", exact: true }).tap();
   await p.waitForTimeout(300);
@@ -141,6 +147,7 @@ function stl(tris) {
   ok("tempo calibrado = 1 h", (await p.locator("#sl-tempo").textContent()).startsWith("1 h 00"), await p.locator("#sl-tempo").textContent());
 
   // remover peça e preferências lembradas
+  await irPara("preparar");
   await p.locator("#sl-lista li[data-id] [data-acao=remover]").last().tap();
   await esperarResultado();
   ok("remover peça", (await p.locator("#sl-lista li[data-id]").count()) === 1);

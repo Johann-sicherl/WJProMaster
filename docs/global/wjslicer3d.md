@@ -15,28 +15,36 @@ cofre do WJPDM, do aparelho ou a peça aberta no WJCAD.
 
 ## 1. Uso
 
-1. **Adicionar STL** (barra de cima ou "+ Peça" no cartão **Peças na mesa**) → "STL do cofre (WJPDM)…" ou
+> **Tela nova (L1a, 27/11/2026)**: abas **Início · Preparar · Prévia · Bancada** no topo; barra de topo com **Arquivo ▾**, **Salvar**,
+> desfazer/refazer da pintura e **Calibrar ▾**. Barra lateral esquerda rolável (360 px no tablet, 380 no computador; **gaveta** no celular, onde
+> abas e ferramentas ficam só com ícone) e **barra de ferramentas** embaixo da vista. Layout completo e próximas etapas: `wjslicer3d-layout.md`.
+
+1. **Início**: Adicionar STL, Abrir projeto, atalhos para as outras abas e o resumo da mesa.
+2. **Preparar** (a mesa 3D + barra lateral): **＋ Objeto** (barra de ferramentas ou Arquivo ▾) → "STL do cofre (WJPDM)…" ou
    "STL do aparelho…". Pelo WJCAD: menu da Peça → **Estimar impressão 3D (WJSlicer3D)** (a peça vai em pé:
    o Y do WJCAD vira o Z da impressora).
-2. **Peças na mesa**: cada peça com as **cópias** (− n× +) e ✕ para tirar da mesa. A mesa **se organiza
-   sozinha** (fileiras, da maior para a menor, 6 mm entre as peças; mais espaço com a borda). Tocar numa
-   peça (na lista ou na mesa) a escolhe; **↻ X / ↻ Y / ↻ Z** e **Melhor apoio** agem na peça escolhida.
-   Peça que não cabe ou passa da borda fica vermelha, com aviso.
-3. **Impressora** (Bambu Lab P1S, Anycubic Kobra 3) e **material** (PLA, PLA alta velocidade, PETG, ABS,
-   ASA, TPU) com o **preço por kg** (lembrado por material).
-4. **Ajustes**: altura da camada (0,08–0,28 mm), paredes, camadas de topo e fundo, preenchimento (%),
-   **padrão do preenchimento** (grade, linhas, linhas cruzadas, triângulos, cúbico, giroide, favo de mel),
-   **suporte** (sem, normal, árvore), **borda** (aba de 5 mm) e **saia** (uma volta a 2 mm). "Padrão do
-   perfil" volta aos valores de fábrica da impressora.
-5. **Resultado** (recalcula sozinho a cada mudança, no worker): tempo de impressão, material (g),
-   filamento (m de 1,75 mm), custo, preparo típico e total, camadas, volume das peças e o **tempo por tipo
+   - **Peças na mesa** (bloco da barra lateral): cada peça com as **cópias** (− n× +) e ✕ para tirar da mesa. **Organizar** reorganiza a
+     mesa (fileiras, da maior para a menor, 6 mm entre as peças; mais espaço com a borda); ao pôr peça nova ela se organiza sozinha. Tocar numa
+     peça (na lista ou na mesa) a escolhe; **Girar X / Y / Z** e **Auto-orientar** (antigo "Melhor apoio") agem na peça escolhida. Peça que não
+     cabe ou passa da borda fica vermelha, com aviso. Mover, Cortar e Medir aparecem desabilitados ("em breve").
+   - **Impressora** (Bambu Lab P1S, Anycubic Kobra 3; ⚙ e ✎ ainda sem função).
+   - **Filamento**: posições 1–4 com cor, nome, **material** (PLA, PLA alta velocidade, PETG, ABS, ASA, TPU) e **preço por kg**; a posição 1 é
+     o material do orçamento. **Custo das trocas de cor** (purga, tempo, torre) fica aí. **Pintar** (barra de ferramentas): pincel, baldes,
+     ângulo, corpo inteiro, borracha; **desfazer/refazer** no topo.
+   - **Processo** (Global; Objetos, Avançado e busca chegam depois): escolha o **perfil de processo** (os 9 "Perfis do sistema" de 0,08 a
+     0,28 mm e os seus "Perfis do usuário"); 💾 salva, renomeia ou exclui perfis do usuário (ficam no aparelho e no cofre). Seis abas:
+     **Qualidade** (altura da camada), **Resistência** (paredes, topo, fundo, preenchimento, padrão), **Suporte** (sem, normal, árvore),
+     **Outros** (borda de 5 mm, saia de uma volta); Velocidade e Multimaterial dizem "chega na próxima etapa". O selo **↺** (no campo, na aba e
+     ao lado do perfil) aparece quando algo difere do perfil escolhido; tocar nele volta ao valor do perfil.
+3. **Prévia**: o **resultado** (recalcula sozinho a cada mudança, no worker): tempo de impressão, material (g),
+   filamento (m de 1,75 mm), custo, preparo típico e total, camadas, volume das peças, material por cor e trocas, e o **tempo por tipo
    de caminho** (parede externa, paredes internas, sólido, topo, pontes, esparso, suporte, interface,
-   borda e saia, deslocamentos/retrações/trocas de camada, desaceleração para resfriar), com o material
-   de cada um.
-6. **Prévia das camadas** (botão sobre a vista, depois de fatiar): deslizante (e − / +) escolhe a camada;
-   os caminhos dela aparecem coloridos por tipo (legenda) e as peças, cortadas na altura da camada.
-7. **Calibrar tempo…**: informa-se uma vez o tempo real (ou o do fatiador) de uma mesa; o fator fica
-   guardado para aquela impressora e corrige todas as estimativas dela.
+   borda e saia, deslocamentos/retrações/trocas de camada, desaceleração para resfriar), com o material de cada um. Na vista, o
+   **deslizante de camadas** (e − / +) liga sozinho: os caminhos da camada aparecem coloridos por tipo (legenda) e as peças, cortadas na
+   altura dela. Na aba Preparar um resumo (tempo · material) fica sobre a mesa.
+4. **Bancada**: **Biblioteca de custos**, **Orçamento** e **Proposta** (abrem dentro da aba), **Salvar projeto**, **Abrir projeto** e **Cofre**.
+5. **Calibrar ▾ › Calibrar tempo…**: informa-se uma vez o tempo real (ou o do fatiador) de uma mesa; o fator fica
+   guardado para aquela impressora e corrige todas as estimativas dela (também há "Remover calibração").
 
 Preferências (impressora, material, preços, ajustes, calibração) ficam no aparelho
 (`localStorage["wjslicer:preferencias"]`); impressora antiga que saiu da lista volta à P1S.
