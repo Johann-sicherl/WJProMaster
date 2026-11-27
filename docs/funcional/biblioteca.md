@@ -137,6 +137,24 @@ helicoidal); cônica com a face maior plana (ver §E3).
    árvore; a 2ª vai para a posição de engrenamento (se estiver fixa, a 1ª), e o travamento antigo entre as duas é substituído.
 6. Editar depois: abra a peça (WJCAD › Peça), **duplo toque no recurso** (na árvore ou no modelo) → mesmo painel → ✓.
 
+### Cotas de diâmetro no modelo (27/11/2026, pedido C6)
+
+Caixa **Cotas no modelo** no painel das engrenagens (aba Engrenagens da Biblioteca na Montagem e comando Engrenagem na Peça), com
+caixas de seleção **Diâmetro externo** e **Diâmetro primitivo**; na engrenagem **interna** também **Diâmetro interno**. Marcadas, a vista
+mostra a linha de cota (setas nas pontas, estilo do esboço; a do primitivo é tracejada) com o valor "Øxx", presas ao modelo e
+acompanhando a câmera; desmarcadas, somem. **Instantâneo: nada é regenerado.** O estado fica **nas preferências do usuário** (padrão:
+desmarcadas; vale para todas as engrenagens e nos dois ambientes).
+
+- Valores = os do painel ("Valores calculados"): externo = da, primitivo = d; **cônica**: externo = o da **face maior plana** do modelo
+  (o teórico fica só no painel); **sem-fim**: d1 e da1; **coroa**: d e da; **interna**: externo = Ø do aro, primitivo = d,
+  **interno = Ø da ponta (da, dentro)**. **Cremalheira** não tem diâmetros: a caixa não aparece.
+- Posição: no plano da face de trás (cônica: na face maior), centro no eixo; externo ao longo de +X, primitivo ao longo de Z, interno a 45°
+  (nunca se sobrepõem); o valor fica na linha, entre o centro e a ponta. As setas apontam para a circunferência nominal (com dentes ímpares
+  o outro lado cai no vão, como no desenho técnico).
+- Montagem: as cotas aparecem nas engrenagens **selecionadas** (toque no modelo) ou, sem seleção, em todas as engrenagens da montagem,
+  na posição de cada componente.
+- Testes: `scripts/teste-cotas-engrenagem.ts` (valores e posição) e `scripts/roteiro-engrenagens.cjs` (tablet).
+
 ## E2. Campos e convenções
 
 | Campo | Observação |
@@ -192,6 +210,7 @@ em torno de +Y. Material de fábrica: Aço 1045.
   Na Montagem: **Biblioteca de componentes** (saiu da aba Montagem; abre na aba Fixação) e **Engrenagem** (abre a mesma Biblioteca já na aba
   Engrenagens). Na Peça: **Engrenagem** (cria o recurso, como antes em Features) e **Biblioteca de componentes** desabilitada com o selo
   "Montagem" e aviso ao tocar. Novos itens de biblioteca entram como mais um comando da aba (`src/comandos.ts` e `ABAS_M` da Montagem).
+- `scripts/teste-cotas-engrenagem.ts` (no `pnpm teste`): cotas de diâmetro (valor, posição, tipos, preferências).
 - `scripts/roteiro-toolbox.cjs`: faixa rolável (computador 1280×720 e 1024×600 com mouse/roda, tablet com toque, celular) e a aba Toolbox.
 - `scripts/roteiro-engrenagens.cjs` (tablet 1280×800): aba Engrenagens, valores calculados, erro claro, par reto inserido engrenado
   e travado, cofre CAD › Biblioteca › Engrenagens, helicoidais engrenadas pelas selecionadas, peça editada pelo recurso na Peça.

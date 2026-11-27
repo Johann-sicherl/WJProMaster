@@ -29,7 +29,7 @@ import { Viewport, type Entidade, type EstiloExibicao, type TipoEntidade, type V
 import { documentoImportado, fotografiaLeve, revelarFotografia, MATERIAIS, validarDocumento, type Documento, type Referencia, type Vec3 } from "../model";
 import {
   aplicarPadroes, compor, embutirPeca, excluirComponentes, excluirPadrao, explosaoAutomatica, girarEmTorno, massaDaMontagem, posesExplodidas, IDENTIDADE, inserirComponente, marcaDe, montagemVazia, novoIdM, quantidades, quatDeEuler,
-  inverter as inverterT, quatEixoAngulo, rotuloComponente, validarMontagem, type ComponenteMontagem, type DocumentoMontagem, type PecaEmbutida, type Posicionamento,
+  aplicarPonto, inverter as inverterT, quatEixoAngulo, rotuloComponente, validarMontagem, type ComponenteMontagem, type DocumentoMontagem, type PecaEmbutida, type Posicionamento,
   type PadraoComponentes, type RefMontagem, type TipoPosicionamento, type Transformacao,
 } from "./modelo";
 import { centroDaCaixa, centroDoComponente, componenteDoTriangulo, facesDoComponente, globalDaEntidade, indiceLocal, juntar, localDaEntidade, type Cena } from "./cena";
@@ -44,7 +44,8 @@ import { LISTA_COMPRIMENTOS, diametroNominal, familiaPorId } from "../biblioteca
 import { comprimentosDoPadrao, nomePadrao, passoGrosso } from "../biblioteca/gerar";
 import { pecaDaBiblioteca, pecaDeEngrenagem } from "../biblioteca/cofre";
 import { calcularPar, engrenagemDaPeca, nomeEngrenagem, paramDe, parceiraSugerida, poseDoPar, ROTULO_TIPO as TIPO_ENGRENAGEM } from "../biblioteca/engrenagens";
-import { abasBiblioteca, caixasEngrenagem } from "../biblioteca/painelEngrenagens";
+import { abasBiblioteca, aoMudarCotasEngrenagem, caixasEngrenagem, cotasDasPrefs } from "../biblioteca/painelEngrenagens";
+import { CotasEngrenagemNaVista } from "../biblioteca/desenhoCotasEngrenagem";
 import { PARAM_ENGRENAGEM_PADRAO, type ParamEngrenagem } from "../model";
 import {
   compatibilidadeDoFuro, comprimentoMinimo, empilhadoNoLado, entradaDoFuro, furosDoComponente, furosIguais, ladoParaCamera, planasDoComponente, poseDoFixador,
@@ -179,6 +180,7 @@ function montarCena() {
   aplicarCoresCena();
   destacar();
   reexibirCotas();
+  atualizarCotasEngrenagem();
 }
 
 // ---------- aparências (cores) ----------
@@ -1256,6 +1258,7 @@ function mostrarPainel(emComando: boolean) {
 
 function fecharComando() {
   comando = null;
+  atualizarCotasEngrenagem();
   viewport.interceptador = interceptarArraste; // fora de comando: arraste livre (mouse/caneta)
   mostrarPainel(false);
   destacar();
@@ -1483,6 +1486,7 @@ function abrirBiblioteca(aba?: "fixacao" | "engrenagens") {
 function renderizarBiblioteca() {
   if (comando?.tipo !== "biblioteca") return;
   guardarEstadoBib();
+  atualizarCotasEngrenagem();
   if (estadoBib.aba === "engrenagens") return renderizarEngrenagens();
   renderizarPainelBiblioteca({
     painelBase: (t) => painelBase(t),
@@ -1585,6 +1589,24 @@ function renderizarEngrenagens() {
   renderizarFormulario($("painel-comando"), estadoEng, esq, ctx);
   colocarAbasBiblioteca();
 }
+
+/**
+ * Cotas de diâmetro (caixas "Cotas no modelo" da aba Engrenagens): nas engrenagens selecionadas ou, sem
+ * seleção, em todas as visíveis da montagem. Só a vista; nada é regenerado.
+ */
+const cotasEngrenagem = new CotasEngrenagemNaVista(viewport, $("viewport").parentElement!);
+function atualizarCotasEngrenagem() {
+  if (!doc || comando?.tipo !== "biblioteca" || estadoBib.aba !== "engrenagens") return cotasEngrenagem.limpar();
+  const engrenagens = doc.componentes.filter(visivel).flatMap((c) => {
+    const p = engrenagemDaPeca(pecaDe(c).doc);
+    return p ? [{ c, p }] : [];
+  });
+  const marcadas = engrenagens.filter((e) => selComps.includes(e.c.id));
+  const itens = (marcadas.length ? marcadas : engrenagens).map(({ c, p }) => ({ p, mapa: (v: Vec3) => aplicarPonto(c.t, v)}));
+  // cada engrenagem mostra só as medidas que existem para o tipo dela (o "interno" é da interna)
+  cotasEngrenagem.mostrar(itens, cotasDasPrefs());
+}
+aoMudarCotasEngrenagem(atualizarCotasEngrenagem);
 
 function nomeSeguro(p: ParamEngrenagem): string {
   try {

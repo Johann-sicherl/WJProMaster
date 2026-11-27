@@ -21,6 +21,8 @@ export interface PrefsCad {
   rodaFrenteAfasta?: boolean;
   /** Passo do zoom por clique da roda, em % (padrão 5 %, faixa 2–50 %). */
   passoZoom?: number;
+  /** Toolbox de Engrenagens: cotas de diâmetro mostradas no modelo ("externo", "primitivo", "interno"); padrão: nenhuma. */
+  engCotas?: string[];
 }
 
 export const PASSO_ZOOM_PADRAO = 5;
