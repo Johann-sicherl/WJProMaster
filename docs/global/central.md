@@ -74,6 +74,7 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
 ## 5. Pendências e conversas em andamento
 
 - Conversas das entregas já executadas: arquivadas pelo Johann (25/11).
+- **Em andamento (27/11): M2 do WJSlicer3D** (costura, ordem das paredes; Opus; `src/slicer/*`, `caminhos.ts`) em paralelo a esta conversa de docs.
 - **#120 falta testar com o STL real do Johann** (dividir → mover → extrudar → 1 corpo foi testado com
   peça de teste; mover e extrusão só em Node).
 - **TAMPA_JANELA (ação do Johann):** a peça continua com 3 corpos de propósito (folga real de 0,0328 mm
@@ -102,6 +103,18 @@ entrega, contexto até 773 mil tokens. Método novo até aqui (7 entregas, 10/11
 - **Lições de orquestração (15/11):** a central abre e acompanha conversas (create_session/get_session/send_later); a
   central criada por outra conversa também TEM essas ferramentas (corrigido em 26/11: conferir logo no início). Conferir com
   get_session (barato), nunca list_events. Sonnet custou ≈ 1/2 a 1/3 do Opus por tarefa (S2 4,3; S3 8,4 × Opus 9,5–17).
+- **Conferência de contexto e limite (27/11, regras.md §1 — regra completa e tabela de modelos lá):** a central
+  confere `context_usage.used_tokens` de TODAS as conversas e de si mesma; a ~180 mil = push + resumo de passagem +
+  conversa nova no mesmo ramo, sem o Johann pedir; nunca dar tarefa nova a conversa acima de 180 mil. Tarefa agendada
+  horária faz a conferência; `allowed_warning` = avisar o Johann; a cada 3 conferências perguntar o % da janela de 5 h e
+  da semana (teto 70 % na semana; a janela é decisão dele, já subida a 90–95 % em prioridade).
+- **Modelos (PROVISÓRIO, 27/11, Johann concordou em testar):** Haiku só leitura mecânica (CI, deploy, contexto; não
+  escreve no repositório) · Sonnet = interface, docs, PRs de docs, testes de tablet · Opus = motor (M2–M4, S1, S2, X2, O1,
+  O2), L3 e tudo que mude tempo ou massa. Subir o modelo se o Sonnet falhar o CI 2 vezes ou tocar `caminhos.ts`/`campo.ts`/
+  tempo-massa; máx. 2 Opus ao mesmo tempo; M2–M4, S1, S2 só depois da M1; L1b/L3/T* depois da L1a; L3 depende dos perfis
+  "Calibrado Letras" do Johann.
+- **Entregas de 27/11** (PRs e custo em `fila-central.md`): L1a #159, M1 #160, X1 #158, C5 #157, C6 #161, C7 #162; **M2 em
+  andamento** (Opus, `src/slicer/*`). Custo em % do limite: **não medido** em nenhuma delas.
 - **Economia de contexto (26/11, regras.md §1):** em cada conferência ler `context_usage.used_tokens` de cada conversa
   (get_session); ~180 mil = push + resumo de passagem + conversa nova. Fatiar tarefa grande antes de abrir; Sonnet por
   padrão, Opus só kernel/geometria/motor. Skills de terceiros por propaganda (Ponytail etc.): não instalar (26/11).
