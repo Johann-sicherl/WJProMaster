@@ -538,19 +538,36 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
   Peças na mesa, Pintura (só ligada), Impressora, Filamento (4 posições + custo das trocas) e Processo; em **Prévia** = resultado (tempo, material, tabela por
   cor e por caminho). Largura 380 px (computador), 360 px (tablet, `body.disp-tablet`), **gaveta** no celular (`.sl-gaveta`, classe `sl-gaveta-aberta`).
   Barra de ferramentas embaixo da vista (só Preparar). **Armadilha**: o `body` tem `data-aba`; seletores de clique usam `button[data-aba]` (um `closest("[data-aba]")` casava o `body` e a gaveta nunca abria).
-- **Processo**: Global | Objetos (desabilitado "em breve"); chave Avançado e busca 🔍 desabilitadas ("em breve", entram na L1b); seis abas (Qualidade,
-  Resistência, Velocidade, Suporte, Multimaterial, Outros) com **só os campos de hoje** nas abas certas (altura; paredes/topo/fundo/preenchimento/padrão;
-  suporte; borda/saia) e a nota "chega na próxima etapa" no resto. A L1b troca isso pelo painel **gerado do esquema** (`esquema.ts`).
-- **Perfil de processo na tela** (`pref.perfil` = `"s:<id>"` sistema ou `"u:<id>"` usuário): escolher um perfil copia os valores dele para `pref.ajustes`
-  (menos suporte, borda e saia, que são do projeto). O **selo ↺** compara só os 6 campos de processo (`CHAVES_PROCESSO`) com o perfil escolhido por `diferencas()`;
-  ↺ por campo (`[data-voltar]`), na aba (classe `alterada`) e no perfil (`#sl-perfil-voltar`). O **motor e o worker não mudaram**: o projeto `.wjslc` e o worker
-  continuam recebendo `perfilDoProjeto()` = diferenças sobre o "0,20 mm Padrão" (por isso abrir projeto antigo é idêntico; `adivinharPerfil()` só escolhe o rótulo).
+- **Processo**: Global | Objetos (desabilitado "em breve"); seis abas (Qualidade, Resistência, Velocidade, Suporte, Multimaterial, Outros). Na L1a eram **só os campos
+  de hoje**; a **L1b (abaixo) trocou isso pelo painel gerado do esquema**.
+- **Perfil de processo na tela** (`pref.perfil` = `"s:<id>"` sistema ou `"u:<id>"` usuário): escolher um perfil traz os valores dele (menos suporte, borda e saia, que são do
+  projeto). Desde a L1b o selo ↺ confere **todos** os campos do perfil (veja "Painel gerado" abaixo). `adivinharPerfil()` (6 campos) só escolhe o rótulo de preferência/projeto antigo.
 - **Perfis do usuário**: lista em `localStorage["wjslicer:perfis"]` (`perfisUsuario.ts`) e no cofre (`sincronizarPerfisCofre()`: em fila, mescla com `juntarPerfis`,
   só grava se houver perfil ou arquivo no cofre, erro de cofre é ignorado). Menu 💾 (`#sl-perfil-menu`): salvar alterações, salvar como novo, renomear, excluir.
-  Um perfil do usuário guarda só as diferenças dos 6 campos sobre o perfil de sistema de que herda.
+  Um perfil do usuário guarda só as diferenças dos campos do perfil (todos, menos suporte/borda/saia) sobre o perfil de sistema de que herda.
 - **Bancada**: as telas de `orcamentoUi.ts` abrem **dentro** da aba (`ctx.raiz` = `#sl-bancada-area`, `.or-tela` vira `position:absolute` ali); `abrirProposta` passou a ser exportado.
   O botão Cofre da Bancada clica na aba flutuante `.wjc-aba` do `instalarPainelCofre`.
 - **Ferramentas** (§3.10) ligadas: ＋ Objeto, Organizar (reenvia `mesa` ao worker), Auto-orientar (= "Melhor apoio"), Girar X/Y/Z, Pintar; Mover, Cortar e Medir ficam
   desabilitados "em breve". **Desfazer/Refazer da pintura** no topo (`refazerPilha`, zerada por pintura nova e ao abrir projeto).
 - Prévia: ao entrar na aba as camadas ligam sozinhas (`ligarPrevia(true)`), ao sair desligam; a pintura só age na vista em Preparar (`aplicarPintura()`).
   Resumo flutuante `#sl-mini` (tempo, material, trocas) na mesa. Roteiro: `scripts/roteiro-slicer-layout.cjs`.
+
+## WJSlicer3D — painel de processo gerado do esquema (L1b, 28/11/2026)
+
+- **Arquivos**: `painel.ts` (puro, `scripts/teste-painel.ts`), `painelUi.ts` (DOM), `slicer/index.html` (`#sl-nivel`, `#sl-busca`, `#sl-pabs`, `#sl-painel-campos`), `slicer.css`.
+  Os 6 painéis são **gerados de `esquema.ts`**: campo novo no esquema = aparece na tela, na busca e no ↺ sem mexer em mais nada. Fora do painel: ocultos (⚪/⛔) e as
+  abas `impressora`/`filamento` (⚙, L3). Hoje 216 campos (Qualidade 67, Resistência 15, Velocidade 38, Suporte 39, Multimaterial 37, Outros 20).
+- **Plano completo**: `pref.plano` (localStorage) = **todas as diferenças** sobre o "0,20 mm Padrão" da impressora; é o que o worker recebe (`perfilDoProjeto()`) e o
+  `.wjslc` grava (`perfil`). `pref.ajustes` (9 campos) virou **derivado** (`gravarPlano()` recalcula; orçamento e mesa ainda leem dele). `valoresAtuais()` = valores completos em cache.
+  Preferência antiga (sem `plano`) migra por `diferencasDeAjustes`. Funções de edição em `painel.ts`: `definirValor`, `voltarCampos`, `aplicarValoresDoPerfil`
+  (trocar perfil: traz os valores e mantém suporte/borda/saia = `FORA_DO_PERFIL`), `diferencasParaPerfil` (perfil do usuário), `alterados` (selo ↺).
+- **Nível** (chave Avançado, `pref.nivel`): Simples ⊂ Avançado ⊂ Especialista pelo `nivel` de cada campo; padrão Simples (21 campos; os 9 da L1a estão nele).
+  Grupo começa **aberto** se tem campo Simples, senão recolhido (o estado aberto/recolhido é lembrado na sessão da página). **Busca** (sem acento, todas as palavras; rótulo,
+  grupo, aba, id, nota e opções) acha em todas as abas e níveis, mostra "Aba › Grupo" e nunca os ocultos. Só a aba aberta é desenhada; `atualizar()` refaz só ↺ e "visível se".
+- **Campo por tipo**: número/percentual = `<input type=number>` (percentual em %, limites do esquema, valor fora vira o limite; a calculadora comum liga sozinha),
+  inteiro = − campo + , booleano = caixa, lista/padrão = select, texto = campo (Observações = textarea), `preenchimento` = deslizante. `data-campo="<id>"` no controle,
+  `#sl-cp-<id>` na linha (ponto vira hífen), `[data-voltar=<id>]` no ↺ — **os roteiros usam esses seletores** (os ids antigos `#sl-altura`, `#sl-paredes`… saíram).
+- **Selos** ✅🟡🔶 em todo campo (✅ mais claro); 🔶 guarda o valor no perfil/projeto e **não muda o motor** (nada finge funcionar).
+- **Armadilhas**: grupo recolhido deixa o controle invisível (roteiro precisa abrir o grupo: `rolar()` do `roteiro-slicer-painel.cjs`); `.sl-legenda` já é a legenda da
+  Prévia (a dos selos é `.sl-legenda-selos`); no Playwright `fill()` em `type=number` não aceita vírgula. Roteiros: `roteiro-slicer-painel.cjs` (por aba) e
+  `roteiro-slicer-layout.cjs`, `roteiro-slicer.cjs` adaptados.

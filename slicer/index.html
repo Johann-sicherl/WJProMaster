@@ -93,13 +93,13 @@
               <button id="sl-proc-global" aria-pressed="true" title="Ajustes do projeto inteiro">Global</button>
               <button id="sl-proc-objetos" disabled title="Ajustes por objeto — em breve">Objetos <small>em breve</small></button>
             </div>
-            <label class="sl-chave"><input id="sl-avancado" type="checkbox" disabled /> Avançado <small class="sl-nota">em breve</small></label>
+            <div class="sl-nivel-linha"><b>Avançado</b><div class="sl-seg sl-seg3" id="sl-nivel" role="group" aria-label="Avançado: nível de detalhe dos parâmetros"></div></div>
             <div class="sl-linha-sel">
               <button id="sl-perfil-voltar" class="sl-voltar-perfil" hidden title="Alterado: voltar tudo ao valor do perfil" aria-label="Voltar ao valor do perfil">↺</button>
               <select id="sl-perfil" aria-label="Perfil de processo"></select>
               <button id="sl-perfil-menu" class="sl-mini sl-ic-btn" aria-haspopup="menu" title="Salvar, renomear ou excluir perfil do usuário" aria-label="Menu do perfil"><i class="sl-ic" data-ic="salvar"></i></button>
             </div>
-            <input id="sl-busca" class="sl-busca" type="search" disabled placeholder="🔍 Buscar parâmetro — em breve" aria-label="Buscar parâmetro (em breve)" />
+            <input id="sl-busca" class="sl-busca" type="search" placeholder="🔍 Buscar parâmetro" aria-label="Buscar parâmetro" autocomplete="off" />
             <div class="sl-pabs" id="sl-pabs" role="tablist" aria-label="Abas do processo">
               <button role="tab" data-pab="qualidade" aria-selected="true">Qualidade</button>
               <button role="tab" data-pab="resistencia" aria-selected="false">Resistência</button>
@@ -109,34 +109,8 @@
               <button role="tab" data-pab="outros" aria-selected="false">Outros</button>
             </div>
 
-            <div class="sl-pab" data-pab="qualidade" role="tabpanel">
-              <div class="sl-cp" data-id="altura"><label class="sl-campo">Altura da camada <select id="sl-altura"></select></label><button class="sl-voltar" data-voltar="altura" hidden aria-label="Voltar a altura da camada ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
-              <p class="sl-nota sl-prox">Os demais campos de qualidade (larguras de linha, costura, precisão…) chegam na próxima etapa.</p>
-            </div>
-            <div class="sl-pab" data-pab="resistencia" role="tabpanel" hidden>
-              <div class="sl-trio">
-                <div class="sl-cp" data-id="paredes"><div class="sl-campo">Paredes<div class="sl-passo"><button data-alvo="sl-paredes" data-passo="-1" aria-label="Menos paredes">−</button><input id="sl-paredes" type="number" min="1" max="10" inputmode="numeric" /><button data-alvo="sl-paredes" data-passo="1" aria-label="Mais paredes">+</button></div></div><button class="sl-voltar" data-voltar="paredes" hidden aria-label="Voltar as paredes ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
-                <div class="sl-cp" data-id="topo"><div class="sl-campo">Camadas de topo<div class="sl-passo"><button data-alvo="sl-topo" data-passo="-1" aria-label="Menos camadas de topo">−</button><input id="sl-topo" type="number" min="0" max="20" inputmode="numeric" /><button data-alvo="sl-topo" data-passo="1" aria-label="Mais camadas de topo">+</button></div></div><button class="sl-voltar" data-voltar="topo" hidden aria-label="Voltar as camadas de topo ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
-                <div class="sl-cp" data-id="fundo"><div class="sl-campo">Camadas de fundo<div class="sl-passo"><button data-alvo="sl-fundo" data-passo="-1" aria-label="Menos camadas de fundo">−</button><input id="sl-fundo" type="number" min="0" max="20" inputmode="numeric" /><button data-alvo="sl-fundo" data-passo="1" aria-label="Mais camadas de fundo">+</button></div></div><button class="sl-voltar" data-voltar="fundo" hidden aria-label="Voltar as camadas de fundo ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
-              </div>
-              <div class="sl-cp" data-id="preenchimento"><label class="sl-campo">Preenchimento <span class="sl-faixa-valor"><input id="sl-preench" type="range" min="0" max="100" step="1" /><b id="sl-preench-v"></b></span></label><button class="sl-voltar" data-voltar="preenchimento" hidden aria-label="Voltar o preenchimento ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
-              <div class="sl-cp" data-id="padrao"><label class="sl-campo">Padrão do preenchimento <select id="sl-desenho"></select></label><button class="sl-voltar" data-voltar="padrao" hidden aria-label="Voltar o padrão do preenchimento ao perfil" title="Alterado: voltar ao perfil">↺</button></div>
-            </div>
-            <div class="sl-pab" data-pab="velocidade" role="tabpanel" hidden>
-              <p class="sl-nota sl-prox">Velocidades, acelerações e jerk chegam na próxima etapa.</p>
-            </div>
-            <div class="sl-pab" data-pab="suporte" role="tabpanel" hidden>
-              <label class="sl-campo">Suporte <select id="sl-suporte"><option value="nenhum">Sem suporte</option><option value="normal">Normal</option><option value="arvore">Árvore</option></select></label>
-              <p class="sl-nota sl-prox">Estilos, jangada e distâncias do suporte chegam na próxima etapa.</p>
-            </div>
-            <div class="sl-pab" data-pab="multimaterial" role="tabpanel" hidden>
-              <p class="sl-nota sl-prox">Por enquanto, a purga e a torre ficam em Filamento › Custo das trocas de cor. O resto chega na próxima etapa.</p>
-            </div>
-            <div class="sl-pab" data-pab="outros" role="tabpanel" hidden>
-              <label class="sl-chave"><input id="sl-borda" type="checkbox" /> Borda (aba de 5 mm)</label>
-              <label class="sl-chave"><input id="sl-saia" type="checkbox" /> Saia (uma volta)</label>
-              <p class="sl-nota sl-prox">Tipo de borda, voltas da saia e modos especiais chegam na próxima etapa.</p>
-            </div>
+            <div id="sl-painel-campos" class="sl-painel-campos" role="tabpanel"></div>
+            <p class="sl-nota sl-legenda-selos">✅ aplicado · 🟡 em parte · 🔶 ainda não aplicado (fica guardado no perfil, não muda o resultado).</p>
           </section>
           <p class="sl-nota sl-rodape">Orçamento por fatiamento real (paredes, preenchimento, topo e fundo, suporte, borda) com os perfis de fábrica (bico 0,4 mm) e o planejador de movimento da máquina. Não gera G-code nem envia para a impressora.</p>
         </div>

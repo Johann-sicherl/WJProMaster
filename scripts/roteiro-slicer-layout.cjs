@@ -80,7 +80,7 @@ function stlPeca() {
   ok("lista só P1S e Kobra 3", maq.join("|") === "Bambu Lab P1S|Anycubic Kobra 3", maq.join(", "));
   ok("⚙ e ✎ da impressora desabilitados", (await p.locator("#sl-bloco-impressora button:disabled").count()) === 2);
   ok("4 posições de filamento", (await p.locator(".sl-filamento").count()) === 4);
-  ok("Objetos, Avançado e busca desabilitados (em breve)", (await p.locator("#sl-proc-objetos").isDisabled()) && (await p.locator("#sl-avancado").isDisabled()) && (await p.locator("#sl-busca").isDisabled()));
+  ok("Objetos desabilitado (em breve); busca e Avançado ligados", (await p.locator("#sl-proc-objetos").isDisabled()) && (await p.locator("#sl-busca").isEnabled()) && (await p.locator("#sl-nivel button").count()) === 3);
   const perf = await p.locator("#sl-perfil option").allTextContents();
   ok("9 perfis do sistema", perf.length === 10 && perf.includes("0,20 mm Padrão") && perf.includes("0,12 mm Alta qualidade") && perf.includes("0,28 mm"), `${perf.length} entradas`);
   const grupos = await p.locator("#sl-perfil optgroup").evaluateAll((l) => l.map((g) => g.label));
@@ -92,11 +92,11 @@ function stlPeca() {
     await toque(p, `#sl-pabs [data-pab=${aba}]`);
     return p.locator(sel).isVisible();
   };
-  ok("Qualidade: altura da camada", await onde("qualidade", "#sl-altura"));
-  ok("Resistência: paredes, topo, fundo, preenchimento e padrão", (await onde("resistencia", "#sl-paredes")) && (await p.locator("#sl-topo").isVisible()) && (await p.locator("#sl-fundo").isVisible()) && (await p.locator("#sl-preench").isVisible()) && (await p.locator("#sl-desenho").isVisible()));
-  ok("Suporte: tipo de suporte", await onde("suporte", "#sl-suporte"));
-  ok("Outros: borda e saia", (await onde("outros", "#sl-borda")) && (await p.locator("#sl-saia").isVisible()));
-  ok("Velocidade e Multimaterial: nota da próxima etapa", (await onde("velocidade", ".sl-pab[data-pab=velocidade] .sl-prox")) && (await onde("multimaterial", ".sl-pab[data-pab=multimaterial] .sl-prox")));
+  ok("Qualidade: altura da camada", await onde("qualidade", "[data-campo=altura]"));
+  ok("Resistência: paredes, topo, fundo, preenchimento e padrão", (await onde("resistencia", "[data-campo=paredes]")) && (await p.locator("[data-campo=topo]").isVisible()) && (await p.locator("[data-campo=fundo]").isVisible()) && (await p.locator("[data-campo=preenchimento]").isVisible()) && (await p.locator("[data-campo=padrao]").isVisible()));
+  ok("Suporte: tipo de suporte", await onde("suporte", "[data-campo=suporte]"));
+  ok("Outros: borda e saia", (await onde("outros", "[data-campo=borda]")) && (await p.locator("[data-campo=saia]").isVisible()));
+  ok("a nota \"chega na próxima etapa\" sumiu", (await p.locator(".sl-prox").count()) === 0 && !(await p.locator("#sl-bloco-processo").textContent()).includes("próxima etapa"));
 
   // 4 abas
   await poePeca(p);
@@ -125,7 +125,7 @@ function stlPeca() {
   const r12 = await camadas(p);
   ok("perfil 0,12 mm dá mais camadas que 0,20 mm", r12 > r20 * 1.4, `${r20} → ${r12}`);
   await toque(p, "#sl-pabs [data-pab=qualidade]");
-  ok("altura do perfil aparece no campo", (await p.locator("#sl-altura").inputValue()) === "0.12");
+  ok("altura do perfil aparece no campo", (await p.locator("[data-campo=altura]").inputValue()) === "0.12");
   ok("recém-escolhido: sem selo ↺", await p.locator("#sl-perfil-voltar").isHidden());
   await p.locator("#sl-perfil").selectOption("s:0.20-padrao");
   await esperar(p);
@@ -133,22 +133,22 @@ function stlPeca() {
 
   // selo ↺
   await toque(p, "#sl-pabs [data-pab=resistencia]");
-  const par0 = await p.locator("#sl-paredes").inputValue();
-  await toque(p, "[data-alvo=sl-paredes][data-passo='1']");
+  const par0 = await p.locator("[data-campo=paredes]").inputValue();
+  await toque(p, "#sl-cp-paredes [data-passo='1']");
   ok("↺ aparece ao alterar (campo, aba e perfil)", (await p.locator("[data-voltar=paredes]").isVisible()) && (await p.locator("#sl-perfil-voltar").isVisible()) && (await p.locator("#sl-pabs [data-pab=resistencia]").evaluate((e) => e.classList.contains("alterada"))));
   ok("campo não alterado não tem ↺", await p.locator("[data-voltar=topo]").isHidden());
   await toque(p, "[data-voltar=paredes]");
-  ok("↺ some ao reverter", (await p.locator("#sl-paredes").inputValue()) === par0 && (await p.locator("#sl-perfil-voltar").isHidden()) && (await p.locator("[data-voltar=paredes]").isHidden()));
-  await toque(p, "[data-alvo=sl-paredes][data-passo='1']");
-  await toque(p, "[data-alvo=sl-topo][data-passo='1']");
+  ok("↺ some ao reverter", (await p.locator("[data-campo=paredes]").inputValue()) === par0 && (await p.locator("#sl-perfil-voltar").isHidden()) && (await p.locator("[data-voltar=paredes]").isHidden()));
+  await toque(p, "#sl-cp-paredes [data-passo='1']");
+  await toque(p, "#sl-cp-topo [data-passo='1']");
   await toque(p, "#sl-perfil-voltar");
-  ok("↺ do perfil volta tudo", (await p.locator("#sl-paredes").inputValue()) === par0 && (await p.locator("#sl-perfil-voltar").isHidden()));
+  ok("↺ do perfil volta tudo", (await p.locator("[data-campo=paredes]").inputValue()) === par0 && (await p.locator("#sl-perfil-voltar").isHidden()));
   await esperar(p);
 
   // perfil do usuário: salvar, trocar, reabrir, renomear, excluir
-  await toque(p, "[data-alvo=sl-paredes][data-passo='1']");
-  await toque(p, "[data-alvo=sl-paredes][data-passo='1']");
-  const parForte = await p.locator("#sl-paredes").inputValue();
+  await toque(p, "#sl-cp-paredes [data-passo='1']");
+  await toque(p, "#sl-cp-paredes [data-passo='1']");
+  const parForte = await p.locator("[data-campo=paredes]").inputValue();
   await toque(p, "#sl-perfil-menu");
   await p.getByText("Salvar como novo perfil…").tap();
   await p.locator("#sl-nome-perfil").fill("Peça forte");
@@ -156,16 +156,16 @@ function stlPeca() {
   await p.waitForTimeout(300);
   ok("perfil do usuário salvo e escolhido", (await p.locator("#sl-perfil option:checked").textContent()) === "Peça forte" && (await p.locator("#sl-perfil-voltar").isHidden()));
   await p.locator("#sl-perfil").selectOption("s:0.20-padrao");
-  ok("trocar de perfil traz os valores dele", (await p.locator("#sl-paredes").inputValue()) === par0);
+  ok("trocar de perfil traz os valores dele", (await p.locator("[data-campo=paredes]").inputValue()) === par0);
   const valorU = await p.locator("#sl-perfil option", { hasText: "Peça forte" }).getAttribute("value");
   await p.locator("#sl-perfil").selectOption(valorU);
-  ok("perfil do usuário reaplicado", (await p.locator("#sl-paredes").inputValue()) === parForte);
+  ok("perfil do usuário reaplicado", (await p.locator("[data-campo=paredes]").inputValue()) === parForte);
   await esperar(p);
   await p.reload();
   await p.waitForTimeout(1200);
   ok("perfil do usuário lembrado depois de recarregar", (await p.locator("#sl-perfil option:checked").textContent()) === "Peça forte");
   await toque(p, "#sl-pabs [data-pab=resistencia]");
-  ok("…com os valores dele e sem ↺", (await p.locator("#sl-paredes").inputValue()) === parForte && (await p.locator("#sl-perfil-voltar").isHidden()));
+  ok("…com os valores dele e sem ↺", (await p.locator("[data-campo=paredes]").inputValue()) === parForte && (await p.locator("#sl-perfil-voltar").isHidden()));
   await toque(p, "#sl-perfil-menu");
   await p.getByText("Renomear…").tap();
   await p.locator("#sl-nome-perfil").fill("Peça reforçada");
