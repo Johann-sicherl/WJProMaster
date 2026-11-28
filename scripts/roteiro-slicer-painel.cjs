@@ -31,7 +31,7 @@ function stlBloco() {
 }
 
 // campos de cada aba no esquema (nível Especialista = todos): conferidos em scripts/teste-painel.ts
-const TOTAIS = { qualidade: 67, resistencia: 15, velocidade: 38, suporte: 39, multimaterial: 37, outros: 20 };
+const TOTAIS = { qualidade: 67, resistencia: 15, velocidade: 35, suporte: 16, multimaterial: 37, outros: 7 };
 
 (async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "roteiro-painel-"));
@@ -158,7 +158,7 @@ const TOTAIS = { qualidade: 67, resistencia: 15, velocidade: 38, suporte: 39, mu
   await p.locator("[data-campo=suporte]").selectOption("nenhum");
   await nivel("especialista");
   await aba("suporte");
-  await rolar("[data-campo=suporteTipo]").catch(() => {});
+  await rolar("[data-campo=soNaMesa]").catch(() => {});
   ok("campos do suporte somem com 'sem suporte'", await p.locator("#sl-cp-anguloSuporte").isHidden());
 
   await aba("multimaterial");
@@ -174,8 +174,70 @@ const TOTAIS = { qualidade: 67, resistencia: 15, velocidade: 38, suporte: 39, mu
   ok("saia desligada: distância escondida", await p.locator("#sl-cp-saiaDistancia").isHidden());
   await rolar("[data-campo=saia]");
   await p.locator("[data-campo=saia]").tap();
-  ok("saia ligada: distância, voltas e tipo aparecem", (await p.locator("#sl-cp-saiaDistancia").isVisible()) && (await p.locator("#sl-cp-saiaVoltas").isVisible()) && (await p.locator("#sl-cp-saiaTipo").isVisible()));
+  ok("saia ligada: distância e velocidade aparecem (só o que muda tempo e material)", (await p.locator("#sl-cp-saiaDistancia").isVisible()) && (await p.locator("#sl-cp-vSaia").isVisible()) && (await p.locator("#sl-cp-saiaVoltas").count()) === 0 && (await p.locator("#sl-cp-saiaTipo").count()) === 0);
   await p.locator("[data-campo=saia]").tap();
+  await esperar();
+
+
+  // ---------- L2: Velocidade, Suporte e Outros ligados ao motor (campo por campo; o teste de Node cobre todos) ----------
+  const editar = async (id, valor) => {
+    await rolar(`[data-campo="${id}"]`);
+    await p.locator(`[data-campo="${id}"]`).fill(String(valor));
+    await p.locator(`[data-campo="${id}"]`).blur();
+    await esperar();
+  };
+  const mudaTempo = async (nome, id, valor) => {
+    const antes = await tempo();
+    await editar(id, valor);
+    ok(nome, (await tempo()) !== antes, `${antes} → ${await tempo()}`);
+  };
+  await nivel("especialista");
+  await aba("velocidade");
+  ok("Velocidade: sem selo 🔶 nem campo de suavizar extrusão", (await p.locator("#sl-painel-campos .sl-selo-naoAplicado").count()) === 0 && (await p.locator("#sl-cp-suavizarExtrusao").count()) === 0);
+  await mudaTempo("aceleração da parede externa menor → tempo muda", "aParedeExt", 800);
+  await mudaTempo("jerk padrão menor → tempo muda", "jPadrao", 3);
+  await mudaTempo("velocidade de deslocamento menor → tempo muda", "vDeslocamento", 120);
+  await mudaTempo("velocidade de ponte menor → tempo muda", "vPonte", 15);
+  await p.locator("#sl-perfil-voltar").tap();
+  await esperar();
+  ok("↺ do perfil desfaz as quatro (tempo igual ao do início)", (await tempo()) === t0);
+
+  await aba("suporte");
+  ok("Suporte: sem selo 🔶, sem jangada nem estilo", (await p.locator("#sl-painel-campos .sl-selo-naoAplicado").count()) === 0 && (await p.locator("#sl-cp-jangadaCamadas").count()) === 0 && (await p.locator("#sl-cp-suporteEstilo").count()) === 0);
+  await p.locator("[data-campo=suporte]").selectOption("normal");
+  await esperar();
+  const tSup = await tempo();
+  await mudaTempo("suporte: espaçamento do corpo maior → tempo muda", "espacoSuporte", 6);
+  await mudaTempo("suporte: camadas de interface maiores → tempo muda", "interfaceTopo", 5);
+  ok("campos da árvore escondidos no suporte normal", await p.locator("#sl-cp-arvore-diametro").isHidden());
+  await p.locator("[data-campo=suporte]").selectOption("arvore");
+  await esperar();
+  await rolar('[data-campo="arvore.diametro"]');
+  ok("campos da árvore aparecem com a árvore", await p.locator("#sl-cp-arvore-diametro").isVisible());
+  await mudaTempo("árvore: diâmetro do galho maior → tempo muda", "arvore.diametro", 8);
+  await p.locator("[data-campo=suporte]").selectOption("nenhum");
+  await esperar();
+  ok("sem suporte o tempo cai (sem o suporte e a interface)", (await tempo()) !== tSup);
+
+  await aba("outros");
+  ok("Outros: só saia, borda e observações (sem selo 🔶, sem modo especial)", (await p.locator("#sl-painel-campos .sl-selo-naoAplicado").count()) === 0 && (await p.locator("#sl-cp-vasoEspiral").count()) === 0 && (await p.locator("#sl-cp-bordaTipo").count()) === 0);
+  await rolar("[data-campo=borda]");
+  await p.locator("[data-campo=borda]").tap();
+  await esperar();
+  const tBorda = await tempo();
+  await mudaTempo("borda: largura maior → tempo muda", "bordaLargura", 12);
+  await p.locator("[data-campo=borda]").tap();
+  await esperar();
+  ok("borda desligada: largura escondida", await p.locator("#sl-cp-bordaLargura").isHidden());
+  ok("a borda ligada mudou o tempo (antes e depois)", tBorda !== t0);
+
+  // busca não acha o que ficou escondido
+  await p.locator("#sl-busca").fill("felpuda");
+  await p.waitForTimeout(400);
+  ok("busca felpuda (modo especial) não acha campo escondido", (await p.locator(".sl-painel-campos .sl-cp").count()) === 0);
+  await p.locator("#sl-busca").fill("");
+  await p.waitForTimeout(400);
+  await p.locator("#sl-perfil-voltar").tap().catch(() => {});
   await esperar();
 
   // ---------- campo 🔶 guarda o valor e não muda o resultado ----------

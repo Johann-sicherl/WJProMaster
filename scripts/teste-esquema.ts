@@ -44,7 +44,7 @@ const ok = (cond: boolean, msg: string) => {
   const novos = ESQUEMA.filter((c) => c.origem === "novo");
   ok(novos.every((c) => c.estado !== "motor" && c.padrao !== undefined), `campos novos: nenhum finge funcionar (🔶/oculto) e todos têm padrão neutro (${novos.length})`);
   ok(ESQUEMA.filter((c) => c.origem === "projeto").every((c) => c.padrao !== undefined), "campos do projeto (suporte, borda, saia, observações) têm padrão");
-  ok(ESQUEMA.filter((c) => c.origem === "processo").every((c) => c.estado === "motor" || (c.estado === "parcial" && !!c.nota)), "campos do Processo = motor ✅ (🟡 só com a nota do que falta)");
+  ok(ESQUEMA.filter((c) => c.origem === "processo").every((c) => c.estado === "motor" || ((c.estado === "parcial" || c.estado === "oculto") && !!c.nota)), "campos do Processo = motor ✅ (🟡 ou oculto só com a nota do que falta)");
   const faltaOpcao = ESQUEMA.filter((c) => c.tipo === "lista" && !c.opcoes?.length).map((c) => c.id);
   ok(faltaOpcao.length === 0 || faltaOpcao.every((id) => ["suporteTipo"].includes(id) === false), "campos de lista têm opções");
   ok(ESQUEMA.filter((c) => c.tipo === "lista").every((c) => c.opcoes?.length), "toda lista tem opções");

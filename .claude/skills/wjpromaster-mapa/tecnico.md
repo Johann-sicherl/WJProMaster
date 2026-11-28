@@ -556,7 +556,7 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
 
 - **Arquivos**: `painel.ts` (puro, `scripts/teste-painel.ts`), `painelUi.ts` (DOM), `slicer/index.html` (`#sl-nivel`, `#sl-busca`, `#sl-pabs`, `#sl-painel-campos`), `slicer.css`.
   Os 6 painéis são **gerados de `esquema.ts`**: campo novo no esquema = aparece na tela, na busca e no ↺ sem mexer em mais nada. Fora do painel: ocultos (⚪/⛔) e as
-  abas `impressora`/`filamento` (⚙, L3). Hoje 216 campos (Qualidade 67, Resistência 15, Velocidade 38, Suporte 39, Multimaterial 37, Outros 20).
+  abas `impressora`/`filamento` (⚙, L3). Hoje 177 campos (Qualidade 67, Resistência 15, Velocidade 35, Suporte 16, Multimaterial 37, Outros 7; eram 216 antes da L2).
 - **Plano completo**: `pref.plano` (localStorage) = **todas as diferenças** sobre o "0,20 mm Padrão" da impressora; é o que o worker recebe (`perfilDoProjeto()`) e o
   `.wjslc` grava (`perfil`). `pref.ajustes` (9 campos) virou **derivado** (`gravarPlano()` recalcula; orçamento e mesa ainda leem dele). `valoresAtuais()` = valores completos em cache.
   Preferência antiga (sem `plano`) migra por `diferencasDeAjustes`. Funções de edição em `painel.ts`: `definirValor`, `voltarCampos`, `aplicarValoresDoPerfil`
@@ -571,3 +571,18 @@ com isso a interface não refaz as externas pela topologia final (`externasNoKer
 - **Armadilhas**: grupo recolhido deixa o controle invisível (roteiro precisa abrir o grupo: `rolar()` do `roteiro-slicer-painel.cjs`); `.sl-legenda` já é a legenda da
   Prévia (a dos selos é `.sl-legenda-selos`); no Playwright `fill()` em `type=number` não aceita vírgula. Roteiros: `roteiro-slicer-painel.cjs` (por aba) e
   `roteiro-slicer-layout.cjs`, `roteiro-slicer.cjs` adaptados.
+
+## WJSlicer3D — L2: abas Velocidade, Suporte e Outros ligadas ao motor (28/11/2026)
+
+- **Escopo reduzido (Johann, 28/11)**: o WJSlicer3D é só ferramenta de **orçamento** (tempo e massa). Campo que não muda tempo nem massa fica **oculto** (`estado: "oculto"`
+  no `esquema.ts`; guarda o valor de fábrica para a importação de perfis, nunca aparece na tela nem na busca). Nenhum arquivo do motor foi tocado na L2.
+- **Ocultados** (eram 🔶 ou sem efeito comprovado): Velocidade → suavizar extrusão (3); Suporte → estilo, balanços pequenos, regiões críticas, pontes longas, jangada (5),
+  avançado novo (densidade/expansão da 1ª camada, Z do fundo, padrão da base/interface, ângulo, expansão, não apoiar pontes, altura independente, paredes do suporte),
+  árvore preenchida e borda automática, **`suporteTipo`** (só migra projeto antigo; o tipo de verdade é `suporte`) e **`interfaceFundo`** (o motor só faz interface sob o
+  contato); Outros → voltas/altura/tipo/filamento mínimo da saia, tipo e orelhas da borda, modo especial inteiro (sequência, vaso, pele felpuda). Total: 177 campos na tela.
+- **Teste por campo** (`scripts/teste-abas.ts`, ~50 s): para cada campo visível das 3 abas (menos Observações, que é só anotação do perfil) tenta metade, dobro, outro item da
+  lista ou o contrário em 7 cenários × P1S/Kobra 3 (cubo; balanço com suporte normal/árvore + borda + saia; base larga para `soNaMesa`; parede inclinada ~42° para a faixa
+  de 50–75 % do balanço; placa fina + cubo pequeno para vãos e perímetro pequeno; balanço pintado) e exige tempo ou massa diferente em algum cenário em que o campo está
+  visível. Campo novo nessas abas que não mudar o resultado **derruba o teste**: ou o esquema o oculta ou o motor passa a usá-lo.
+- **Armadilha**: `vBalanco.2` só aparece no teste com a parede inclinada (balanço de 50–75 % do filete por camada); `jParedeExt` & cia. só mexem no Kobra 3 (jerk por recurso).
+- Roteiro `roteiro-slicer-painel.cjs` ganhou o passo L2 (edita aceleração, jerk, deslocamento, ponte, suporte normal/árvore, borda; busca não acha os escondidos).
