@@ -281,7 +281,11 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
       const f = fixa(t.parte);
       if (f >= 0) saida.push({ t, cor: f });
       else if (livre(t.parte)) saida.push({ t, cor: -1 });
-      else for (const x of cortarPorCor(t, c.f.g, mapa, 0, passoCor(c))) saida.push(x);
+      else {
+        const pedacos = cortarPorCor(t, c.f.g, mapa, 0, passoCor(c));
+        // laço cortado pela cor: a limpeza e o desvio da M2 valiam para o laço inteiro
+        for (const x of pedacos) saida.push(pedacos.length > 1 && (t.limpar || t.limparAntes) ? { t: { ...x.t, limpar: undefined, limparAntes: undefined }, cor: x.cor } : x);
+      }
     }
     return saida;
   };
@@ -300,8 +304,20 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
       retraido = true;
     }
     const buf = new Buf();
-    const viajar = (x: number, y: number, semRetrair: boolean) => {
-      const L = Math.hypot(x - plan.x, y - plan.y);
+    const viajar = (x: number, y: number, semRetrair: boolean, t?: Trecho, ox = 0, oy = 0) => {
+      // M2: desvio pelas paredes, se o bico está onde o desvio foi calculado
+      const via = t?.via && t.viaDe && Math.abs(plan.x - t.viaDe[0] - ox) < 1e-6 && Math.abs(plan.y - t.viaDe[1] - oy) < 1e-6 ? t.via : null;
+      let L = Math.hypot(x - plan.x, y - plan.y);
+      if (via) {
+        L = 0;
+        let qx = plan.x, qy = plan.y;
+        for (let k = 0; k < via.length; k += 2) {
+          L += Math.hypot(via[k] + ox - qx, via[k + 1] + oy - qy);
+          qx = via[k] + ox;
+          qy = via[k + 1] + oy;
+        }
+        L += Math.hypot(x - qx, y - qy);
+      }
       if (L < 1e-3) {
         if (retraido) {
           plan.parar(tVolta);
@@ -311,6 +327,7 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
       }
       const retrai = !retraido && L > maq.retracaoMin && !semRetrair;
       if (retrai) plan.parar(tRetrai);
+      if (via) for (let k = 0; k < via.length; k += 2) plan.mover(via[k] + ox, via[k + 1] + oy, vD, aD, jD, "deslocamento", 0);
       plan.mover(x, y, vD, aD, jD, "deslocamento", 0);
       if (retrai || retraido) plan.parar(tVolta);
       retraido = false;
@@ -318,7 +335,7 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
     const emitir = (t: Trecho, ox: number, oy: number, gc: number) => {
       const p = t.pts, np = p.length / 2;
       let ini = 0;
-      if (t.fechado) {
+      if (t.fechado && !t.costura) {
         let dmin = Infinity;
         for (let k = 0; k < np; k++) {
           const d = (p[k * 2] + ox - plan.x) ** 2 + (p[k * 2 + 1] + oy - plan.y) ** 2;
@@ -328,7 +345,12 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
           }
         }
       }
-      viajar(p[ini * 2] + ox, p[ini * 2 + 1] + oy, !!t.semRetrair && ultimoPreench);
+      if (t.limparAntes && np > 1) {
+        // M2: chega por dentro da peça (à esquerda do sentido de impressão) e só então vai ao início do laço
+        const b = (ini + 1) % np, tx = p[b * 2] - p[ini * 2], ty = p[b * 2 + 1] - p[ini * 2 + 1], tl = Math.hypot(tx, ty) || 1;
+        viajar(p[ini * 2] + ox - (ty / tl) * t.limparAntes, p[ini * 2 + 1] + oy + (tx / tl) * t.limparAntes, !!t.semRetrair && ultimoPreench, t, ox, oy);
+        plan.mover(p[ini * 2] + ox, p[ini * 2 + 1] + oy, vD, aD, jD, "deslocamento", 0);
+      } else viajar(p[ini * 2] + ox, p[ini * 2 + 1] + oy, !!t.semRetrair && ultimoPreench, t, ox, oy);
       ultimoPreench = !!t.semRetrair;
       const sec = espacamento(t.w, h) * h * t.fluxo * mat.fluxo;
       const passos = t.fechado ? np : np - 1;
@@ -342,6 +364,13 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
         plan.mover(x, y, v, t.a, t.j, t.parte, L * sec);
         volCor[gc] += L * sec;
         buf.add(x0, y0, x, y, pi);
+      }
+      if (t.limpar && passos > 0) {
+        // M2: limpar no laço — entra na peça sem extrudar, à esquerda do último segmento
+        const k1 = (ini + passos) % np, k0 = (ini + passos - 1) % np;
+        const tx = p[k1 * 2] - p[k0 * 2], ty = p[k1 * 2 + 1] - p[k0 * 2 + 1], tl = Math.hypot(tx, ty) || 1;
+        const vL = pr.limpezaVelocidade > 0 ? pr.limpezaVelocidade : vD;
+        plan.mover(plan.x - (ty / tl) * t.limpar, plan.y + (tx / tl) * t.limpar, vL, aD, jD, "deslocamento", 0);
       }
     };
 
