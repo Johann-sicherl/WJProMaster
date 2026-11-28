@@ -33,9 +33,9 @@ cofre do WJPDM, do aparelho ou a peça aberta no WJCAD.
      ângulo, corpo inteiro, borracha; **desfazer/refazer** no topo.
    - **Processo** (Global; Objetos chega depois): escolha o **perfil de processo** (os 9 "Perfis do sistema" de 0,08 a
      0,28 mm e os seus "Perfis do usuário"); 💾 salva, renomeia ou exclui perfis do usuário (ficam no aparelho e no cofre). **Painel gerado do esquema
-     (L1b, 28/11/2026)**: seis abas — **Qualidade, Resistência, Velocidade, Suporte, Multimaterial, Outros** — com **todos os 216 parâmetros** do esquema
+     (L1b, 28/11/2026)**: seis abas — **Qualidade, Resistência, Velocidade, Suporte, Multimaterial, Outros** — com **os 177 parâmetros** do esquema que mudam tempo ou massa
      em **grupos recolhíveis** (toque no título). Cada campo traz o selo **✅ aplicado · 🟡 em parte · 🔶 ainda não aplicado** (🔶 fica guardado no
-     perfil e no projeto, mas não muda o resultado: nada finge funcionar). A chave **Avançado** tem 3 níveis — **Simples** (padrão, os campos de sempre),
+     perfil e no projeto, mas não muda o resultado: nada finge funcionar). **Desde a L2 (escopo reduzido de 28/11) Velocidade, Suporte e Outros só mostram campos ✅/🟡**: o que não muda tempo nem massa fica escondido. A chave **Avançado** tem 3 níveis — **Simples** (padrão, os campos de sempre),
      **Avançado** e **Especialista** — e a **busca 🔍** (sem acento) acha o parâmetro em qualquer aba e nível. Campos que só dependem de outro (ex.: a
      rampa da costura) aparecem quando fazem sentido. Os **15 parâmetros da costura** (posição, rampa, limpeza, ordem das paredes, evitar cruzar) têm tela
      na aba Qualidade. O selo **↺** (no campo, na aba e ao lado do perfil) aparece quando algo difere do perfil escolhido; tocar nele volta ao valor do perfil.
@@ -375,6 +375,11 @@ entram com lucro 0 % (o WJERP não tem esse dado).
 - **L1b do novo layout (28/11/2026, entregue; só tela)**: `painel.ts` (lógica pura) + `painelUi.ts` (desenho) geram os 6 painéis do `esquema.ts`; o projeto guarda **todas** as
   diferenças sobre o 0,20 mm Padrão (`pref.plano`); o motor não mudou (tempo e massa idênticos). Teste `scripts/teste-painel.ts` (todo campo visível aparece, ocultos nunca,
   níveis, 15 da costura, busca, ↺, perfis, valor chega ao Processo) e roteiro `scripts/roteiro-slicer-painel.cjs` (tablet, por aba).
+- **L2 do novo layout (28/11/2026, entregue; só tela e esquema)**: Velocidade (35 campos), Suporte (16) e Outros (7) ligados ao que o motor faz — velocidades,
+  acelerações, jerk, balanços, ponte, suporte normal/árvore e seus parâmetros, borda e saia. Escondidos (guardam o valor, sem tela nem busca): suavizar extrusão, estilos/jangada/
+  padrões novos do suporte, voltas/tipo da saia, tipo e orelhas da borda, modo especial, `suporteTipo` e `interfaceFundo` (sem efeito comprovado). Teste `scripts/teste-abas.ts`:
+  todo campo visível das 3 abas muda tempo ou massa em algum cenário (P1S e Kobra 3), os escondidos nunca aparecem, perfil do usuário (`.wjprf`) e projeto (`.wjslc`) salvos e
+  reabertos dão o mesmo tempo e massa; padrões idênticos (motor intocado). Roteiro do tablet: `roteiro-slicer-painel.cjs`.
 - **M1 do novo layout (27/11/2026, entregue; motor, sem tela nova)**: `src/slicer/paredes.ts` — gerador de paredes **largura
   variável** (espessura local por raio, pilha de filetes, filete do meio no eixo, ângulo/filtro/paredes na transição, largura
   mínima e detalhe mínimo), **preenchimento de vãos** (parte própria "Preenchimento de vãos" no tempo, no material e na legenda da

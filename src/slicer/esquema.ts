@@ -241,7 +241,7 @@ grupo("velocidade", "Jerk (0 = o da máquina)", "processo", "motor", "especialis
   ["jPrimeira", "1ª camada", "numero", "mm/s", 0, 100],
   ["jDeslocamento", "Deslocamento", "numero", "mm/s", 0, 100],
 ]);
-grupo("velocidade", "Suavizar a taxa de extrusão", NOVO, "naoAplicado", "especialista", [
+grupo("velocidade", "Suavizar a taxa de extrusão", NOVO, "oculto", "especialista", [
   ["suavizarExtrusao", "Suavizar a taxa de extrusão", "booleano", "", undefined, undefined, { padrao: false }],
   ["suavizarTaxaMax", "Taxa máxima", "numero", "mm³/s²", 0, 1000, { padrao: 0, visivelSe: "suavizarExtrusao" }],
   ["suavizarJanela", "Janela", "numero", "mm", 0, 100, { padrao: 0, visivelSe: "suavizarExtrusao" }],
@@ -252,17 +252,17 @@ grupo("suporte", "Suporte", "projeto", "motor", "simples", [
   ["suporte", "Suporte", "lista", "", undefined, undefined, { padrao: "nenhum", opcoes: lista(["nenhum", "Sem suporte"], ["normal", "Normal"], ["arvore", "Árvore"]) }],
 ]);
 grupo("suporte", "Suporte", "processo", "motor", "avancado", [
-  ["suporteTipo", "Tipo de suporte do perfil (ao ligar)", "lista", "", undefined, undefined, { opcoes: lista(["normal", "Normal"], ["arvore", "Árvore"]), visivelSe: "suporte!=nenhum" }],
+  ["suporteTipo", "Tipo de suporte do perfil (ao ligar)", "lista", "", undefined, undefined, { estado: "oculto", opcoes: lista(["normal", "Normal"], ["arvore", "Árvore"]), visivelSe: "suporte!=nenhum", nota: "Só a migração de projeto antigo (suporte sim/não) usa; o tipo de verdade é o campo Suporte." }],
   ["anguloSuporte", "Ângulo-limite do balanço", "numero", "°", 0, 90, { visivelSe: "suporte!=nenhum" }],
   ["soNaMesa", "Só a partir da mesa", "booleano", "", undefined, undefined, { visivelSe: "suporte!=nenhum" }],
 ]);
-grupo("suporte", "Suporte", NOVO, "naoAplicado", "avancado", [
+grupo("suporte", "Suporte", NOVO, "oculto", "avancado", [
   ["suporteEstilo", "Estilo do suporte", "lista", "", undefined, undefined, { padrao: "padrao", visivelSe: "suporte!=nenhum", opcoes: lista(["padrao", "Padrão"], ["grade", "Grade"], ["justo", "Justo"], ["organico", "Orgânico"], ["arvoreForte", "Árvore forte"], ["arvoreFina", "Árvore fina"], ["arvoreHibrida", "Árvore híbrida"]) }],
   ["removerBalancosPequenos", "Remover balanços pequenos", "booleano", "", undefined, undefined, { padrao: false, visivelSe: "suporte!=nenhum" }],
   ["soRegioesCriticas", "Só regiões críticas", "booleano", "", undefined, undefined, { padrao: false, visivelSe: "suporte!=nenhum" }],
   ["garantirPontesLongas", "Garantir suporte de pontes longas", "booleano", "", undefined, undefined, { padrao: false, visivelSe: "suporte!=nenhum" }],
 ]);
-grupo("suporte", "Jangada", NOVO, "naoAplicado", "avancado", [
+grupo("suporte", "Jangada", NOVO, "oculto", "avancado", [
   ["jangadaCamadas", "Camadas da jangada", "inteiro", "", 0, 20, { padrao: 0 }],
   ["jangadaDistZ", "Distância Z de contato", "numero", "mm", 0, 1, { padrao: 0.1, visivelSe: "jangadaCamadas" }],
   ["jangadaExpansao", "Expansão", "numero", "mm", 0, 20, { padrao: 0, visivelSe: "jangadaCamadas" }],
@@ -278,10 +278,10 @@ grupo("suporte", "Avançado", "processo", "motor", "especialista", [
   ["suporteDistXY", "Distância XY da peça", "numero", "mm", 0, 5, { visivelSe: "suporte!=nenhum" }],
   ["espacoSuporte", "Espaçamento das linhas do corpo", "numero", "mm", 0.1, 20, { visivelSe: "suporte!=nenhum" }],
   ["interfaceTopo", "Camadas de interface no topo", "inteiro", "", 0, 10, { visivelSe: "suporte!=nenhum" }],
-  ["interfaceFundo", "Camadas de interface no fundo", "inteiro", "", 0, 10, { visivelSe: "suporte!=nenhum" }],
+  ["interfaceFundo", "Camadas de interface no fundo", "inteiro", "", 0, 10, { estado: "oculto", visivelSe: "suporte!=nenhum", nota: "O motor só faz interface sob o contato com a peça (topo do suporte); sem efeito no orçamento." }],
   ["espacoInterface", "Espaçamento das linhas da interface", "numero", "mm", 0.1, 20, { visivelSe: "suporte!=nenhum" }],
 ]);
-grupo("suporte", "Avançado", NOVO, "naoAplicado", "especialista", [
+grupo("suporte", "Avançado", NOVO, "oculto", "especialista", [
   ["suporteDensidadePrimeira", "Densidade da 1ª camada", "percentual", "%", 0, 1, { padrao: 1 }],
   ["suporteExpansaoPrimeira", "Expansão da 1ª camada", "numero", "mm", 0, 20, { padrao: 0 }],
   ["suporteDistZFundo", "Distância Z do fundo", "numero", "mm", 0, 2, { padrao: 0 }],
@@ -301,7 +301,7 @@ grupo("suporte", "Árvore", "processo", "motor", "avancado", [
   ["arvore.anguloDiametro", "Ângulo de engrossar o galho", "numero", "°", 0, 30, { nivel: "especialista", visivelSe: "suporte=arvore" }],
   ["arvore.paredeDupla", "Parede dupla a partir do diâmetro de", "numero", "mm", 0, 30, { nivel: "especialista", visivelSe: "suporte=arvore" }],
 ]);
-grupo("suporte", "Árvore", NOVO, "naoAplicado", "especialista", [
+grupo("suporte", "Árvore", NOVO, "oculto", "especialista", [
   ["arvorePreenchida", "Árvore com preenchimento", "booleano", "", undefined, undefined, { padrao: false, visivelSe: "suporte=arvore" }],
   ["arvoreBordaAuto", "Largura da borda automática", "numero", "mm", 0, 20, { padrao: 0, visivelSe: "suporte=arvore" }],
 ]);
@@ -361,7 +361,7 @@ grupo("outros", "Saia", "processo", "motor", "avancado", [
   ["saiaDistancia", "Distância da peça", "numero", "mm", 0, 50, { visivelSe: "saia" }],
   ["vSaia", "Velocidade", "numero", "mm/s", 1, 1000, { visivelSe: "saia" }],
 ]);
-grupo("outros", "Saia", NOVO, "naoAplicado", "avancado", [
+grupo("outros", "Saia", NOVO, "oculto", "avancado", [
   ["saiaVoltas", "Voltas", "inteiro", "", 1, 20, { padrao: 1, visivelSe: "saia", nota: "Hoje o motor faz uma volta (🟡)." }],
   ["saiaAltura", "Altura (camadas)", "inteiro", "", 1, 20, { padrao: 1, visivelSe: "saia" }],
   ["saiaTipo", "Tipo", "lista", "", undefined, undefined, { padrao: "combinada", visivelSe: "saia", opcoes: lista(["combinada", "Combinada"], ["porObjeto", "Por objeto"]) }],
@@ -372,11 +372,11 @@ grupo("outros", "Borda", "processo", "motor", "avancado", [
   ["bordaLargura", "Largura", "numero", "mm", 0, 50, { visivelSe: "borda" }],
   ["bordaFolga", "Vão da borda até a peça", "numero", "mm", 0, 5, { visivelSe: "borda" }],
 ]);
-grupo("outros", "Borda", NOVO, "naoAplicado", "avancado", [
+grupo("outros", "Borda", NOVO, "oculto", "avancado", [
   ["bordaTipo", "Tipo de borda", "lista", "", undefined, undefined, { padrao: "auto", visivelSe: "borda", opcoes: lista(["auto", "Automática"], ["soExterna", "Só externa"], ["soInterna", "Só interna"], ["externaEInterna", "Externa e interna"], ["pintada", "Pintada"]) }],
   ["bordaOrelhas", "Orelhas de borda", "booleano", "", undefined, undefined, { padrao: false, visivelSe: "borda" }],
 ]);
-grupo("outros", "Modo especial", NOVO, "naoAplicado", "avancado", [
+grupo("outros", "Modo especial", NOVO, "oculto", "avancado", [
   ["sequenciaImpressao", "Sequência de impressão", "lista", "", undefined, undefined, { padrao: "porCamada", opcoes: lista(["porCamada", "Por camada"], ["porObjeto", "Por objeto"]) }],
   ["sequenciaFolga", "Folga entre objetos", "numero", "mm", 0, 100, { padrao: 0, visivelSe: "sequenciaImpressao=porObjeto" }],
   ["vasoEspiral", "Vaso em espiral", "booleano", "", undefined, undefined, { padrao: false }],
