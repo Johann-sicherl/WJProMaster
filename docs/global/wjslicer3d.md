@@ -120,6 +120,25 @@ fora, sem desvio):
   a 2ª parede, pela volta mais curta); desvio máximo opcional (mm a mais que o reto; 0 = sem limite). A retração segue a regra de
   antes.
 
+**Acabamentos (fatia M3, 28/11/2026, `acabamentos.ts`)** — parâmetros do processo (abas Qualidade: Precisão e Passar ferro; Outros: Modo
+especial); **com os padrões o resultado é idêntico ao de antes** (sem ferro, sem pele felpuda, sem espiral, compensações 0, modo normal, por
+camada):
+- **Passar ferro**: só o topo mais alto (última camada da peça), todas as superfícies de topo ou todo o sólido; depois do preenchimento da
+  ilha, linhas finas (espaçamento 0,1 mm) cruzando as do topo (ângulo somado) ou laços concêntricos, recuo da parede, fluxo de 15 % (material =
+  área × camada × fluxo) e velocidade própria (15 mm/s). Entra no tempo e no material como "Superfície de topo".
+- **Pele felpuda**: contorno externo, contorno e furos ou todas as paredes (nunca a 1ª camada); a parede é dividida a cada "distância entre
+  pontos" (0,8 mm) e cada ponto sai até ±metade da espessura (0,3 mm) para fora/dentro, por um ruído **suave** ou **aleatório** (sempre o mesmo
+  para a mesma peça). O caminho fica mais longo (mais tempo e um pouco mais de material).
+- **Vaso em espiral**: uma parede, sem topo, sem preenchimento e sem suporte; as camadas de fundo saem normais e, depois delas, só o maior laço
+  externo, **sem parar para trocar de camada** (a parede sobe sem parar). Mais de um laço na camada ou mais de uma peça por camada = aviso.
+- **Pé de elefante**: a 1ª camada encolhe a medida pedida (contorno para dentro, furos para fora). **Compensação XY**: o contorno externo
+  anda a medida (+ = peça maior) e os furos também (+ = furo maior), em todas as camadas. **Furo vira polifuro**: furo redondo vira um polígono
+  regular com o furo inscrito (cerca de 2 lados por mm de diâmetro: Ø12 → 24 lados), para o pino entrar.
+- **Modo de fatiamento**: normal e par-ímpar (a mesma regra hoje: o corte já é par-ímpar; unir corpos sobrepostos fica para depois) ou
+  **fechar furos** (todo furo da seção vira cheio).
+- **Sequência por objeto**: cada cópia é impressa inteira antes da próxima (a mais perto primeiro), com menos deslocamento entre peças;
+  folga entre objetos (mm) avisa se duas cópias estiverem mais perto que isso. Uma cópia só = por camada.
+
 **Suporte** (`calcularSuportes`), de cima para baixo: o que a camada tem além da camada de baixo alargada
 pelo **ângulo-limite** do perfil precisa de apoio; folga em Z (uma camada) e em XY; **interface** densa nas
 camadas logo abaixo do contato (2 na P1S, 3 no Kobra 3). **Normal**: colunas que descem até a mesa ou até a
@@ -187,6 +206,12 @@ Conferidos em 15/11/2026 nos arquivos de dados de fábrica (herança resolvida),
   linha por laço), **ordem das paredes** (material das paredes igual, tempo muda; com 3 paredes a interna-externa-interna pula a do
   meio e desloca mais), peça em U (sem a opção 31 deslocamentos passam por cima do vão; com ela nenhum, todos por dentro), tudo ligado
   e peça pintada sem NaN.
+- `scripts/teste-acabamentos.ts` (Node, M3): os mesmos 16 casos da M2 **idênticos**; ferro (área × camada × 15 % no cubo, tempo ≈
+  linhas ÷ velocidade, degrau com "só o mais alto" × "todas", todo o sólido, concêntrico ≈ retilíneo, recuo, fluxo, direção cruzada, nada na
+  1ª camada); pele felpuda (faixa de ±espessura/2, sorteio fixo, 1ª camada sem pele, contorno × furos no anel, todas as paredes); vaso em
+  espiral (material = uma parede sem topo, 97 camadas sem parada no cilindro, avisos); pé de elefante (−8 × c no perímetro do cubo só na 1ª
+  camada); compensação de contorno (+8 × c) e de furo (+2π × c no anel); polifuro (24 lados no furo Ø12, contorno externo igual); fechar
+  furos (anel = disco de Ø24); por objeto (mesmo material, menos deslocamento, prévia completa, folga); tudo ligado no Kobra 3 sem NaN.
 - **Referências medidas pelo Johann**: tabela `REFERENCIAS` no teste (cubo e cilindro na P1S e no Kobra 3,
   peça com balanço na P1S; PLA, perfil padrão): **pendentes** — quando ele mandar os valores do fatiador de
   referência, o teste passa a exigir ±5 % de tempo e de massa.
@@ -380,3 +405,8 @@ entram com lucro 0 % (o WJERP não tem esse dado).
   antes da parede externa, **ordem das paredes** e **evitar cruzar paredes** (§2). Os 15 campos do esquema passaram a ✅ (origem
   `processo`). Padrões = comportamento de antes (valores idênticos no teste). Conferido só geometricamente (tabela `REFERENCIAS` vazia).
   Pendente do Johann: valores de referência e qual posição de costura / ordem das paredes o perfil dele usa.
+- **M3 do novo layout (28/11/2026, entregue; motor, sem tela nova)**: `src/slicer/acabamentos.ts` — passar ferro, pele felpuda, vaso em
+  espiral, pé de elefante, compensação XY de contorno e de furo, polifuro, modo de fatiamento (fechar furos ✅; normal = par-ímpar 🟡) e
+  sequência por objeto (§2). Os 19 campos do esquema passaram a vir do processo (✅; modo de fatiamento 🟡). Padrões = comportamento de antes
+  (valores idênticos no teste). Conferido só geometricamente (tabela `REFERENCIAS` vazia). A tela dos campos é da L1b/L2. Pendente: o ferro
+  aparece como "Superfície de topo" (parte própria na legenda quando a tela permitir) e unir corpos sobrepostos no modo normal.

@@ -158,8 +158,10 @@ function afastar(h: number[], d: number): Float64Array {
 /**
  * Fatia a mesa inteira e devolve o orçamento e a prévia. `progresso` recebe de 0 a 1.
  */
-export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj: Ajustes, progresso?: (f: number) => void, opc?: OpcoesCor): { r: Resultado; previa: Previa } {
+export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj0: Ajustes, progresso?: (f: number) => void, opc?: OpcoesCor): { r: Resultado; previa: Previa } {
   const pr = maq.processo;
+  // M3: vaso em espiral = uma parede, sem topo, sem preenchimento e sem suporte (o fundo continua)
+  const aj: Ajustes = pr.vasoEspiral ? { ...aj0, paredes: 1, topo: 0, preenchimento: 0, suporte: "nenhum" } : aj0;
   const avisos: string[] = [];
   const ativas = pecas.filter((p) => p.posicoes.length && p.malha.tri.length);
   if (!ativas.length) throw new Error("Não há peça na mesa.");
@@ -203,7 +205,7 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
   const ctxs: Contexto[] = ativas.map((p, k) => {
     const margem = 1 + (aj.borda ? pr.bordaFolga + pr.bordaLargura + 1 : 0);
     const pintada = !!p.cores && p.cores.length === p.malha.tri.length / 3 && p.cores.some((c) => c > 0);
-    const f = fatiarMalha(p.malha, zs, margem, (x) => progresso?.(k * fracFatia + x * fracFatia * 0.7), pintada ? p.cores : undefined, [Math.max(aj.topo * aj.altura, pr.topoMm), Math.max(aj.fundo * aj.altura, pr.fundoMm)]);
+    const f = fatiarMalha(p.malha, zs, margem, (x) => progresso?.(k * fracFatia + x * fracFatia * 0.7), pintada ? p.cores : undefined, [Math.max(aj.topo * aj.altura, pr.topoMm), Math.max(aj.fundo * aj.altura, pr.fundoMm)], pr.modoFatiamento);
     const sup = aj.suporte !== "nenhum" ? calcularSuportes(f, pr, aj.suporte, aj.altura, (x) => progresso?.(k * fracFatia + fracFatia * (0.7 + 0.3 * x))) : null;
     return { f, maq, aj, zs, vazaoMax: mat.vazaoMax, sup, campoAbaixo: null };
   });
@@ -234,7 +236,7 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
   const usadaCor = new Uint8Array(MAX_CORES);
   const painel = { total: 0, camadas: 0, maximo: 0, ultima: -1, aproveitada: 0 };
   /** trocas de cada camada (a torre recebe a purga dela por troca) */
-  const trocasPorCamada: number[] = [];
+  const trocasPorCamada: number[] = new Array(n).fill(0);
   const torreVolume = troca.torre ? Math.max(0, pr.torreVolume ?? 0) : 0;
   let ferramenta = -1;
   const tPurga = troca.purgaMm3 / Math.max(0.1, troca.vazaoPurga);
@@ -290,7 +292,17 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
     return saida;
   };
 
-  for (let i = 0; i < n; i++) {
+  // ---- M3: sequência por objeto (cada cópia inteira antes da próxima) e vaso em espiral (a parede sobe sem parar) ----
+  const porObjeto = pr.sequenciaImpressao === "porObjeto" && copias > 1;
+  if (pr.vasoEspiral && copias > 1 && !porObjeto) avisos.push("Vaso em espiral com mais de uma peça na mesa: a parede para a cada camada para ir de uma peça à outra (use a sequência por objeto).");
+  const bufs = Array.from({ length: n }, () => new Buf());
+  let espiralAnterior = false, espiralAgora = false, avisoEspiral = false;
+  /** Z que o bico desce antes da 1ª camada do próximo objeto (sequência por objeto) */
+  let zVolta = 0;
+  let feitas = 0;
+  const totalCamadas = porObjeto ? ativas.reduce((s, p, k) => s + ctxs[k].f.n * p.posicoes.length, 0) : n;
+  /** Imprime a camada `i` das cópias `sel` ([peça, x, y]; null = todas as da mesa). */
+  const imprimirCamada = (i: number, sel: [number, number, number][] | null) => {
     const h = i === 0 ? zs[0] : zs[i] - zs[i - 1];
     const prim = i === 0;
     const aD = prim ? pr.aDeslocPrimeira : pr.aDeslocamento, vD = pr.vDeslocamento, jD = pr.jDeslocamento > 0 ? pr.jDeslocamento : pr.jPadrao;
@@ -298,12 +310,30 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
     const tLimpeza = maq.limpeza > 0 ? tempoTrapezio(maq.limpeza, 0, 0, maq.vLimpeza * vD, aD) : 0;
     const tRetrai = Math.max(maq.retracao / maq.vRetracao, tLimpeza) + levanta;
     const tVolta = maq.retracao / maq.vRecuperacao + levanta;
-    if (i > 0) {
-      // troca de camada: retrai, sobe o Z (a volta da retração vem no primeiro deslocamento)
-      plan.parar(tRetrai + tz(h));
+    // camadas de cada peça (uma vez) e as cópias em ordem de proximidade
+    const camadas = ctxs.map((c, k) => (i < c.f.n && (!sel || sel.some((o) => o[0] === k)) ? gerarCamada(c, i) : null));
+    const todas: [number, number, number][] = [];
+    if (sel) for (const o of sel) {
+      if (camadas[o[0]]?.trechos.length) todas.push(o);
+    }
+    else
+      ativas.forEach((p, k) => {
+        if (camadas[k]?.trechos.length) for (const [x, y] of p.posicoes) todas.push([k, x, y]);
+      });
+    const espiral = todas.length === 1 && !!camadas[todas[0][0]]?.espiral;
+    if (!avisoEspiral && camadas.some((c) => c?.descartados)) {
+      avisoEspiral = true;
+      avisos.push(`Vaso em espiral: a camada ${i + 1} tem mais de um laço de parede; só o maior é impresso.`);
+    }
+    espiralAgora = espiral && espiralAnterior;
+    if ((i > 0 || zVolta > 0) && !espiralAgora) {
+      // troca de camada: retrai, sobe o Z (a volta da retração vem no primeiro deslocamento); no objeto seguinte o Z desce
+      plan.parar(tRetrai + tz(i > 0 ? h : zVolta));
       retraido = true;
     }
-    const buf = new Buf();
+    zVolta = 0;
+    espiralAnterior = espiral;
+    const buf = bufs[i];
     const viajar = (x: number, y: number, semRetrair: boolean, t?: Trecho, ox = 0, oy = 0) => {
       // M2: desvio pelas paredes, se o bico está onde o desvio foi calculado
       const via = t?.via && t.viaDe && Math.abs(plan.x - t.viaDe[0] - ox) < 1e-6 && Math.abs(plan.y - t.viaDe[1] - oy) < 1e-6 ? t.via : null;
@@ -325,7 +355,7 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
         }
         return;
       }
-      const retrai = !retraido && L > maq.retracaoMin && !semRetrair;
+      const retrai = !retraido && L > maq.retracaoMin && !semRetrair && !espiralAgora;
       if (retrai) plan.parar(tRetrai);
       if (via) for (let k = 0; k < via.length; k += 2) plan.mover(via[k] + ox, via[k + 1] + oy, vD, aD, jD, "deslocamento", 0);
       plan.mover(x, y, vD, aD, jD, "deslocamento", 0);
@@ -374,12 +404,6 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
       }
     };
 
-    // camadas de cada peça (uma vez) e as cópias em ordem de proximidade
-    const camadas = ctxs.map((c) => (i < c.f.n ? gerarCamada(c, i) : null));
-    const todas: [number, number, number][] = [];
-    ativas.forEach((p, k) => {
-      if (camadas[k]?.trechos.length) for (const [x, y] of p.posicoes) todas.push([k, x, y]);
-    });
     // cor de cada trecho (peça pintada: o caminho é cortado onde a cor muda)
     const itens = camadas.map((cam, k) => (cam ? colorir(ctxs[k], i, cam.trechos) : []));
 
@@ -459,7 +483,7 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
         for (const it of itens[k]) if (deste(it)) emitir(it.t, x, y, cor);
       }
     }
-    trocasPorCamada.push(trocasDaCamada);
+    trocasPorCamada[i] += trocasDaCamada;
     if (trocasDaCamada) {
       painel.total += trocasDaCamada;
       painel.camadas++;
@@ -467,9 +491,53 @@ export function fatiarPlaca(pecas: PecaPlaca[], maq: Maquina, mat: Material, aj:
       painel.ultima = i;
     }
     plan.fecharCamada(mat.tempoCamada, mat.vMinResfriar);
-    previa.seg.push(buf.f.slice(0, buf.n * 4));
-    previa.parte.push(buf.p.slice(0, buf.n));
-    if (progresso && (i % 4 === 0 || i === n - 1)) progresso(0.3 + (0.7 * (i + 1)) / n);
+    feitas++;
+    if (progresso && (feitas % 4 === 0 || feitas === totalCamadas)) progresso(0.3 + (0.7 * feitas) / totalCamadas);
+  };
+  if (!porObjeto) for (let i = 0; i < n; i++) imprimirCamada(i, null);
+  else {
+    // cópias na ordem de proximidade (a partir do canto da frente à esquerda), cada uma do fundo ao topo
+    const objs: [number, number, number][] = [];
+    ativas.forEach((p, k) => {
+      for (const [x, y] of p.posicoes) objs.push([k, x, y]);
+    });
+    if (pr.sequenciaFolga > 0) {
+      // folga entre objetos: a distância entre as caixas de duas cópias tem de passar da folga (o bico desce ao lado da pronta)
+      const perto = new Set<string>();
+      for (let a = 0; a < objs.length; a++)
+        for (let b = a + 1; b < objs.length; b++) {
+          const ca = caixas[objs[a][0]], cb = caixas[objs[b][0]];
+          const gx = Math.max(objs[b][1] + cb.min[0] - (objs[a][1] + ca.max[0]), objs[a][1] + ca.min[0] - (objs[b][1] + cb.max[0]));
+          const gy = Math.max(objs[b][2] + cb.min[1] - (objs[a][2] + ca.max[1]), objs[a][2] + ca.min[1] - (objs[b][2] + cb.max[1]));
+          if (Math.max(gx, gy) < pr.sequenciaFolga) perto.add(ativas[objs[a][0]].nome).add(ativas[objs[b][0]].nome);
+        }
+      if (perto.size) avisos.push(`Sequência por objeto: ${[...perto].join(", ")} ficam a menos de ${pr.sequenciaFolga} mm um do outro; afaste na mesa (Organizar com mais espaço).`);
+    }
+    let px = -maq.mesa[0] / 2, py = -maq.mesa[1] / 2;
+    while (objs.length) {
+      let m = 0, dmin = Infinity;
+      objs.forEach(([k, x, y], a) => {
+        const c = caixas[k], d = (x + (c.min[0] + c.max[0]) / 2 - px) ** 2 + (y + (c.min[1] + c.max[1]) / 2 - py) ** 2;
+        if (d < dmin) {
+          dmin = d;
+          m = a;
+        }
+      });
+      const o = objs.splice(m, 1)[0], c = ctxs[o[0]];
+      // o contexto da peça recomeça (balanço, costuras) a cada cópia
+      c.campoAbaixo = null;
+      c.costuras = undefined;
+      c.fimAnterior = undefined;
+      espiralAnterior = false;
+      for (let i = 0; i < c.f.n; i++) imprimirCamada(i, [o]);
+      zVolta = zs[c.f.n - 1];
+      px = plan.x;
+      py = plan.y;
+    }
+  }
+  for (const b of bufs) {
+    previa.seg.push(b.f.slice(0, b.n * 4));
+    previa.parte.push(b.p.slice(0, b.n));
   }
 
   // ---- torre de purga: anel de estabilização em todas as camadas até a última troca, borda na 1ª camada e as linhas

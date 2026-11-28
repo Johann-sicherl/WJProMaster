@@ -165,7 +165,45 @@ export interface Processo {
   ordemParedes: "internaExterna" | "externaInterna" | "internaExternaInterna";
   evitarCruzarParedes: boolean;
   evitarCruzarDesvio: number;
+  /**
+   * Acabamentos (fatia M3). Passar ferro: nenhum / só o topo mais alto / todas as superfícies de topo / todo o sólido; padrão
+   * (retilíneo ou concêntrico), fluxo (fração de uma linha cheia no espaçamento do ferro), espaçamento e recuo (mm), velocidade
+   * (mm/s) e ângulo (° somados à direção cruzada com as linhas do topo)
+   */
+  ferroTipo: "nenhum" | "soTopoMaisAlto" | "todasTopo" | "todoSolido";
+  ferroPadrao: "retilineo" | "concentrico";
+  ferroFluxo: number;
+  ferroEspacamento: number;
+  ferroRecuo: number;
+  ferroVelocidade: number;
+  ferroAngulo: number;
+  /** pele felpuda: em quais paredes, espessura da faixa (mm, centrada no caminho), distância entre pontos (mm) e ruído (suave ou aleatório) */
+  peleFelpuda: "desligada" | "contorno" | "contornoFuros" | "todasParedes";
+  peleEspessura: number;
+  peleDistancia: number;
+  peleRuido: "perlin" | "aleatorio";
+  /** vaso em espiral: uma parede, sem topo nem preenchimento, a parede sobe sem parar depois das camadas de fundo */
+  vasoEspiral: boolean;
+  /** precisão: pé de elefante (mm que a 1ª camada encolhe), compensação XY do contorno (mm, + = peça maior) e dos furos (mm, + = furo maior), furo redondo vira polifuro */
+  peDeElefante: number;
+  compensacaoContornoXY: number;
+  compensacaoFuroXY: number;
+  furoParaPolifuro: boolean;
+  /** modo de fatiamento: normal (regra par-ímpar do corte, como hoje), par-ímpar (a mesma regra) ou fechar furos (todo furo da seção vira cheio) */
+  modoFatiamento: "normal" | "parImpar" | "fecharFuros";
+  /** sequência: camada por camada (todas as peças juntas) ou por objeto (cada cópia inteira antes da próxima), com a folga mínima entre objetos (mm) */
+  sequenciaImpressao: "porCamada" | "porObjeto";
+  sequenciaFolga: number;
 }
+
+/** Acabamentos de fábrica: nada muda o resultado de antes da M3 (sem ferro, sem pele felpuda, sem espiral, sem compensação, por camada). */
+export const ACABAMENTOS_PADRAO = {
+  ferroTipo: "nenhum", ferroPadrao: "retilineo", ferroFluxo: 0.15, ferroEspacamento: 0.1, ferroRecuo: 0, ferroVelocidade: 15, ferroAngulo: 0,
+  peleFelpuda: "desligada", peleEspessura: 0.3, peleDistancia: 0.8, peleRuido: "perlin",
+  vasoEspiral: false,
+  peDeElefante: 0, compensacaoContornoXY: 0, compensacaoFuroXY: 0, furoParaPolifuro: false, modoFatiamento: "normal",
+  sequenciaImpressao: "porCamada", sequenciaFolga: 0,
+} satisfies Partial<Processo>;
 
 /** Costura de fábrica: nada muda o resultado de antes da M2 (laço começa no ponto mais perto do bico, de dentro para fora). */
 export const COSTURA_PADRAO = {
@@ -282,6 +320,7 @@ export const MAQUINAS: Maquina[] = [
       bordaLargura: 5, bordaFolga: 0.1, saiaDistancia: 2,
       ...MULTIMATERIAL_PADRAO,
       ...COSTURA_PADRAO,
+      ...ACABAMENTOS_PADRAO,
     },
     materiais: {
       pla: { densidade: 1.26, fluxo: 0.98, vazaoMax: 21, tempoCamada: 4, vMinResfriar: 20 },
@@ -314,6 +353,7 @@ export const MAQUINAS: Maquina[] = [
       bordaLargura: 5, bordaFolga: 0.15, saiaDistancia: 2,
       ...MULTIMATERIAL_PADRAO,
       ...COSTURA_PADRAO,
+      ...ACABAMENTOS_PADRAO,
     },
     materiais: {
       pla: { densidade: 1.24, fluxo: 0.96, vazaoMax: 12, tempoCamada: 8, vMinResfriar: 20 },
