@@ -25,6 +25,7 @@ X1 — PRONTO PR #158 (WJSlicer3D: motor multimaterial, filamento por função, 
 C5 — PRONTO PR #157 (WJCAD: faixa de comandos rolável e aba Toolbox; não medido)
 C6 — PRONTO PR #161 (WJCAD: cotas de diâmetro das engrenagens no modelo; não medido)
 C7 — PRONTO PR #162 (WJCAD: cotas do esboço reorganizáveis; não medido)
+L1b — EM ANDAMENTO→PRONTO (28/11, Sonnet; painel gerado do esquema; PR no fim da conversa)
 M2 — EM ANDAMENTO (27/11, Opus, `src/slicer/*`: costura, ordem das paredes; em paralelo; PR ainda não aberto)
 **Modelos (PROVISÓRIO, 27/11):** ver `regras.md` §1 (Haiku só leitura; Sonnet interface/docs/testes de tablet; Opus motor, L3 e tempo/massa; máx. 2 Opus; M2–M4/S1/S2 só depois da M1; L1b/L3/T* depois da L1a; L3 depende dos perfis "Calibrado Letras"). Conversa acima de 180 mil tokens não recebe tarefa nova.
 J9a — PRONTO PR #139 (21/11, Opus, ≈ US$ 15,8; 2,97 g, 9 gemas, reconstrução ~22 s)

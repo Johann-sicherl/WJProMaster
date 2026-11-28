@@ -11,13 +11,15 @@ import { abrirDoCofre, escolherDoCofre, instalarPainelCofre, lerBytesDoCofre, sa
 import { botaoDiagnostico } from "../comum/diagnostico";
 import { registrarComAtualizacao } from "../comum/atualizacao";
 import { pegar } from "../comum/transferir";
-import { ajustesDe, diferencas, diferencasDeAjustes, PERFIL_PADRAO, PERFIS_SISTEMA, perfilSistema, resolver } from "./camadas";
-import type { Plano } from "./esquema";
+import { ajustesDe, diferencas, diferencasDeAjustes, limparDiferencas, PERFIL_PADRAO, PERFIS_SISTEMA, perfilSistema, resolver } from "./camadas";
+import type { Nivel, Plano } from "./esquema";
+import { NIVEIS, alterados, aplicarValoresDoPerfil, definirValor, diferencasParaPerfil, valoresDoPlano, voltarCampos } from "./painel";
+import { criarPainel } from "./painelUi";
 import type { PerfilUsuario } from "./camadas";
 import { empacotarPerfis, excluirPerfil, juntarPerfis, lerPerfis, novoPerfil, perfisAtivos, perfisVazios, salvarPerfil, sincronizarPerfis, type BibliotecaPerfis } from "./perfisUsuario";
 import { pintarIcones } from "./icones";
 import { ajustesPadrao, formatarTempo, NOMES_PARTES, PARTES, type Ajustes, type Parte, type Resultado } from "./fatiar";
-import { MAQUINAS, maquinaPorId, materiaisDa, materialDa, NOMES_PADROES, type ConfigTroca, type IdMaterial, type Padrao, type TipoSuporte } from "./perfis";
+import { MAQUINAS, maquinaPorId, materiaisDa, materialDa, NOMES_PADROES, type ConfigTroca, type IdMaterial } from "./perfis";
 import { balde, filamentosPadrao, MAX_CORES, pincel, pintarCorpo, topologia, type Filamento, type Topologia } from "./cores";
 import { desempacotar, empacotar, EXTENSAO_PROJETO, type ProjetoSlicer } from "./projeto";
 import { VistaMesa } from "./vista";
@@ -36,6 +38,10 @@ interface Preferencias {
   /** preço por material (R$/kg) */
   precos: Partial<Record<IdMaterial, number>>;
   ajustes: Ajustes;
+  /** perfil do projeto: TODOS os parâmetros que o painel edita, só as diferenças sobre o 0,20 mm Padrão da impressora (camadas.ts); `ajustes` é derivado dele */
+  plano: Plano;
+  /** nível do painel de processo: Simples, Avançado ou Especialista (chave "Avançado") */
+  nivel: Nivel;
   /** fator de calibração do tempo por impressora (tempo real ÷ estimado) */
   calibracao: Record<string, number>;
   /** cores e filamentos (o material e o preço do primeiro vêm de "Impressora e material") */
@@ -61,7 +67,7 @@ function adivinharPerfil(maquina: string, aj: Ajustes): string {
 }
 
 function lerPreferencias(): Preferencias {
-  const padrao: Preferencias = { maquina: MAQUINAS[0].id, material: "pla", precos: {}, ajustes: ajustesPadrao(MAQUINAS[0].processo), calibracao: {}, filamentos: filamentosPadrao(), trocas: {}, perfil: `s:${PERFIL_PADRAO}` };
+  const padrao: Preferencias = { maquina: MAQUINAS[0].id, material: "pla", precos: {}, ajustes: ajustesPadrao(MAQUINAS[0].processo), plano: {}, nivel: "simples", calibracao: {}, filamentos: filamentosPadrao(), trocas: {}, perfil: `s:${PERFIL_PADRAO}` };
   try {
     const p = JSON.parse(localStorage.getItem(CHAVE) ?? "null") as (Partial<Preferencias> & { ajustes?: Partial<Ajustes> & { suporte?: unknown } }) | null;
     if (!p) return padrao;
@@ -74,14 +80,28 @@ function lerPreferencias(): Preferencias {
     if (!(aj.padrao in NOMES_PADROES)) aj.padrao = base.padrao;
     const fil = Array.from({ length: MAX_CORES }, (_, k) => ({ ...padrao.filamentos[k], ...(p.filamentos?.[k] ?? {}) }));
     const perfil = typeof p.perfil === "string" && /^[su]:./.test(p.perfil) ? p.perfil : `s:${adivinharPerfil(maquina, aj)}`;
-    return { ...padrao, ...p, maquina, ajustes: aj, precos: p.precos ?? {}, calibracao: p.calibracao ?? {}, filamentos: fil, trocas: p.trocas ?? {}, perfil };
+    // plano completo do painel (L1b); preferência antiga (só os 9 ajustes) vira diferenças sobre o 0,20 mm Padrão
+    const plano = p.plano && typeof p.plano === "object" ? limparDiferencas(p.plano) : diferencasDeAjustes(maquina, aj);
+    const nivel = NIVEIS.includes(p.nivel as Nivel) ? (p.nivel as Nivel) : "simples";
+    return { ...padrao, ...p, maquina, ajustes: ajustesDe(resolver({ maquina, projeto: plano })), plano, nivel, precos: p.precos ?? {}, calibracao: p.calibracao ?? {}, filamentos: fil, trocas: p.trocas ?? {}, perfil };
   } catch {
     return padrao;
   }
 }
 const pref = lerPreferencias();
 /** Os ajustes da tela viram o perfil do projeto: só as diferenças sobre o 0,20 mm Padrão da impressora (camadas.ts). */
-const perfilDoProjeto = () => diferencasDeAjustes(pref.maquina, pref.ajustes);
+const perfilDoProjeto = () => pref.plano;
+/** Grava o plano e refaz os ajustes derivados. */
+function gravarPlano(plano: Plano) {
+  pref.plano = plano;
+  pref.ajustes = ajustesDe(resolver({ maquina: pref.maquina, projeto: plano }));
+}
+let cacheValores: { plano: Plano; maquina: string; valores: Plano } | null = null;
+/** Todos os valores de agora (perfil de fábrica + diferenças do projeto), em cache até o plano mudar. */
+function valoresAtuais(): Plano {
+  if (!cacheValores || cacheValores.plano !== pref.plano || cacheValores.maquina !== pref.maquina) cacheValores = { plano: pref.plano, maquina: pref.maquina, valores: valoresDoPlano(pref.maquina, pref.plano) };
+  return cacheValores.valores;
+}
 const guardar = () => {
   try {
     localStorage.setItem(CHAVE, JSON.stringify(pref));
@@ -292,23 +312,8 @@ $("sl-apoio").onclick = () => escolhida !== null && pedir({ tipo: "apoio", id: e
 
 const selMaq = $<HTMLSelectElement>("sl-maquina");
 for (const m of MAQUINAS) selMaq.append(new Option(`${m.marca} ${m.modelo}`, m.id));
-const selAltura = $<HTMLSelectElement>("sl-altura");
-for (const h of [0.08, 0.12, 0.16, 0.2, 0.24, 0.28]) selAltura.append(new Option(`${num(h, 2)} mm`, String(h)));
-const selDesenho = $<HTMLSelectElement>("sl-desenho");
-for (const [id, nome] of Object.entries(NOMES_PADROES)) selDesenho.append(new Option(nome, id));
-const campos = {
-  paredes: $<HTMLInputElement>("sl-paredes"),
-  topo: $<HTMLInputElement>("sl-topo"),
-  fundo: $<HTMLInputElement>("sl-fundo"),
-  preenchimento: $<HTMLInputElement>("sl-preench"),
-  padrao: selDesenho,
-  suporte: $<HTMLSelectElement>("sl-suporte"),
-  borda: $<HTMLInputElement>("sl-borda"),
-  saia: $<HTMLInputElement>("sl-saia"),
-};
-
 /** folga entre as peças na organização (a borda precisa de espaço) */
-const folgaMesa = () => 6 + (pref.ajustes.borda ? 2 * maquina().processo.bordaLargura : 0);
+const folgaMesa = () => 6 + (valoresAtuais().borda ? 2 * Number(valoresAtuais().bordaLargura) : 0);
 const avisarMesa = () => pedir({ tipo: "mesa", mesa: maquina().mesa, folga: folgaMesa() });
 
 // ---- perfis do usuário (.wjprf): lista no aparelho, igual no cofre (perfisUsuario.ts) ----
@@ -333,10 +338,11 @@ const perfilUsuario = (id: string) => perfisAtivos(perfis).find((p) => p.id === 
 const perfilExiste = (id: string) => (id.startsWith("s:") ? PERFIS_SISTEMA.some((p) => p.id === id.slice(2)) : !!perfilUsuario(id.slice(2)));
 
 /** Valores do perfil escolhido (sistema, ou usuário sobre o seu perfil de sistema) para a impressora de agora. */
-function ajustesDoPerfil(id: string): Ajustes {
+function resolvidoDoPerfil(id: string) {
   const sistema = id.startsWith("s:") ? perfilSistema(id.slice(2)).id : undefined;
-  return ajustesDe(resolver({ maquina: pref.maquina, sistema, usuario: id.startsWith("u:") ? perfilUsuario(id.slice(2)) : undefined }));
+  return resolver({ maquina: pref.maquina, sistema, usuario: id.startsWith("u:") ? perfilUsuario(id.slice(2)) : undefined });
 }
+const valoresDoPerfil = (id: string): Plano => resolvidoDoPerfil(id).valores;
 
 function desenharPerfis() {
   if (!perfilExiste(pref.perfil)) pref.perfil = `s:${PERFIL_PADRAO}`; // perfil do usuário que foi excluído
@@ -347,22 +353,15 @@ function desenharPerfis() {
   $<HTMLSelectElement>("sl-perfil").value = pref.perfil;
 }
 
-const ABA_DO_CAMPO: Record<string, string> = { altura: "qualidade", paredes: "resistencia", topo: "resistencia", fundo: "resistencia", preenchimento: "resistencia", padrao: "resistencia" };
-/** Selo ↺ de alterado: o que difere do perfil escolhido (`diferencas()` de camadas.ts). */
+/** Selo ↺ de alterado: o que difere do perfil escolhido (campos do painel gerado do esquema). */
 function atualizarSelos() {
-  const dif = diferencas(planoProcesso(ajustesDoPerfil(pref.perfil)), planoProcesso(pref.ajustes));
-  for (const b of document.querySelectorAll<HTMLElement>("[data-voltar]")) b.hidden = !(b.dataset.voltar! in dif);
-  $("sl-perfil-voltar").hidden = !Object.keys(dif).length;
-  const abas = new Set(Object.keys(dif).map((k) => ABA_DO_CAMPO[k]));
-  for (const b of document.querySelectorAll<HTMLElement>("#sl-pabs [data-pab]")) b.classList.toggle("alterada", abas.has(b.dataset.pab!));
+  const alt = painel.atualizar();
+  $("sl-perfil-voltar").hidden = !alt.length;
 }
 
 /** Volta os campos ao valor do perfil escolhido (suporte, borda e saia são do projeto e não mudam). */
 function voltarAoPerfil(chaves: readonly string[]) {
-  const alvo = ajustesDoPerfil(pref.perfil) as unknown as Record<string, unknown>;
-  const novo = { ...pref.ajustes } as unknown as Record<string, unknown>;
-  for (const k of chaves) novo[k] = alvo[k];
-  pref.ajustes = novo as unknown as Ajustes;
+  gravarPlano(voltarCampos(pref.maquina, pref.plano, valoresDoPerfil(pref.perfil), chaves));
   guardar();
   preencherPainel();
   recalcular();
@@ -370,8 +369,7 @@ function voltarAoPerfil(chaves: readonly string[]) {
 
 function aplicarPerfil(id: string) {
   pref.perfil = id;
-  const { suporte, borda, saia } = pref.ajustes;
-  pref.ajustes = { ...ajustesDoPerfil(id), suporte, borda, saia };
+  gravarPlano(aplicarValoresDoPerfil(pref.maquina, pref.plano, valoresDoPerfil(id)));
   guardar();
   preencherPainel();
   recalcular();
@@ -397,7 +395,7 @@ function sincronizarPerfisCofre() {
 }
 
 function difDoPerfil(herdaDe: string): Plano {
-  return diferencas(planoProcesso(ajustesDe(resolver({ maquina: pref.maquina, sistema: herdaDe }))), planoProcesso(pref.ajustes));
+  return diferencasParaPerfil(resolver({ maquina: pref.maquina, sistema: herdaDe }).valores, valoresAtuais());
 }
 function gravarPerfil(p: PerfilUsuario, msg: string) {
   perfis = salvarPerfil(perfis, p);
@@ -453,16 +451,33 @@ $("sl-perfil-menu").onclick = () => {
   ]);
 };
 $("sl-perfil").onchange = () => aplicarPerfil($<HTMLSelectElement>("sl-perfil").value);
-$("sl-perfil-voltar").onclick = () => voltarAoPerfil(CHAVES_PROCESSO);
-for (const b of document.querySelectorAll<HTMLButtonElement>("[data-voltar]")) b.onclick = () => voltarAoPerfil([b.dataset.voltar!]);
+$("sl-perfil-voltar").onclick = () => voltarAoPerfil(alterados(valoresDoPerfil(pref.perfil), valoresAtuais()));
 
-/** abas do Processo (Qualidade … Outros) */
-$("sl-pabs").onclick = (e) => {
-  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-pab]");
-  if (!b) return;
-  for (const t of document.querySelectorAll<HTMLElement>("#sl-pabs [data-pab]")) t.setAttribute("aria-selected", String(t === b));
-  for (const pn of document.querySelectorAll<HTMLElement>(".sl-pab")) pn.hidden = pn.dataset.pab !== b.dataset.pab;
-};
+/** painel de processo gerado do esquema (painel.ts / painelUi.ts) */
+const painel = criarPainel({
+  valores: valoresAtuais,
+  perfil: () => valoresDoPerfil(pref.perfil),
+  aoMudar(id, v) {
+    const antes = valoresAtuais();
+    const folga = folgaMesa();
+    gravarPlano(definirValor(pref.maquina, pref.plano, id, v));
+    guardar();
+    atualizarSelos();
+    desenharFilamentos();
+    if (folgaMesa() !== folga || (antes.borda !== valoresAtuais().borda)) avisarMesa(); // a borda precisa de mais folga entre as peças
+    else recalcular();
+  },
+  aoVoltar(ids) {
+    gravarPlano(voltarCampos(pref.maquina, pref.plano, valoresDoPerfil(pref.perfil), ids));
+    guardar();
+    atualizarSelos();
+    avisarMesa();
+  },
+  aoNivel(n) {
+    pref.nivel = n;
+    guardar();
+  },
+}, pref.nivel);
 
 function preencherPainel() {
   const m = maquina();
@@ -470,17 +485,6 @@ function preencherPainel() {
   const mats = materiaisDa(m);
   if (!mats.some((x) => x.id === pref.material)) pref.material = mats[0].id;
   const mat = materialDa(m, pref.material);
-  const a = pref.ajustes;
-  selAltura.value = String(a.altura);
-  campos.paredes.value = String(a.paredes);
-  campos.topo.value = String(a.topo);
-  campos.fundo.value = String(a.fundo);
-  campos.preenchimento.value = String(Math.round(a.preenchimento * 100));
-  $("sl-preench-v").textContent = `${Math.round(a.preenchimento * 100)}%`;
-  campos.padrao.value = a.padrao;
-  campos.suporte.value = a.suporte;
-  campos.borda.checked = a.borda;
-  campos.saia.checked = a.saia;
   const pr = m.processo;
   $("sl-maq-info").textContent = `Mesa ${m.mesa[0]} × ${m.mesa[1]} × ${m.alturaMax} mm · bico 0,4 mm · paredes ${pr.vParedeExt}/${pr.vParedeInt} mm/s, até ${num(m.aMax)} mm/s² · ${mat.nome}: ${num(mat.densidade, 2)} g/cm³, até ${num(mat.vazaoMax, 1)} mm³/s, camada mínima ${mat.tempoCamada} s`;
   const f = pref.calibracao[m.id];
@@ -488,54 +492,21 @@ function preencherPainel() {
   desenharFilamentos();
   preencherTroca();
   desenharPerfis();
-  atualizarSelos();
-}
-
-const inteiro = (inp: HTMLInputElement, min: number, max: number) => Math.max(min, Math.min(max, Math.round(Number(inp.value) || 0)));
-
-function lerPainel() {
-  pref.ajustes = {
-    altura: Number(selAltura.value),
-    paredes: inteiro(campos.paredes, 1, 10),
-    topo: inteiro(campos.topo, 0, 20),
-    fundo: inteiro(campos.fundo, 0, 20),
-    preenchimento: inteiro(campos.preenchimento, 0, 100) / 100,
-    padrao: campos.padrao.value as Padrao,
-    suporte: campos.suporte.value as TipoSuporte,
-    borda: campos.borda.checked,
-    saia: campos.saia.checked,
-  };
-  guardar();
+  painel.redesenhar();
   atualizarSelos();
 }
 
 selMaq.onchange = () => {
   // outra impressora: valores do perfil escolhido para ela (o perfil muda paredes, cascas e o padrão)
-  const { suporte, borda, saia, preenchimento } = pref.ajustes;
+  const { suporte, borda, saia, preenchimento } = valoresAtuais();
   pref.maquina = selMaq.value;
-  pref.ajustes = { ...ajustesDoPerfil(pref.perfil), suporte, borda, saia, preenchimento };
+  gravarPlano(aplicarValoresDoPerfil(pref.maquina, {}, { ...valoresDoPerfil(pref.perfil), suporte, borda, saia, preenchimento }));
   vista.definirMesa(...maquina().mesa);
   vista.enquadrar();
   preencherPainel();
   guardar();
   avisarMesa(); // reorganiza na mesa nova e recalcula
 };
-for (const inp of [selAltura, ...Object.values(campos)])
-  inp.addEventListener(inp === campos.preenchimento ? "input" : "change", () => {
-    $("sl-preench-v").textContent = `${campos.preenchimento.value}%`;
-    const borda = pref.ajustes.borda;
-    lerPainel();
-    desenharFilamentos();
-    if (pref.ajustes.borda !== borda) avisarMesa(); // a borda precisa de mais folga entre as peças
-    else recalcular();
-  });
-for (const b of document.querySelectorAll<HTMLButtonElement>("[data-passo]"))
-  b.onclick = () => {
-    const inp = $<HTMLInputElement>(b.dataset.alvo!);
-    inp.value = String(Number(inp.value) + Number(b.dataset.passo));
-    inp.dispatchEvent(new Event("change"));
-  };
-
 // ---------- orçamento ----------
 
 let espera = 0;
@@ -944,7 +915,7 @@ function aplicarProjeto(p: ProjetoSlicer) {
   pref.maquina = p.maquina;
   pref.material = p.material;
   pref.precos = { ...pref.precos, ...p.precos };
-  pref.ajustes = ajustesDe(resolver({ maquina: p.maquina, projeto: p.perfil }));
+  gravarPlano(limparDiferencas(p.perfil));
   pref.perfil = `s:${adivinharPerfil(p.maquina, pref.ajustes)}`; // o projeto guarda só as diferenças: o selo ↺ mostra o que fugir do perfil
   pref.filamentos = p.filamentos;
   pref.trocas = { ...pref.trocas, ...p.trocas };

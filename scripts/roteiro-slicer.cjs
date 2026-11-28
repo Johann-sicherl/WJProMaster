@@ -103,11 +103,11 @@ function stl(tris) {
   await p.locator("#sl-maquina").selectOption("acu-k3");
   await esperarResultado();
   await abaProc("resistencia");
-  ok("Kobra 3: padrão de fábrica linhas cruzadas", (await p.locator("#sl-desenho").inputValue()) === "cruzado");
+  ok("Kobra 3: padrão de fábrica linhas cruzadas", (await p.locator("[data-campo=padrao]").inputValue()) === "cruzado");
   await abaProc("suporte");
-  await p.locator("#sl-suporte").selectOption("arvore");
+  await p.locator("[data-campo=suporte]").selectOption("arvore");
   await abaProc("resistencia");
-  await p.locator("#sl-desenho").selectOption("giroide");
+  await p.locator("[data-campo=padrao]").selectOption("giroide");
   const r4 = await esperarResultado();
   const partes4 = await p.locator("#sl-partes tbody tr").allTextContents();
   ok("árvore: suporte no tempo por caminho", partes4.some((t) => t.startsWith("Suporte") || t.includes("Interface")), r4.tempo);
