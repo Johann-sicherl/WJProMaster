@@ -109,21 +109,27 @@ grupo("qualidade", "Precisão", NOVO, "naoAplicado", "especialista", [
   ["fechamentoFresta", "Raio de fechamento de fresta", "numero", "mm", 0, 2, { padrao: 0, nota: "Hoje é uma constante interna do motor (🟡)." }],
   ["resolucao", "Resolução", "numero", "mm", 0, 1, { padrao: 0, nota: "Hoje é uma constante interna do motor (🟡)." }],
   ["ajusteArcos", "Ajuste de arcos", "booleano", "", undefined, undefined, { padrao: false }],
-  ["compensacaoFuroXY", "Compensação XY de furo", "numero", "mm", -1, 1, { padrao: 0 }],
-  ["compensacaoContornoXY", "Compensação XY de contorno", "numero", "mm", -1, 1, { padrao: 0 }],
-  ["peDeElefante", "Compensação de pé de elefante", "numero", "mm", 0, 2, { padrao: 0, nivel: "avancado" }],
-  ["paredePrecisa", "Parede precisa", "booleano", "", undefined, undefined, { padrao: false }],
-  ["furoParaPolifuro", "Furo vira polifuro", "booleano", "", undefined, undefined, { padrao: false }],
-  ["modoFatiamento", "Modo de fatiamento", "lista", "", undefined, undefined, { padrao: "normal", opcoes: lista(["normal", "Normal"], ["parImpar", "Par-ímpar"], ["fecharFuros", "Fechar furos"]) }],
 ]);
-grupo("qualidade", "Passar ferro", NOVO, "naoAplicado", "avancado", [
-  ["ferroTipo", "Passar ferro", "lista", "", undefined, undefined, { padrao: "nenhum", opcoes: lista(["nenhum", "Nenhum"], ["soTopoMaisAlto", "Só o topo mais alto"], ["todasTopo", "Todas as superfícies de topo"], ["todoSolido", "Todo o sólido"]) }],
-  ["ferroPadrao", "Padrão", "lista", "", undefined, undefined, { padrao: "retilineo", opcoes: lista(["retilineo", "Retilíneo"], ["concentrico", "Concêntrico"]), visivelSe: "ferroTipo!=nenhum" }],
-  ["ferroFluxo", "Fluxo", "percentual", "%", 0, 1, { padrao: 0.15, visivelSe: "ferroTipo!=nenhum" }],
-  ["ferroEspacamento", "Espaçamento", "numero", "mm", 0.01, 2, { padrao: 0.1, visivelSe: "ferroTipo!=nenhum" }],
-  ["ferroRecuo", "Recuo", "numero", "mm", 0, 5, { padrao: 0, visivelSe: "ferroTipo!=nenhum" }],
-  ["ferroVelocidade", "Velocidade", "numero", "mm/s", 1, 500, { padrao: 15, visivelSe: "ferroTipo!=nenhum" }],
-  ["ferroAngulo", "Ângulo", "numero", "°", 0, 360, { padrao: 0, visivelSe: "ferroTipo!=nenhum" }],
+grupo("qualidade", "Precisão", "processo", "motor", "especialista", [
+  ["compensacaoFuroXY", "Compensação XY de furo (+ = furo maior)", "numero", "mm", -1, 1],
+  ["compensacaoContornoXY", "Compensação XY de contorno (+ = peça maior)", "numero", "mm", -1, 1],
+  ["peDeElefante", "Compensação de pé de elefante", "numero", "mm", 0, 2, { nivel: "avancado", nota: "Só a 1ª camada encolhe (contorno para dentro, furos para fora)." }],
+]);
+grupo("qualidade", "Precisão", NOVO, "naoAplicado", "especialista", [["paredePrecisa", "Parede precisa", "booleano", "", undefined, undefined, { padrao: false }]]);
+grupo("qualidade", "Precisão", "processo", "motor", "especialista", [
+  ["furoParaPolifuro", "Furo vira polifuro", "booleano", "", undefined, undefined, { nota: "Furo redondo vira polígono regular com o furo inscrito (cerca de 2 lados por mm de diâmetro)." }],
+]);
+grupo("qualidade", "Precisão", "processo", "parcial", "especialista", [
+  ["modoFatiamento", "Modo de fatiamento", "lista", "", undefined, undefined, { opcoes: lista(["normal", "Normal"], ["parImpar", "Par-ímpar"], ["fecharFuros", "Fechar furos"]), nota: "Normal e Par-ímpar usam hoje a mesma regra (par-ímpar do corte); unir corpos sobrepostos fica para depois." }],
+]);
+grupo("qualidade", "Passar ferro", "processo", "motor", "avancado", [
+  ["ferroTipo", "Passar ferro", "lista", "", undefined, undefined, { opcoes: lista(["nenhum", "Nenhum"], ["soTopoMaisAlto", "Só o topo mais alto"], ["todasTopo", "Todas as superfícies de topo"], ["todoSolido", "Todo o sólido"]) }],
+  ["ferroPadrao", "Padrão", "lista", "", undefined, undefined, { opcoes: lista(["retilineo", "Retilíneo"], ["concentrico", "Concêntrico"]), visivelSe: "ferroTipo!=nenhum" }],
+  ["ferroFluxo", "Fluxo", "percentual", "%", 0, 1, { visivelSe: "ferroTipo!=nenhum" }],
+  ["ferroEspacamento", "Espaçamento", "numero", "mm", 0.01, 2, { visivelSe: "ferroTipo!=nenhum" }],
+  ["ferroRecuo", "Recuo", "numero", "mm", 0, 5, { visivelSe: "ferroTipo!=nenhum" }],
+  ["ferroVelocidade", "Velocidade", "numero", "mm/s", 1, 500, { visivelSe: "ferroTipo!=nenhum" }],
+  ["ferroAngulo", "Ângulo (0 = cruzando o topo)", "numero", "°", 0, 360, { visivelSe: "ferroTipo!=nenhum" }],
 ]);
 grupo("qualidade", "Gerador de paredes", "processo", "motor", "especialista", [
   ["geradorParedes", "Gerador de paredes", "lista", "", undefined, undefined, { nivel: "avancado", opcoes: lista(["classico", "Clássico"], ["larguraVariavel", "Largura variável"]) }],
@@ -376,14 +382,14 @@ grupo("outros", "Borda", NOVO, "naoAplicado", "avancado", [
   ["bordaTipo", "Tipo de borda", "lista", "", undefined, undefined, { padrao: "auto", visivelSe: "borda", opcoes: lista(["auto", "Automática"], ["soExterna", "Só externa"], ["soInterna", "Só interna"], ["externaEInterna", "Externa e interna"], ["pintada", "Pintada"]) }],
   ["bordaOrelhas", "Orelhas de borda", "booleano", "", undefined, undefined, { padrao: false, visivelSe: "borda" }],
 ]);
-grupo("outros", "Modo especial", NOVO, "naoAplicado", "avancado", [
-  ["sequenciaImpressao", "Sequência de impressão", "lista", "", undefined, undefined, { padrao: "porCamada", opcoes: lista(["porCamada", "Por camada"], ["porObjeto", "Por objeto"]) }],
-  ["sequenciaFolga", "Folga entre objetos", "numero", "mm", 0, 100, { padrao: 0, visivelSe: "sequenciaImpressao=porObjeto" }],
-  ["vasoEspiral", "Vaso em espiral", "booleano", "", undefined, undefined, { padrao: false }],
-  ["peleFelpuda", "Pele felpuda", "lista", "", undefined, undefined, { padrao: "desligada", opcoes: lista(["desligada", "Desligada"], ["contorno", "Contorno"], ["contornoFuros", "Contorno e furos"], ["todasParedes", "Todas as paredes"]) }],
-  ["peleEspessura", "Espessura da pele felpuda", "numero", "mm", 0, 2, { padrao: 0, visivelSe: "peleFelpuda!=desligada" }],
-  ["peleDistancia", "Distância entre pontos", "numero", "mm", 0, 5, { padrao: 0, visivelSe: "peleFelpuda!=desligada" }],
-  ["peleRuido", "Tipo de ruído", "lista", "", undefined, undefined, { padrao: "perlin", visivelSe: "peleFelpuda!=desligada", opcoes: lista(["perlin", "Suave"], ["aleatorio", "Aleatório"]) }],
+grupo("outros", "Modo especial", "processo", "motor", "avancado", [
+  ["sequenciaImpressao", "Sequência de impressão", "lista", "", undefined, undefined, { opcoes: lista(["porCamada", "Por camada"], ["porObjeto", "Por objeto"]) }],
+  ["sequenciaFolga", "Folga entre objetos (0 = sem conferir)", "numero", "mm", 0, 100, { visivelSe: "sequenciaImpressao=porObjeto" }],
+  ["vasoEspiral", "Vaso em espiral", "booleano", "", undefined, undefined, { nota: "Uma parede, sem topo, preenchimento nem suporte; depois das camadas de fundo a parede sobe sem parar." }],
+  ["peleFelpuda", "Pele felpuda", "lista", "", undefined, undefined, { opcoes: lista(["desligada", "Desligada"], ["contorno", "Contorno"], ["contornoFuros", "Contorno e furos"], ["todasParedes", "Todas as paredes"]) }],
+  ["peleEspessura", "Espessura da pele felpuda", "numero", "mm", 0, 2, { visivelSe: "peleFelpuda!=desligada" }],
+  ["peleDistancia", "Distância entre pontos", "numero", "mm", 0.05, 5, { visivelSe: "peleFelpuda!=desligada" }],
+  ["peleRuido", "Tipo de ruído", "lista", "", undefined, undefined, { visivelSe: "peleFelpuda!=desligada", opcoes: lista(["perlin", "Suave"], ["aleatorio", "Aleatório"]) }],
 ]);
 grupo("outros", "Modo especial", NOVO, "oculto", "especialista", [["timelapse", "Vídeo time-lapse", "lista", "", undefined, undefined, { padrao: "nenhum", opcoes: lista(["nenhum", "Nenhum"], ["suave", "Suave"], ["tradicional", "Tradicional"]) }]]);
 grupo("outros", "Saída (só G-code)", NOVO, "oculto", "especialista", [

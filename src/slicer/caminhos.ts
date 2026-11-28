@@ -15,6 +15,7 @@ import {
 } from "./campo";
 import { desviar, escolherCostura, girar, pontaFinal, pontaInicial, recuar, sorteio, transformarLaco, areaLaco } from "./costura";
 import { GeradorM1, type ParedeGerada } from "./paredes";
+import { ajustaCampo, ajustarCampo, fecharFuros, peleFelpuda } from "./acabamentos";
 import type { Parte } from "./planejador";
 import type { Maquina, Padrao, Processo, TipoSuporte } from "./perfis";
 
@@ -133,7 +134,9 @@ const MAX_CELULAS = 200_000, MAX_MAPAS = 48e6, CELULA_MIN = 0.15;
  * Corta a malha nos planos do meio de cada camada (`zs` = topo das camadas, base em z = 0).
  * `margem`: folga em volta da peça na grade (borda/aba).
  */
-export function fatiarMalha(m: MalhaImpressao, zs: number[], margem: number, progresso?: (f: number) => void, cores?: Uint8Array, prof?: [number, number]): Fatias {
+export function fatiarMalha(
+  m: MalhaImpressao, zs: number[], margem: number, progresso?: (f: number) => void, cores?: Uint8Array, prof?: [number, number], modo: Processo["modoFatiamento"] = "normal",
+): Fatias {
   const { pos, tri } = m;
   const nt = tri.length / 3;
   const { min, max } = caixa(pos);
@@ -208,10 +211,13 @@ export function fatiarMalha(m: MalhaImpressao, zs: number[], margem: number, pro
       if (achados !== 2) buf.length -= achados * 2;
       else if (cores) bufCor.push(cores[t]);
     }
-    const s = Float64Array.from(buf);
-    segs.push(s);
-    if (cores) corSeg.push(Uint8Array.from(bufCor));
+    let s: Float64Array = Float64Array.from(buf);
     rasterizar(s, s.length / 4, g, dentro);
+    // M3: fechar furos — os vazios internos viram cheios e os segmentos deles saem do corte
+    let corDaCamada: number[] | null = cores ? bufCor : null;
+    if (modo === "fecharFuros") ({ seg: s, cores: corDaCamada } = fecharFuros(s, corDaCamada, dentro, g));
+    segs.push(s);
+    if (cores) corSeg.push(Uint8Array.from(corDaCamada!));
     let conta = 0;
     for (let q = 0; q < dentro.length; q++) conta += dentro[q];
     areas.push(conta * c * c);
@@ -596,6 +602,9 @@ export interface CamadaPeca {
   trechos: Trecho[];
   /** ponto de partida típico (para ordenar as peças na mesa) */
   inicio: [number, number];
+  /** M3: camada do vaso em espiral (a parede sobe sem parar) e laços que ficaram de fora dela (só o maior é impresso) */
+  espiral?: boolean;
+  descartados?: number;
 }
 
 export interface Contexto {
@@ -624,7 +633,12 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
   const trechos: Trecho[] = [];
   const dentro = expandir(F.bits[i], N);
   // fora da peça só a borda (primeira camada) precisa de distância
-  const campo = campoDistancia(F.segs[i], F.segs[i].length / 4, dentro, g, undefined, prim && aj.borda ? pr.bordaFolga + pr.bordaLargura + 1 : 1);
+  // M3: compensação XY do contorno e dos furos, pé de elefante (a 1ª camada encolhe) e polifuro (tudo 0 = campo de antes)
+  const opCampo = {
+    contorno: pr.compensacaoContornoXY - (prim ? pr.peDeElefante : 0), furo: pr.compensacaoFuroXY + (prim ? pr.peDeElefante : 0), polifuro: pr.furoParaPolifuro,
+  };
+  let campo = campoDistancia(F.segs[i], F.segs[i].length / 4, dentro, g, undefined, Math.max(prim && aj.borda ? pr.bordaFolga + pr.bordaLargura + 1 : 1, 1 + Math.max(0, opCampo.contorno)));
+  if (ajustaCampo(opCampo)) campo = ajustarCampo(campo, dentro, g, opCampo).campo;
   const abaixo = ctx.campoAbaixo;
   ctx.campoAbaixo = campo;
   const vol = (v: number, w: number, fl: number) => Math.min(v, ctx.vazaoMax / (espacamento(w, h) * h * fl));
@@ -633,7 +647,11 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
   // ---- paredes ----
   const wE = prim ? pr.lPrimeira : pr.lParedeExt, wI = prim ? pr.lPrimeira : pr.lParedeInt;
   const sE = espacamento(wE, h), sI = espacamento(wI, h);
-  const voltas = prim && pr.umaParedePrimeira ? 1 : Math.max(1, aj.paredes);
+  const topoN = aj.topo > 0 ? Math.max(aj.topo, Math.ceil(pr.topoMm / aj.altura - 1e-6)) : 0;
+  const fundoN = aj.fundo > 0 ? Math.max(aj.fundo, Math.ceil(pr.fundoMm / aj.altura - 1e-6)) : 0;
+  // M3: vaso em espiral — depois das camadas de fundo só a parede externa (a maior), sem preenchimento
+  const espiral = pr.vasoEspiral && i >= fundoN;
+  const voltas = espiral ? 1 : prim && pr.umaParedePrimeira ? 1 : Math.max(1, aj.paredes);
   const niveis: number[] = [sE / 2];
   for (let k = 1; k < voltas; k++) niveis.push(sE + (k - 0.5) * sI);
   const rot = rotular(dentro, g);
@@ -682,7 +700,7 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     if (algum) umaParede = m;
   }
   const variavel = pr.geradorParedes === "larguraVariavel";
-  const m1 = variavel || pr.preenchimentoVaos || umaParede
+  const m1 = !espiral && (variavel || pr.preenchimentoVaos || umaParede)
     ? new GeradorM1(F.segs[i], F.segs[i].length / 4, g, {
         variavel, vaos: pr.preenchimentoVaos, niveis: niveis.slice(0, voltas), umaParede,
         p: { sE, sI, voltas, sMin: Math.max(0.05, espacamento(pr.geradorLarguraMinima * 0.4, h)), sMax: 2 * sI, detMin: pr.geradorDetalheMinimo * 0.4, distrib: pr.geradorParedesTransicao },
@@ -693,7 +711,12 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
   const vaosPorIlha: Trecho[][] = Array.from({ length: rot.n + 1 }, () => []);
   /** largura do filete para a cobertura `s` (inverso de `espacamento`) */
   const larguraDe = (s: number) => s + h * (1 - Math.PI / 4);
+  // M3: pele felpuda (nunca na 1ª camada): contorno externo, também os furos, ou todas as paredes
+  const pele = pr.peleFelpuda !== "desligada" && !prim && pr.peleEspessura > 0;
+  let lacosPele = 0;
   const emitirParede = (pts: Float64Array, fechado: boolean, w: number, ext: boolean, Llaco: number, destino: Trecho[], parte: Parte = ext ? "paredeExt" : "paredeInt") => {
+    if (pele && parte !== "vaos" && (ext || pr.peleFelpuda === "todasParedes") && (pr.peleFelpuda !== "contorno" || !fechado || areaLaco(pts) > 0))
+      pts = peleFelpuda(pts, fechado, { espessura: pr.peleEspessura, distancia: pr.peleDistancia, ruido: pr.peleRuido, z, semente: i * 7919 + 31 * ++lacosPele + 3 });
     let vSeg: Float32Array | undefined;
     if (abaixo && !prim && pr.vBalanco.some((v) => v > 0)) {
       // subdivide em passos de 1 mm e mede o balanço em cada ponto
@@ -776,8 +799,6 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     for (let q = 0; q < N; q++) if (umaParede[q]) campoP[q] += dd;
   }
   // classes por célula pelas camadas vizinhas (palavras de 32 bits)
-  const topoN = aj.topo > 0 ? Math.max(aj.topo, Math.ceil(pr.topoMm / aj.altura - 1e-6)) : 0;
-  const fundoN = aj.fundo > 0 ? Math.max(aj.fundo, Math.ceil(pr.fundoMm / aj.altura - 1e-6)) : 0;
   const W = F.bits[i].length;
   const vazio = new Uint32Array(W);
   const bitsDe = (k: number) => (k < 0 || k >= F.n ? vazio : F.bits[k]);
@@ -816,7 +837,7 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     }
     // esparso a 100% vira sólido (como no perfil)
     if (!prim && aj.preenchimento >= 0.999) for (let q = 0; q < N; q++) if (classe[q] === CLASSE.esparso) classe[q] = CLASSE.solido;
-    for (let q = 0; q < N; q++) if (classe[q] && campoP[q] >= nivelP) presentes.add(classe[q]);
+    if (!espiral) for (let q = 0; q < N; q++) if (classe[q] && campoP[q] >= nivelP) presentes.add(classe[q]);
   }
   // caixa da camada
   let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
@@ -901,6 +922,46 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
       l.push(r);
     }
   }
+  // ---- M3: passar ferro — linhas finas e de pouco fluxo sobre o topo (ou todo o sólido), depois do preenchimento da ilha ----
+  const ferroPorIlha = new Map<number, number[][]>();
+  const ferroLacos = new Map<number, Float64Array[]>();
+  const wF = pr.lTopo, espF = Math.max(0.01, pr.ferroEspacamento);
+  const ferroBase = { parte: "topo" as Parte, w: wF, fluxo: (pr.ferroFluxo * espF) / espacamento(wF, h), a: pr.aTopo, j: jj(pr.jTopo) };
+  if (pr.ferroTipo !== "nenhum" && !prim && !espiral && nivelP < Infinity && (pr.ferroTipo !== "soTopoMaisAlto" || i === F.n - 1)) {
+    const alvo: number[] = pr.ferroTipo === "todoSolido" ? [CLASSE.topo, CLASSE.solido, CLASSE.ponte] : [CLASSE.topo];
+    const mF = new Uint8Array(N);
+    let algum = false;
+    for (let q = 0; q < N; q++)
+      if (alvo.includes(classe[q]) && campoP[q] >= nivelP + pr.ferroRecuo) {
+        mF[q] = 1;
+        algum = true;
+      }
+    if (algum && pr.ferroPadrao === "concentrico") {
+      const cF = campoDoMapa(mF, g);
+      for (let k = 0; k < 4000; k++) {
+        const ls = contornos(cF, g, espF / 2 + k * espF);
+        if (!ls.length) break;
+        for (const l of ls) {
+          if (comprimento(l.pts, true) < 3 * espF) continue;
+          const r = ilhaDe(l.pts[0], l.pts[1]);
+          let lista = ferroLacos.get(r);
+          if (!lista) ferroLacos.set(r, (lista = []));
+          lista.push(l.pts);
+        }
+      }
+    } else if (algum) {
+      const linhas: number[][] = [], rec: number[][] = [];
+      familia(angSolido + Math.PI / 2 + (pr.ferroAngulo * Math.PI) / 180, espF, 0, bx0, by0, bx1, by1, linhas);
+      for (const l of linhas) recortar(l, g, campoP, nivelP + pr.ferroRecuo, mF, 1, rec);
+      for (const r of rec) {
+        if (comprimento(r, false) < wF) continue;
+        const ilha = ilhaDe(r[0], r[1]);
+        let lista = ferroPorIlha.get(ilha);
+        if (!lista) ferroPorIlha.set(ilha, (lista = []));
+        lista.push(r);
+      }
+    }
+  }
   // ---- M2: costura, rampa, vão e limpeza dos laços de parede (com os padrões nada disso roda) ----
   const m2 = pr.costuraPosicao !== "maisProxima" || pr.costuraAlternada || pr.costuraVao > 0 || pr.costuraRampaTipo !== "nenhuma" ||
     pr.limparNosLacos || pr.limparAntesParedeExt || pr.evitarCruzarParedes;
@@ -947,6 +1008,11 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     }
     // vãos da ilha depois do preenchimento
     trechos.push(...vaosPorIlha[ilha]);
+    // passar ferro por último
+    const vF = vol(pr.ferroVelocidade, wF, ferroBase.fluxo);
+    const linF = ferroPorIlha.get(ilha);
+    if (linF) [px, py] = ligar(linF, px, py, 2 * espF, campoP, g, nivelP, wF, { ...ferroBase, v: vF }, trechos);
+    for (const pts of ferroLacos.get(ilha) ?? []) trechos.push({ ...ferroBase, pts, fechado: true, v: vF });
     if (m2 && trechos.length) pos = pontaFinal(trechos[trechos.length - 1]) ?? [px, py];
   }
   if (m2) {
@@ -966,6 +1032,26 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     }
   }
 
+  // ---- M3: vaso em espiral — fica só o maior laço da parede externa (sem costura parada: a parede sobe sem parar) ----
+  let descartados = 0;
+  if (espiral) {
+    let maior: Trecho | null = null, Lm = -1;
+    for (const t of trechos)
+      if (t.parte === "paredeExt" && t.fechado) {
+        const L = comprimento(t.pts, true);
+        if (L > Lm) {
+          Lm = L;
+          maior = t;
+        }
+      }
+    const paredes = trechos.filter((t) => t.parte === "paredeExt" || t.parte === "paredeInt" || t.parte === "vaos").length;
+    descartados = paredes - (maior ? 1 : 0);
+    const resto = trechos.filter((t) => t.parte !== "paredeExt" && t.parte !== "paredeInt" && t.parte !== "vaos");
+    trechos.length = 0;
+    if (maior) trechos.push({ ...maior, semRetrair: true });
+    trechos.push(...resto);
+  }
+
   // ---- suporte ----
   if (ctx.sup) gerarSuporte(ctx, i, h, trechos);
 
@@ -980,7 +1066,7 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     trechos.unshift(...borda);
   }
   const inicio: [number, number] = trechos.length ? [trechos[0].pts[0], trechos[0].pts[1]] : [0, 0];
-  return { trechos, inicio };
+  return espiral ? { trechos, inicio, espiral, descartados } : { trechos, inicio };
 }
 
 /** Trechos do suporte da camada (corpo em linhas, interface densa, galhos da árvore). */

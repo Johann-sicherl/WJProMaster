@@ -72,8 +72,8 @@ não perder o valor. Os demais campos mostram o estado (🟡/🔶 = "ainda não 
 | Altura da camada | altura da camada; altura da 1ª camada | ✅ |
 | Largura da linha | padrão; 1ª camada; parede externa; parede interna; superfície de topo; preenchimento esparso; preenchimento sólido interno; suporte | ✅ |
 | Costura | posição (mais próxima, alinhada, alinhada atrás, atrás, aleatória); costuras internas alternadas; vão da costura; **costura em rampa (escarfada)**: tipo (nenhuma / contorno / contorno e furos), altura inicial, comprimento, passos, laço inteiro; velocidade base por função; **velocidade de limpeza**; **limpar nos laços**; limpar antes da parede externa | ✅ (M2, 27/11) |
-| Precisão | raio de fechamento de fresta; resolução; ajuste de arcos; compensação XY de furo; compensação XY de contorno; compensação de "pé de elefante"; parede precisa; furo → polifuro; modo de fatiamento (normal / par-ímpar / fechar furos) | 🔶 (resolução e fresta ✅ no campo) |
-| Passar ferro | tipo (nenhum / só topo mais alto / todas as superfícies de topo / todo sólido); padrão; fluxo; espaçamento; recuo; velocidade; ângulo | 🔶 |
+| Precisão | raio de fechamento de fresta; resolução; ajuste de arcos; compensação XY de furo; compensação XY de contorno; compensação de "pé de elefante"; parede precisa; furo → polifuro; modo de fatiamento (normal / par-ímpar / fechar furos) | 🟡 (compensações XY, pé de elefante, polifuro e fechar furos ✅ M3; normal = par-ímpar 🟡; resolução e fresta ✅ no campo; arcos e parede precisa 🔶) |
+| Passar ferro | tipo (nenhum / só topo mais alto / todas as superfícies de topo / todo sólido); padrão; fluxo; espaçamento; recuo; velocidade; ângulo | ✅ (M3, 28/11) |
 | Gerador de paredes | clássico / **largura variável**; ângulo de transição; filtro; nº de paredes na transição; largura mínima de parede; tamanho mínimo de detalhe | ✅ (M1, 27/11) |
 | Paredes e pontes | **ordem das paredes** (interna/externa, externa/interna, interna/externa/interna); fluxo de ponte; pontes grossas; densidade de ponte; detectar sólido interno estreito; garantir espessura vertical de casca; paredes extras em balanço; inverter em camadas pares/ímpares e limite; **só uma parede no topo** e limite; só uma parede na 1ª camada; **evitar cruzar paredes** e desvio máximo; limite de perímetro pequeno | 🟡 (fluxo de ponte, uma parede no topo/1ª camada ✅ M1; ordem das paredes e evitar cruzar ✅ M2; resto 🔶) |
 | Avançado | direção do preenchimento; direção da ponte; sobreposição preenchimento/parede ✅; densidade de superfície de topo e de fundo; alinhar direção do preenchimento ao modelo; âncora do preenchimento ✅ e âncora máxima ✅; limite mínimo de esparso ✅; combinar preenchimento (a cada N camadas) | 🟡 |
@@ -128,7 +128,7 @@ não perder o valor. Os demais campos mostram o estado (🟡/🔶 = "ainda não 
 |---|---|---|
 | Saia | voltas ✅; distância ✅; altura; velocidade ✅; tipo (combinada / por objeto); filamento mínimo extrudado | 🟡 |
 | Borda | tipo (auto / só externa / só interna / externa e interna / sem borda / pintada); largura ✅; vão ✅; **orelhas de borda** | 🟡 (hoje liga/desliga) |
-| Modo especial | sequência de impressão (por camada / **por objeto**, com folga entre objetos); **vaso em espiral**; **pele felpuda** (desligada / contorno / contorno e furos / todas as paredes; espessura; distância entre pontos; tipo de ruído); vídeo time-lapse (oculto ⛔) | 🔶 |
+| Modo especial | sequência de impressão (por camada / **por objeto**, com folga entre objetos); **vaso em espiral**; **pele felpuda** (desligada / contorno / contorno e furos / todas as paredes; espessura; distância entre pontos; tipo de ruído); vídeo time-lapse (oculto ⛔) | ✅ (M3, 28/11; time-lapse oculto) |
 | Saída | reduzir retração no preenchimento; resolução do G-code; numerar linhas; excluir objetos; rotular objetos; formato do nome do arquivo; scripts de pós-processamento; comentários | ⛔ **oculto** (sem G-code) |
 | Observações | texto livre do perfil | ✅ (guardado no perfil) |
 
@@ -238,7 +238,7 @@ Princípios:
 ```
 L0 esquema+perfis ─► L1a casca ✅ ─► L1b painel gerado ─► L2 Qualidade/Resistência (✅🟡) ─► L3 Velocidade/Outros (✅🟡)
                                    └──► L4 Impressora/Filamento ⚙ + importar perfil
-Motor (depois de L1, uma por vez no mesmo arquivo):  M1 paredes ✅ ─► M2 costura/ordem ✅ ─► M3 acabamentos ─► M4 padrões
+Motor (depois de L1, uma por vez no mesmo arquivo):  M1 paredes ✅ ─► M2 costura/ordem ✅ ─► M3 acabamentos ✅ ─► M4 padrões
                                                      S1 suporte estilos ─► S2 suporte manual/jangada
                                                      X1 multimaterial ─► X2 matriz de purga e encaixe
 Objetos:  O1 por objeto/partes ─► O2 faixas e camadas variáveis
@@ -258,7 +258,7 @@ Ferramentas:  T1 mover/girar/escala/apoiar/orientar ─► T2 cortar/medir ─�
 | **L3** | ⚙ Impressora e ⚙ Filamento (bico fixo 0,4; novos materiais; diâmetro; resfriamento) + **importar/exportar perfis** do fatiador de referência (`.json`) | Sonnet | diálogos de impressora/filamento; importação com relatório "usado / guardado / ignorado" | perfil real do Johann ("Calibrado Letras") importado sem erro; relatório confere |
 | **M1 ✅** (27/11/2026) | Paredes de **largura variável** + preenchimento de vãos + **uma parede no topo** + perímetros pequenos | **Opus** | `paredes.ts` (novo) + `caminhos.ts` | Node (`teste-paredes.ts`): padrões idênticos; placa 0,9 mm, cunha, anel fino cobertos ~97–99 % sem sobreposição; ±5 % quando houver referência (ainda vazia: conferido só geometricamente) |
 | **M2 ✅** (27/11/2026) | **Costura** (posição, alinhada, escarfada), **ordem das paredes**, evitar cruzar, limpar nos laços | **Opus** | `costura.ts` (novo) + `caminhos.ts`, `fatiar.ts` | Node (`teste-costura.ts`): padrões idênticos; costura alinhada em cubo/cilindro; ordem muda o tempo (material das paredes igual); desvio na peça em U; sem NaN |
-| **M3** | Acabamentos: passar ferro, pele felpuda, vaso em espiral, pé de elefante, compensação XY, polifuro, modo de fatiamento, sequência por objeto | Sonnet (+ Opus só no espiral) | `caminhos.ts`, `fatiar.ts` | Node por recurso |
+| **M3 ✅** (28/11/2026) | Acabamentos: passar ferro, pele felpuda, vaso em espiral, pé de elefante, compensação XY, polifuro, modo de fatiamento, sequência por objeto | Opus | `acabamentos.ts` (novo) + `caminhos.ts`, `fatiar.ts` | Node (`teste-acabamentos.ts`): padrões idênticos; ferro = área × camada × fluxo; pele dentro da faixa; vaso sem paradas de camada; pé de elefante/compensação pelo perímetro; polifuro de 24 lados no anel Ø12; fechar furos = disco; por objeto = mesmo material, menos deslocamento |
 | **M4** | Padrões que faltam (cúbico adaptativo, relâmpago, estrela, octeto, multilinha…), padrões de topo/fundo, combinar preenchimento, suavizar extrusão | Sonnet | `caminhos.ts` | densidade 20 % por padrão (como hoje) |
 | **S1** | Suporte: estilos (grade, justo, orgânico, árvore forte/fina/híbrida), jangada, regiões críticas | **Opus** | `caminhos.ts` | Node: balanço e ponte longa por estilo |
 | **S2** | Suporte manual: reforço e bloqueador pintados + ferramenta | Sonnet | `cores.ts`-like, vista | roteiro com caneta (CDP) |
