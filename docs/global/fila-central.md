@@ -18,6 +18,7 @@ C1 — PRONTO PR #137 (21/11, Sonnet, ≈ US$ 1,2)
 **FILA RETOMADA (Johann, 25/11; semana 22 %, sessão 24 % ao retomar):** J9b, P1 e C3 em paralelo. Passou de 70 % (semana ou sessão) ou aviso de limite = parar todas (push imediato).
 **Fora da fila, em paralelo (Johann, 21/11): J9a (Opus) → J9b (Opus), em sequência** (só WJGoldDiamond, src/joia/; não cruza com C1/C2/C3). J9b só depois de "PRONTO" do J9a; parte do main com o J9a.
 L-série (26/11) — WJSlicer3D com o layout de fatiador completo: PLANEJADA em `docs/global/wjslicer3d-layout.md` (fatias L0–L3, M1–M4, S1–S2, X1–X2, O1–O2, T1–T6; nenhuma aberta; aguarda decisões §7 do Johann e o % do limite).
+**ESCOPO REDUZIDO (Johann, 28/11/2026): só L2, L3, X2 e T1 (de 14 fatias para 4).** Congeladas: M4, S2, O1, O2, T2–T6; M3 pronta no ramo `claude/slicer-m3-acabamentos` (6322ef8), sem PR, parada. L1b — PRONTO PR #165 (Sonnet). Valores do PLA "Generic PLA – 3D Lab" vão na L3 (ver regras.md §1).
 **Entregas de 27/11 (custo em % do limite: não medido em nenhuma):**
 L1a — PRONTO PR #159 (WJSlicer3D: casca nova, abas, barra lateral, perfis com selo ↺; Sonnet; não medido)
 M1 — PRONTO PR #160 (WJSlicer3D: paredes de largura variável, vãos, parede única no topo; Opus; não medido)
