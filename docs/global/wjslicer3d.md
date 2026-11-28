@@ -96,10 +96,29 @@ camadas alternando a direção), triângulos (3 direções), cúbico (3 direçõ
 giroide (curva de nível da função do giroide; densidade pela medida do comprimento por área) e favo de mel
 (ziguezague de hexágonos). O passo das linhas sai da densidade e do espaçamento.
 
-**Ligação e ordem**: ilha por ilha (a mais perto primeiro): paredes de dentro para fora, depois o
+**Ligação e ordem**: ilha por ilha (a mais perto primeiro): paredes de dentro para fora (padrão; ver M2), depois o
 preenchimento; as linhas são ligadas pela ponta mais próxima e, quando a ligação corre junto à parede
 (até 20 mm no esparso), viram uma extrusão só (âncora); senão, deslocamento. Laços começam no ponto mais
-perto do bico.
+perto do bico (padrão; ver M2).
+
+**Costura e ordem das paredes (fatia M2, 27/11/2026, `costura.ts`)** — parâmetros do processo (aba Qualidade: Costura e
+Paredes e pontes); **com os padrões o resultado é idêntico ao de antes** (mais próxima, sem rampa/vão/limpeza, de dentro para
+fora, sem desvio):
+- **Posição da costura**: *mais próxima* do bico; *alinhada* (segue a costura da camada de baixo e "escorrega" até 1 mm para o
+  canto mais vivo, côncavo antes de convexo; a 1ª camada começa no canto mais vivo); *alinhada atrás* (a 1ª camada começa atrás);
+  *atrás* (ponto mais ao fundo da mesa, +Y, preferindo canto); *aleatória* (sorteio fixo: a mesma peça dá sempre o mesmo
+  resultado). **Costuras internas alternadas**: as internas recuam 1, 2… larguras de linha. **Vão da costura** (% do bico): o laço
+  para antes de fechar.
+- **Costura em rampa (escarfada)**, no contorno externo ou também nos furos: o laço começa numa rampa (altura inicial, comprimento,
+  passos; velocidade própria opcional), dá a volta e passa de novo sobre a rampa com o fluxo descendo — o material do laço não
+  muda, o caminho cresce o comprimento da rampa (laço inteiro = duas voltas).
+- **Limpar nos laços**: depois do laço externo o bico entra uma largura de linha na peça sem extrudar (velocidade de limpeza; 0 = a
+  do deslocamento). **Limpar antes da parede externa**: chega ao início por dentro da peça.
+- **Ordem das paredes**: interna → externa (padrão), externa → interna, ou interna-externa-interna (a 2ª, a externa e depois a 3ª
+  em diante).
+- **Evitar cruzar paredes**: deslocamento que passaria por cima da parede externa ou de um furo segue por dentro (entre a externa e
+  a 2ª parede, pela volta mais curta); desvio máximo opcional (mm a mais que o reto; 0 = sem limite). A retração segue a regra de
+  antes.
 
 **Suporte** (`calcularSuportes`), de cima para baixo: o que a camada tem além da camada de baixo alargada
 pelo **ângulo-limite** do perfil precisa de apoio; folga em Z (uma camada) e em XY; **interface** densa nas
@@ -161,6 +180,13 @@ Conferidos em 15/11/2026 nos arquivos de dados de fábrica (herança resolvida),
   material ≈ volume × fluxo), **cunha de 3 → 0,5 mm**, **anel de 0,8 e de 0,5 mm** (filete único fechado no meio),
   caminhos dentro da peça e sem NaN; uma parede no topo (cubo e degrau, limite), uma parede na 1ª camada, perímetro
   pequeno; desempenho (M1 ligada ≈ 1,2× o clássico; esfera Ø40 com árvore em ~3 s).
+- `scripts/teste-costura.ts` (Node, M2): com os padrões, os mesmos 6 casos da M1 e 10 mesas (2 cópias, borda, saia, suporte normal e
+  árvore) **idênticos**; costura **alinhada em cubo** (as 100 no mesmo canto) **e cilindro** (mesma vertical), atrás, alinhada atrás,
+  aleatória, internas alinhadas e alternadas (0,45/0,90 mm); rampa (material igual, +10 mm por camada, laço inteiro ~2× o tempo da
+  externa, contorno × contorno e furos), vão (paredes perdem exatamente o comprimento do vão), limpeza (deslocamento + uma largura de
+  linha por laço), **ordem das paredes** (material das paredes igual, tempo muda; com 3 paredes a interna-externa-interna pula a do
+  meio e desloca mais), peça em U (sem a opção 31 deslocamentos passam por cima do vão; com ela nenhum, todos por dentro), tudo ligado
+  e peça pintada sem NaN.
 - **Referências medidas pelo Johann**: tabela `REFERENCIAS` no teste (cubo e cilindro na P1S e no Kobra 3,
   peça com balanço na P1S; PLA, perfil padrão): **pendentes** — quando ele mandar os valores do fatiador de
   referência, o teste passa a exigir ±5 % de tempo e de massa.
@@ -170,7 +196,8 @@ Conferidos em 15/11/2026 nos arquivos de dados de fábrica (herança resolvida),
 
 **Precisão**: o caminho é gerado de verdade (paredes, linhas, ligações, deslocamentos), então material e
 tempo seguem a geometria. Diferenças para o fatiador de referência que ainda podem pesar: emenda e
-ordem exata dos caminhos (M2), padrões de fábrica da M1 (largura variável, vãos e uma parede no topo vêm
+ordem exata dos caminhos (a M2 trouxe as opções, mas o padrão continua "mais próxima" até o Johann dizer como o perfil dele
+está), padrões de fábrica da M1 (largura variável, vãos e uma parede no topo vêm
 **desligados** até o Johann confirmar como o perfil dele está), suporte em árvore
 (algoritmo próprio, mais simples) e a borda automática (aqui é liga/desliga). A **calibração** com uma
 impressão real deixa o tempo fiel para a impressora do dia a dia.
@@ -348,3 +375,8 @@ entram com lucro 0 % (o WJERP não tem esse dado).
   passaram a ✅ (origem `processo`). Padrões = comportamento de antes (valores idênticos no teste). Precisão conferida **só
   geometricamente** (cobertura da seção, volume × fluxo): a tabela `REFERENCIAS` continua vazia. Pendente do Johann: valores de
   referência e dizer se o perfil dele usa largura variável / vãos / uma parede no topo (para mudar o padrão do perfil de sistema).
+- **M2 do novo layout (27/11/2026, entregue; motor, sem tela nova)**: `src/slicer/costura.ts` — posição da costura (mais próxima,
+  alinhada, alinhada atrás, atrás, aleatória), internas alternadas, vão da costura, **costura em rampa (escarfada)**, limpar nos laços /
+  antes da parede externa, **ordem das paredes** e **evitar cruzar paredes** (§2). Os 15 campos do esquema passaram a ✅ (origem
+  `processo`). Padrões = comportamento de antes (valores idênticos no teste). Conferido só geometricamente (tabela `REFERENCIAS` vazia).
+  Pendente do Johann: valores de referência e qual posição de costura / ordem das paredes o perfil dele usa.

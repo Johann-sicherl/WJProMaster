@@ -138,7 +138,42 @@ export interface Processo {
   purgarNoPreenchimento: boolean;
   purgarNosObjetos: boolean;
   purgarNoSuporte: boolean;
+  /**
+   * Costura e ordem das paredes (fatia M2). Posição da costura dos laços de parede: mais próxima do bico (hoje), alinhada
+   * (segue a costura da camada de baixo, preferindo cantos), alinhada atrás, atrás (o ponto mais ao fundo da mesa, +Y) ou
+   * aleatória; costuras das paredes internas alternadas (recuadas pela profundidade); vão da costura (fração do bico de 0,4 mm)
+   */
+  costuraPosicao: "maisProxima" | "alinhada" | "alinhadaAtras" | "atras" | "aleatoria";
+  costuraAlternada: boolean;
+  costuraVao: number;
+  /**
+   * Costura em rampa (escarfada): no contorno externo (ou também nos furos) o laço começa numa rampa (altura inicial em
+   * fração da camada, comprimento em mm, passos) e termina passando de novo sobre ela com o fluxo descendo; laço inteiro =
+   * a rampa dá a volta toda. Velocidade da costura (mm/s; 0 = a da parede)
+   */
+  costuraRampaTipo: "nenhuma" | "contorno" | "contornoFuros";
+  costuraRampaAltura: number;
+  costuraRampaComprimento: number;
+  costuraRampaPassos: number;
+  costuraRampaLacoInteiro: boolean;
+  costuraVelocidade: number;
+  /** limpar: depois do laço externo, entra na peça (uma largura de linha); antes dele, chega por dentro; velocidade (mm/s; 0 = a do deslocamento) */
+  limpezaVelocidade: number;
+  limparNosLacos: boolean;
+  limparAntesParedeExt: boolean;
+  /** ordem das paredes de cada ilha e desvio dos deslocamentos para não cruzar as paredes (desvio máximo a mais, mm; 0 = sem limite) */
+  ordemParedes: "internaExterna" | "externaInterna" | "internaExternaInterna";
+  evitarCruzarParedes: boolean;
+  evitarCruzarDesvio: number;
 }
+
+/** Costura de fábrica: nada muda o resultado de antes da M2 (laço começa no ponto mais perto do bico, de dentro para fora). */
+export const COSTURA_PADRAO = {
+  costuraPosicao: "maisProxima", costuraAlternada: false, costuraVao: 0,
+  costuraRampaTipo: "nenhuma", costuraRampaAltura: 0, costuraRampaComprimento: 10, costuraRampaPassos: 10, costuraRampaLacoInteiro: false, costuraVelocidade: 0,
+  limpezaVelocidade: 0, limparNosLacos: false, limparAntesParedeExt: false,
+  ordemParedes: "internaExterna", evitarCruzarParedes: false, evitarCruzarDesvio: 0,
+} satisfies Partial<Processo>;
 
 /** Multimaterial de fábrica: nada muda o resultado de antes da X1 (filamento do bico, torre de hoje, sem aproveitar purga). */
 export const MULTIMATERIAL_PADRAO = {
@@ -246,6 +281,7 @@ export const MAQUINAS: Maquina[] = [
       arvore: { angulo: 45, diametro: 2, ponta: 0.8, anguloDiametro: 5, distancia: 5, paredeDupla: 3 },
       bordaLargura: 5, bordaFolga: 0.1, saiaDistancia: 2,
       ...MULTIMATERIAL_PADRAO,
+      ...COSTURA_PADRAO,
     },
     materiais: {
       pla: { densidade: 1.26, fluxo: 0.98, vazaoMax: 21, tempoCamada: 4, vMinResfriar: 20 },
@@ -277,6 +313,7 @@ export const MAQUINAS: Maquina[] = [
       arvore: { angulo: 40, diametro: 5, ponta: 0.8, anguloDiametro: 5, distancia: 5, paredeDupla: 3 },
       bordaLargura: 5, bordaFolga: 0.15, saiaDistancia: 2,
       ...MULTIMATERIAL_PADRAO,
+      ...COSTURA_PADRAO,
     },
     materiais: {
       pla: { densidade: 1.24, fluxo: 0.96, vazaoMax: 12, tempoCamada: 8, vMinResfriar: 20 },

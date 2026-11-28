@@ -91,19 +91,19 @@ grupo("qualidade", "Largura da linha", "processo", "motor", "avancado", [
   ["lSuporte", "Suporte", "numero", "mm", 0.25, 0.8],
 ]);
 grupo("qualidade", "Largura da linha", NOVO, "naoAplicado", "avancado", [["lPadrao", "Padrão", "numero", "mm", 0.25, 0.8, { padrao: 0.42 }]]);
-grupo("qualidade", "Costura", NOVO, "naoAplicado", "avancado", [
-  ["costuraPosicao", "Posição da costura", "lista", "", undefined, undefined, { padrao: "maisProxima", opcoes: lista(["maisProxima", "Mais próxima"], ["alinhada", "Alinhada"], ["alinhadaAtras", "Alinhada atrás"], ["atras", "Atrás"], ["aleatoria", "Aleatória"]) }],
-  ["costuraAlternada", "Costuras internas alternadas", "booleano", "", undefined, undefined, { padrao: false, nivel: "especialista" }],
-  ["costuraVao", "Vão da costura", "percentual", "%", 0, 1, { padrao: 0, nivel: "especialista" }],
-  ["costuraRampaTipo", "Costura em rampa", "lista", "", undefined, undefined, { padrao: "nenhuma", opcoes: lista(["nenhuma", "Nenhuma"], ["contorno", "Contorno"], ["contornoFuros", "Contorno e furos"]) }],
-  ["costuraRampaAltura", "Altura inicial da rampa", "percentual", "%", 0, 1, { padrao: 0, nivel: "especialista", visivelSe: "costuraRampaTipo!=nenhuma" }],
-  ["costuraRampaComprimento", "Comprimento da rampa", "numero", "mm", 0, 50, { padrao: 0, nivel: "especialista", visivelSe: "costuraRampaTipo!=nenhuma" }],
-  ["costuraRampaPassos", "Passos da rampa", "inteiro", "", 1, 100, { padrao: 10, nivel: "especialista", visivelSe: "costuraRampaTipo!=nenhuma" }],
-  ["costuraRampaLacoInteiro", "Rampa no laço inteiro", "booleano", "", undefined, undefined, { padrao: false, nivel: "especialista", visivelSe: "costuraRampaTipo!=nenhuma" }],
-  ["costuraVelocidade", "Velocidade da costura (0 = a da parede)", "numero", "mm/s", 0, 500, { padrao: 0, nivel: "especialista" }],
-  ["limpezaVelocidade", "Velocidade de limpeza", "numero", "mm/s", 0, 500, { padrao: 0, nivel: "especialista" }],
-  ["limparNosLacos", "Limpar nos laços", "booleano", "", undefined, undefined, { padrao: false, nivel: "especialista" }],
-  ["limparAntesParedeExt", "Limpar antes da parede externa", "booleano", "", undefined, undefined, { padrao: false, nivel: "especialista" }],
+grupo("qualidade", "Costura", "processo", "motor", "avancado", [
+  ["costuraPosicao", "Posição da costura", "lista", "", undefined, undefined, { opcoes: lista(["maisProxima", "Mais próxima"], ["alinhada", "Alinhada"], ["alinhadaAtras", "Alinhada atrás"], ["atras", "Atrás"], ["aleatoria", "Aleatória"]) }],
+  ["costuraAlternada", "Costuras internas alternadas", "booleano", "", undefined, undefined, { nivel: "especialista" }],
+  ["costuraVao", "Vão da costura (do bico)", "percentual", "%", 0, 1, { nivel: "especialista" }],
+  ["costuraRampaTipo", "Costura em rampa", "lista", "", undefined, undefined, { opcoes: lista(["nenhuma", "Nenhuma"], ["contorno", "Contorno"], ["contornoFuros", "Contorno e furos"]) }],
+  ["costuraRampaAltura", "Altura inicial da rampa", "percentual", "%", 0, 1, { nivel: "especialista", visivelSe: "costuraRampaTipo!=nenhuma" }],
+  ["costuraRampaComprimento", "Comprimento da rampa", "numero", "mm", 0, 50, { nivel: "especialista", visivelSe: "costuraRampaTipo!=nenhuma", nota: "Ignorado com \"Rampa no laço inteiro\"." }],
+  ["costuraRampaPassos", "Passos da rampa", "inteiro", "", 1, 100, { nivel: "especialista", visivelSe: "costuraRampaTipo!=nenhuma" }],
+  ["costuraRampaLacoInteiro", "Rampa no laço inteiro", "booleano", "", undefined, undefined, { nivel: "especialista", visivelSe: "costuraRampaTipo!=nenhuma" }],
+  ["costuraVelocidade", "Velocidade da costura (0 = a da parede)", "numero", "mm/s", 0, 500, { nivel: "especialista" }],
+  ["limpezaVelocidade", "Velocidade de limpeza", "numero", "mm/s", 0, 500, { nivel: "especialista" }],
+  ["limparNosLacos", "Limpar nos laços", "booleano", "", undefined, undefined, { nivel: "especialista" }],
+  ["limparAntesParedeExt", "Limpar antes da parede externa", "booleano", "", undefined, undefined, { nivel: "especialista" }],
 ]);
 grupo("qualidade", "Precisão", NOVO, "naoAplicado", "especialista", [
   ["fechamentoFresta", "Raio de fechamento de fresta", "numero", "mm", 0, 2, { padrao: 0, nota: "Hoje é uma constante interna do motor (🟡)." }],
@@ -138,9 +138,11 @@ grupo("qualidade", "Paredes e pontes", "processo", "motor", "avancado", [
   ["umaParedeTopo", "Só uma parede no topo", "booleano", "", undefined, undefined],
   ["umaParedeTopoLimite", "Limite da parede única no topo", "numero", "mm", 0, 50, { visivelSe: "umaParedeTopo" }],
   ["umaParedePrimeira", "Só uma parede na 1ª camada", "booleano", "", undefined, undefined, { nivel: "especialista" }],
+  ["ordemParedes", "Ordem das paredes", "lista", "", undefined, undefined, { opcoes: lista(["internaExterna", "Interna e depois externa"], ["externaInterna", "Externa e depois interna"], ["internaExternaInterna", "Interna, externa, interna"]) }],
+  ["evitarCruzarParedes", "Evitar cruzar paredes", "booleano", "", undefined, undefined],
+  ["evitarCruzarDesvio", "Desvio máximo para evitar cruzar (0 = sem limite)", "numero", "mm", 0, 100, { nivel: "especialista", visivelSe: "evitarCruzarParedes" }],
 ]);
 grupo("qualidade", "Paredes e pontes", NOVO, "naoAplicado", "especialista", [
-  ["ordemParedes", "Ordem das paredes", "lista", "", undefined, undefined, { padrao: "internaExterna", nivel: "avancado", opcoes: lista(["internaExterna", "Interna e depois externa"], ["externaInterna", "Externa e depois interna"], ["internaExternaInterna", "Interna, externa, interna"]) }],
   ["pontesGrossas", "Pontes grossas", "booleano", "", undefined, undefined, { padrao: false }],
   ["densidadePonte", "Densidade da ponte", "percentual", "%", 0, 1, { padrao: 1 }],
   ["detectarSolidoEstreito", "Detectar sólido interno estreito", "booleano", "", undefined, undefined, { padrao: false }],
@@ -148,8 +150,6 @@ grupo("qualidade", "Paredes e pontes", NOVO, "naoAplicado", "especialista", [
   ["paredesExtrasBalanco", "Paredes extras em balanço", "booleano", "", undefined, undefined, { padrao: false }],
   ["inverterParImpar", "Inverter em camadas pares/ímpares", "booleano", "", undefined, undefined, { padrao: false }],
   ["inverterLimite", "Limite para inverter", "numero", "mm", 0, 50, { padrao: 0, visivelSe: "inverterParImpar" }],
-  ["evitarCruzarParedes", "Evitar cruzar paredes", "booleano", "", undefined, undefined, { padrao: false, nivel: "avancado" }],
-  ["evitarCruzarDesvio", "Desvio máximo para evitar cruzar", "numero", "mm", 0, 100, { padrao: 0, visivelSe: "evitarCruzarParedes" }],
 ]);
 grupo("qualidade", "Avançado", "processo", "motor", "avancado", [
   ["sobreposicao", "Sobreposição do preenchimento nas paredes", "percentual", "%", 0, 0.5],

@@ -71,11 +71,11 @@ não perder o valor. Os demais campos mostram o estado (🟡/🔶 = "ainda não 
 |---|---|---|
 | Altura da camada | altura da camada; altura da 1ª camada | ✅ |
 | Largura da linha | padrão; 1ª camada; parede externa; parede interna; superfície de topo; preenchimento esparso; preenchimento sólido interno; suporte | ✅ |
-| Costura | posição (mais próxima, alinhada, alinhada atrás, atrás, aleatória); costuras internas alternadas; vão da costura; **costura em rampa (escarfada)**: tipo (nenhuma / contorno / contorno e furos), altura inicial, comprimento, passos, laço inteiro; velocidade base por função; **velocidade de limpeza**; **limpar nos laços**; limpar antes da parede externa | 🔶 (motor começa laços no ponto mais perto do bico) |
+| Costura | posição (mais próxima, alinhada, alinhada atrás, atrás, aleatória); costuras internas alternadas; vão da costura; **costura em rampa (escarfada)**: tipo (nenhuma / contorno / contorno e furos), altura inicial, comprimento, passos, laço inteiro; velocidade base por função; **velocidade de limpeza**; **limpar nos laços**; limpar antes da parede externa | ✅ (M2, 27/11) |
 | Precisão | raio de fechamento de fresta; resolução; ajuste de arcos; compensação XY de furo; compensação XY de contorno; compensação de "pé de elefante"; parede precisa; furo → polifuro; modo de fatiamento (normal / par-ímpar / fechar furos) | 🔶 (resolução e fresta ✅ no campo) |
 | Passar ferro | tipo (nenhum / só topo mais alto / todas as superfícies de topo / todo sólido); padrão; fluxo; espaçamento; recuo; velocidade; ângulo | 🔶 |
 | Gerador de paredes | clássico / **largura variável**; ângulo de transição; filtro; nº de paredes na transição; largura mínima de parede; tamanho mínimo de detalhe | ✅ (M1, 27/11) |
-| Paredes e pontes | **ordem das paredes** (interna/externa, externa/interna, interna/externa/interna); fluxo de ponte; pontes grossas; densidade de ponte; detectar sólido interno estreito; garantir espessura vertical de casca; paredes extras em balanço; inverter em camadas pares/ímpares e limite; **só uma parede no topo** e limite; só uma parede na 1ª camada; **evitar cruzar paredes** e desvio máximo; limite de perímetro pequeno | 🟡 (fluxo de ponte, uma parede no topo/1ª camada ✅ M1; resto 🔶) |
+| Paredes e pontes | **ordem das paredes** (interna/externa, externa/interna, interna/externa/interna); fluxo de ponte; pontes grossas; densidade de ponte; detectar sólido interno estreito; garantir espessura vertical de casca; paredes extras em balanço; inverter em camadas pares/ímpares e limite; **só uma parede no topo** e limite; só uma parede na 1ª camada; **evitar cruzar paredes** e desvio máximo; limite de perímetro pequeno | 🟡 (fluxo de ponte, uma parede no topo/1ª camada ✅ M1; ordem das paredes e evitar cruzar ✅ M2; resto 🔶) |
 | Avançado | direção do preenchimento; direção da ponte; sobreposição preenchimento/parede ✅; densidade de superfície de topo e de fundo; alinhar direção do preenchimento ao modelo; âncora do preenchimento ✅ e âncora máxima ✅; limite mínimo de esparso ✅; combinar preenchimento (a cada N camadas) | 🟡 |
 
 ### 3.3 Aba **Resistência**
@@ -238,7 +238,7 @@ Princípios:
 ```
 L0 esquema+perfis ─► L1a casca ✅ ─► L1b painel gerado ─► L2 Qualidade/Resistência (✅🟡) ─► L3 Velocidade/Outros (✅🟡)
                                    └──► L4 Impressora/Filamento ⚙ + importar perfil
-Motor (depois de L1, uma por vez no mesmo arquivo):  M1 paredes ─► M2 costura/ordem ─► M3 acabamentos ─► M4 padrões
+Motor (depois de L1, uma por vez no mesmo arquivo):  M1 paredes ✅ ─► M2 costura/ordem ✅ ─► M3 acabamentos ─► M4 padrões
                                                      S1 suporte estilos ─► S2 suporte manual/jangada
                                                      X1 multimaterial ─► X2 matriz de purga e encaixe
 Objetos:  O1 por objeto/partes ─► O2 faixas e camadas variáveis
@@ -257,7 +257,7 @@ Ferramentas:  T1 mover/girar/escala/apoiar/orientar ─► T2 cortar/medir ─�
 | **L2** | Velocidade, Suporte e Outros ligados ao que já existe (busca, Avançado e ↺ já vêm da L1b; salvar/renomear/excluir perfil do usuário e presets 0,08–0,28 já entregues na L1a) | Sonnet | seis abas completas com selos de estado | todo campo ✅ muda o resultado (teste por campo); salvar e reabrir perfil |
 | **L3** | ⚙ Impressora e ⚙ Filamento (bico fixo 0,4; novos materiais; diâmetro; resfriamento) + **importar/exportar perfis** do fatiador de referência (`.json`) | Sonnet | diálogos de impressora/filamento; importação com relatório "usado / guardado / ignorado" | perfil real do Johann ("Calibrado Letras") importado sem erro; relatório confere |
 | **M1 ✅** (27/11/2026) | Paredes de **largura variável** + preenchimento de vãos + **uma parede no topo** + perímetros pequenos | **Opus** | `paredes.ts` (novo) + `caminhos.ts` | Node (`teste-paredes.ts`): padrões idênticos; placa 0,9 mm, cunha, anel fino cobertos ~97–99 % sem sobreposição; ±5 % quando houver referência (ainda vazia: conferido só geometricamente) |
-| **M2** | **Costura** (posição, alinhada, escarfada), **ordem das paredes**, evitar cruzar, limpar nos laços | **Opus** | `caminhos.ts` | Node: costura alinhada em cubo/cilindro; ordem muda o tempo como esperado |
+| **M2 ✅** (27/11/2026) | **Costura** (posição, alinhada, escarfada), **ordem das paredes**, evitar cruzar, limpar nos laços | **Opus** | `costura.ts` (novo) + `caminhos.ts`, `fatiar.ts` | Node (`teste-costura.ts`): padrões idênticos; costura alinhada em cubo/cilindro; ordem muda o tempo (material das paredes igual); desvio na peça em U; sem NaN |
 | **M3** | Acabamentos: passar ferro, pele felpuda, vaso em espiral, pé de elefante, compensação XY, polifuro, modo de fatiamento, sequência por objeto | Sonnet (+ Opus só no espiral) | `caminhos.ts`, `fatiar.ts` | Node por recurso |
 | **M4** | Padrões que faltam (cúbico adaptativo, relâmpago, estrela, octeto, multilinha…), padrões de topo/fundo, combinar preenchimento, suavizar extrusão | Sonnet | `caminhos.ts` | densidade 20 % por padrão (como hoje) |
 | **S1** | Suporte: estilos (grade, justo, orgânico, árvore forte/fina/híbrida), jangada, regiões críticas | **Opus** | `caminhos.ts` | Node: balanço e ponte longa por estilo |

@@ -13,6 +13,7 @@
 import {
   amostrar, campoDistancia, campoDoMapa, celula, compactar, comprimento, contornos, expandir, rasterizar, recortar, rotular, type Grade,
 } from "./campo";
+import { desviar, escolherCostura, girar, pontaFinal, pontaInicial, recuar, sorteio, transformarLaco, areaLaco } from "./costura";
 import { GeradorM1, type ParedeGerada } from "./paredes";
 import type { Parte } from "./planejador";
 import type { Maquina, Padrao, Processo, TipoSuporte } from "./perfis";
@@ -58,6 +59,15 @@ export interface Trecho {
   vSeg?: Float32Array;
   /** deslocamento até este trecho fica dentro do preenchimento (não retrai) */
   semRetrair?: boolean;
+  /** M2: laço com a costura já escolhida (começa em pts[0]; sem isso, no ponto mais perto do bico) */
+  costura?: boolean;
+  /** M2: depois do trecho, entra na peça (mm, à esquerda do sentido de impressão) sem extrudar */
+  limpar?: number;
+  /** M2: chega ao início por dentro da peça (mm), sem extrudar */
+  limparAntes?: number;
+  /** M2: pontos do deslocamento até este trecho que desviam das paredes (vale só saindo de `viaDe`) */
+  via?: Float64Array;
+  viaDe?: [number, number];
 }
 
 /** Alturas das camadas: topo de cada camada (mm). */
@@ -598,6 +608,9 @@ export interface Contexto {
   sup: Suportes | null;
   /** campo da camada de baixo (balanço das paredes) */
   campoAbaixo: Float32Array | null;
+  /** M2: costuras da camada de baixo (x, y, …) e onde ela terminou */
+  costuras?: number[];
+  fimAnterior?: [number, number];
 }
 
 /** Gera os trechos da camada `i` da peça (coordenadas da peça). */
@@ -634,6 +647,9 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     return 0;
   };
   const porIlha: Trecho[][] = Array.from({ length: rot.n + 1 }, () => []);
+  // paredes de cada ilha por nível (0 = externa … voltas-1; voltas = filetes do meio): a ordem das paredes sai daqui
+  const porNivel: Trecho[][][] = Array.from({ length: rot.n + 1 }, () => Array.from({ length: voltas + 1 }, () => []));
+  const nivelDe = new Map<Trecho, number>();
   let ultimoNivel = -1;
   // balanço: velocidade por faixa do quanto a parede sai da camada de baixo
   const velBalanco = (frac: number) => {
@@ -708,13 +724,15 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     if (parte !== "vaos" && pr.limitePerimetroPequeno > 0 && Llaco < pr.limitePerimetroPequeno) v = Math.min(v, pr.vPerimetroPequeno);
     const a = parte === "vaos" ? (prim ? pr.aPrimeira : pr.aSolido) : prim ? pr.aPrimeira : ext ? pr.aParedeExt : pr.aParedeInt;
     const j = jj(parte === "vaos" ? (prim ? pr.jPrimeira : pr.jPreench) : prim ? pr.jPrimeira : ext ? pr.jParedeExt : pr.jParedeInt);
-    destino.push({ pts, fechado, parte, w, fluxo: 1, v: vol(v, w, 1), vSeg, a, j });
+    const t: Trecho = { pts, fechado, parte, w, fluxo: 1, v: vol(v, w, 1), vSeg, a, j };
+    destino.push(t);
+    return t;
   };
   const gerados = (lista: ParedeGerada[], Llaco: (r: ParedeGerada) => number) => {
     for (const r of lista) {
       const ilha = ilhaDe(r.pts[0], r.pts[1]);
       const vao = r.tipo === "vao";
-      emitirParede(r.pts, r.fechado, larguraDe(r.s), r.externa, Llaco(r), vao ? vaosPorIlha[ilha] : porIlha[ilha], vao ? "vaos" : undefined);
+      emitirParede(r.pts, r.fechado, larguraDe(r.s), r.externa, Llaco(r), vao ? vaosPorIlha[ilha] : porNivel[ilha][voltas], vao ? "vaos" : undefined);
     }
   };
   // filetes do meio (o mais de dentro) e vãos, pela sonda: curva de nível rasa que existe até nas partes finas
@@ -732,12 +750,21 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
       if (L < 3 * w) continue;
       const partes = m1 ? m1.laco(l.pts, k) : null;
       if (!partes) {
-        emitirParede(l.pts, true, w, ext, L, porIlha[ilhaDe(l.pts[0], l.pts[1])]);
+        nivelDe.set(emitirParede(l.pts, true, w, ext, L, porNivel[ilhaDe(l.pts[0], l.pts[1])][k]), k);
         continue;
       }
-      for (const r of partes) emitirParede(r.pts, r.fechado, larguraDe(r.s), ext, L, porIlha[ilhaDe(r.pts[0], r.pts[1])]);
+      for (const r of partes) nivelDe.set(emitirParede(r.pts, r.fechado, larguraDe(r.s), ext, L, porNivel[ilhaDe(r.pts[0], r.pts[1])][k]), k);
     }
   }
+  // ordem das paredes: de dentro para fora (como antes: filetes do meio, voltas-1 … 0), de fora para dentro ou a 2ª,
+  // a externa e depois as outras de fora para dentro
+  const ordemNiveis: number[] = [];
+  if (pr.ordemParedes === "externaInterna") for (let k = 0; k <= voltas; k++) ordemNiveis.push(k);
+  else if (pr.ordemParedes === "internaExternaInterna" && voltas > 1) {
+    ordemNiveis.push(1, 0);
+    for (let k = 2; k <= voltas; k++) ordemNiveis.push(k);
+  } else for (let k = voltas; k >= 0; k--) ordemNiveis.push(k);
+  for (let r = 0; r <= rot.n; r++) for (const k of ordemNiveis) porIlha[r].push(...porNivel[r][k]);
 
   // ---- preenchimento ----
   const nivelP = ultimoNivel < 0 ? Infinity : niveis[voltas - 1] + (voltas > 1 ? sI : sE) / 2 - pr.sobreposicao * wSp;
@@ -874,11 +901,44 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
       l.push(r);
     }
   }
+  // ---- M2: costura, rampa, vão e limpeza dos laços de parede (com os padrões nada disso roda) ----
+  const m2 = pr.costuraPosicao !== "maisProxima" || pr.costuraAlternada || pr.costuraVao > 0 || pr.costuraRampaTipo !== "nenhuma" ||
+    pr.limparNosLacos || pr.limparAntesParedeExt || pr.evitarCruzarParedes;
+  const costurasDaCamada: number[] = [];
+  const rnd = sorteio(i * 7919 + 17);
+  let pos: [number, number] | null = m2 ? (ctx.fimAnterior ?? [bx0, by0]) : null;
+  const costurar = (ws: Trecho[]): Trecho[] => {
+    const saida: Trecho[] = [];
+    for (const t of ws) {
+      if (!t.fechado || (t.parte !== "paredeExt" && t.parte !== "paredeInt") || t.pts.length < 6) {
+        saida.push(t);
+        pos = pontaFinal(t) ?? pos;
+        continue;
+      }
+      let k = escolherCostura(t.pts, pr.costuraPosicao, pos, ctx.costuras ? ctx.costuras.concat(costurasDaCamada) : costurasDaCamada, rnd);
+      costurasDaCamada.push(t.pts[k * 2], t.pts[k * 2 + 1]);
+      const prof = nivelDe.get(t) ?? 0;
+      let lt = t;
+      // internas alternadas: recuadas pela profundidade (a referência da camada de cima continua sem o recuo)
+      if (pr.costuraAlternada && t.parte === "paredeInt" && prof > 0) ({ t: lt, k } = recuar(t, k, prof * t.w));
+      const ext = t.parte === "paredeExt";
+      const rampa = ext && (pr.costuraRampaTipo === "contornoFuros" || (pr.costuraRampaTipo === "contorno" && areaLaco(t.pts) > 0));
+      const partes = transformarLaco(girar(lt, k), {
+        vao: pr.costuraVao * 0.4, rampa, rampaAltura: pr.costuraRampaAltura, rampaComp: pr.costuraRampaLacoInteiro ? Infinity : pr.costuraRampaComprimento,
+        rampaPassos: pr.costuraRampaPassos, rampaV: pr.costuraVelocidade > 0 ? vol(pr.costuraVelocidade, t.w, 1) : 0,
+        limpar: ext && pr.limparNosLacos ? t.w : 0, limparAntes: ext && pr.limparAntesParedeExt ? t.w : 0,
+      });
+      saida.push(...partes);
+      pos = pontaFinal(partes[partes.length - 1]) ?? pos;
+    }
+    return saida;
+  };
   for (const ilha of ordemIlhas) {
-    const ws = porIlha[ilha];
-    // paredes já em ordem (de dentro para fora): a partida do preenchimento é o fim da última parede
+    const ws = m2 ? costurar(porIlha[ilha]) : porIlha[ilha];
+    // paredes já em ordem: a partida do preenchimento é o fim da última parede
     trechos.push(...ws);
-    let px = ws.length ? ws[ws.length - 1].pts[0] : bx0, py = ws.length ? ws[ws.length - 1].pts[1] : by0;
+    const fimP = m2 && ws.length ? pontaFinal(ws[ws.length - 1]) : null;
+    let px = fimP ? fimP[0] : ws.length ? ws[ws.length - 1].pts[0] : bx0, py = fimP ? fimP[1] : ws.length ? ws[ws.length - 1].pts[1] : by0;
     for (let pi = 0; pi < preenchimentos.length; pi++) {
       const linhas = linhasPorIlha.get(`${ilha}:${pi}`);
       if (!linhas) continue;
@@ -887,6 +947,23 @@ export function gerarCamada(ctx: Contexto, i: number): CamadaPeca {
     }
     // vãos da ilha depois do preenchimento
     trechos.push(...vaosPorIlha[ilha]);
+    if (m2 && trechos.length) pos = pontaFinal(trechos[trechos.length - 1]) ?? [px, py];
+  }
+  if (m2) {
+    ctx.costuras = costurasDaCamada;
+    if (pos) ctx.fimAnterior = pos;
+  }
+  // ---- M2: deslocamentos que cruzariam a parede externa ou um furo seguem por dentro (entre a externa e a 2ª parede) ----
+  if (pr.evitarCruzarParedes && trechos.length > 1) {
+    const nv = voltas > 1 ? (niveis[0] + niveis[1]) / 2 : niveis[0];
+    let lacosVia: Float64Array[] | null = null;
+    const lacos = () => (lacosVia ??= contornos(campo, g, nv, 0.05).map((l) => l.pts));
+    for (let k = 1; k < trechos.length; k++) {
+      const a = pontaFinal(trechos[k - 1]), b = pontaInicial(trechos[k]);
+      if (!a || !b || Math.hypot(b[0] - a[0], b[1] - a[1]) < 2 * g.c) continue;
+      const via = desviar(a[0], a[1], b[0], b[1], campo, g, niveis[0] / 2, lacos, pr.evitarCruzarDesvio);
+      if (via) trechos[k] = { ...trechos[k], via: Float64Array.from(via), viaDe: a };
+    }
   }
 
   // ---- suporte ----
