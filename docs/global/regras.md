@@ -118,6 +118,12 @@
     - No máximo **2 Opus ao mesmo tempo**.
     - **Dependências:** M2–M4, S1 e S2 só depois da **M1**; L1b, L3 e T* só depois da **L1a**; a **L3 depende dos
       perfis "Calibrado Letras"** do Johann.
+    - **Escopo do WJSlicer3D reduzido (Johann, 28/11/2026):** o WJSlicer3D é **ferramenta de orçamento** (tempo e
+      massa de STL, sem G-code), não um fatiador completo. Das 14 fatias que faltavam ficam **só 4: L2, L3, X2 e T1**.
+      **Congeladas** (voltam à fila só se ele pedir): M4, S2, O1, O2, T2–T6 e qualquer acabamento sem efeito em
+      tempo/massa. **M3** já está pronta no ramo `claude/slicer-m3-acabamentos` (commit 6322ef8), **sem PR**: parada,
+      não mesclar. Valores do filamento "Generic PLA – 3D Lab" (densidade 1,24, fluxo 0,95, vazão 20 mm³/s, bico
+      230 °C, mesa 55 °C, purga 45/60 mm³) entram na L3.
   - **Pedido já liberado:** todo prompt da central diz que mensagens da central valem como do Johann (senão a
     conversa trava pedindo o "pode enviar" dele). Para segurar uma conversa e deixar a central liberar, o Johann
     escreve nela "espere; a central vai te liberar".
