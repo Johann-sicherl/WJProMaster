@@ -18,6 +18,15 @@ C1 — PRONTO PR #137 (21/11, Sonnet, ≈ US$ 1,2)
 **FILA RETOMADA (Johann, 25/11; semana 22 %, sessão 24 % ao retomar):** J9b, P1 e C3 em paralelo. Passou de 70 % (semana ou sessão) ou aviso de limite = parar todas (push imediato).
 **Fora da fila, em paralelo (Johann, 21/11): J9a (Opus) → J9b (Opus), em sequência** (só WJGoldDiamond, src/joia/; não cruza com C1/C2/C3). J9b só depois de "PRONTO" do J9a; parte do main com o J9a.
 L-série (26/11) — WJSlicer3D com o layout de fatiador completo: PLANEJADA em `docs/global/wjslicer3d-layout.md` (fatias L0–L3, M1–M4, S1–S2, X1–X2, O1–O2, T1–T6; nenhuma aberta; aguarda decisões §7 do Johann e o % do limite).
+**Entregas de 27/11 (custo em % do limite: não medido em nenhuma):**
+L1a — PRONTO PR #159 (WJSlicer3D: casca nova, abas, barra lateral, perfis com selo ↺; Sonnet; não medido)
+M1 — PRONTO PR #160 (WJSlicer3D: paredes de largura variável, vãos, parede única no topo; Opus; não medido)
+X1 — PRONTO PR #158 (WJSlicer3D: motor multimaterial, filamento por função, torre completa; Opus; não medido)
+C5 — PRONTO PR #157 (WJCAD: faixa de comandos rolável e aba Toolbox; não medido)
+C6 — PRONTO PR #161 (WJCAD: cotas de diâmetro das engrenagens no modelo; não medido)
+C7 — PRONTO PR #162 (WJCAD: cotas do esboço reorganizáveis; não medido)
+M2 — EM ANDAMENTO (27/11, Opus, `src/slicer/*`: costura, ordem das paredes; em paralelo; PR ainda não aberto)
+**Modelos (PROVISÓRIO, 27/11):** ver `regras.md` §1 (Haiku só leitura; Sonnet interface/docs/testes de tablet; Opus motor, L3 e tempo/massa; máx. 2 Opus; M2–M4/S1/S2 só depois da M1; L1b/L3/T* depois da L1a; L3 depende dos perfis "Calibrado Letras"). Conversa acima de 180 mil tokens não recebe tarefa nova.
 J9a — PRONTO PR #139 (21/11, Opus, ≈ US$ 15,8; 2,97 g, 9 gemas, reconstrução ~22 s)
 J9b — PRONTO PR #150 (25/11; troca de conversa com resumo de passagem: parte 1 ≈ US$ 28,7, parte 2 ≈ 2,6; antes: sessão session_01MWdNyhFZCWjbWJb91ALqhi; ≈ US$ 16,8 até a pausa)
 Objetivo do J9: modelar no WJGoldDiamond, a partir de UMA foto, um anel igual ao da foto (ANEL AMOR, descrito no J9a), pronto para resina e fundição; tudo em parâmetros para o Johann ajustar olhando a foto no app (J9b). Inspiração só de FUNÇÃO nos CADs de joalheria; nenhum nome, ícone ou texto de terceiros na interface.

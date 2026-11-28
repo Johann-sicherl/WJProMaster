@@ -6,7 +6,7 @@
 > no mesmo PR. Detalhes campo a campo dos comandos do CAD ficam em `docs/funcional/`; a visão e o
 > roteiro de cada face, em `docs/global/<face>.md`.
 >
-> Última consolidação: 21/11/2026 (Biblioteca de componentes de fixação na Montagem); antes, 16/11/2026 (WJSlicer3D: biblioteca de custos, orçamento pela conta da MATRIZ_V01 e proposta comercial no WJWrite com PDF/DOCX; antes, pintura de até 4 cores, trocas/purga/torre e projeto no cofre); antes, 15/11/2026 (pedido C4: calculadora em todo campo numérico, cotas do recurso no duplo clique da árvore/corpo e depois do Mover corpo, linha sobre a aresta no esboço sobre a face; WJSlicer3D: só P1S e Kobra 3, fatiamento real próprio; caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
+> Última consolidação: 27/11/2026 (conferência de contexto/limite e tabela provisória de modelos); antes, 21/11/2026 (Biblioteca de componentes de fixação na Montagem); antes, 16/11/2026 (WJSlicer3D: biblioteca de custos, orçamento pela conta da MATRIZ_V01 e proposta comercial no WJWrite com PDF/DOCX; antes, pintura de até 4 cores, trocas/purga/torre e projeto no cofre); antes, 15/11/2026 (pedido C4: calculadora em todo campo numérico, cotas do recurso no duplo clique da árvore/corpo e depois do Mover corpo, linha sobre a aresta no esboço sobre a face; WJSlicer3D: só P1S e Kobra 3, fatiamento real próprio; caixa de seleção ativa e seleção rápida de arestas do Filete/Chanfro; nome persistente de faces e arestas; esboço acompanha a peça na reconstrução; Zerar cofre, Importar pasta/arquivos, login do Google com uma renovação só, o cofre manda nas cópias); antes, 12/11/2026 (mudanças feitas à mão no Drive/pendrive aplicadas sozinhas no cofre, só com aviso; arquivo sem pasta vai para "Recuperados"; mudanças feitas fora do app no Drive e no pendrive; antes, 10/11/2026: cofre no WJCAD, GO-IN com comentário, abrir com GO-OUT ou consulta).
 
 ## 1. Como trabalhar (Regras 001 e seguintes)
 
@@ -95,7 +95,29 @@
     (3) **Sonnet por padrão**; Opus só para kernel, geometria difícil ou motor numérico.
   - **Modelo e paralelo:** Opus para trabalho pesado (kernel, geometria, motor); Sonnet para fechamento,
     documentação, PR e tarefas pequenas. Paralelo sem limite de quantidade, mas no máximo **2 Opus** ao mesmo
-    tempo; as demais em Sonnet.
+    tempo; as demais em Sonnet. **Desde 27/11 vale a tabela provisória abaixo** (quem escolhe o modelo por tarefa).
+  - **Conferência de contexto e limite (Johann, 27/11/2026):**
+    - A central confere `context_usage.used_tokens` (get_session) de **todas** as conversas **e de si mesma**.
+      A **~180 mil tokens** a conversa faz push + resumo de passagem e abre-se conversa nova **no mesmo ramo, sem o
+      Johann pedir** (a central de si mesma também). **Nunca dar tarefa nova a conversa acima de 180 mil.**
+      (O "~200 mil" citado acima passa a ser só o teto absoluto; o gatilho de troca é 180 mil.)
+    - **Tarefa agendada horária de conferência** (a central agenda e mantém): lê contexto e `rate_limit_info` de cada
+      conversa e age pelas regras acima.
+    - `allowed_warning` em qualquer conversa = a central **avisa o Johann** e manda todas fazerem push e parar.
+    - **A cada 3 conferências** a central pergunta ao Johann o **% da janela de 5 h e o % da semana**. Teto de **70 %
+      na semana**; a janela de 5 h é decidida por ele na hora (já foi subida a **90–95 %** quando a prioridade era
+      entregar).
+  - **Tabela de modelos — PROVISÓRIA (Johann concordou em testar, 27/11/2026):**
+    | Modelo | Serve para |
+    |---|---|
+    | **Haiku** | só leitura mecânica (CI, deploy, contexto); **não escreve no repositório** |
+    | **Sonnet** | interface, documentação, PRs de docs, testes de tablet |
+    | **Opus** | motor do WJSlicer3D (M2–M4, S1, S2, X2, O1, O2), L3 e tudo que mude **tempo ou massa** |
+    - **Subir o modelo** se o Sonnet falhar o CI **2 vezes** ou tocar `caminhos.ts`, `campo.ts` ou o cálculo de
+      tempo/massa.
+    - No máximo **2 Opus ao mesmo tempo**.
+    - **Dependências:** M2–M4, S1 e S2 só depois da **M1**; L1b, L3 e T* só depois da **L1a**; a **L3 depende dos
+      perfis "Calibrado Letras"** do Johann.
   - **Pedido já liberado:** todo prompt da central diz que mensagens da central valem como do Johann (senão a
     conversa trava pedindo o "pode enviar" dele). Para segurar uma conversa e deixar a central liberar, o Johann
     escreve nela "espere; a central vai te liberar".
